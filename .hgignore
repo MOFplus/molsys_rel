@@ -1,0 +1,13 @@
+syntax: glob
+*~
+*.o
+*.x
+*.mod
+*.a
+*.so
+*.pyc
+*.orig
+*_keep
+.swp.*
+.swp
+doc/_build
