@@ -183,10 +183,11 @@ class mol:
                             pc = self.get_distvec(i,c)[2]
                             if len(pc) != 1:
                                 raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
+                            pc = pc[0]
                             if pc == 13:
                                 #conn[i][cc][c] += ixyz*nat
                                 conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
-                                pconn[i][cc][c] = np.array([0,0,0])
+                                #pconn[i][cc][c] = np.array([0,0,0])
                             else:
                                 px,py,pz     = img[pc][0],img[pc][1],img[pc][2]
                                 #print px,py,pz
@@ -211,6 +212,8 @@ class mol:
         self.cell *= np.array(supercell)[:,np.newaxis]
         self.elems *= ntot
         self.atypes*=ntot
+        self.fragtypes*=ntot
+        self.fragnumbers*=ntot
         self.images_cellvec = np.dot(images, self.cell)
         #print xyz
         return xyz,conn
