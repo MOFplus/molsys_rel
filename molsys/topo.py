@@ -195,7 +195,7 @@ class topo(molsys.molsys):
         return
                 
     
-    def make_supercell_preserve_conn(self,supercell):
+    def make_supercell(self,supercell):
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
         nat = copy.deepcopy(self.natoms)
