@@ -1,9 +1,10 @@
 import numpy
 import string
 import unit_cell
-import molsys.images.images as images
+import molsys
+images = molsys.images
 
-def read(self, mol, fname, topo = False):
+def read(mol, fname, topo = False):
     """
     Routine, which reads an txyz file
     :Parameters:
@@ -30,12 +31,12 @@ def read(self, mol, fname, topo = False):
             if ((cellparams[0]==cellparams[1])and(cellparams[1]==cellparams[2])and\
                 (cellparams[0]==cellparams[2])):
                     boundarycond=1
-    if topo = False:
+    if topo == False:
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
                 read_body(f,mol.natoms,frags=False)
     else:
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
-                mol.pconn = read_body(f,mol.natoms,frags=False)
+                mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
     if 'cell' in locals():
         mol.cell = cell
         mol.cellparams = cellparams
@@ -77,7 +78,7 @@ def read_body(f, natoms, frags = True, topo = False):
         else:
             txt = lbuffer[6+offset:]
             a = [map(int,i.split('/')) for i in txt]
-            c,pc = [i[0]-1 for i in a], [images[i[1]]] for i in a]
+            c,pc = [i[0]-1 for i in a], [images[i[1]] for i in a]
             pconn.append(c)
             pconn.append(pc)
     if topo:
@@ -95,7 +96,7 @@ def write_body(f, mol, frags=True, topo=False):
         -frags  (bool) : flag to specify if fragment info should be in body or not
         -topo   (bool) : flag to specigy if pconn info should be in body or not
     """
-    elems       = mol.elements
+    elems       = mol.elems
     atypes      = mol.atypes
     xyz         = mol.xyz
     cnct        = mol.conn
@@ -104,9 +105,9 @@ def write_body(f, mol, frags=True, topo=False):
     fragnumbers = mol.fragnumbers
     if topo: pconn = mol.pconn
     for i in xrange(mol.natoms):
-        line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
+        line = ("%3d %-3s" + 3*"%12.6f" + " %10s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
-        if frags = True: line += ("%3d %10s") % ([fragtypes[i]]+[fragnumbers[i]])
+        if frags == True: line += ("%10s %3d") % tuple([fragtypes[i]]+[fragnumbers[i]])
         conn = (numpy.array(cnct[i])+1).tolist()
         if len(conn) != 0:
             if topo:
@@ -127,7 +128,7 @@ def write_body(f, mol, frags=True, topo=False):
     return
     
 
-def write_tinker_xyz(self, mol, fname, topo = False):
+def write(mol, fname, topo = False):
     """
     Routine, which writes an txyz file
     :Parameters:
@@ -138,9 +139,9 @@ def write_tinker_xyz(self, mol, fname, topo = False):
     cellparams = mol.cellparams
     f = open(fname, 'w')
     if type(cellparams) != type(None):
-        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([natoms]+cellparams))
+        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+cellparams))
     else:
-        f.write("%5d \n" % natoms)
+        f.write("%5d \n" % mol.natoms)
     write_body(f, mol, topo=topo)
     f.close()
     return
