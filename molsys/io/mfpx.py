@@ -1,6 +1,8 @@
 import numpy
 import string
 import unit_cell
+import txyz
+import logging
 
 def read(self, mol, fname):
     """
@@ -9,61 +11,72 @@ def read(self, mol, fname):
         -fname  (str): name of the txyz file
         -mol    (obj): instance of a molclass
     """
-    elems = []
-    xyz = []
-    atypes = []
-    conn = []
-    type = 'xyz'
+    ftype = 'xyz'
     f = open(fname, "r")
     ### read header ###
     lbuffer = string.split(f.readline())
     stop = False
     while not stop:
         if lbuffer[0] != '#':
-            natoms = int(lbuffer[0])
+            mol.natoms = int(lbuffer[0])
             stop = True
         else:
             keyword = lbuffer[1]
             if keyword == 'type':
-                type = lbuffer2
-            if keyword == 'cell':
-                pass
-
-    lbuffer = string.split(f.readline())
-    natoms = string.atoi(lbuffer[0])
-    if len(lbuffer) > 1 and lbuffer[1] != 'molden':
-        boundarycond = 3
-        if lbuffer[1] == "#":
-            # read full cellvectors
-            celllist = map(string.atof,lbuffer[2:11])
-            cell = numpy.array(celllist)
-            cell.shape = (3,3)
-            cellparams = unit_cell.abc_from_vectors(cell)
-        else:
-            cellparams = map(string.atof, lbuffer[1:7])
-            cell = unit_cell.vectors_from_abc(cellparams)
-        if ((cellparams[3]==90.0) and (cellparams[4]==90.0) and (cellparams[5]==90.0)):
-            boundarycond=2
-            if ((cellparams[0]==cellparams[1])and(cellparams[1]==cellparams[2])and\
-                (cellparams[0]==cellparams[2])):
-                    boundarycond=1
-    for i in xrange(natoms):
-        lbuffer = string.split(f.readline())
-        xyz.append(map(string.atof, lbuffer[2:5]))
-        elems.append(string.lower(lbuffer[1]))
-        t = lbuffer[5]
-        atypes.append(t)
-        conn.append((numpy.array(map(string.atoi, lbuffer[6:]))-1).tolist())
-    # done: wrap up
-    xyz = numpy.array(xyz)
-    mol.elems = elems
-    mol.xyz = xyz
-    mol.atypes = atypes
-    mol.conn = conn
-    if 'cell' in locals():
-        mol.cell = cell
-        mol.cellparams = cellparams
-        mol.bcond = boundarycond
+                ftype = lbuffer2
+            elif keyword == 'cell':
+                mol.cellparams = map(string.atof,lbuffer[2:8])
+                mol.cell = unit_cell.vectors_from_abc(mol.cellparams)
+            elif keyword == 'cellvect'
+                celllist = map(string.atof,lbuffer[2:11])
+                cell = numpy.array(celllist)
+                cell.shape = (3,3)
+                mol.cell = cell
+                mol.cellparams = unit_cell.abc_from_vectors(mol.cell)
+            elif keyword == 'bbcenter':
+                mol.centerpoint = lbuffer[2]
+                if mol.centerpoint == 'special':
+                    mol.special_center_point = np.array(map(float,lbuffer[3:6]))
+            elif keyword == 'bbconn':
+                con_info = lbuffer[2:]
+            lbuffer = string.split(f.readline())
+    ### read body
+    if ftype == 'xyz':
+        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
+                read_body(f,mol.natoms,frags=True)
+    elif ftype == 'topo':
+        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
+                mol.pconn = read_body(f,mol.natoms,frags=True, topo = True)
+        pass
+    else:
+        ftype = 'xyz':
+        logging.warning('Unknown mfpx file type specified. Using xyz as default')
+        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
+                read_body(f,mol.natoms,frags=False)
+    ### pass bb info
+    try:
+        line = f.readline().split()
+        if line != [] and line[0][:5] == 'angle':
+            self.angleterm = line
+    if 'con_info' in locals():
+        mol.dummies = []
+        mol.dummy_neighbors=[]
+        mol.connectors=[]
+        mol.connectors_type=[]
+        contype = 0
+        for c in con_info:
+            if c == "/":
+                contype_count += 1
+            else:
+                ss = c.split('*') # ss[0] is the dummy neighbors, ss[1] is the connector atom
+                if len(ss) != 2: raise IOError('This is not a proper BB file, convert with script before!')
+                stt = ss[0].split(',')
+                mol.connectors.append(int(ss[1])-1)
+                mol.connectors_type.append(contype_count)
+                if string.lower(self.elems[int(ss[1])-1]) == 'x':
+                    mol.dummies.append(int(ss[1])-1) # simplest case only with two atoms being the connecting atoms
+                    #self.natoms += 1
+                mol.dummy_neighbors.append((np.array(map(int,stt)) -1).tolist())
     return 
 
 def write_tinker_xyz(self, mol, fname):
