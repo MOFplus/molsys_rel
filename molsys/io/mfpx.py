@@ -25,16 +25,18 @@ def read(mol, fname):
             if keyword == 'type':
                 ftype = lbuffer[2]
             elif keyword == 'cell':
-                mol.periodic = True
-                mol.cellparams = map(string.atof,lbuffer[2:8])
-                mol.cell = unit_cell.vectors_from_abc(mol.cellparams)
+                #mol.periodic = True
+                cellparams = map(string.atof,lbuffer[2:8])
+                mol.set_cellparams(cellparams)
+                #mol.cell = unit_cell.vectors_from_abc(mol.cellparams)
             elif keyword == 'cellvect':
                 mol.periodic = True
                 celllist = map(string.atof,lbuffer[2:11])
                 cell = numpy.array(celllist)
                 cell.shape = (3,3)
-                mol.cell = cell
-                mol.cellparams = unit_cell.abc_from_vectors(mol.cell)
+                mol.set_cell(cell)
+                #mol.cell = cell
+                #mol.cellparams = unit_cell.abc_from_vectors(mol.cell)
             elif keyword == 'bbcenter':
                 mol.centerpoint = lbuffer[2]
                 if mol.centerpoint == 'special':

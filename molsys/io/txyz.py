@@ -37,10 +37,11 @@ def read(mol, fname, topo = False):
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
                 mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
     if 'cell' in locals():
-        mol.periodic = True
-        mol.cell = cell
-        mol.cellparams = cellparams
-        mol.bcond = boundarycond
+        mol.set_cell(cell)
+        #mol.periodic = True
+        #mol.cell = cell
+        #mol.cellparams = cellparams
+        #mol.bcond = boundarycond
     return 
 
 def read_body(f, natoms, frags = True, topo = False):

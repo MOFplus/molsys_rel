@@ -6,12 +6,11 @@ import copy
 import string
 import logging
 
-#import util.elems as elements
-#import util.unit_cell as unit_cell
-#import util.rotations as rotations
-#from molsys.io import formats
+from util import unit_cell 
+from util import elems as elements
+from util import rotations
+
 from io import formats
-#import io.formats
 import random
 
 
@@ -679,4 +678,67 @@ class molsys:
         plt.xlabel('x')
         plt.ylabel('y')
         plt.show()
-            
+        return
+
+    ### get and set methods ###
+
+    def get_natoms(self):
+        return self.natoms
+
+    def get_xyz(self):
+        return self.xyz
+
+    def set_xyz(self,xyz):
+        assert np.shape(xyz) == (natoms,3)
+        self.xyz = xyz
+
+    def get_elements(self):
+        return self.elems
+
+    def set_elements(self,elems):
+        assert len(elems) == self.natoms
+        self.elems = elems
+
+    def get_atypes(self):
+        return self.atypes
+
+    def set_atypes(self,atypes):
+        assert len(atypes) == self.natoms
+        self.atypes = atypes
+
+    def get_cell(self):
+        return self.cell
+
+    def get_cellparams(self):
+        return self.cellparams
+
+    def set_cell(self,cell):
+        assert np.shape(cell) == (3,3)
+        self.periodic = True
+        self.cell = cell
+        self.cellparams = unit_cell.abc_from_vectors(self.cell)
+        self.images_cellvec = np.dot(images, self.cell)
+
+    def set_cellparams(self,cellparams):
+        assert len(cellparams) == 6
+        self.periodic = True
+        self.cellparams = cellparams
+        self.cell = unit_cell.vectors_from_abc(self.cellparams)
+        self.images_cellvec = np.dot(images, self.cell)
+
+    def get_fragtypes(self):
+        return self.fragtypes
+
+    def set_fragtypes(self,fragtypes):
+        assert len(fragtypes) == self.natoms
+        self.fragtypes = fragtypes
+
+    def get_fragnumbers(self):
+        return self.fragnumbers
+
+    def set_fragnumbers(self,fragnumbers):
+        assert len(fragnumbers) == self.natoms
+        self.fragnumbers = fragnumbers
+
+
+
