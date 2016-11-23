@@ -1,7 +1,6 @@
 import numpy
 import string
-import unit_cell
-import molsys
+from molsys import *
 
 def read(mol, fname, topo = False):
     """
@@ -17,14 +16,13 @@ def read(mol, fname, topo = False):
     if len(lbuffer) > 1 and lbuffer[1] != 'molden':
         boundarycond = 3
         if lbuffer[1] == "#":
-            # read full cellvectors
             celllist = map(string.atof,lbuffer[2:11])
             cell = numpy.array(celllist)
             cell.shape = (3,3)
-            cellparams = unit_cell.abc_from_vectors(cell)
+            mol.set_cell(cell)
         else:
             cellparams = map(string.atof, lbuffer[1:7])
-            cell = unit_cell.vectors_from_abc(cellparams)
+            mol.set_cellparams(cellparams)
         if ((cellparams[3]==90.0) and (cellparams[4]==90.0) and (cellparams[5]==90.0)):
             boundarycond=2
             if ((cellparams[0]==cellparams[1])and(cellparams[1]==cellparams[2])and\
@@ -36,12 +34,6 @@ def read(mol, fname, topo = False):
     else:
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
                 mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
-    if 'cell' in locals():
-        mol.set_cell(cell)
-        #mol.periodic = True
-        #mol.cell = cell
-        #mol.cellparams = cellparams
-        #mol.bcond = boundarycond
     return 
 
 def read_body(f, natoms, frags = True, topo = False):
