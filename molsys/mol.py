@@ -9,7 +9,7 @@ import logging
 from util import unit_cell 
 from util import elems as elements
 from util import rotations
-
+from molsys import *
 from io import formats
 import random
 
@@ -38,7 +38,7 @@ np.set_printoptions(threshold=20000)
 deg2rad = np.pi/180.0
 SMALL_DIST = 1.0e-3
 
-class molsys:
+class mol:
 
     def __init__(self):
         self.natoms=0

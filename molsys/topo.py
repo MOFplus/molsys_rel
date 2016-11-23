@@ -10,7 +10,8 @@ import util.elems as elements
 import util.unit_cell as unit_cell
 import util.rotations as rotations
 import random
-import molsys
+from molsys import *
+import mol
 
 try:
     from ase import Atoms
@@ -38,7 +39,7 @@ deg2rad = np.pi/180.0
 SMALL_DIST = 1.0e-3
 
 
-class topo(molsys.molsys):
+class topo(mol.mol):
     def __init__(self):
         molsys.molsys.__init__(self)
         self.periodic= True

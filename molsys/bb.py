@@ -4,9 +4,10 @@
 import string
 import copy
 import numpy as np
-import molsys
+import mol
+from molsys import *
 
-class bb(molsys.molsys):
+class bb(mol.mol):
     
     def __init__(self, name, specific_conn=None, linker=False, zflip=False, nrot=2, label = None, filetype='mfpx'):
         molsys.molsys.__init__(self)
