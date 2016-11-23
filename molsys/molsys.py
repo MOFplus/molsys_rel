@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 import string as st
 import numpy as np
-#import numpy
 import types
 import copy
 import string
 import logging
 
-import elems as elements
-import unit_cell
-import vector
+#import util.elems as elements
+#import util.unit_cell as unit_cell
+#import util.rotations as rotations
+#from molsys.io import formats
+from io import formats
+#import io.formats
 import random
+
 
 
 try:
@@ -54,7 +57,14 @@ class molsys:
         return
 
     ######  I/O stuff ############################
-        
+    
+    def read(self,fname,ftype='mfpx',**kwargs):
+        formats.read[ftype](self,fname,**kwargs)
+        return
+    
+    def write(self,fname,ftype='mfpx',**kwargs):
+        formats.write[ftype](self,fname,**kwargs)
+        return
         
 
     ###### helper functions #######################
@@ -359,11 +369,11 @@ class molsys:
         return
     
     def rotate_euler(self, euler):
-        self.xyz = vector.rotate_by_euler(self.xyz, euler)
+        self.xyz = rotations.rotate_by_euler(self.xyz, euler)
         return
         
     def rotate_triple(self, triple):
-        self.xyz = vector.rotate_by_triple(self.xyz, triple)
+        self.xyz = rotations.rotate_by_triple(self.xyz, triple)
         return
 
     def center_com(self):
@@ -413,9 +423,9 @@ class molsys:
         if scale    !=None:
             other_xyz *= np.array(scale)
         if roteuler != None:
-            other_xyz = vector.rotate_by_euler(other_xyz, roteuler)
+            other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
         if rotate   !=None:
-            other_xyz = vector.rotate_by_triple(other_xyz, rotate,use_new=False)
+            other_xyz = rotations.rotate_by_triple(other_xyz, rotate,use_new=False)
         if translate!=None:
             other_xyz += translate
         if self.natoms==0:

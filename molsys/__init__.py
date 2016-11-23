@@ -1,7 +1,7 @@
 ### 
-import molsys
+#import molsys
 import numpy
-molsys = molsys.molsys
+#molsys.molsys = molsys.molsys.molsys
 
 
 images = []

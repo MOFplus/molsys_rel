@@ -2,7 +2,6 @@ import numpy
 import string
 import unit_cell
 import molsys
-images = molsys.images
 
 def read(mol, fname, topo = False):
     """
