@@ -67,7 +67,7 @@ def read_body(f, natoms, frags = True, topo = False):
         atypes.append(t)
         if frags == True:
             fragtypes.append(lbuffer[6])
-            fragnumbers.append(lbuffer[7])
+            fragnumbers.append(int(lbuffer[7]))
             offset = 2
         else:
             fragtypes.append('0')
@@ -79,7 +79,7 @@ def read_body(f, natoms, frags = True, topo = False):
             txt = lbuffer[6+offset:]
             a = [map(int,i.split('/')) for i in txt]
             c,pc = [i[0]-1 for i in a], [images[i[1]] for i in a]
-            pconn.append(c)
+            conn.append(c)
             pconn.append(pc)
     if topo:
         return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers, pconn
@@ -128,7 +128,7 @@ def write_body(f, mol, frags=True, topo=False):
     return
     
 
-def write(mol, fname, topo = False):
+def write(mol, fname, topo = False, frags = False):
     """
     Routine, which writes an txyz file
     :Parameters:
@@ -142,6 +142,6 @@ def write(mol, fname, topo = False):
         f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+cellparams))
     else:
         f.write("%5d \n" % mol.natoms)
-    write_body(f, mol, topo=topo)
+    write_body(f, mol, topo=topo, frags = frags)
     f.close()
     return
