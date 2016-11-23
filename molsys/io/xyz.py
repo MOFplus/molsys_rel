@@ -17,22 +17,22 @@ def read(mol, fname):
         line = string.split(f.readline())
         elements.append(string.lower(line[0]))
         xyz[i,:] = map(float,line[1:4])
-    self.mol.natoms = natoms
-    self.mol.xyz = xyz
-    self.mol.elems = elements
+    mol.natoms = natoms
+    mol.xyz = numpy.array(xyz)
+    mol.elems = elements
     return
 
-def write_xyz(self, mol, fname):
+def write(mol, fname):
     """
     Routine, which writes an xyz file
     :Parameters:
         -fname  (str): name of the xyz file
         -mol    (obj): instance of a molclass
     """
-    natoms = numpy.shape(xyz)[0]
+    natoms = mol.natoms 
     f = open(fname,"w")
     f.write("%d\n\n" % mol.natoms)
     for i in xrange(natoms):
-        f.write("%s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
+        f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     f.close()
     return
