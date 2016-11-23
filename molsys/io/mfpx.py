@@ -25,9 +25,11 @@ def read(mol, fname):
             if keyword == 'type':
                 ftype = lbuffer[2]
             elif keyword == 'cell':
+                mol.periodic = True
                 mol.cellparams = map(string.atof,lbuffer[2:8])
                 mol.cell = unit_cell.vectors_from_abc(mol.cellparams)
             elif keyword == 'cellvect':
+                mol.periodic = True
                 celllist = map(string.atof,lbuffer[2:11])
                 cell = numpy.array(celllist)
                 cell.shape = (3,3)
