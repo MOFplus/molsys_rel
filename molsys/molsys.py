@@ -147,53 +147,74 @@ class molsys:
         return d
 
     ######## manipulations in particular for blueprints
-
-    def make_supercell(self, supercell,shift=False):
-        supercell = np.array(supercell)
-        cellfact = supercell.prod()
-        new_xyz = []
-        for a in xrange(supercell[0]):
-            for b in xrange(supercell[1]):
-                for c in xrange(supercell[2]):
-                    if shift:
-                        dispvect = np.sum(self.cell*np.array([a-1,b-1,c-1])[:,np.newaxis],axis=0)
-                    else:
-                        dispvect = np.sum(self.cell*np.array([a,b,c])[:,np.newaxis],axis=0)
-                    new_xyz += (self.xyz+dispvect).tolist()
-        self.xyz = np.array(new_xyz, "d")
-        self.cell *= supercell[:,np.newaxis]
-        self.cellparams[0:3] *= supercell
-        self.natoms*=cellfact
-        self.elems *=cellfact
-        self.atypes*=cellfact
+   
+    def make_supercell(self,supercell):
+        img = [np.array(i) for i in images.tolist()]
+        ntot = np.prod(supercell)
+        nat = copy.deepcopy(self.natoms)
+        nx,ny,nz = supercell[0],supercell[1],supercell[2]
+        #pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
+        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
+        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
+        elems = copy.deepcopy(self.elems)
+        left,right,front,back,bot,top =  [],[],[],[],[],[]
+        neighs = [[] for i in range(6)]
+        iii = []
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    iii.append(ixyz)
+                    if ix == 0   : left.append(ixyz)
+                    if ix == nx-1: right.append(ixyz)
+                    if iy == 0   : bot.append(ixyz)
+                    if iy == ny-1: top.append(ixyz)
+                    if iz == 0   : front.append(ixyz)
+                    if iz == nz-1: back.append(ixyz)
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
+                    xyz[ixyz] += dispvect
+                    
+                    i = copy.copy(ixyz)
+                    for cc in range(len(conn[i])):
+                        for c in range(len(conn[i][cc])):
+                            pc = self.get_distvec(i,c)[2]
+                            if len(pc) != 1:
+                                raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
+                            if pc == 13:
+                                #conn[i][cc][c] += ixyz*nat
+                                conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
+                                pconn[i][cc][c] = np.array([0,0,0])
+                            else:
+                                px,py,pz     = img[pc][0],img[pc][1],img[pc][2]
+                                #print px,py,pz
+                                iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
+                                iixyz= iix+nx*iiy+nx*ny*iiz
+                                conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
+                                #pconn[i][cc][c] = np.array([0,0,0])
+                                #if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
+                                #if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1   
+                                #if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
+                                #if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1  
+                                #if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
+                                #if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1   
+                                #print px,py,pz
+        self.conn, self.xyz = [],[]
+        for cc in conn:
+            for c in cc:
+                self.conn.append(c)
+        self.natoms = nat*ntot
+        self.xyz = np.array(xyz).reshape(nat*ntot,3)
+        self.cellparams[0:3] *= np.array(supercell)
+        self.cell *= np.array(supercell)[:,np.newaxis]
+        self.elems *= ntot
+        self.atypes*=ntot
         self.images_cellvec = np.dot(images, self.cell)
-        return
-        
-    def make_supercell_symmetric(self,supercell,shift=False):    
-        supercell = np.array(supercell)
-        cellfact = supercell.prod()
-        new_xyz = []
-        dispvect = np.sum(self.cell*np.array([0,0,0])[:,np.newaxis],axis=0)
-        new_xyz += (self.xyz+dispvect).tolist()
-        #print len(self.xyz)
-        for a in xrange(supercell[0]):
-            for b in xrange(supercell[1]):
-                for c in xrange(supercell[2]):
-                    if (a == 1) and (b == 1) and (c==1): continue
-                    if shift:
-                        dispvect = np.sum(self.cell*np.array([a-1,b-1,c-1])[:,np.newaxis],axis=0)
-                    else:
-                        dispvect = np.sum(self.cell*np.array([a,b,c])[:,np.newaxis],axis=0)
-                    new_xyz += (self.xyz+dispvect).tolist()
-        self.xyz = np.array(new_xyz, "d")
-        #print len(self.xyz)
-        self.cell *= supercell[:,np.newaxis]
-        self.cellparams[0:3] *= supercell
-        self.natoms*=cellfact
-        self.elems *=cellfact
-        self.atypes*=cellfact
-        self.images_cellvec = np.dot(images, self.cell)
-        return
+        #print xyz
+        return xyz,conn
         
     def remove_duplicates(self, thresh=SMALL_DIST):
         badlist = []
