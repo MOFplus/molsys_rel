@@ -37,12 +37,6 @@ np.set_printoptions(threshold=20000)
 deg2rad = np.pi/180.0
 SMALL_DIST = 1.0e-3
 
-images = []    
-for x in xrange(-1,2):
-    for y in xrange(-1,2):
-        for z in xrange(-1,2):
-            images.append([x,y,z])
-images = np.array(images, "d") 
 
 class topo(molsys.molsys):
     def __init__(self):

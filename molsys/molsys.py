@@ -7,7 +7,7 @@ import copy
 import string
 import logging
 
-import elements
+import elems as elements
 import unit_cell
 import vector
 import random
@@ -33,17 +33,8 @@ else:
 
 np.set_printoptions(threshold=20000)
 
-
-
 deg2rad = np.pi/180.0
 SMALL_DIST = 1.0e-3
-
-images = []    
-for x in xrange(-1,2):
-    for y in xrange(-1,2):
-        for z in xrange(-1,2):
-            images.append([x,y,z])
-images = np.array(images, "d") 
 
 class molsys:
 
@@ -62,183 +53,10 @@ class molsys:
         logging.basicConfig(format='%(levelname)s:%(message)s',level=logging.DEBUG)
         return
 
-  ####  I/O stuff ############################
+    ######  I/O stuff ############################
         
-    def read_txyz(self, fname):
-        f = open(fname, "r")
-        line = st.split(f.readline())
-        self.natoms = st.atoi(line[0])
-        self.periodic=None
-        if len(line) > 1:
-            self.periodic=[1,1,1]
-            if line[1] == "#":
-                # read full cellvectors
-                celllist = map(st.atof,line[2:11])
-                self.cell = np.array(celllist)
-                self.cell.shape = (3,3)
-                self.cellparams = unit_cell.abc_from_vectors(self.cell)
-            else:
-                self.cellparams = map(st.atof, line[1:7])
-                self.cell = unit_cell.vectors_from_abc(self.cellparams)
-            self.images_cellvec = np.dot(images,self.cell)
-        xyz = []
-        self.conn  =[]
-        self.elems =[]
-        self.atypes=[]
-        for i in xrange(self.natoms):
-            line = st.split(f.readline())
-            self.elems.append(st.lower(line[1]))
-            xyz.append(map(st.atof, line[2:5]))
-            self.atypes.append(line[5])
-            self.conn.append((np.array(map(st.atoi, line[6:]),"i")-1).tolist())
-        self.xyz = np.array(xyz, "d")
-        f.close()
-        return
-
-    def read_txyz_nonperiodic(self, fname):
-        f = open(fname, "r")
-        line = st.split(f.readline())
-        self.natoms = st.atoi(line[0])
-        self.periodic=None
-        xyz = []
-        self.conn  =[]
-        self.elems =[]
-        self.atypes=[]
-        for i in xrange(self.natoms):
-            line = st.split(f.readline())
-            self.elems.append(st.lower(line[1]))
-            xyz.append(map(st.atof, line[2:5]))
-            self.atypes.append(line[5])
-            self.conn.append((np.array(map(st.atoi, line[6:]),"i")-1).tolist())
-        self.xyz = np.array(xyz, "d")
-        f.close()
-        return
-
-    def read_xyz(self, fname):
-        f = open(fname, "r")
-        line = st.split(f.readline())
-        self.natoms = st.atoi(line[0])
-        self.periodic=None
-        if len(line) > 1:
-            self.periodic=[1,1,1]
-            if line[1] == "#":
-                # read full cellvectors
-                celllist = map(st.atof,line[2:11])
-                self.cell = np.array(celllist)
-                self.cell.shape = (3,3)
-                self.cellparams = unit_cell.abc_from_vectors(self.cell)
-            else:
-                # need to catch here if the xyz comes from molden with its unconventional 
-                # setup of cellparams
-                molden = False 
-                if len(line) == 8:
-                    if line[7] == "molden":
-                        molden=True
-                self.cellparams = map(st.atof, line[1:7])
-                self.cell = unit_cell.vectors_from_abc(self.cellparams)
-            self.images_cellvec = np.dot(images, self.cell)
-        f.readline()
-        xyz = []
-        self.conn  =None
-        self.elems =[]
-        self.atypes=[]
-        for i in xrange(self.natoms):
-            line = st.split(f.readline())
-            self.elems.append(st.lower(line[0]))
-            xyz.append(map(st.atof, line[1:4]))
-        self.xyz = np.array(xyz, "d")
-        if self.periodic and molden:
-            # now atoms are read in
-            # rotate system into the usual form - convert to frac and back
-            # gen a temporary cell in molden setup
-            self.cell = unit_cell.vectors_from_abc(self.cellparams,molden=molden)
-            frac_xyz = self.get_frac_xyz()
-            # now make a cell with the regular setup
-            self.cell = unit_cell.vectors_from_abc(self.cellparams)
-            self.set_xyz_from_frac(frac_xyz)
-        #self.atypes = self.natoms*["0"]
-        self.atypes = []
-        for i in range(self.natoms):
-            self.atypes.append(st.lower(self.elems[i]))
-        f.close()
-        return
         
-    def write_txyz(self, fname,mode="w",addtofirstline=''):
-        f = open(fname, mode)
-        if self.periodic:
-            if not type(self.cellparams) == type([]):
-                self.cellparams = self.cellparams.tolist()
-            f.write(("%5d"+6*" %10.4f"+addtofirstline+"\n") % tuple([self.natoms]+self.cellparams))
-        else:
-            f.write("%5d %s\n" % (self.natoms,addtofirstline))
-        for i in xrange(self.natoms):
-            line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
-               tuple([i+1]+[self.elems[i]]+ self.xyz[i].tolist() + [self.atypes[i]])
-            conn = (np.array(self.conn[i])+1).tolist()
-            if len(conn) != 0:
-                line += (len(conn)*"%7d") % tuple(conn)
-            f.write("%s \n" % line)
-        f.close()
-        return
 
-    def write_xyz(self, fname,mode="w"):
-        f = open(fname, mode)
-        if self.periodic:
-            if not type(self.cellparams) == type([]):
-                self.cellparams = self.cellparams.tolist()
-            f.write(("%5d"+6*" %10.4f"+"\n") % tuple([self.natoms]+self.cellparams))
-        else:
-            f.write("%5d\n" % self.natoms)
-        f.write("\n")
-        for i in xrange(self.natoms):
-            line = ("%-3s" + 3*"%12.6f") % \
-               tuple([self.elems[i]]+ self.xyz[i].tolist())
-            f.write("%s \n" % line)
-        f.close()
-        return
-
-    def write_topo(self,filename):
-        ff=open(filename,'w')
-        ff.write('%i %16.10f %16.10f %16.10f %10.6f %10.6f %10.6f\n' % (len(self.xyz),self.cellparams[0],self.cellparams[1],self.cellparams[2],self.cellparams[3],self.cellparams[4],self.cellparams[5]) )
-        for i in xrange(self.natoms):
-            line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
-               tuple([i+1]+[self.elems[i]]+ self.xyz[i].tolist() + [self.atypes[i]])
-            conn = (np.array(self.conn[i])+1).tolist()
-            pconn = self.pconn[i]
-            pimg = []
-            for pc in pconn:
-                for ii,img in enumerate(images):
-                    if all(img==pc): 
-                        pimg.append(ii)
-                        break
-            if len(conn) != 0:
-                for cc,pp in zip(conn,pimg):
-                    if pp < 10:
-                        line += "%8d/%1d" % (cc,pp)
-                    else:
-                        line += "%7d/%2d" % (cc,pp)
-                #line += (len(conn)*"%7d") % tuple(conn)
-            ff.write("%s \n" % line)
-        ff.close()
-
-    def write_v1(self,fname):
-        if fname.split('.')[-1] != 'v1':
-            fname = fname + '.v1'
-        ff = open(fname,'w')
-        ff.write(("%s\n") % ("unit cell vectors:"))
-        ff.write("%s %12.6f %12.6f %12.6f\n" % ("va= ", self.cell[0,0], self.cell[1,0], self.cell[2,0]))
-        ff.write("%s %12.6f %12.6f %12.6f\n" % ("va= ", self.cell[0,1], self.cell[1,1], self.cell[2,1]))
-        ff.write("%s %12.6f %12.6f %12.6f\n" % ("va= ", self.cell[0,2], self.cell[1,2], self.cell[2,2]))
-        ff.write("%i\n" % self.natoms)
-
-        for i in range(self.natoms):
-            s=self.elems[i]
-            s = string.capitalize(s[0])+s[1:]
-            ff.write("%s %12.6f %12.6f %12.6f\n" % (s,self.xyz[i][0], self.xyz[i][1], self.xyz[i][2]))
-        ff.close()
-        return
-
-        
     ###### helper functions #######################
         
     def get_elemlist(self):
