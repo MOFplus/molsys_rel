@@ -77,32 +77,42 @@ def read(self, mol, fname):
                     mol.dummies.append(int(ss[1])-1) # simplest case only with two atoms being the connecting atoms
                     #self.natoms += 1
                 mol.dummy_neighbors.append((np.array(map(int,stt)) -1).tolist())
-    return 
+    return
 
-def write_tinker_xyz(self, mol, fname):
+def write(self, mol, fname, topo = False, bb = False):
     """
-    Routine, which writes an txyz file
+    Routine, which writes an mfpx file
     :Parameters:
-        -fname  (str): name of the txyz file
-        -mol    (obj): instance of a molclass
+        -mol   (obj) : instance of a molsys class
+        -fname (str) : name of the mfpx file
+        -topo  (bool): flag to specify if pconn should be in mfpx file or not
+        -bb    (bool): flag to specify if bb info should be in mfpx file or not
     """
-    elems  = mol.elements
-    atypes = mol.atypes
-    xyz    = mol.xyz
-    cnct   = mol.conn
-    natoms = mol.natoms
-    cellparams = mol.cellparams
     f = open(fname, 'w')
-    if type(cellparams) != type(None):
-        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([natoms]+cellparams))
+    if topo:
+        ftype = 'topo'
     else:
-        f.write("%5d \n" % natoms)
-    for i in xrange(natoms):
-        line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
-            tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
-        conn = (numpy.array(cnct[i])+1).tolist()
-        if len(conn) != 0:
-            line += (len(conn)*"%7d") % tuple(conn)
-        f.write("%s \n" % line)
+        ftype = 'xyz'
+    f.write('# type %s\n' % ftype)
+    if type(cellparams) != type(None):
+        f.write('# cell %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
+                tuple(mol.cellparams))
+    if bb:
+        if mol.centerpoint != 'special':
+            f.write('# bbcenter %s' % mol.centerpoint)
+        else:
+            f.write('# bbcenter %s %12.6f %12.6f %12.6f ' % 
+                    tuple([mol.centerpoint]+ mol.special_center_point.tolist()))
+        connstrings = ''
+        for i,d in enumerate(mol.dummy_neighbors):
+            for j in d:
+                connstrings = connstrings + str(j+1) +','
+            connstrings = connstrings[0:-1] + '*' + str(self.connectors[i]+1)
+        f.write('# bbconn %s\n' % connstrings)
+    if ftype == 'xyz':
+        txyz.write_body(f,mol)
+    else:
+        txyz.write_body(f,mol,topo=True)
     f.close()
     return
+
