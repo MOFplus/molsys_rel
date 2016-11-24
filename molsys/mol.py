@@ -180,8 +180,10 @@ class mol:
                     i = copy.copy(ixyz)
                     for cc in range(len(conn[i])):
                         for c in range(len(conn[i][cc])):
-                            pc = self.get_distvec(i,c)[2]
+                            pc = self.get_distvec(cc,conn[i][cc][c])[2]
                             if len(pc) != 1:
+                                print self.get_distvec(cc,conn[i][cc][c])
+                                print c,conn[i][cc][c]
                                 raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
                             pc = pc[0]
                             if pc == 13:
@@ -190,7 +192,6 @@ class mol:
                                 #pconn[i][cc][c] = np.array([0,0,0])
                             else:
                                 px,py,pz     = img[pc][0],img[pc][1],img[pc][2]
-                                #print px,py,pz
                                 iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
                                 iixyz= iix+nx*iiy+nx*ny*iiz
                                 conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
