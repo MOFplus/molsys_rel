@@ -33,10 +33,14 @@ def read(mol, fname):
                 cell.shape = (3,3)
                 mol.set_cell(cell)
             elif keyword == 'bbcenter':
+                if mol.__class__.__name__ != 'bb': 
+                    logging.warning('Topology information is read to an regular or topo mol class') 
                 mol.centerpoint = lbuffer[2]
                 if mol.centerpoint == 'special':
                     mol.special_center_point = np.array(map(float,lbuffer[3:6]))
             elif keyword == 'bbconn':
+                if mol.__class__.__name__ != 'bb': 
+                    logging.warning('Topology information is read to an regular or topo mol class') 
                 con_info = lbuffer[2:]
             lbuffer = string.split(f.readline())
     ### read body
@@ -44,6 +48,8 @@ def read(mol, fname):
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
                 txyz.read_body(f,mol.natoms,frags=True)
     elif ftype == 'topo':
+        if mol.__class__.__name__ != 'topo': 
+            logging.warning('Topology information is read to an regular or bb mol class') 
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
                 mol.pconn = txyz.read_body(f,mol.natoms,frags=True, topo = True)
         pass

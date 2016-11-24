@@ -13,13 +13,16 @@ def read(mol, fname):
     f.readline()
     xyz = numpy.zeros((natoms, 3))
     elements = []
+    atypes = []
     for i in range(natoms):
         line = string.split(f.readline())
         elements.append(string.lower(line[0]))
+        atypes.append(string.lower(line[0]))
         xyz[i,:] = map(float,line[1:4])
     mol.natoms = natoms
     mol.xyz = numpy.array(xyz)
     mol.elems = elements
+    mol.atypes = atypes
     return
 
 def write(mol, fname):

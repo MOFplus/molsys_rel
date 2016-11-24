@@ -94,8 +94,9 @@ def write_body(f, mol, frags=True, topo=False):
     xyz         = mol.xyz
     cnct        = mol.conn
     natoms      = mol.natoms
-    fragtypes   = mol.fragtypes
-    fragnumbers = mol.fragnumbers
+    if frags == True:
+        fragtypes   = mol.fragtypes
+        fragnumbers = mol.fragnumbers
     if topo: pconn = mol.pconn
     for i in xrange(mol.natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + " %10s") % \

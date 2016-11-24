@@ -218,35 +218,12 @@ class mol:
         #print xyz
         return xyz,conn
         
-    def remove_duplicates(self, thresh=SMALL_DIST):
-        badlist = []
-        for i in xrange(self.natoms):
-            for j in xrange(i+1, self.natoms):
-                d,r,imgi=self.get_distvec(i,j)
-                if d < thresh:
-                    badlist.append(j)
-        new_xyz = []
-        new_elems = []
-        new_atypes = []
-        for i in xrange(self.natoms):
-            if not badlist.count(i):
-                new_xyz.append(self.xyz[i].tolist())
-                new_elems.append(self.elems[i])
-                new_atypes.append(self.atypes[i])
-        self.xyz = np.array(new_xyz, "d")
-        self.elems = new_elems
-        self.natoms = len(self.elems)
-        self.atypes = new_atypes
-        return
-
     def wrap_in_box(self, thresh=SMALL_DIST):
         if not self.periodic: return
         # puts all atoms into the box again
         frac_xyz = self.get_frac_xyz()
         # now add 1 where the frac coord is negative and subtract where it is larger then 1
         frac_xyz += np.where(np.less(frac_xyz, 0.0), 1.0, 0.0)
-        #frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0-thresh), 1.0, 0.0)
-        #frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0), 1.0, 0.0)
         frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0+thresh*0.1), 1.0, 0.0)
         # convert back
         self.set_xyz_from_frac(frac_xyz)
@@ -287,36 +264,54 @@ class mol:
         #print new_xyz
         self.natoms = len(self.xyz)
         
-
-    def detect_conn(self, fixed_cutoff=None, exclude_pairs=None, cov_rad_buffer=0.1):
-        self.conn = []
-        for i in xrange(self.natoms):
-            self.conn.append([])
-        for i in xrange(self.natoms):
-            for j in xrange(i+1,self.natoms):
-                d,r,imgi=self.get_distvec(i,j)
-                bond = False
-                if fixed_cutoff:
-                    if d<fixed_cutoff: bond = True
+    def detect_conn(self, tresh = 0.1,remove_duplicates = False):
+        xyz = self.xyz
+        elements = self.elems
+        if type(self.cell) != type(None):
+            cell_abc = self.cellparams[:3]
+            cell_angles = self.cellparams[3:]
+            if cell_angles[0] != 90.0 or cell_angles[1] != 90.0 or cell_angles[2] != 90.0:
+                inv_cell = numpy.linalg.inv(self.cell)
+        natoms = self.natoms
+        conn = []
+        duplicates = []
+        for i in xrange(natoms):
+            a = xyz - xyz[i]
+            if type(self.cell) != type(None):
+                if cell_angles[0] == 90.0 and cell_angles[1] == 90.0 and cell_angles[2] == 90.0:
+                    a -= cell_abc * numpy.around(a/cell_abc)
                 else:
-                    covradi = elements.cov_radii[self.elems[i]]
-                    covradj = elements.cov_radii[self.elems[j]]
-                    if d<(covradi+covradj+cov_rad_buffer) : bond = True
-                # exclude pairs testing
-                if exclude_pairs and bond:
-                    el_p1,el_p2 = (self.elems[i], self.elems[j]),(self.elems[j], self.elems[i])
-                    for expair in exclude_pairs:
-                        if (expair == el_p1) or (expair == el_p2):
-                            bond= False
-                            break 
-                if bond:
-                    if len(imgi)>1:
-                        raise ValueError, "Error in connectivity detection: use pconn!!!"
-                    for ii in imgi:
-                        self.conn[i].append(j)
-                        self.conn[j].append(i)
+                    frac = numpy.dot(a, inv_cell)
+                    frac -= numpy.around(frac)
+                    a = numpy.dot(frac, self.cell)
+            dist = ((a**2).sum(axis=1))**0.5 # distances from i to all other atoms
+            conn_local = []
+            if remove_duplicates:
+                for j in xrange(i,natoms):
+                    if i != j and dist[j] < tresh:
+                        logging.warning("atom %i is duplicate of atom %i" % (j,i))
+                        duplicates.append(j)
+            else:
+                for j in xrange(natoms):
+                    if i != j and dist[j] <= self.get_covdistance([elements[i],elements[j]])+tresh:
+                        conn_local.append(j)
+            if remove_duplicates == False: conn.append(conn_local)
+        if remove_duplicates and len(duplicates)>0:
+            logging.warning("Found %d duplicates" % len(duplicates))
+            self.natoms -= len(duplicates)
+            self.set_xyz(numpy.delete(xyz, duplicates,0))
+            self.set_elements(numpy.delete(elements, duplicates))
+            self.set_atypes(numpy.delete(self.atypes,duplicates))
+            self.set_fragtypes(numpy.delete(self.fragtypes,duplicates))
+            self.set_fragnumbers(numpy.delete(self.fragnumbers,duplicates))
+            self.detect_conn(tresh = tresh)
+        else:
+            self.set_conn(conn)
         return
-    
+
+    def get_covdistance(self, elems):
+        return elements.cov_radii[elems[0]]+elements.cov_radii[elems[1]]
+
     def report_conn(self):
         print "REPORTING CONNECTIVITY"
         for i in xrange(self.natoms):
@@ -713,7 +708,7 @@ class mol:
         return self.xyz
 
     def set_xyz(self,xyz):
-        assert np.shape(xyz) == (natoms,3)
+        assert np.shape(xyz) == (self.natoms,3)
         self.xyz = xyz
 
     def get_elements(self):
@@ -763,6 +758,12 @@ class mol:
     def set_fragnumbers(self,fragnumbers):
         assert len(fragnumbers) == self.natoms
         self.fragnumbers = fragnumbers
+
+    def get_conn(self):
+        return self.conn
+
+    def set_conn(self,conn):
+        self.conn = conn
 
 
 
