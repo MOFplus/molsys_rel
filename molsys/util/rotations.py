@@ -3,11 +3,7 @@
 #    from Numeric import *
 #except ImportError:
 
-try:
-    import frotator
-    print 'frotator imported'
-except:
-    print 'frotator not imported'
+
 
 from numpy import *
 outerproduct = outer
@@ -123,19 +119,9 @@ def quat_to_mat(quat):
 def apply_mat(m,v):
     return dot(v,m)
 
-def rotate_by_triple(xyz, triple,use_new=False):
-    if use_new:
-        #print 'using frotator rotation'
-        xyz=array(xyz,dtype='float64')
-        triple=array(triple,dtype='float64')
-        frotator.rotate_by_triple(len(xyz),xyz.T,triple.T)
-        return xyz
-    else:
-        rotmat = quat_to_mat(rotation_quat(triple))
-        #for i in range(3):
-            #print rotmat[:,i]
-        return dot(xyz, rotmat)
-
+def rotate_by_triple(xyz, triple):
+    rotmat = quat_to_mat(rotation_quat(triple))
+    return dot(xyz, rotmat)
 
 def rotate_random(v):
     return apply_mat(quat_to_mat(random_quat()),v)
