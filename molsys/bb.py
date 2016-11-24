@@ -9,24 +9,27 @@ from molsys import *
 
 class bb(mol.mol):
     
-    def __init__(self, name, specific_conn=None, linker=False, zflip=False, nrot=2, label = None, filetype='mfpx'):
-        molsys.molsys.__init__(self)
+    def __init__(self):
+        mol.mol.__init__(self)
+        self.connectors = []
+        self.dummies=[]
+        self.connecting_atoms = []
+        return
+        
+    def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=2, label = None):
         self.specific_conn = specific_conn  # that should be obtained from the file itself ?!!?
         self.linker = linker
+        self.name = name
         self.zflip  = zflip
         self.nrot   = nrot
         if not linker:
             if self.zflip: print "Warning: zflip only supported for linkers"
             if self.nrot>1: print "Warning: rotations only supported for linkers"
-        self.connectors = []
-        self.dummies=[]
-        self.connecting_atoms = []
-        self.center()
         if linker: self.rotate_on_z()
+        self.label = label
+        self.center()
         self.extract_connector_xyz()
         self.hide_dummy_atoms()
-        self.name = name
-        self.label = label
         return
         
     def center(self):

@@ -35,8 +35,8 @@ def read(mol, fname):
             elif keyword == 'bbcenter':
                 if mol.__class__.__name__ != 'bb': 
                     logging.warning('BB information is read to an regular or topo mol class') 
-                mol.centerpoint = lbuffer[2]
-                if mol.centerpoint == 'special':
+                mol.center_point = lbuffer[2]
+                if mol.center_point == 'special':
                     mol.special_center_point = np.array(map(float,lbuffer[3:6]))
             elif keyword == 'bbconn':
                 if mol.__class__.__name__ != 'bb': 
@@ -105,11 +105,11 @@ def write(mol, fname, topo = False, bb = False):
         f.write('# cell %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
                 tuple(mol.cellparams))
     if bb:
-        if mol.centerpoint != 'special':
-            f.write('# bbcenter %s\n' % mol.centerpoint)
+        if mol.center_point != 'special':
+            f.write('# bbcenter %s\n' % mol.center_point)
         else:
             f.write('# bbcenter %s %12.6f %12.6f %12.6f\n' % 
-                    tuple([mol.centerpoint]+ mol.special_center_point.tolist()))
+                    tuple([mol.center_point]+ mol.special_center_point.tolist()))
         connstrings = ''
         for i,d in enumerate(mol.dummy_neighbors):
             for j in d:

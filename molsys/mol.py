@@ -49,8 +49,8 @@ class mol:
         self.elems=[]
         self.atypes=[]
         self.conn=[]
-        self.fragment=[]
-        self.fragment_number=[]
+        self.fragtypes=[]
+        self.fragnumbers=[]
         self.periodic= None
         logging.basicConfig(format='%(levelname)s:%(message)s',level=logging.DEBUG)
         return
@@ -428,7 +428,7 @@ class mol:
     def copy(self):
         return copy.deepcopy(self)
          
-    def add_molsys(self, other, translate=None,rotate=None, scale=None, roteuler=None):
+    def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
         # adds only nonperiodic molsys ... self can be both
         if other.periodic:
             if not (self.cell==other.cell).all():
@@ -445,7 +445,7 @@ class mol:
         if roteuler != None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
         if rotate   !=None:
-            other_xyz = rotations.rotate_by_triple(other_xyz, rotate,use_new=False)
+            other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
         if translate!=None:
             other_xyz += translate
         if self.natoms==0:
@@ -458,6 +458,8 @@ class mol:
             cn = (np.array(c)+self.natoms).tolist()
             self.conn.append(cn)
         self.natoms += other.natoms
+        self.fragtypes += other.fragtypes
+        self.fragnumbers += other.fragnumbers
         return
         
     def make_periodic(self, periodic, cell):
@@ -506,8 +508,6 @@ class mol:
     def add_bond(self, a1, a2):
         """ add a connection between a1 and a2 (in both directions)
         """
-        if self.use_pconn:
-            raise ValueError, "Can not add bonds to systems with pconn"
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
         return
@@ -766,6 +766,10 @@ class mol:
 
     def set_conn(self,conn):
         self.conn = conn
+        
+    def set_nofrags(self):
+        self.set_fragtypes(['0']*self.natoms)
+        self.set_fragnumbers([0]*self.natoms)
 
 
 

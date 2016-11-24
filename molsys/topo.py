@@ -41,7 +41,7 @@ SMALL_DIST = 1.0e-3
 
 class topo(mol.mol):
     def __init__(self):
-        molsys.molsys.__init__(self)
+        mol.mol.__init__(self)
         self.periodic= True
         self.use_pconn = True   # flag to use pconn: keeps the image number along with the bond
         self.pconn=[]
