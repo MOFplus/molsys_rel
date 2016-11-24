@@ -286,7 +286,7 @@ class mol:
                     a = numpy.dot(frac, self.cell)
             dist = ((a**2).sum(axis=1))**0.5 # distances from i to all other atoms
             conn_local = []
-            if remove_duplicates:
+            if remove_duplicates == True:
                 for j in xrange(i,natoms):
                     if i != j and dist[j] < tresh:
                         logging.warning("atom %i is duplicate of atom %i" % (j,i))
@@ -296,14 +296,15 @@ class mol:
                     if i != j and dist[j] <= self.get_covdistance([elements[i],elements[j]])+tresh:
                         conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
-        if remove_duplicates and len(duplicates)>0:
-            logging.warning("Found %d duplicates" % len(duplicates))
-            self.natoms -= len(duplicates)
-            self.set_xyz(numpy.delete(xyz, duplicates,0))
-            self.set_elements(numpy.delete(elements, duplicates))
-            self.set_atypes(numpy.delete(self.atypes,duplicates))
-            self.set_fragtypes(numpy.delete(self.fragtypes,duplicates))
-            self.set_fragnumbers(numpy.delete(self.fragnumbers,duplicates))
+        if remove_duplicates:
+            if len(duplicates)>0:
+                logging.warning("Found %d duplicates" % len(duplicates))
+                self.natoms -= len(duplicates)
+                self.set_xyz(numpy.delete(xyz, duplicates,0))
+                self.set_elements(numpy.delete(elements, duplicates))
+                self.set_atypes(numpy.delete(self.atypes,duplicates))
+                self.set_fragtypes(numpy.delete(self.fragtypes,duplicates))
+                self.set_fragnumbers(numpy.delete(self.fragnumbers,duplicates))
             self.detect_conn(tresh = tresh)
         else:
             self.set_conn(conn)

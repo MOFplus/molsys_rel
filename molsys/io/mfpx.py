@@ -34,13 +34,13 @@ def read(mol, fname):
                 mol.set_cell(cell)
             elif keyword == 'bbcenter':
                 if mol.__class__.__name__ != 'bb': 
-                    logging.warning('Topology information is read to an regular or topo mol class') 
+                    logging.warning('BB information is read to an regular or topo mol class') 
                 mol.centerpoint = lbuffer[2]
                 if mol.centerpoint == 'special':
                     mol.special_center_point = np.array(map(float,lbuffer[3:6]))
             elif keyword == 'bbconn':
                 if mol.__class__.__name__ != 'bb': 
-                    logging.warning('Topology information is read to an regular or topo mol class') 
+                    logging.warning('BB information is read to an regular or topo mol class') 
                 con_info = lbuffer[2:]
             lbuffer = string.split(f.readline())
     ### read body
