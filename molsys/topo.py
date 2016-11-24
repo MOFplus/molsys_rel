@@ -346,7 +346,7 @@ class topo(mol.mol):
         self.atypes.append(aty)
         ci = self.conn[i]
         cj = self.conn[j]
-        self.natoms += 1
+        #self.natoms += 1
         #print i, ci
         #print j, cj
         if ((i <= -1) or (j <= -1)): 
@@ -366,6 +366,7 @@ class topo(mol.mol):
         self.conn.append([i,j])
         if self.use_pconn:
             self.pconn.append([np.zeros([3]),pci])
+        self.natoms += 1
         #print "end of insert .. conn:"
         #print self.conn
         return

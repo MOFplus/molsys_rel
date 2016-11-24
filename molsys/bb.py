@@ -3,7 +3,6 @@
 #from molsys import *
 import string
 import copy
-import numpy as np
 import mol
 from molsys import *
 
@@ -52,7 +51,7 @@ class bb(mol.mol):
         else:
             print "unknown center point option"
             raise IOError
-        self.center_xyz = center
+        #self.center_xyz = center
         self.translate(-center)
         return
         
@@ -80,11 +79,21 @@ class bb(mol.mol):
         we always use the first connector (could also be a regular SBU!) to be on the z-axis """
         c1_xyz = self.xyz[self.connectors[0]]
         z_axis = np.array([0.0,0.0,1.0],"d")
-        theta = vector.angle(z_axis,c1_xyz) # angle to rotate
+        theta = rotations.angle(z_axis,c1_xyz) # angle to rotate
         if (theta > 1.0e-10) and (theta < (np.pi-1.0e-10)): 
-            axis  = vector.normalize(vector.cross_prod(z_axis,c1_xyz)) # axis around which we rotate
-            self.xyz = vector.rotate(self.xyz, axis, -theta)
+            axis  = rotations.normalize(rotations.cross_prod(z_axis,c1_xyz)) # axis around which we rotate
+            self.xyz = rotations.rotate(self.xyz, axis, -theta)
         return
+    
+    def get_coc(self,conns):
+        amass = []
+        for e in conns: amass.append(1.0)
+        amass = np.array(amass,dtype='float64')
+        #print amass, amass[:,np.newaxis].shape,self.xyz.shape
+        conns=np.array(conns,dtype='int')
+        center = np.sum((amass[:,np.newaxis]*self.xyz[conns,:]),axis=0)/np.sum(amass)
+        #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
+        return center
     
 #### file conversion stuff
 

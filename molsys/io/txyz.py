@@ -13,7 +13,7 @@ def read(mol, fname, topo = False):
     f = open(fname, "r")
     lbuffer = string.split(f.readline())
     mol.natoms = string.atoi(lbuffer[0])
-    if len(lbuffer) > 1 and lbuffer[1] != 'molden':
+    if len(lbuffer) > 1 and lbuffer[1] not in ['special','coc','com']:
         boundarycond = 3
         if lbuffer[1] == "#":
             celllist = map(string.atof,lbuffer[2:11])
@@ -28,13 +28,60 @@ def read(mol, fname, topo = False):
             if ((cellparams[0]==cellparams[1])and(cellparams[1]==cellparams[2])and\
                 (cellparams[0]==cellparams[2])):
                     boundarycond=1
+    elif len(lbuffer) > 1:
+        mol.center_point = lbuffer[1]
+        con_info = lbuffer[2:]
+        pass_connstring(mol,con_info, new = False)
     if topo == False:
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
                 read_body(f,mol.natoms,frags=False)
     else:
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
                 mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
+    ### this has to go at some point
+    if 'con_info' in locals():
+        if self.center_point == "special":
+            line = string.split(f.readline)
+            self.special_center_point = numpy.array(map(string.atof,line[0:3]),"d")
+        try:
+            line = f.readline().split()
+            if line != [] and line[0][:5] == 'angle':
+                mol.angleterm = line
+        except:
+            pass
     return 
+
+def pass_connstring(mol, con_info, new = True):
+    """
+    Routines which passes the con_info string of a txyz or an mfpx file
+    :Parameters:
+        - mol      (obj) : instance of a molclass
+        - con_info (str) : string holding the connectors info
+        - new      (bool): bool to switch between old and new type of con_info string
+    """
+    mol.dummies = []
+    mol.dummy_neighbors = []
+    mol.connectors = []
+    mol.connectors_type = []
+    contype_count = 0
+    for c in con_info:
+        if c == "/":
+            contype_count += 1
+        else:
+            if new:
+                ss = c.split('*') # ss[0] is the dummy neighbors, ss[1] is the connector atom
+                if len(ss) != 2: raise IOError('This is not a proper BB file, convert with script before!')
+                stt = ss[0].split(',')
+                mol.connectors.append(int(ss[1])-1)
+                mol.connectors_type.append(contype_count)
+                if string.lower(mol.elems[int(ss[1])-1]) == 'x':
+                    mol.dummies.append(int(ss[1])-1) # simplest case only with two atoms being the connecting atoms
+                    #self.natoms += 1
+                mol.dummy_neighbors.append((numpy.array(map(int,stt)) -1).tolist())
+            else:
+                mol.connectors.append(string.atoi(c)-1)
+                mol.connectors_type.append(contype_count)
+    return
 
 def read_body(f, natoms, frags = True, topo = False):
     """

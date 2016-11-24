@@ -9,9 +9,9 @@ import logging
 from util import unit_cell 
 from util import elems as elements
 from util import rotations
-from molsys import *
 from io import formats
 import random
+from molsys import *
 
 
 
@@ -414,15 +414,7 @@ class mol:
         #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
         return center
     
-    def get_coc(self,conns):
-        amass = []
-        for e in conns: amass.append(1.0)
-        amass = np.array(amass,dtype='float64')
-        #print amass, amass[:,np.newaxis].shape,self.xyz.shape
-        conns=np.array(conns,dtype='int')
-        center = np.sum((amass[:,np.newaxis]*self.xyz[conns,:]),axis=0)/np.sum(amass)
-        #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
-        return center
+
     ###  system manipulations ##########################################
     
     def copy(self):
@@ -462,30 +454,6 @@ class mol:
         self.fragnumbers += other.fragnumbers
         return
         
-    def make_periodic(self, periodic, cell):
-        # makes system periodic without shifting, wrapping or changing connectivity!!
-        self.periodic = periodic
-        if type(cell) == types.ListType:
-            print len(cell)
-            if len(cell) == 6:
-                self.cellparams = cell
-                self.cell = unit_cell.vectors_from_abc(self.cellparams)
-            elif len(cell) == 9:
-                self.cell = np.array(cell).reshape([3,3])
-                self.cellparams = unit_cell.abc_from_vectors(self.cell)
-            else:
-                raise ValueError
-        else:
-            if len(cell) == 6:
-                # these are cellparams as numpy array
-                self.cellparams = cell.tolist()
-                self.cell = unit_cell.vectors_from_abc(self.cellparams)
-            elif len(cell) == 3:
-                # these are cellvectors as numpy array
-                self.cell = cell
-                self.cellparams = unit_cell.abc_from_vectors(self.cell)
-        self.images_cellvec = np.transpose(np.dot(self.cell, np.transpose(images)))
-        return
 
     def insert_atom(self, lab, aty, xyz, i, j):
         xyz.shape=(1,3)

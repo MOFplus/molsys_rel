@@ -62,28 +62,11 @@ def read(mol, fname):
     try:
         line = f.readline().split()
         if line != [] and line[0][:5] == 'angle':
-            self.angleterm = line
+            mol.angleterm = line
     except:
         pass
     if 'con_info' in locals():
-        mol.dummies = []
-        mol.dummy_neighbors=[]
-        mol.connectors=[]
-        mol.connectors_type=[]
-        contype_count = 0
-        for c in con_info:
-            if c == "/":
-                contype_count += 1
-            else:
-                ss = c.split('*') # ss[0] is the dummy neighbors, ss[1] is the connector atom
-                if len(ss) != 2: raise IOError('This is not a proper BB file, convert with script before!')
-                stt = ss[0].split(',')
-                mol.connectors.append(int(ss[1])-1)
-                mol.connectors_type.append(contype_count)
-                if string.lower(mol.elems[int(ss[1])-1]) == 'x':
-                    mol.dummies.append(int(ss[1])-1) # simplest case only with two atoms being the connecting atoms
-                    #self.natoms += 1
-                mol.dummy_neighbors.append((numpy.array(map(int,stt)) -1).tolist())
+        txyz.pass_connstring(mol,con_info)
     return
 
 def write(mol, fname, topo = False, bb = False):
