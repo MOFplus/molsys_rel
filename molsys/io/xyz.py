@@ -9,7 +9,11 @@ def read(mol, fname):
         -mol    (obj): instance of a molclass
     """
     f = open(fname, 'r')
-    natoms = string.atoi(string.split(f.readline())[0])
+    fline = string.split(f.readline())
+    natoms = string.atoi(fline[0])
+    if len(fline)>1:
+        cellparams = map(string.atof,fline[1:7])
+        mol.set_cellparams(cellparams)
     f.readline()
     xyz = numpy.zeros((natoms, 3))
     elements = []
@@ -34,7 +38,10 @@ def write(mol, fname):
     """
     natoms = mol.natoms 
     f = open(fname,"w")
-    f.write("%d\n\n" % mol.natoms)
+    if mol.periodic:
+        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n\n" % tuple([mol.natoms]+mol.cellparams))
+    else:
+        f.write("%d\n\n" % mol.natoms)
     for i in xrange(natoms):
         f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     f.close()
