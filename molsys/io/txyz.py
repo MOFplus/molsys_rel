@@ -31,7 +31,7 @@ def read(mol, fname, topo = False):
     elif len(lbuffer) > 1:
         mol.center_point = lbuffer[1]
         con_info = lbuffer[2:]
-        pass_connstring(mol,con_info, new = False)
+        parse_connstring(mol,con_info, new = False)
     if topo == False:
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
                 read_body(f,mol.natoms,frags=False)
@@ -40,29 +40,33 @@ def read(mol, fname, topo = False):
                 mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
     ### this has to go at some point
     if 'con_info' in locals():
-        if self.center_point == "special":
+        if mol.center_point == "special":
             line = string.split(f.readline)
-            self.special_center_point = numpy.array(map(string.atof,line[0:3]),"d")
+            mol.special_center_point = numpy.array(map(string.atof,line[0:3]),"d")
         try:
             line = f.readline().split()
             if line != [] and line[0][:5] == 'angle':
                 mol.angleterm = line
         except:
             pass
+    print mol.center_point
+    print mol.connectors
+    print mol.connectors_type
+    print mol.connector_atoms
     return 
 
-def pass_connstring(mol, con_info, new = True):
+def parse_connstring(mol, con_info, new = True):
     """
-    Routines which passes the con_info string of a txyz or an mfpx file
+    Routines which parses the con_info string of a txyz or an mfpx file
     :Parameters:
         - mol      (obj) : instance of a molclass
         - con_info (str) : string holding the connectors info
         - new      (bool): bool to switch between old and new type of con_info string
     """
-    mol.dummies = []
-    mol.dummy_neighbors = []
-    mol.connectors = []
-    mol.connectors_type = []
+    mol.connector_dummies = []
+    mol.connector_atoms   = []
+    mol.connectors        = []
+    mol.connectors_type   = []
     contype_count = 0
     for c in con_info:
         if c == "/":
@@ -75,11 +79,13 @@ def pass_connstring(mol, con_info, new = True):
                 mol.connectors.append(int(ss[1])-1)
                 mol.connectors_type.append(contype_count)
                 if string.lower(mol.elems[int(ss[1])-1]) == 'x':
-                    mol.dummies.append(int(ss[1])-1) # simplest case only with two atoms being the connecting atoms
+                    mol.connector_dummies.append(int(ss[1])-1) # simplest case only with two atoms being the connecting atoms
                     #self.natoms += 1
-                mol.dummy_neighbors.append((numpy.array(map(int,stt)) -1).tolist())
+                mol.connector_atoms.append((numpy.array(map(int,stt)) -1).tolist())
             else:
+                # in the old format only 1:1 connections exists: dummy_neighbors  are equal to connector atoms
                 mol.connectors.append(string.atoi(c)-1)
+                mol.connector_atoms = [[c] for c in mol.connectors]
                 mol.connectors_type.append(contype_count)
     return
 

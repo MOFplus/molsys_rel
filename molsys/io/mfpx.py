@@ -34,13 +34,13 @@ def read(mol, fname):
                 mol.set_cell(cell)
             elif keyword == 'bbcenter':
                 if mol.__class__.__name__ != 'bb': 
-                    logging.warning('BB information is read to an regular or topo mol class') 
+                    logging.warning('BB information is read to a regular or topo mol object') 
                 mol.center_point = lbuffer[2]
                 if mol.center_point == 'special':
                     mol.special_center_point = np.array(map(float,lbuffer[3:6]))
             elif keyword == 'bbconn':
                 if mol.__class__.__name__ != 'bb': 
-                    logging.warning('BB information is read to an regular or topo mol class') 
+                    logging.warning('BB information is read to a regular or topo mol object') 
                 con_info = lbuffer[2:]
             lbuffer = string.split(f.readline())
     ### read body
@@ -49,7 +49,7 @@ def read(mol, fname):
                 txyz.read_body(f,mol.natoms,frags=True)
     elif ftype == 'topo':
         if mol.__class__.__name__ != 'topo': 
-            logging.warning('Topology information is read to an regular or bb mol class') 
+            logging.warning('Topology information is read to a regular or bb mol object') 
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
                 mol.pconn = txyz.read_body(f,mol.natoms,frags=True, topo = True)
         pass
@@ -66,7 +66,7 @@ def read(mol, fname):
     except:
         pass
     if 'con_info' in locals():
-        txyz.pass_connstring(mol,con_info)
+        txyz.parse_connstring(mol,con_info)
     return
 
 def write(mol, fname, topo = False, bb = False):
@@ -94,7 +94,7 @@ def write(mol, fname, topo = False, bb = False):
             f.write('# bbcenter %s %12.6f %12.6f %12.6f\n' % 
                     tuple([mol.center_point]+ mol.special_center_point.tolist()))
         connstrings = ''
-        for i,d in enumerate(mol.dummy_neighbors):
+        for i,d in enumerate(mol.connector_atoms):
             for j in d:
                 connstrings = connstrings + str(j+1) +','
             connstrings = connstrings[0:-1] + '*' + str(mol.connectors[i]+1)+' '
