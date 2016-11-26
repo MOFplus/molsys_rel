@@ -272,7 +272,7 @@ class mol:
             cell_abc = self.cellparams[:3]
             cell_angles = self.cellparams[3:]
             if cell_angles[0] != 90.0 or cell_angles[1] != 90.0 or cell_angles[2] != 90.0:
-                inv_cell = numpy.linalg.inv(self.cell)
+                inv_cell = np.linalg.inv(self.cell)
         natoms = self.natoms
         conn = []
         duplicates = []
@@ -280,11 +280,11 @@ class mol:
             a = xyz - xyz[i]
             if type(self.cell) != type(None):
                 if cell_angles[0] == 90.0 and cell_angles[1] == 90.0 and cell_angles[2] == 90.0:
-                    a -= cell_abc * numpy.around(a/cell_abc)
+                    a -= cell_abc * np.around(a/cell_abc)
                 else:
-                    frac = numpy.dot(a, inv_cell)
-                    frac -= numpy.around(frac)
-                    a = numpy.dot(frac, self.cell)
+                    frac = np.dot(a, inv_cell)
+                    frac -= np.around(frac)
+                    a = np.dot(frac, self.cell)
             dist = ((a**2).sum(axis=1))**0.5 # distances from i to all other atoms
             conn_local = []
             if remove_duplicates == True:
@@ -301,11 +301,11 @@ class mol:
             if len(duplicates)>0:
                 logging.warning("Found %d duplicates" % len(duplicates))
                 self.natoms -= len(duplicates)
-                self.set_xyz(numpy.delete(xyz, duplicates,0))
-                self.set_elements(numpy.delete(elements, duplicates))
-                self.set_atypes(numpy.delete(self.atypes,duplicates))
-                self.set_fragtypes(numpy.delete(self.fragtypes,duplicates))
-                self.set_fragnumbers(numpy.delete(self.fragnumbers,duplicates))
+                self.set_xyz(np.delete(xyz, duplicates,0))
+                self.set_elements(np.delete(elements, duplicates))
+                self.set_atypes(np.delete(self.atypes,duplicates))
+                self.set_fragtypes(np.delete(self.fragtypes,duplicates))
+                self.set_fragnumbers(np.delete(self.fragnumbers,duplicates))
             self.detect_conn(tresh = tresh)
         else:
             self.set_conn(conn)

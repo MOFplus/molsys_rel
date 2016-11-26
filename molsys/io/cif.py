@@ -1,6 +1,5 @@
 import numpy
 import string
-import unit_cell
 import txyz
 import logging
 
