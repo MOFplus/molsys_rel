@@ -11,6 +11,19 @@ class atom:
         connatoms.sort()
         self.connatoms = connatoms
         self.nconns = len(self.connatoms)
+        if self.nconns > 0:
+            red = self.connatoms[0]
+            count = 1
+            for a in self.connatoms[1:]:
+                if a == red[-1]:
+                    count += 1
+                else:
+                    red += str(count)+a
+                    count = 1
+            red += str(count)
+        else:
+            red = ""
+        self.connatoms_reduced = red
         self.type = ''
         return
 
@@ -66,8 +79,24 @@ class atomtyper:
         return
 
     def setup_atoms(self):
-        for i in range(self.natoms):
-            self.atoms.append(atom(self.elements[i], map(self.elements.__getitem__, self.cnct[i])))
+        if self.mol.__class__.__name__ == "bb":
+            # this is a building block with potentially connector_atoms
+            # first set up how often a connector atom appears
+            cona = {}
+            for c in self.mol.connector_atoms:
+                for a in c:
+                    if cona.has_key(a):
+                        cona[a] += 1
+                    else:
+                        cona[a] = 1
+            for i in xrange(self.natoms):
+                bonded_atoms = map(self.elements.__getitem__, self.cnct[i])
+                if cona.has_key(i):
+                    bonded_atoms += cona[i]*["*"]
+                self.atoms.append(atom(self.elements[i], bonded_atoms))
+        else:
+            for i in xrange(self.natoms):
+                self.atoms.append(atom(self.elements[i], map(self.elements.__getitem__, self.cnct[i])))
         return
 
     def __call__(self,rules = 2): # depending on element
@@ -87,6 +116,7 @@ class atomtyper:
             a.set_type(type)
             self.atypes.append(a.get_type())
         self.mol.atypes = self.atypes
+        return
 
     def metacall(self, short = True):
         """
@@ -141,8 +171,5 @@ class atomtyper:
         elif rule == 1:
             type = atom.element+'%s' % str(atom.nconns)
         elif rule == 2:
-            #type = (atom.element+'%s'+'_'+atom.nconns*"%s")\
-            #        % tuple([str(atom.nconns)]+atom.connatoms)
-            type = (atom.element+'%s'++atom.nconns*("%s"))\
-                    % tuple([str(atom.nconns)]+atom.connatoms)
+            type = "%s%d_%s" % (atom.element, atom.nconns, atom.connatoms_reduced)
         return type
