@@ -49,11 +49,7 @@ def read(mol, fname, topo = False):
                 mol.angleterm = line
         except:
             pass
-    print mol.center_point
-    print mol.connectors
-    print mol.connectors_type
-    print mol.connector_atoms
-    return 
+    return
 
 def parse_connstring(mol, con_info, new = True):
     """
@@ -152,7 +148,7 @@ def write_body(f, mol, frags=True, topo=False):
         fragnumbers = mol.fragnumbers
     if topo: pconn = mol.pconn
     for i in xrange(mol.natoms):
-        line = ("%3d %-3s" + 3*"%12.6f" + " %10s") % \
+        line = ("%3d %-3s" + 3*"%12.6f" + "   %-10s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
         if frags == True: line += ("%10s %3d") % tuple([fragtypes[i]]+[fragnumbers[i]])
         conn = (numpy.array(cnct[i])+1).tolist()
@@ -173,7 +169,7 @@ def write_body(f, mol, frags=True, topo=False):
                 line += (len(conn)*"%7d") % tuple(conn)
         f.write("%s \n" % line)
     return
-    
+
 
 def write(mol, fname, topo = False, frags = False):
     """
