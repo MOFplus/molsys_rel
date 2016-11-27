@@ -10,4 +10,6 @@ syntax: glob
 *_keep
 .swp.*
 .swp
+.spyderworkspace
+.spyderproject
 doc/_build
