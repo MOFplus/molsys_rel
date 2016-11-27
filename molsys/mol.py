@@ -6,12 +6,14 @@ import copy
 import string
 import logging
 
-from util import unit_cell 
+from util import unit_cell
 from util import elems as elements
 from util import rotations
+from util import images
 from io import formats
 import random
-from molsys import *
+
+import addon
 
 
 
@@ -22,6 +24,8 @@ except ImportError:
     spg = False
 else:
     spg = True
+
+
 
 """
 
@@ -56,31 +60,54 @@ class mol:
         return
 
     ######  I/O stuff ############################
-    
+
     def read(self,fname,ftype='mfpx',**kwargs):
         formats.read[ftype](self,fname,**kwargs)
         return
-    
+
     def write(self,fname,ftype='mfpx',**kwargs):
         formats.write[ftype](self,fname,**kwargs)
         return
-        
+
+
+    ##### addons ##################################
+
+    def addon(self, addmod):
+        """
+        add an addon module to this object
+
+        :Parameter:
+
+            - addmol: string name of the addon module
+        """
+        if addmod == "graph":
+
+            if addon.graph != None:
+                # ok, it is present and imported ...
+                self.graph = addon.graph(self)
+            else:
+                self.logging.error("graph_toll is not installed! This addon can not be used")
+        else:
+            self.logging.error("the addon %s is unknown")
+        return
+
+
 
     ###### helper functions #######################
-        
+
     def get_elemlist(self):
         el = []
         for e in self.elems:
             if not el.count(e): el.append(e)
         return el
-        
+
     def get_atypelist(self):
         if not self.atypes: return None
         at = []
         for a in self.atypes:
             if not at.count(a): at.append(a)
         return at
-    
+
     def get_distvec(self, i, j):
         """ vector from i to j
         This is a tricky bit, because it is needed also for distance detection in the blueprint
@@ -95,9 +122,9 @@ class mol:
             all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
             d_sort = np.argsort(all_d)
             if i == j:
-                # if this was requested for i==j then we have to eliminate the shortest 
+                # if this was requested for i==j then we have to eliminate the shortest
                 # distance which NOTE unfinished!!!!!!!!
-                pass 
+                pass
             closest = d_sort[0]
             closest=[closest]  # THIS IS A BIT OF A HACK BUT WE MAKE IT ALWAYS A LIST ....
             if (abs(all_d[closest[0]]-all_d[d_sort[1]]) < SMALL_DIST):
@@ -146,7 +173,7 @@ class mol:
         return d
 
     ######## manipulations in particular for blueprints
-   
+
     def make_supercell(self,supercell):
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
@@ -176,7 +203,7 @@ class mol:
                     ixyz = ix+nx*iy+nx*ny*iz
                     dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
                     xyz[ixyz] += dispvect
-                    
+
                     i = copy.copy(ixyz)
                     for cc in range(len(conn[i])):
                         for c in range(len(conn[i][cc])):
@@ -197,11 +224,11 @@ class mol:
                                 conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
                                 #pconn[i][cc][c] = np.array([0,0,0])
                                 #if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
-                                #if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1   
+                                #if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
                                 #if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
-                                #if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1  
+                                #if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
                                 #if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
-                                #if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1   
+                                #if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
                                 #print px,py,pz
         self.conn, self.xyz = [],[]
         for cc in conn:
@@ -218,7 +245,7 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         #print xyz
         return xyz,conn
-        
+
     def wrap_in_box(self, thresh=SMALL_DIST):
         if not self.periodic: return
         # puts all atoms into the box again
@@ -229,7 +256,7 @@ class mol:
         # convert back
         self.set_xyz_from_frac(frac_xyz)
         return
-    
+
     def extend_cell(self,offset,bothsides=True):
         print 'warning, connectivity is destroyed!'
         frac_xyz = self.get_frac_xyz()
@@ -239,7 +266,7 @@ class mol:
         whereym = np.where(np.greater(frac_xyz[:,1], 1.0-offset))
         wherezp = np.where(np.less(frac_xyz[:,2], offset))
         wherezm = np.where(np.greater(frac_xyz[:,2], 1.0-offset))
-        new_xyz = frac_xyz 
+        new_xyz = frac_xyz
         #print new_xyz.shape
         new_xyz = np.append(new_xyz, frac_xyz[wherexp[0]]+[1.0,0.0,0.0],0)
         new_xyz = np.append(new_xyz, frac_xyz[whereyp[0]]+[0.0,1.0,0.0],0)
@@ -264,7 +291,7 @@ class mol:
             self.elems.append(self.elems[wherezm[0][i]])
         #print new_xyz
         self.natoms = len(self.xyz)
-        
+
     def detect_conn(self, tresh = 0.1,remove_duplicates = False):
         xyz = self.xyz
         elements = self.elems
@@ -323,22 +350,22 @@ class mol:
                 d = self.get_neighb_dist(i,j)
                 print "   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d)
         return
-    
+
     ###  specific to periodic systems .. cell manipulation ############
-    
+
     def get_frac_xyz(self):
         if not self.periodic: return None
         cell_inv = np.linalg.inv(self.cell)
         return np.dot(self.xyz, cell_inv)
-    
+
     def get_frac_from_real(self,real_xyz):
         if not self.periodic: return None
         cell_inv = np.linalg.inv(self.cell)
         return np.dot(real_xyz, cell_inv)
-    
+
     def get_real_from_frac(self,frac_xyz):
         return np.dot(np.array(frac_xyz),self.cell)
-        
+
     def set_xyz_from_frac(self, frac_xyz):
         if not self.periodic: return
         self.xyz = np.dot(frac_xyz,self.cell)
@@ -351,7 +378,7 @@ class mol:
         except TypeError:
             dispvec = np.sum(self.cell*np.array(images[img])[:,np.newaxis],axis=0)
         return xyz + dispvec
-        
+
     def change_cell(self, new_cell):
         if not self.periodic: return
         frac_xyz = self.get_frac_xyz()
@@ -366,7 +393,7 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_xyz_from_frac(frac_xyz)
         return
-        
+
     def scale_cell(self, scale):
         if not type(scale) == types.ListType:
             scale = 3*[scale]
@@ -376,22 +403,22 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_xyz_from_frac(frac_xyz)
         return
-    
+
     ###  molecular manipulations #######################################
-    
+
     def translate(self, vec):
         self.xyz += vec
         return
-        
+
     def translate_frac(self, vec):
         if not self.periodic: return
         self.xyz += np.sum(self.cell*vec, axis=0)
         return
-    
+
     def rotate_euler(self, euler):
         self.xyz = rotations.rotate_by_euler(self.xyz, euler)
         return
-        
+
     def rotate_triple(self, triple):
         self.xyz = rotations.rotate_by_triple(self.xyz, triple)
         return
@@ -404,7 +431,7 @@ class mol:
         center = np.sum((self.xyz*amass[:,np.newaxis]),axis=0)/np.sum(amass)
         self.translate(-center)
         return
-    
+
     def get_com(self):
         amass = []
         for e in self.elems: amass.append(elements.mass[e])
@@ -413,13 +440,13 @@ class mol:
         center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
         #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
         return center
-    
+
 
     ###  system manipulations ##########################################
-    
+
     def copy(self):
         return copy.deepcopy(self)
-         
+
     def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
         # adds only nonperiodic molsys ... self can be both
         if other.periodic:
@@ -453,7 +480,7 @@ class mol:
         self.fragtypes += other.fragtypes
         self.fragnumbers += other.fragnumbers
         return
-        
+
 
     def insert_atom(self, lab, aty, xyz, i, j):
         xyz.shape=(1,3)
@@ -463,7 +490,7 @@ class mol:
         ci = self.conn[i]
         cj = self.conn[j]
         self.natoms += 1
-        if ((i <= -1) or (j <= -1)): 
+        if ((i <= -1) or (j <= -1)):
             self.conn.append([])
             return
         ci.remove(j)
@@ -472,14 +499,14 @@ class mol:
         cj.append(self.natoms)
         self.conn.append([i,j])
         return
-        
+
     def add_bond(self, a1, a2):
         """ add a connection between a1 and a2 (in both directions)
         """
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
         return
-        
+
     ### logical operations #####################################
 
     def is_superpose(self, other, thresh=1.0e-1):
@@ -497,8 +524,8 @@ class mol:
             rmsd += d[closest]
         rmsd = np.sqrt(np.sum(rmsd*rmsd))/self.natoms
         return True, rmsd
-            
-    
+
+
 ### additional stuff needed for the DEMOF version of weaver ####################################
 
     def find_molecules(self):
@@ -539,13 +566,13 @@ class mol:
             self.moltypes.append(0)
             nmol += 1
         # all atoms are assigned
-        #if self.verbose: 
+        #if self.verbose:
         #print "$$ -- found %d independent molecules from connectivity" % nmol
         self.nmols=nmol
         return
-    
+
     def delete_atom(self,bad):
-        new_xyz = [] 
+        new_xyz = []
         new_elems = []
         new_atypes = []
         new_conn = []
@@ -563,7 +590,7 @@ class mol:
         self.natoms = len(self.elems)
         self.atypes = new_atypes
         for i in range(len(new_conn)):
-            #try: 
+            #try:
                 #len(new_conn[i])
             #except:
                 #new_conn[i] = [new_conn[i]]
@@ -571,11 +598,11 @@ class mol:
                 if new_conn[i][j] >= bad:
                     new_conn[i][j]=new_conn[i][j]-1
         self.conn = new_conn
-        return 
-    
+        return
+
 
     def delete_atom_only(self,bad):
-        new_xyz = [] 
+        new_xyz = []
         new_elems = []
         new_atypes = []
         new_conn = []
@@ -593,7 +620,7 @@ class mol:
         self.natoms = len(self.elems)
         self.atypes = new_atypes
         for i in range(len(new_conn)):
-            #try: 
+            #try:
                 #len(new_conn[i])
             #except:
                 #new_conn[i] = [new_conn[i]]
@@ -601,13 +628,13 @@ class mol:
                 if new_conn[i][j] >= bad:
                     new_conn[i][j]=new_conn[i][j]-1
         self.conn = new_conn
-        return 
+        return
 
-    def delete_conn(self,el1,el2):  
+    def delete_conn(self,el1,el2):
         self.conn[el1].remove(el2)
         self.conn[el2].remove(el1)
         return
-    
+
     def get_comdist(self,com,i):
         ri = self.xyz[i]
         rj = com
@@ -632,42 +659,7 @@ class mol:
             d = np.sqrt(np.sum(r*r))
             closest=[0]
         return d, r, closest
-                
-############# Plotting
-            
-    def plot(self,scell=False,bonds=False,labels=False):
-        col = ['r','g','b','m','c','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k']+['k']*200
-        fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
-        ax = fig.add_subplot(111, projection='3d')
-        atd = {}
-        for i,aa in enumerate(list(set(self.atypes))):
-            atd.update({aa:col[i]})
-        print atd
-        if bonds:
-            for i in range(self.natoms):
-                conn = self.conn[i]
-                for j in range(len(conn)):
-                    ax.plot([self.xyz[i][0],self.xyz[conn[j]][0]],[self.xyz[i][1],self.xyz[conn[j]][1]],[self.xyz[i][2],self.xyz[conn[j]][2]],color=atd[self.atypes[i]])
-                        
-        if labels:
-            for i in range(self.natoms):
-                label = str(i)+'-'+str(self.atypes[i]) +'-'+str(len(self.conn[i]))
-                ax.text(self.xyz[i][0], self.xyz[i][1], self.xyz[i][2]+0.005, label, color='k',fontsize=9)
-        if scell:
-            xyz3 = self.make_333(out=True) 
-            xyz3 =  np.array(xyz3)
-            ax.scatter(xyz3[:,0],xyz3[:,1],xyz3[:,2],color='r',alpha=0.5)
-        xyz=np.array(self.xyz)
-        for i,xx in enumerate(xyz):
-            ax.scatter(xx[0],xx[1],xx[2],color=atd[self.atypes[i]])
-        minbound = np.min([np.min(xyz[:,0]),np.min(xyz[:,1]),np.min(xyz[:,2])])
-        maxbound = np.max([np.max(xyz[:,0]),np.max(xyz[:,1]),np.max(xyz[:,2])])
-        ax.auto_scale_xyz([0.0, maxbound], [0.0, maxbound], [0.0, maxbound])
-        #ax.scatter(xyz1[:,0],xyz1[:,1],xyz1[:,2],color='k')
-        plt.xlabel('x')
-        plt.ylabel('y')
-        plt.show()
-        return
+
 
     ### get and set methods ###
 
@@ -734,7 +726,7 @@ class mol:
 
     def set_conn(self,conn):
         self.conn = conn
-        
+
     def set_nofrags(self):
         self.set_fragtypes(['0']*self.natoms)
         self.set_fragnumbers([0]*self.natoms)

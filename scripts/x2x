@@ -34,7 +34,7 @@ writeas = shellval[5]
 assert writeas in ["", "bb", "topo"], "Unknown write option %s" % writeas
 
 
-m = mol.mol()
+m = mol()
 m.read(fi, ftype = fti)
 if cell:
     cellparams = [float(i) for i in cell.split()]
