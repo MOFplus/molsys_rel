@@ -478,3 +478,10 @@ mass  ={'xx':0.000000,
         'uuq':289.000000,
         'uup':288.000000,
         'uuh':293.000000}
+
+
+def get_covdistance(elements):
+    ''' get covalent bond distances based on elems.py cov_radii
+    :Parameters:
+        - elems: list of two atoms (given as strings)'''
+    return cov_radii[elements[0]]+cov_radii[elements[1]]

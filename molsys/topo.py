@@ -370,16 +370,66 @@ class topo(mol.mol):
         #print "end of insert .. conn:"
         #print self.conn
         return
+    
+    def delete_atom(self,bad):
+        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        new_xyz = []
+        new_elems = []
+        new_atypes = []
+        new_conn = []
+        new_pconn = []
+        for i in xrange(self.natoms):
+            if i != bad:
+                new_xyz.append(self.xyz[i].tolist())
+                new_elems.append(self.elems[i])
+                new_atypes.append(self.atypes[i])
+                new_conn.append(self.conn[i])
+                new_pconn.append(self.pconn[i])
+                for j in xrange(len(new_conn[-1])):
+                    if new_conn[-1].count(bad) != 0:
+                        new_conn[-1].pop(new_conn[-1].index(bad))
+        self.xyz = np.array(new_xyz, "d")
+        self.elems = new_elems
+        self.natoms = len(self.elems)
+        self.atypes = new_atypes
+        for i in range(len(new_conn)):
+            #try:
+                #len(new_conn[i])
+            #except:
+                #new_conn[i] = [new_conn[i]]
+            for j in range(len(new_conn[i])):
+                if new_conn[i][j] >= bad:
+                    new_conn[i][j]=new_conn[i][j]-1
+        self.conn = new_conn
+        self.pconn = new_pconn
+        return
         
-    def add_bond(self, a1, a2):
+    def add_conn(self, a1, a2):
         """ add a connection between a1 and a2 (in both directions)
         """
         if self.use_pconn:
             raise ValueError, "Can not add bonds to systems with pconn - well, we can fix this ;) "
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
+        d,v,imgi = self.get_distvec(a1,a2)
+        self.pconn[a1].append(images[imgi])
+        d,v,imgi = self.get_distvec(a2,a1)
+        self.pconn[a2].append(images[imgi])
+        logging.warning('pconn may not be properly updated!!!')
         return
+
+    def delete_conn(self,el1,el2):
+        ''' removes the connection between two atoms
+        :Parameters:
+            - el1,el2 : indices of the atoms whose connection is to be removed'''
+        idx1,idx2 = self.conn[el1].index(el2),self.conn[el2].index(el1)
+        self.conn[el1].remove(el2)
+        self.conn[el2].remove(el1)
+        self.pconn[el1].pop(idx1)
+        self.pconn[el2].pop(idx2)
+        logging.warning('pconn may not be properly updated!!!')
         
+        return        
 
                 
 ############# Plotting

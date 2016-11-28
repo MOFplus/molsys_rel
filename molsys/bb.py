@@ -4,7 +4,8 @@
 import string
 import copy
 import mol
-from molsys import *
+import molsys.util.images as images
+import numpy as np
 
 class bb(mol.mol):
 
@@ -66,7 +67,7 @@ class bb(mol.mol):
         return
 
     def hide_dummy_atoms(self):
-        self.sbu = copy.deepcopy(self)
+        self.bb = copy.deepcopy(self)
         self.natoms = self.natoms - len(self.dummies)
         self.xyz = self.xyz[0:self.natoms,:]
         self.conn = self.conn[0:self.natoms]
@@ -94,6 +95,26 @@ class bb(mol.mol):
         center = np.sum((amass[:,np.newaxis]*self.xyz[conns,:]),axis=0)/np.sum(amass)
         #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
         return center
+    
+
+    def is_superpose(self, other, thresh=1.0e-1):
+        """ we test if two molecular systems are equal (superimpose) by way of calculating the rmsd
+        :Parameters:
+            - other      : mol instance of the system in question
+            - thresh=0.1 : allowed deviation of rmsd between self and other mol 
+        """
+        if self.natoms != other.natoms: return False
+        rmsd = 0.0
+        for i in xrange(self.natoms):
+            sxyz = self.xyz[i]
+            r = other.xyz-sxyz
+            d = np.sqrt(np.sum(r*r, axis=1))
+            closest = np.argsort(d)[0]
+            if d[closest] > thresh: return False, 0.0
+            if self.elems[i] != other.elems[closest]: return False, 0.0
+            rmsd += d[closest]
+        rmsd = np.sqrt(np.sum(rmsd*rmsd))/self.natoms
+        return True, rmsd
 
 #### file conversion stuff
 
