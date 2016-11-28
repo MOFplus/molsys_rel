@@ -10,6 +10,7 @@
 
 from graph_tool import Graph
 from graph_tool.draw import graph_draw
+from graph_tool.topology import *
 
 class graph:
 
@@ -37,7 +38,7 @@ class graph:
         self.vert2atom = [] # this list maps vertex indices to the real atoms becasue we omit the hydrogens in the graph
         ig = 0
         for i in xrange(self._mol.natoms):
-            if self._mol.elems[i] != "h":
+            if self._mol.elems[i] != "h" and self._mol.elems[i] != "x":
                 self.molg.add_vertex()
                 self.vert2atom.append(i)
                 vtype = self._mol.atypes[i]
@@ -52,8 +53,8 @@ class graph:
             for ja in self._mol.conn[ia]:
                 if ja>ia:
                     if ja in self.vert2atom:
-                        print "bond from %d to %d" % (ia, ja)
-                        print self._mol.atypes[ia], self._mol.atypes[ja]
+                        # print "bond from %d to %d" % (ia, ja)
+                        # print self._mol.atypes[ia], self._mol.atypes[ja]
                         self.molg.add_edge(self.molg.vertex(i), self.molg.vertex(self.vert2atom.index(ja)))
         return
 
@@ -70,5 +71,54 @@ class graph:
         graph_draw(self.molg, vertex_text=self.molg.vp.type, vertex_font_size=10,  \
             output_size=(size, size), output=fname+".pdf")
         return
+
+    def find_sub(self, subg):
+        """
+        use graph_tools subgraph_isomorphism tool to find substructures
+
+        :Parameter:
+
+            - subg : graph object (from another molsys) to be searched
+
+        :Returns:
+
+            a list of lists with the (sorted) vertex indices of the substructure
+        """
+        maps = subgraph_isomorphism(subg.molg, self.molg, vertex_label=(subg.molg.vp.type, self.molg.vp.type))
+        subs = []
+        for m in maps:
+            sl = list(m)
+            sl.sort()
+            if sl not in subs: subs.append(sl)
+        return subs
+
+    def find_fragment(self, frag):
+        """
+        find a complete fragment (including the hydrogen atoms not included in the graph)
+        Note that the fragment found can be different from the fragment by the number of hydrogen atoms!!
+
+        :Parameter:
+
+            - frag : mol object with graph addon to be found
+
+        :Returns:
+
+            a list of lists with the atom indices of the fragment in the full system
+        """
+        subs = self.find_sub(frag.graph)
+        frags = []
+        for s in subs:
+            # loop over all vertices
+            f = []
+            for v in s:
+                a = self.vert2atom[v]
+                f.append(a)
+                # check all atoms connected to this atom if they are hydrogen
+                for ca in self._mol.conn[a]:
+                    if self._mol.elems[ca] == "h":
+                        f.append(ca)
+            frags.append(f)
+        return frags
+
 
 

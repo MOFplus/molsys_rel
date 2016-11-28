@@ -7,14 +7,14 @@ import mol
 from molsys import *
 
 class bb(mol.mol):
-    
+
     def __init__(self):
         mol.mol.__init__(self)
         self.connectors = []
         self.dummies=[]
         self.connecting_atoms = []
         return
-        
+
     def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=2, label = None):
         self.specific_conn = specific_conn  # that should be obtained from the file itself ?!!?
         self.linker = linker
@@ -30,7 +30,7 @@ class bb(mol.mol):
         self.extract_connector_xyz()
         self.hide_dummy_atoms()
         return
-        
+
     def center(self):
         if self.center_point == "com":
             # compute center of mass
@@ -54,7 +54,7 @@ class bb(mol.mol):
         #self.center_xyz = center
         self.translate(-center)
         return
-        
+
     def extract_connector_xyz(self):
         conn_xyz = []
         self.conn_elems = []
@@ -80,11 +80,11 @@ class bb(mol.mol):
         c1_xyz = self.xyz[self.connectors[0]]
         z_axis = np.array([0.0,0.0,1.0],"d")
         theta = rotations.angle(z_axis,c1_xyz) # angle to rotate
-        if (theta > 1.0e-10) and (theta < (np.pi-1.0e-10)): 
+        if (theta > 1.0e-10) and (theta < (np.pi-1.0e-10)):
             axis  = rotations.normalize(rotations.cross_prod(z_axis,c1_xyz)) # axis around which we rotate
             self.xyz = rotations.rotate(self.xyz, axis, -theta)
         return
-    
+
     def get_coc(self,conns):
         amass = []
         for e in conns: amass.append(1.0)
@@ -94,7 +94,7 @@ class bb(mol.mol):
         center = np.sum((amass[:,np.newaxis]*self.xyz[conns,:]),axis=0)/np.sum(amass)
         #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
         return center
-    
+
 #### file conversion stuff
 
     def calc_centers(self,shift_to_original=True):
@@ -107,11 +107,11 @@ class bb(mol.mol):
         else:
             self.centers = centers
         return centers
-    
 
-    
+
+
     #def connectors_to_dummy_neighbors(self):
-        
-        
-        
-        
+
+
+
+
