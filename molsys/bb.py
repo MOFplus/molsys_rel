@@ -5,6 +5,7 @@ import string
 import copy
 import mol
 import molsys.util.images as images
+from io import formats
 import numpy as np
 
 class bb(mol.mol):
@@ -14,6 +15,16 @@ class bb(mol.mol):
         self.connectors = []
         self.dummies=[]
         self.connecting_atoms = []
+        return
+
+    def write(self,fname,ftype='mfpx',**kwargs):
+        ''' generic writer for the mol class
+        :Parameters:
+            - fname        : the filename to be written
+            - ftype="mfpx" : the parser type that is used to writen the file
+            - **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        formats.write[ftype](self,fname,bb=True,**kwargs)
         return
 
     def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=2, label = None):
@@ -95,13 +106,13 @@ class bb(mol.mol):
         center = np.sum((amass[:,np.newaxis]*self.xyz[conns,:]),axis=0)/np.sum(amass)
         #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
         return center
-    
+
 
     def is_superpose(self, other, thresh=1.0e-1):
         """ we test if two molecular systems are equal (superimpose) by way of calculating the rmsd
         :Parameters:
             - other      : mol instance of the system in question
-            - thresh=0.1 : allowed deviation of rmsd between self and other mol 
+            - thresh=0.1 : allowed deviation of rmsd between self and other mol
         """
         if self.natoms != other.natoms: return False
         rmsd = 0.0
