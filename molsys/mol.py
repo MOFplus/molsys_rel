@@ -57,15 +57,28 @@ class mol:
         self.fragnumbers=[]
         self.periodic= None
         logging.basicConfig(format='%(levelname)s:%(message)s',level=logging.DEBUG)
+        self.logging = logging
         return
 
     ######  I/O stuff ############################
 
     def read(self,fname,ftype='mfpx',**kwargs):
+        ''' generic reader for the mol class
+        :Parameters:
+            - fname        : the filename to be red
+            - ftype="mfpx" : the parser type that is used to read the file
+            - **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
         formats.read[ftype](self,fname,**kwargs)
         return
 
     def write(self,fname,ftype='mfpx',**kwargs):
+        ''' generic writer for the mol class
+        :Parameters:
+            - fname        : the filename to be written
+            - ftype="mfpx" : the parser type that is used to writen the file
+            - **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''      
         formats.write[ftype](self,fname,**kwargs)
         return
 
@@ -76,7 +89,7 @@ class mol:
         """
         add an addon module to this object
 
-        :Parameter:
+        :Parameters:
 
             - addmol: string name of the addon module
         """
@@ -96,12 +109,14 @@ class mol:
     ###### helper functions #######################
 
     def get_elemlist(self):
+        ''' Returns a list of unique elements '''
         el = []
         for e in self.elems:
             if not el.count(e): el.append(e)
         return el
 
     def get_atypelist(self):
+        ''' Returns a list of unique atom types '''
         if not self.atypes: return None
         at = []
         for a in self.atypes:
@@ -113,7 +128,9 @@ class mol:
         This is a tricky bit, because it is needed also for distance detection in the blueprint
         where there can be small cell params wrt to the vertex distances.
         In other words: i can be bonded to j multiple times (each in a different image)
-        and i and j could be the same!! """
+        and i and j could be the same!! 
+        :Parameters':
+            - i,j  : the indices of the atoms for which the distance is to be calculated"""
         ri = self.xyz[i]
         rj = self.xyz[j]
         if self.periodic:
@@ -146,7 +163,10 @@ class mol:
     # thes following functions rely on an exisiting connectivity conn (and pconn)
 
     def get_neighb_coords(self, i, ci):
-        """ returns coordinates of atom bonded to i which is ci'th in bond list """
+        """ returns coordinates of atom bonded to i which is ci'th in bond list 
+        :Parameters:
+            - i  :  index of the base atom
+            - ci :  index of the conn entry of the ith atom"""
         j = self.conn[i][ci]
         rj = self.xyz[j].copy()
         if self.periodic:
@@ -158,7 +178,10 @@ class mol:
         return rj
 
     def get_neighb_dist(self, i, ci):
-        """ returns coordinates of atom bonded to i which is ci'th in bond list """
+        """ returns coordinates of atom bonded to i which is ci'th in bond list 
+        :Parameters:
+            - i  :  index of the base atom
+            - ci :  index of the conn entry of the ith atom"""
         ri = self.xyz[i]
         j = self.conn[i][ci]
         rj = self.xyz[j].copy()
@@ -175,6 +198,10 @@ class mol:
     ######## manipulations in particular for blueprints
 
     def make_supercell(self,supercell):
+        ''' Extends the periodic system in all directions by the factors given in the
+            supercell upon preserving the connectivity of the initial system
+            :Parameters:
+                - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
         nat = copy.deepcopy(self.natoms)
@@ -203,7 +230,6 @@ class mol:
                     ixyz = ix+nx*iy+nx*ny*iz
                     dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
                     xyz[ixyz] += dispvect
-
                     i = copy.copy(ixyz)
                     for cc in range(len(conn[i])):
                         for c in range(len(conn[i][cc])):
@@ -214,22 +240,13 @@ class mol:
                                 raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
                             pc = pc[0]
                             if pc == 13:
-                                #conn[i][cc][c] += ixyz*nat
                                 conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
-                                #pconn[i][cc][c] = np.array([0,0,0])
                             else:
                                 px,py,pz     = img[pc][0],img[pc][1],img[pc][2]
                                 iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
                                 iixyz= iix+nx*iiy+nx*ny*iiz
                                 conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
-                                #pconn[i][cc][c] = np.array([0,0,0])
-                                #if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
-                                #if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
-                                #if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
-                                #if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
-                                #if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
-                                #if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
-                                #print px,py,pz
+
         self.conn, self.xyz = [],[]
         for cc in conn:
             for c in cc:
@@ -247,6 +264,8 @@ class mol:
         return xyz,conn
 
     def wrap_in_box(self, thresh=SMALL_DIST):
+        ''' In case atoms are outside the box defined by the cell,
+            this routine finds and shifts them into the box'''
         if not self.periodic: return
         # puts all atoms into the box again
         frac_xyz = self.get_frac_xyz()
@@ -257,8 +276,16 @@ class mol:
         self.set_xyz_from_frac(frac_xyz)
         return
 
-    def extend_cell(self,offset,bothsides=True):
-        print 'warning, connectivity is destroyed!'
+    def extend_cell(self,offset):
+        ''' Atoms as close as offset to the box boundaries are selected to be copied.
+            They are then added at the other side of the cell to "extend" the system periodically 
+            Mainly for visualization purposes
+            WARNING: Connectivity is destroyed afterwards 
+            :Params: 
+                - offset: The distance (in Angströms) from the box boundary at which to duplicate the atoms
+                
+        '''
+        self.logging.warning('connectivity is destroyed')
         frac_xyz = self.get_frac_xyz()
         wherexp = np.where(np.less(frac_xyz[:,0], offset))
         wherexm = np.where(np.greater(frac_xyz[:,0], 1.0-offset))
@@ -291,8 +318,10 @@ class mol:
             self.elems.append(self.elems[wherezm[0][i]])
         #print new_xyz
         self.natoms = len(self.xyz)
+        self.logging.info('Cell was extended by %8.4f AA in each direction' % (offset))
 
     def detect_conn(self, tresh = 0.1,remove_duplicates = False):
+        ''' JPD has to take care of this doc string '''
         xyz = self.xyz
         elements = self.elems
         if type(self.cell) != type(None):
@@ -339,9 +368,14 @@ class mol:
         return
 
     def get_covdistance(self, elems):
+        ''' get covalent bond distances based on elems.py cov_radii
+        :Parameters:
+            - elems: list of two atoms (given as strings)'''
         return elements.cov_radii[elems[0]]+elements.cov_radii[elems[1]]
 
     def report_conn(self):
+        ''' Print infomration on current connectivity, coordination number 
+            and the respective atomic distances '''
         print "REPORTING CONNECTIVITY"
         for i in xrange(self.natoms):
             conn = self.conn[i]
@@ -354,23 +388,36 @@ class mol:
     ###  specific to periodic systems .. cell manipulation ############
 
     def get_frac_xyz(self):
+        ''' Returns the fractional atomic coordinates'''
         if not self.periodic: return None
         cell_inv = np.linalg.inv(self.cell)
         return np.dot(self.xyz, cell_inv)
 
     def get_frac_from_real(self,real_xyz):
+        ''' same as get_frac_xyz, but uses input xyz coordinates 
+        :Parameters:
+            - real_xyz: the xyz coordinates for which the fractional coordinates are retrieved'''
         if not self.periodic: return None
         cell_inv = np.linalg.inv(self.cell)
         return np.dot(real_xyz, cell_inv)
 
     def get_real_from_frac(self,frac_xyz):
+        ''' returns real coordinates from an array of fractional coordinates using the current cell info '''
         return np.dot(np.array(frac_xyz),self.cell)
 
     def set_xyz_from_frac(self, frac_xyz):
+        ''' Sets atomic coordinates based on input fractional coordinates
+        Parameter:
+            - '''
         if not self.periodic: return
         self.xyz = np.dot(frac_xyz,self.cell)
 
     def get_image(self,xyz, img):
+        ''' returns the xyz coordinates of a set of coordinates in a specific cell
+        :Parameters:
+            - xyz   : xyz coordinates for which the image coordinates are to be retrieved
+            - img   : descriptor of the image, either an "images" integer (see molsys.util.images)
+                      or the unit direction vector, e.g. [1,-1,0]'''
         xyz = np.array(xyz)
         try:
             l = len(img)
@@ -380,21 +427,29 @@ class mol:
         return xyz + dispvec
 
     def change_cell(self, new_cell):
+        """ set cell from cell vectors
+            :Parameters:
+                - cell [3,3] or [6,] : numpy array with cell vectors(i) or 
+        """
         if not self.periodic: return
         frac_xyz = self.get_frac_xyz()
         if len(new_cell) == 6:
             self.cellparams = new_cell
             self.cell = unit_cell.vectors_from_abc(self.cellparams)
-        elif len(new_cell) == 9:
+        elif len(new_cell) == 3:  # 3x3 is len(3x3) = 3, not 9!
             self.cell = new_cell
             self.cellparams = unit_cell.abc_from_vectors(self.cell)
         else:
-            raise ValueError
+            self.logging.error('The given cell params could not be understood')
+            raise ValueError()
         self.images_cellvec = np.dot(images, self.cell)
         self.set_xyz_from_frac(frac_xyz)
         return
 
     def scale_cell(self, scale):
+        ''' scales the cell by a given fraction (0.1 ^= 10%)
+        :Parameters:
+            - scale: either single float or list (3,) of floats for x,y,z'''
         if not type(scale) == types.ListType:
             scale = 3*[scale]
         self.cellparams *= np.array(scale+[1,1,1])
@@ -424,6 +479,7 @@ class mol:
         return
 
     def center_com(self):
+        ''' centers the molsys at the center of mass '''
         if self.periodic: return
         amass = []
         for e in self.elems: amass.append(elements.mass[e])
@@ -433,6 +489,7 @@ class mol:
         return
 
     def get_com(self):
+        ''' calculates and returns the center of mass'''
         amass = []
         for e in self.elems: amass.append(elements.mass[e])
         amass = np.array(amass,dtype='float64')
@@ -445,10 +502,17 @@ class mol:
     ###  system manipulations ##########################################
 
     def copy(self):
+        ''' returns a copy of the whole mol object'''
         return copy.deepcopy(self)
 
     def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
-        # adds only nonperiodic molsys ... self can be both
+        ''' adds a  nonperiodic mol object to the current one ... self can be both 
+            :Parameters:
+                - other        (mol): an instance of the to-be-inserted mol instance
+                - translate=None    : (3,) numpy array as shift vector for the other mol
+                - rotate=None       : (3,) rotation triple to apply to the other mol object before insertion
+                - scale=None (float): scaling factor for other mol object coodinates
+                - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
                 print "can not add periodic systems with unequal cells!!"
@@ -483,6 +547,12 @@ class mol:
 
 
     def insert_atom(self, lab, aty, xyz, i, j):
+        ''' insert an atom into the current mol object preserves current connectivity
+        :Parameters:
+            - lab   : atom label
+            - aty   : atom type
+            - xyz   : coordinates of the new atom
+            - i,j   : connecting atoms, -1 yields no connection of the new atom '''
         xyz.shape=(1,3)
         self.xyz = np.concatenate((self.xyz, xyz))
         self.elems.append(lab)
@@ -502,6 +572,9 @@ class mol:
 
     def add_bond(self, a1, a2):
         """ add a connection between a1 and a2 (in both directions)
+        :Parameters:
+            - a1        : index of atom 1 
+            - a2        : index of atom 2
         """
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
@@ -510,7 +583,10 @@ class mol:
     ### logical operations #####################################
 
     def is_superpose(self, other, thresh=1.0e-1):
-        """ we test if two molecular systems are equal (superimpose)
+        """ we test if two molecular systems are equal (superimpose) by way of calculating the rmsd
+        :Parameters:
+            - other      : mol instance of the system in question
+            - thresh=0.1 : allowed deviation of rmsd between self and other mol 
         """
         if self.natoms != other.natoms: return False
         rmsd = 0.0
@@ -529,6 +605,11 @@ class mol:
 ### additional stuff needed for the DEMOF version of weaver ####################################
 
     def find_molecules(self):
+        ''' Detects independent (not connected) fragments and stores them as 
+            - mols     :
+            - moltypes :
+            - whichmol :
+            '''
         self.mols = []
         self.moltypes = []
         # the default moleculename is "xyz" -> molecules from the xyz file
@@ -572,6 +653,7 @@ class mol:
         return
 
     def delete_atom(self,bad):
+        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
         new_xyz = []
         new_elems = []
         new_atypes = []
@@ -600,42 +682,19 @@ class mol:
         self.conn = new_conn
         return
 
-
-    def delete_atom_only(self,bad):
-        new_xyz = []
-        new_elems = []
-        new_atypes = []
-        new_conn = []
-        for i in xrange(self.natoms):
-            if i != bad:
-                new_xyz.append(self.xyz[i].tolist())
-                new_elems.append(self.elems[i])
-                new_atypes.append(self.atypes[i])
-                new_conn.append(self.conn[i])
-                #for j in xrange(len(new_conn[-1])):
-                    #if new_conn[-1].count(bad) != 0:
-                        #new_conn[-1].pop(new_conn[-1].index(bad))
-        self.xyz = np.array(new_xyz, "d")
-        self.elems = new_elems
-        self.natoms = len(self.elems)
-        self.atypes = new_atypes
-        for i in range(len(new_conn)):
-            #try:
-                #len(new_conn[i])
-            #except:
-                #new_conn[i] = [new_conn[i]]
-            for j in range(len(new_conn[i])):
-                if new_conn[i][j] >= bad:
-                    new_conn[i][j]=new_conn[i][j]-1
-        self.conn = new_conn
-        return
-
     def delete_conn(self,el1,el2):
+        ''' removes the connection between two atoms
+        :Parameters:
+            - el1,el2 : indices of the atoms whose connection is to be removed'''
         self.conn[el1].remove(el2)
         self.conn[el2].remove(el1)
         return
 
     def get_comdist(self,com,i):
+        ''' Calculate the distances of an atom from the center of mass
+        :Parameters:
+            - com : center of mass
+            - i   : index of the atom for which to calculate the distances to the com'''
         ri = self.xyz[i]
         rj = com
         if self.periodic:
@@ -664,36 +723,54 @@ class mol:
     ### get and set methods ###
 
     def get_natoms(self):
+        ''' returns the number of Atoms '''
         return self.natoms
 
     def get_xyz(self):
+        ''' returns the xyz Coordinates '''
         return self.xyz
 
     def set_xyz(self,xyz):
+        ''' set the real xyz coordinates
+        :Parameters:
+            - xyz: coordinates to be set'''
         assert np.shape(xyz) == (self.natoms,3)
         self.xyz = xyz
 
     def get_elements(self):
+        ''' return the list of element symbols '''
         return self.elems
 
     def set_elements(self,elems):
+        ''' set the elements 
+        :Parameters:
+            - elems: list of elements to be set'''
         assert len(elems) == self.natoms
         self.elems = elems
 
     def get_atypes(self):
+        ''' return the list of atom types '''
         return self.atypes
 
     def set_atypes(self,atypes):
+        ''' set the atomtypes 
+        :Parameters:
+            - atypes: list of elements to be set'''
         assert len(atypes) == self.natoms
         self.atypes = atypes
 
     def get_cell(self):
+        ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
         return self.cell
 
     def get_cellparams(self):
+        ''' return unit cell information (cell vectors) '''
         return self.cellparams
 
     def set_cell(self,cell):
+        ''' set unit cell using cell vectors and assign cellparams
+        :Parameters:
+            - cell: cell vectors (3,3)'''
         assert np.shape(cell) == (3,3)
         self.periodic = True
         self.cell = cell
@@ -701,6 +778,9 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
 
     def set_cellparams(self,cellparams):
+        ''' set unit cell using cell parameters and assign cell vectors
+        :Parameters:
+            - cell: cell vectors (3,3)'''
         assert len(cellparams) == 6
         self.periodic = True
         self.cellparams = cellparams
@@ -708,26 +788,39 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
 
     def get_fragtypes(self):
+        ''' return all fragment types '''
         return self.fragtypes
 
     def set_fragtypes(self,fragtypes):
+        ''' set fragment types 
+        :Parameters:
+            - fragtypes: the fragtypes to be set (list of strings)'''
         assert len(fragtypes) == self.natoms
         self.fragtypes = fragtypes
 
     def get_fragnumbers(self):
+        ''' return all fragment numbers, denotes which atom belongs to which fragment '''
         return self.fragnumbers
 
     def set_fragnumbers(self,fragnumbers):
+        ''' set fragment numbers, denotes which atom belongs to which fragment
+        :Parameters:
+            - fragnumbers: the fragment numbers to be set (list of integers)'''
         assert len(fragnumbers) == self.natoms
         self.fragnumbers = fragnumbers
 
     def get_conn(self):
+        ''' returns the connectivity of the system '''
         return self.conn
 
     def set_conn(self,conn):
+        ''' updates the connectivity of the system 
+        :Parameters:
+            - conn    : List of lists describing the connectivity'''
         self.conn = conn
 
     def set_nofrags(self):
+        ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''
         self.set_fragtypes(['0']*self.natoms)
         self.set_fragnumbers([0]*self.natoms)
 
