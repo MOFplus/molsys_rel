@@ -12,6 +12,9 @@ from graph_tool import Graph
 from graph_tool.draw import graph_draw
 from graph_tool.topology import *
 
+import logging
+logger = logging.getLogger("molsys.graph")
+
 class graph:
 
     def __init__(self, mol):
@@ -23,6 +26,7 @@ class graph:
              - mol : a mol type object (can be a derived type like bb or topo as well)
         """
         self._mol = mol
+        logger.debug("generated the graph addon")
         return
 
     def make_graph(self):
@@ -47,6 +51,7 @@ class graph:
                 self.molg.vp.type[ig] = vtype
                 ig += 1
         self.nvertices = len(self.vert2atom)
+        logger.info("generated a graph for a mol object with %d vertices" % self.nvertices)
         # now add edges ... only bonds between vertices
         for i in xrange(self.nvertices):
             ia = self.vert2atom[i]

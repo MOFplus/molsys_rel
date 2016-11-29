@@ -15,6 +15,10 @@ import logging
 import glob
 import molsys
 
+import logging
+
+logger = logging.getLogger("molsys.fragmentizer")
+
 class fragmentizer:
 
     def __init__(self):
@@ -27,7 +31,7 @@ class fragmentizer:
             self.frag_path = os.environ["MOLSYS_FRAGS"]
         else:
             self.frag_path = "."
-        logging.info("Fragmentizer reading frags from %s" % self.frag_path)
+        logger.info("Fragmentizer reading frags from %s" % self.frag_path)
         frag_files = glob.glob(self.frag_path + "/*.mfpb")
         self.fragments = {}
         for f in frag_files:
@@ -35,9 +39,8 @@ class fragmentizer:
             m.read(f, ftype="mfpx")
             m.addon("graph")
             m.graph.make_graph()
-            logging.info("read %s" % f)
+            logger.info("read %s" % f)
             fragname = f.split("/")[-1].split(".")[0]
-            print fragname
             self.fragments[fragname] = m
         return
 

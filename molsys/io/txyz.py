@@ -2,6 +2,9 @@ import numpy
 import string
 #from molsys import *
 import molsys.util.images as images
+import logging
+
+logger = logging.getLogger("molsys.io")
 
 def read(mol, fname, topo = False):
     """

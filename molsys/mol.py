@@ -4,7 +4,6 @@ import numpy as np
 import types
 import copy
 import string
-import logging
 
 from util import unit_cell
 from util import elems as elements
@@ -13,6 +12,27 @@ from util import images
 from io import formats
 
 import addon
+
+# set up logging using a logger
+# note that this is module level because there is one logger for molsys
+# DEBUG/LOG goes to logfile, whereas WARNIGNS/ERRORS go to stdout
+#
+# NOTE: this needs to be done once only here for the root logger molsys
+# any other module can use either this logger or a child logger
+# no need to redo this config in the other modules!
+import logging
+logger    = logging.getLogger("molsys")
+logger.setLevel(logging.DEBUG)
+fhandler  = logging.FileHandler("molsys.log")
+fhandler.setLevel(logging.DEBUG)
+shandler  = logging.StreamHandler()
+shandler.setLevel(logging.WARNING)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
+fhandler.setFormatter(formatter)
+shandler.setFormatter(formatter)
+logger.addHandler(fhandler)
+logger.addHandler(shandler)
+
 
 
 
@@ -34,8 +54,6 @@ class mol:
         self.fragtypes=[]
         self.fragnumbers=[]
         self.periodic= None
-        logging.basicConfig(format='%(levelname)s:%(message)s',level=logging.DEBUG)
-        #self.logging = logging   # that yields an odd error when he tries to deepcopy a mol instance: it tries to copy a module which he does not like to do :(
         return
 
     #####  I/O stuff ############################
@@ -56,7 +74,7 @@ class mol:
             - fname        : the filename to be written
             - ftype="mfpx" : the parser type that is used to writen the file
             - **kwargs     : all options of the parser are passed by the kwargs
-                             see molsys.io.* for detailed info'''      
+                             see molsys.io.* for detailed info'''
         formats.write[ftype](self,fname,**kwargs)
         return
 
@@ -77,9 +95,11 @@ class mol:
                 # ok, it is present and imported ...
                 self.graph = addon.graph(self)
             else:
-                logging.error("graph_toll is not installed! This addon can not be used")
+                logger.error("graph_toll is not installed! This addon can not be used")
+        elif addmod  == "fragments":
+            self.fragments = addon.fragments(self)
         else:
-            logging.error("the addon %s is unknown")
+            logger.error("the addon %s is unknown")
         return
 
     ##### connectivity ########################
@@ -110,7 +130,7 @@ class mol:
             if remove_duplicates == True:
                 for j in xrange(i,natoms):
                     if i != j and dist[j] < tresh:
-                        logging.warning("atom %i is duplicate of atom %i" % (j,i))
+                        logger.warning("atom %i is duplicate of atom %i" % (j,i))
                         duplicates.append(j)
             else:
                 for j in xrange(natoms):
@@ -119,7 +139,7 @@ class mol:
             if remove_duplicates == False: conn.append(conn_local)
         if remove_duplicates:
             if len(duplicates)>0:
-                logging.warning("Found %d duplicates" % len(duplicates))
+                logger.warning("Found %d duplicates" % len(duplicates))
                 self.natoms -= len(duplicates)
                 self.set_xyz(np.delete(xyz, duplicates,0))
                 self.set_elements(np.delete(elements, duplicates))
@@ -132,7 +152,7 @@ class mol:
         return
 
     def report_conn(self):
-        ''' Print infomration on current connectivity, coordination number 
+        ''' Print infomration on current connectivity, coordination number
             and the respective atomic distances '''
         print "REPORTING CONNECTIVITY"
         for i in xrange(self.natoms):
@@ -231,7 +251,7 @@ class mol:
         return np.dot(self.xyz, cell_inv)
 
     def get_frac_from_real(self,real_xyz):
-        ''' same as get_frac_xyz, but uses input xyz coordinates 
+        ''' same as get_frac_xyz, but uses input xyz coordinates
         :Parameters:
             - real_xyz: the xyz coordinates for which the fractional coordinates are retrieved'''
         if not self.periodic: return None
@@ -266,7 +286,7 @@ class mol:
     def change_cell(self, new_cell):
         """ set cell from cell vectors
             :Parameters:
-                - cell [3,3] or [6,] : numpy array with cell vectors(i) or 
+                - cell [3,3] or [6,] : numpy array with cell vectors(i) or
         """
         if not self.periodic: return
         frac_xyz = self.get_frac_xyz()
@@ -277,7 +297,7 @@ class mol:
             self.cell = new_cell
             self.cellparams = unit_cell.abc_from_vectors(self.cell)
         else:
-            logging.error('The given cell params could not be understood')
+            logger.error('The given cell params could not be understood')
             raise ValueError()
         self.images_cellvec = np.dot(images, self.cell)
         self.set_xyz_from_frac(frac_xyz)
@@ -305,7 +325,7 @@ class mol:
         return copy.deepcopy(self)
 
     def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
-        ''' adds a  nonperiodic mol object to the current one ... self can be both 
+        ''' adds a  nonperiodic mol object to the current one ... self can be both
             :Parameters:
                 - other        (mol): an instance of the to-be-inserted mol instance
                 - translate=None    : (3,) numpy array as shift vector for the other mol
@@ -343,10 +363,10 @@ class mol:
         self.fragtypes += other.fragtypes
         self.fragnumbers += other.fragnumbers
         return
-    
+
     def add_bond(self,a1,a2):
         self.conn[a1].append(a2)
-        self.conn[a2].append(a1)    
+        self.conn[a2].append(a1)
     ###  molecular manipulations #######################################
 
     def translate(self, vec):
@@ -383,7 +403,7 @@ class mol:
         This is a tricky bit, because it is needed also for distance detection in the blueprint
         where there can be small cell params wrt to the vertex distances.
         In other words: i can be bonded to j multiple times (each in a different image)
-        and i and j could be the same!! 
+        and i and j could be the same!!
         :Parameters':
             - i,j  : the indices of the atoms for which the distance is to be calculated"""
         ri = self.xyz[i]
@@ -416,7 +436,7 @@ class mol:
         return d, r, closest
 
     def get_neighb_coords(self, i, ci):
-        """ returns coordinates of atom bonded to i which is ci'th in bond list 
+        """ returns coordinates of atom bonded to i which is ci'th in bond list
         :Parameters:
             - i  :  index of the base atom
             - ci :  index of the conn entry of the ith atom"""
@@ -431,7 +451,7 @@ class mol:
         return rj
 
     def get_neighb_dist(self, i, ci):
-        """ returns coordinates of atom bonded to i which is ci'th in bond list 
+        """ returns coordinates of atom bonded to i which is ci'th in bond list
         :Parameters:
             - i  :  index of the base atom
             - ci :  index of the conn entry of the ith atom"""
@@ -447,7 +467,7 @@ class mol:
         dr = ri-rj
         d = np.sqrt(np.sum(dr*dr))
         return d
-    
+
     def get_com(self):
         ''' calculates and returns the center of mass'''
         amass = []
@@ -508,7 +528,7 @@ class mol:
     def get_elems(self):
         ''' return the list of element symbols '''
         return self.elems
-    
+
     def get_elemlist(self):
         ''' Returns a list of unique elements '''
         el = []
@@ -517,7 +537,7 @@ class mol:
         return el
 
     def set_elements(self,elems):
-        ''' set the elements 
+        ''' set the elements
         :Parameters:
             - elems: list of elements to be set'''
         assert len(elems) == self.natoms
@@ -534,9 +554,9 @@ class mol:
         for a in self.atypes:
             if not at.count(a): at.append(a)
         return at
-    
+
     def set_atypes(self,atypes):
-        ''' set the atomtypes 
+        ''' set the atomtypes
         :Parameters:
             - atypes: list of elements to be set'''
         assert len(atypes) == self.natoms
@@ -575,7 +595,7 @@ class mol:
         return self.fragtypes
 
     def set_fragtypes(self,fragtypes):
-        ''' set fragment types 
+        ''' set fragment types
         :Parameters:
             - fragtypes: the fragtypes to be set (list of strings)'''
         assert len(fragtypes) == self.natoms
@@ -597,7 +617,7 @@ class mol:
         return self.conn
 
     def set_conn(self,conn):
-        ''' updates the connectivity of the system 
+        ''' updates the connectivity of the system
         :Parameters:
             - conn    : List of lists describing the connectivity'''
         self.conn = conn

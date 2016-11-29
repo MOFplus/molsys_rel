@@ -8,6 +8,10 @@ import molsys.util.images as images
 from io import formats
 import numpy as np
 
+
+import logging
+logger = logging.getLogger("molsys")
+
 class bb(mol.mol):
 
     def __init__(self):
@@ -68,9 +72,9 @@ class bb(mol.mol):
         #self.center_xyz = center
         self.translate(-center)
         return
-    
+
     #def find_dummies(self,dummy_label='x'):
-        
+
 
     def hide_dummy_atoms(self):
         self.dummies_hidden=True
@@ -81,7 +85,7 @@ class bb(mol.mol):
         self.elems = self.elems[0:self.natoms]
         self.atypes =self.atypes[0:self.natoms]
         return
-    
+
     def extract_connector_xyz(self):
         conn_xyz = []
         self.conn_elems = []

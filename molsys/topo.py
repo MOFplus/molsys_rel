@@ -21,6 +21,9 @@ except ImportError:
 else:
     spg = True
 
+
+logger = logging.getLogger("molsys")
+
 """
 
         ToDo list ...
@@ -65,7 +68,7 @@ class topo(mol.mol):
             pimg = []
             for pc in pconn:
                 for ii,img in enumerate(images):
-                    if all(img==pc): 
+                    if all(img==pc):
                         pimg.append(ii)
                         break
             if len(conn) != 0:
@@ -94,7 +97,7 @@ class topo(mol.mol):
             ff.write("%s %12.6f %12.6f %12.6f\n" % (s,self.xyz[i][0], self.xyz[i][1], self.xyz[i][2]))
         ff.close()
         return
-        
+
     ###### helper functions #######################
 
     def get_distvec2(self, i, j,exclude_self=True):
@@ -122,7 +125,7 @@ class topo(mol.mol):
                 rj = self.xyz[j]
         except:
             rj = self.xyz[j]
-            lenj = False 
+            lenj = False
         if 1:
             all_rj = rj + self.images_cellvec
             all_r = all_rj - ri
@@ -139,7 +142,7 @@ class topo(mol.mol):
             d = all_d[closest[0]]
             r = all_r[closest[0]]
         return d, r, closest
-    
+
     # thes following functions rely on an exisiting connectivity conn (and pconn)
 
     def get_neighb_coords(self, i, ci):
@@ -194,8 +197,8 @@ class topo(mol.mol):
         if self.use_pconn:
             self.add_pconn()
         return
-                
-    
+
+
     def make_supercell(self,supercell):
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
@@ -225,7 +228,7 @@ class topo(mol.mol):
                     ixyz = ix+nx*iy+nx*ny*iz
                     dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
                     xyz[ixyz] += dispvect
-                    
+
                     i = copy.copy(ixyz)
                     for cc in range(len(conn[i])):
                         for c in range(len(conn[i][cc])):
@@ -241,11 +244,11 @@ class topo(mol.mol):
                                 conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
                                 pconn[i][cc][c] = np.array([0,0,0])
                                 if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
-                                if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1   
+                                if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
                                 if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
-                                if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1  
+                                if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
                                 if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
-                                if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1   
+                                if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
                                 #print px,py,pz
         self.conn, self.pconn, self.xyz = [],[],[]
         for cc in conn:
@@ -263,7 +266,7 @@ class topo(mol.mol):
         self.images_cellvec = np.dot(images, self.cell)
         #print xyz
         return xyz,conn,pconn
-    
+
     ######### connectivity things #################################
 
     def detect_conn(self, fixed_cutoff=None, pconn=False, exclude_pairs=None, cov_rad_buffer=0.1):
@@ -288,7 +291,7 @@ class topo(mol.mol):
                     for expair in exclude_pairs:
                         if (expair == el_p1) or (expair == el_p2):
                             bond= False
-                            break 
+                            break
                 if bond:
                     if len(imgi)>1 and not self.use_pconn:
                         raise ValueError, "Error in connectivity detection: use pconn!!!"
@@ -300,7 +303,7 @@ class topo(mol.mol):
                             self.pconn[i].append(image)
                             self.pconn[j].append(image*-1)
         return
-    
+
     def add_pconn(self):
         """ with the method detect_conn the connectivity is detected from a distance search
             if a connectivity is read via a tinker file there is no pconn present.
@@ -349,7 +352,7 @@ class topo(mol.mol):
         #self.natoms += 1
         #print i, ci
         #print j, cj
-        if ((i <= -1) or (j <= -1)): 
+        if ((i <= -1) or (j <= -1)):
             self.conn.append([])
             #self.pconn.append([])
             return
@@ -370,7 +373,7 @@ class topo(mol.mol):
         #print "end of insert .. conn:"
         #print self.conn
         return
-    
+
     def delete_atom(self,bad):
         ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
         new_xyz = []
@@ -403,7 +406,7 @@ class topo(mol.mol):
         self.conn = new_conn
         self.pconn = new_pconn
         return
-        
+
     def add_conn(self, a1, a2):
         """ add a connection between a1 and a2 (in both directions)
         """
@@ -428,12 +431,12 @@ class topo(mol.mol):
         self.pconn[el1].pop(idx1)
         self.pconn[el2].pop(idx2)
         logging.warning('pconn may not be properly updated!!!')
-        
-        return        
 
-                
+        return
+
+
 ############# Plotting
-            
+
     def plot(self,scell=False,bonds=False,labels=False):
         col = ['r','g','b','m','c','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k']+['k']*200
         fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
@@ -461,12 +464,12 @@ class topo(mol.mol):
                 label = str(i)+'-'+str(self.atypes[i]) +'-'+str(len(self.conn[i]))
                 ax.text(self.xyz[i][0], self.xyz[i][1], self.xyz[i][2]+0.005, label, color='k',fontsize=9)
         if scell:
-            xyz3 = self.make_333(out=True) 
+            xyz3 = self.make_333(out=True)
             xyz3 =  np.array(xyz3)
             ax.scatter(xyz3[:,0],xyz3[:,1],xyz3[:,2],color='r',alpha=0.5)
         xyz=np.array(self.xyz)
         for i,xx in enumerate(xyz):
-            
+
             ax.scatter(xx[0],xx[1],xx[2],color=atd[self.atypes[i]])
         minbound = np.min([np.min(xyz[:,0]),np.min(xyz[:,1]),np.min(xyz[:,2])])
         maxbound = np.max([np.max(xyz[:,0]),np.max(xyz[:,1]),np.max(xyz[:,2])])
@@ -474,7 +477,7 @@ class topo(mol.mol):
         #ax.scatter(xyz1[:,0],xyz1[:,1],xyz1[:,2],color='k')
         plt.xlabel('x')
         plt.ylabel('y')
-        plt.show()            
+        plt.show()
 
 # ########## additional stuff for edge coloring ############################################
 
@@ -494,7 +497,7 @@ class topo(mol.mol):
         print "edge coloring is convereged !!"
         print "final penalty is %12.6f" % result[2]
         return
-                       
+
 
     def init_color_edges(self, proportions):
         """
@@ -513,7 +516,7 @@ class topo(mol.mol):
         blist = []
         for i, ci in enumerate(self.conn):
             for j in ci:
-                if i<j: 
+                if i<j:
                     blist.append([i,j])
         # convert blist into numpy array
         self.blist = np.array(blist)
@@ -543,7 +546,7 @@ class topo(mol.mol):
             self.penalty[i] = self.calc_colpen(i)
         self.totpen = self.penalty.sum()
         return
-    
+
     def flip_color(self):
         """
         does one color flip and computes the new penalty
@@ -578,7 +581,7 @@ class topo(mol.mol):
         delta_pen = self.pennew.sum()-peninit.sum()
         # print "flipped colors of bonds %3d and %3d (vertices: %20s) -- delta penalty: %10.3f" % (self.bondA, self.bondB, str(vert), delta_pen)
         return delta_pen
-    
+
     def unflip_colors(self):
         """
         call this directly after a flip to put everything back
@@ -588,7 +591,7 @@ class topo(mol.mol):
         self.set_bcol(self.bondA)
         self.set_bcol(self.bondB)
         return
-    
+
     def accept_flip(self):
         """
         call this directly after flip to keep the flip
@@ -597,20 +600,20 @@ class topo(mol.mol):
             self.penalty[v] = self.pennew[i]
         self.totpen = self.penalty.sum()
         return
-    
+
     def run_flip(self, maxstep, nprint=1000, penref=0.2, thresh=1.0e-3):
         """
         run a MC with color flips as moves for maxstep or until the total penalty
         is below thresh. the virtual "temperature" or reference energy for the acceptance
-        (kT) is in the same unit as the penalty and is given as penref 
-        
+        (kT) is in the same unit as the penalty and is given as penref
+
         :Parameters:
             - maxstep : maximum number of MC steps
             - nprint  : number of steps after which a printout is made [100]
             - penref  : reference penalty for the MC aceptance criterion exp(-pen/penref) [0.2]
             - thresh  : threshold under which convergence is assumed (zero penalty is not always reached for orientation penalty) [1.0e-3]
         """
-        
+
         step = 0
         while (step < maxstep) and (self.totpen>thresh):
             dpen = self.flip_color()
@@ -637,7 +640,7 @@ class topo(mol.mol):
             print "Not converged!!!"
             converged = False
         return (converged, step, self.totpen)
-    
+
     def add_vertex_on_color(self, col, lelem, laty):
         for i,b in enumerate(self.blist):
             if self.colors[i] == col:
@@ -648,15 +651,15 @@ class topo(mol.mol):
                 xyz = (self.xyz[i]+xyz_j)/2.0
                 self.insert_atom(lelem, laty, xyz, i, j)
         return
-        
+
     # utility functions
     def set_bcol(self, bond):
         """
         utility to set color values in bcolors for bond
-        
+
         :Parameters:
             - bond : index of bond i self.blist (and colors)
-            
+
         """
         i, j = self.blist[bond]
         c = self.colors[bond]
@@ -671,7 +674,7 @@ class topo(mol.mol):
         self.bcolors[i][j_ind] = c
         self.bcolors[j][i_ind] = c
         return
-    
+
     def calc_colpen(self, vert):
         # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(self.bcolors[vert]))
         pen_sum = self.calc_colpen_sum(vert)
@@ -681,7 +684,7 @@ class topo(mol.mol):
             return self.calc_colpen_orient(vert)
         else:
             return pen_sum
-        
+
     def calc_colpen_sum(self, vert):
         """ compute the color penalty for vertex vert
             rules are in list self.colpen_sumrule
@@ -691,19 +694,19 @@ class topo(mol.mol):
         nc = self.bcolors[vert].count(0)
         pen = abs(nc-nc0)*self.colpen_sum_fact
         return pen*pen
-    
+
     def set_colpen_sumrule(self, vert_dict):
         """
         set the color penalty for the sum of colors
         :Paramteres:
-        
+
             - vert_dict: dictionary of vertices with the number of expected edges for color 0
         """
         self.colpen_sumrule = np.zeros([self.natoms], dtype="int32")
         for i in xrange(self.natoms):
             self.colpen_sumrule[i] = vert_dict[self.elems[i]]
         return
-    
+
     def setup_scalprod_mats(self):
         self.scalmat = []
         for i in xrange(self.natoms):
@@ -715,7 +718,7 @@ class topo(mol.mol):
             self.scalmat.append(mat)
         #self.scalmat = np.array(self.scalmat)
         return
-        
+
     def calc_colpen_orient(self, vert):
         # this is a HACK ... works only for vertices with two colors
         # if self.colpen_orientrule == None ignore
@@ -729,16 +732,16 @@ class topo(mol.mol):
             return self.colpen_orient_fact*(scal+self.colpen_orientrule[vert])
         else:
             return 0.0
-        
+
     def set_colpen_orientrule(self, vert_dict):
         """
         set the color penalty for the orientation of colors
         currently this works only for color zero sum=2 (if more ... how to dadd up penalties?)
-        
+
         :Paramteres:
-        
+
             - vert_dict: dictionary of vertices with either None or what to add to skal
-            
+
         example: for color 0 (sum=2) being 180deg set it to 1.0 (-1.0+1.0 = 0.0)
                                             90deg set it to 0.0 and the fact to -0.5
         """
@@ -746,6 +749,6 @@ class topo(mol.mol):
         for i in xrange(self.natoms):
             self.colpen_orientrule.append(vert_dict[self.elems[i]])
         return
-         
-                        
-            
+
+
+
