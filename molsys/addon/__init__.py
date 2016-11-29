@@ -6,4 +6,8 @@ except ImportError:
     graph = "None"
 else:
     from graph import graph
-__all__=["graph"]
+
+from fragments import fragments
+
+__all__=["graph", "fragments"]
+
