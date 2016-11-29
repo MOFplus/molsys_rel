@@ -11,8 +11,9 @@ class bb(mol.mol):
 
     def __init__(self):
         mol.mol.__init__(self)
+        self.dummies_hidden=False
         self.connectors = []
-        self.dummies=[]
+        self.connector_dummies=[]
         self.connecting_atoms = []
         return
 
@@ -27,6 +28,7 @@ class bb(mol.mol):
             if self.nrot>1: print "Warning: rotations only supported for linkers"
         if linker: self.rotate_on_z()
         self.label = label
+        #self.find_dummies()
         self.center()
         self.extract_connector_xyz()
         self.hide_dummy_atoms()
@@ -55,7 +57,20 @@ class bb(mol.mol):
         #self.center_xyz = center
         self.translate(-center)
         return
+    
+    #def find_dummies(self,dummy_label='x'):
+        
 
+    def hide_dummy_atoms(self):
+        self.dummies_hidden=True
+        self.bb = copy.deepcopy(self)
+        self.natoms = self.natoms - len(self.connector_dummies)
+        self.xyz = self.xyz[0:self.natoms,:]
+        self.conn = self.conn[0:self.natoms]
+        self.elems = self.elems[0:self.natoms]
+        self.atypes =self.atypes[0:self.natoms]
+        return
+    
     def extract_connector_xyz(self):
         conn_xyz = []
         self.conn_elems = []
@@ -64,14 +79,7 @@ class bb(mol.mol):
             self.conn_elems.append(self.elems[c])
         self.connector_xyz = np.array(conn_xyz,"d")
         self.conn_dist = np.sqrt(np.sum(self.connector_xyz*self.connector_xyz,axis=1))
-        return
 
-    def hide_dummy_atoms(self):
-        self.bb = copy.deepcopy(self)
-        self.natoms = self.natoms - len(self.dummies)
-        self.xyz = self.xyz[0:self.natoms,:]
-        self.conn = self.conn[0:self.natoms]
-        self.elems = self.elems[0:self.natoms]
 
 
     def rotate_on_z(self):

@@ -344,6 +344,9 @@ class mol:
         self.fragnumbers += other.fragnumbers
         return
     
+    def add_bond(self,a1,a2):
+        self.conn[a1].append(a2)
+        self.conn[a2].append(a1)    
     ###  molecular manipulations #######################################
 
     def translate(self, vec):

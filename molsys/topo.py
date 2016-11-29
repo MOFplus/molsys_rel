@@ -9,8 +9,8 @@ import logging
 import util.elems as elements
 import util.unit_cell as unit_cell
 import util.rotations as rotations
+import util.images as images
 import random
-from molsys import *
 import mol
 
 try:
