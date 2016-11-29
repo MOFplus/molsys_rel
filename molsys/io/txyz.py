@@ -1,6 +1,6 @@
 import numpy
 import string
-from molsys import *
+#from molsys import *
 import molsys.util.images as images
 
 def read(mol, fname, topo = False):
