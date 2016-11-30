@@ -36,14 +36,12 @@ def read(mol, fname):
                 cell.shape = (3,3)
                 mol.set_cell(cell)
             elif keyword == 'bbcenter':
-                if mol.__class__.__name__ != 'bb':
-                    logger.warning('BB information is read to a regular or topo mol object')
+                mol.is_bb = True
                 mol.center_point = lbuffer[2]
                 if mol.center_point == 'special':
                     mol.special_center_point = np.array(map(float,lbuffer[3:6]))
             elif keyword == 'bbconn':
-                if mol.__class__.__name__ != 'bb':
-                    logger.warning('BB information is read to a regular or topo mol object')
+                mol.is_bb = True
                 con_info = lbuffer[2:]
             lbuffer = string.split(f.readline())
     ### read body
@@ -52,7 +50,7 @@ def read(mol, fname):
                 txyz.read_body(f,mol.natoms,frags=True)
     elif ftype == 'topo':
         if mol.__class__.__name__ != 'topo':
-            logger.warning('Topology information is read to a regular or bb mol object')
+            logger.warning('Topology information is read to a regular mol object')
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
                 mol.pconn = txyz.read_body(f,mol.natoms,frags=True, topo = True)
         pass
@@ -72,14 +70,13 @@ def read(mol, fname):
         txyz.parse_connstring(mol,con_info)
     return
 
-def write(mol, fname, topo = False, bb = False):
+def write(mol, fname, topo = False):
     """
     Routine, which writes an mfpx file
     :Parameters:
         -mol   (obj) : instance of a molsys class
         -fname (str) : name of the mfpx file
         -topo  (bool): flag to specify if pconn should be in mfpx file or not
-        -bb    (bool): flag to specify if bb info should be in mfpx file or not
     """
     f = open(fname, 'w')
     if topo:
@@ -90,7 +87,7 @@ def write(mol, fname, topo = False, bb = False):
     if type(mol.cellparams) != type(None):
         f.write('# cell %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
                 tuple(mol.cellparams))
-    if bb:
+    if mol.is_bb:
         if mol.center_point != 'special':
             f.write('# bbcenter %s\n' % mol.center_point)
         else:

@@ -54,6 +54,7 @@ class mol:
         self.fragtypes=[]
         self.fragnumbers=[]
         self.periodic= None
+        self.is_bb=False
         return
 
     #####  I/O stuff ############################
@@ -98,6 +99,8 @@ class mol:
                 logger.error("graph_tool is not installed! This addon can not be used")
         elif addmod  == "fragments":
             self.fragments = addon.fragments(self)
+        elif addmod  == "bb":
+            self.bb = addon.bb(self)
         else:
             logger.error("the addon %s is unknown")
         return
