@@ -79,7 +79,7 @@ class atomtyper:
         return
 
     def setup_atoms(self):
-        if self.mol.__class__.__name__ == "bb":
+        if self.mol.is_bb:
             # this is a building block with potentially connector_atoms
             # first set up how often a connector atom appears
             cona = {}

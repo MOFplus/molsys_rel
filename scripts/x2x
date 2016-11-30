@@ -19,7 +19,7 @@ option = [
         ['', 's', 'itype', "Type of the file read in"],
         ['', 't', 'otype', "Type of the file written out"],
         ['', 'c', 'cell',  "Cell paramter"],
-        ['', 'a', 'writeas', "write out as bb or topo (must be either one or left out)"]]
+        ['', 'a', 'writeas', "write out as  topo"]]
 
 shellval = stow.main(stow.sys.argv[1:], option)
 
@@ -41,8 +41,6 @@ if cell:
     m.set_cellparams(cellparams)
 if fti == 'xyz':
     m.detect_conn(remove_duplicates = True)
-if writeas == "bb":
-    m.write(fo, ftype = fto, bb=True)
 elif writeas == "topo":
     m.write(fo, ftype = fto, topo=True)
 else:

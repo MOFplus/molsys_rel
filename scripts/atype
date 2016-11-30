@@ -2,20 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import molsys.mol as mol
-import molsys.bb as bb
 import molsys.util.atomtyper as atomtyper
 import sys
 
 
 name = sys.argv[1]
 
-ext = name.split(".")[-1]
-
-if ext == "mfpx":
-    m = mol()
-elif ext == "mfpb":
-    m = bb()
-
+m = mol()
 m.read(name)
 at = atomtyper(m)
 at()
