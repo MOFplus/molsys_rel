@@ -4,9 +4,14 @@
 import string
 import copy
 import mol
-import molsys.util.images as images
-from io import formats
 import numpy as np
+
+from util import unit_cell
+from util import elems as elements
+from util import rotations
+from util import images
+from io import formats
+
 
 
 import logging
