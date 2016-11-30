@@ -41,12 +41,16 @@ class graph:
         self.vert2atom = [] # this list maps vertex indices to the real atoms becasue we omit the hydrogens in the graph
         ig = 0
         for i in xrange(self._mol.natoms):
-            if self._mol.elems[i] != "h" and self._mol.elems[i] != "x":
+            if self._mol.elems[i] != "x":
                 self.molg.add_vertex()
                 self.vert2atom.append(i)
                 vtype = self._mol.atypes[i]
+                # extract element and coordination number
                 if "_" in vtype:
                     vtype = vtype.split("_")[0]
+                # if the coordination number is one replace the element by a #
+                if vtype[-1] == "1":
+                    vtype = "#"
                 self.molg.vp.type[ig] = vtype
                 ig += 1
         self.nvertices = len(self.vert2atom)

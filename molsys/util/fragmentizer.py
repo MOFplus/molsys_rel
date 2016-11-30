@@ -39,6 +39,7 @@ class fragmentizer:
             m.read(f, ftype="mfpx")
             m.addon("graph")
             m.graph.make_graph()
+            # m.graph.plot_graph(f)
             logger.info("read %s" % f)
             fragname = f.split("/")[-1].split(".")[0]
             self.fragments[fragname] = m
@@ -55,6 +56,7 @@ class fragmentizer:
         """
         mol.addon("graph")
         mol.graph.make_graph()
+        # mol.graph.plot_graph("mol")
         fi = 0
         for f in self.fragments.keys():
             fidx = mol.graph.find_fragment(self.fragments[f])
@@ -63,6 +65,6 @@ class fragmentizer:
                     mol.fragtypes[i]   = f
                     mol.fragnumbers[i] = fi
                 fi += 1
-        print mol.fragtypes
-        print mol.fragnumbers
+        # print mol.fragtypes
+        # print mol.fragnumbers
         return
