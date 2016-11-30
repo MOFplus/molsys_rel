@@ -9,7 +9,6 @@
 """
 
 from graph_tool import Graph
-from graph_tool.draw import graph_draw
 from graph_tool.topology import *
 
 import logging
@@ -73,6 +72,7 @@ class graph:
             - fsize : font size [default 10]
 
         """
+        from graph_tool.draw import graph_draw
         graph_draw(self.molg, vertex_text=self.molg.vp.type, vertex_font_size=10,  \
             output_size=(size, size), output=fname+".pdf")
         return

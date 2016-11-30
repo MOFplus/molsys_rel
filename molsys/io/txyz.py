@@ -186,7 +186,7 @@ def write(mol, fname, topo = False, frags = False):
     cellparams = mol.cellparams
     f = open(fname, 'w')
     if type(cellparams) != type(None):
-        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+cellparams))
+        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)
     write_body(f, mol, topo=topo, frags = frags)

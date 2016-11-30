@@ -95,7 +95,7 @@ class mol:
                 # ok, it is present and imported ...
                 self.graph = addon.graph(self)
             else:
-                logger.error("graph_toll is not installed! This addon can not be used")
+                logger.error("graph_tool is not installed! This addon can not be used")
         elif addmod  == "fragments":
             self.fragments = addon.fragments(self)
         else:
@@ -105,7 +105,13 @@ class mol:
     ##### connectivity ########################
 
     def detect_conn(self, tresh = 0.1,remove_duplicates = False):
-        ''' JPD has to take care of this doc string '''
+        """
+        detects the connectivity of the system, based on covalent radii.
+
+        :Parameters:
+            - tresh  (float): additive treshhold 
+            - remove_duplicates  (bool): flag for the detection of duplicates
+        """
         xyz = self.xyz
         elements = self.elems
         if type(self.cell) != type(None):
@@ -283,26 +289,7 @@ class mol:
             dispvec = np.sum(self.cell*np.array(images[img])[:,np.newaxis],axis=0)
         return xyz + dispvec
 
-    def change_cell(self, new_cell):
-        """ set cell from cell vectors
-            :Parameters:
-                - cell [3,3] or [6,] : numpy array with cell vectors(i) or
-        """
-        if not self.periodic: return
-        frac_xyz = self.get_frac_xyz()
-        if len(new_cell) == 6:
-            self.cellparams = new_cell
-            self.cell = unit_cell.vectors_from_abc(self.cellparams)
-        elif len(new_cell) == 3:  # 3x3 is len(3x3) = 3, not 9!
-            self.cell = new_cell
-            self.cellparams = unit_cell.abc_from_vectors(self.cell)
-        else:
-            logger.error('The given cell params could not be understood')
-            raise ValueError()
-        self.images_cellvec = np.dot(images, self.cell)
-        self.set_xyz_from_frac(frac_xyz)
-        return
-
+    ### rewrite on set_cell ???
     def scale_cell(self, scale):
         ''' scales the cell by a given fraction (0.1 ^= 10%)
         :Parameters:
@@ -315,8 +302,6 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_xyz_from_frac(frac_xyz)
         return
-
-
 
     ###  system manipulations ##########################################
 
@@ -570,25 +555,36 @@ class mol:
         ''' return unit cell information (cell vectors) '''
         return self.cellparams
 
-    def set_cell(self,cell):
+    def set_cell(self,cell,cell_only = True):
         ''' set unit cell using cell vectors and assign cellparams
         :Parameters:
-            - cell: cell vectors (3,3)'''
+            - cell: cell vectors (3,3)
+            - cell_only (bool)  : if false, also the coordinates are changed
+                                  in respect to new cell
+            
+        '''
         assert np.shape(cell) == (3,3)
+        if cell_only == False: frac_xyz = self.get_frac_xyz()
         self.periodic = True
         self.cell = cell
         self.cellparams = unit_cell.abc_from_vectors(self.cell)
         self.images_cellvec = np.dot(images, self.cell)
+        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
 
-    def set_cellparams(self,cellparams):
+    def set_cellparams(self,cellparams, cell_only = True):
         ''' set unit cell using cell parameters and assign cell vectors
         :Parameters:
-            - cell: cell vectors (3,3)'''
+            - cell: cell vectors (3,3)
+            - cell_only (bool)  : if false, also the coordinates are changed
+                                  in respect to new cell
+        '''
         assert len(cellparams) == 6
+        if cell_only == False: frac_xyz = self.get_frac_xyz()
         self.periodic = True
         self.cellparams = cellparams
         self.cell = unit_cell.vectors_from_abc(self.cellparams)
         self.images_cellvec = np.dot(images, self.cell)
+        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
 
     def get_fragtypes(self):
         ''' return all fragment types '''
