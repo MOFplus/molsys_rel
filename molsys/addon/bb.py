@@ -14,8 +14,8 @@ logger = logging.getLogger("molsys.bb")
 class bb:
 
     def __init__(self,mol):
-        if mol.is_bb == False:
-            raise IOError, "No bb info available!"
+#        if mol.is_bb == False:
+#            raise IOError, "No bb info available!"
         self.mol = mol
         self.mol.dummies_hidden=False
         self.mol.connectors = []

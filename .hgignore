@@ -12,4 +12,5 @@ syntax: glob
 .swp
 .spyderworkspace
 .spyderproject
+molsys.log
 doc/_build

@@ -116,7 +116,7 @@ class mol:
             - remove_duplicates  (bool): flag for the detection of duplicates
         """
         xyz = self.xyz
-        elements = self.elems
+        elems = self.elems
         if type(self.cell) != type(None):
             cell_abc = self.cellparams[:3]
             cell_angles = self.cellparams[3:]
@@ -143,7 +143,7 @@ class mol:
                         duplicates.append(j)
             else:
                 for j in xrange(natoms):
-                    if i != j and dist[j] <= self.get_covdistance([elements[i],elements[j]])+tresh:
+                    if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
                         conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
         if remove_duplicates:
@@ -151,7 +151,7 @@ class mol:
                 logger.warning("Found %d duplicates" % len(duplicates))
                 self.natoms -= len(duplicates)
                 self.set_xyz(np.delete(xyz, duplicates,0))
-                self.set_elements(np.delete(elements, duplicates))
+                self.set_elements(np.delete(elems, duplicates))
                 self.set_atypes(np.delete(self.atypes,duplicates))
                 self.set_fragtypes(np.delete(self.fragtypes,duplicates))
                 self.set_fragnumbers(np.delete(self.fragnumbers,duplicates))
