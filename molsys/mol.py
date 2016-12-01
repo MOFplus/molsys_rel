@@ -357,6 +357,36 @@ class mol:
         self.conn[a2].append(a1)
     ###  molecular manipulations #######################################
 
+    def delete_atom(self,bad):
+        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        new_xyz = []
+        new_elems = []
+        new_atypes = []
+        new_conn = []
+        for i in xrange(self.natoms):
+            if i != bad:
+                new_xyz.append(self.xyz[i].tolist())
+                new_elems.append(self.elems[i])
+                new_atypes.append(self.atypes[i])
+                new_conn.append(self.conn[i])
+                for j in xrange(len(new_conn[-1])):
+                    if new_conn[-1].count(bad) != 0:
+                        new_conn[-1].pop(new_conn[-1].index(bad))
+        self.xyz = np.array(new_xyz, "d")
+        self.elems = new_elems
+        self.natoms = len(self.elems)
+        self.atypes = new_atypes
+        for i in range(len(new_conn)):
+            #try:
+                #len(new_conn[i])
+            #except:
+                #new_conn[i] = [new_conn[i]]
+            for j in range(len(new_conn[i])):
+                if new_conn[i][j] >= bad:
+                    new_conn[i][j]=new_conn[i][j]-1
+        self.conn = new_conn
+        return
+
     def translate(self, vec):
         self.xyz += vec
         return

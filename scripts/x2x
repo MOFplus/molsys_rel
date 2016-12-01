@@ -41,7 +41,8 @@ if cell:
     m.set_cellparams(cellparams)
 if fti == 'xyz':
     m.detect_conn(remove_duplicates = True)
-elif writeas == "topo":
+    m.set_nofrags()
+if writeas == "topo":
     m.write(fo, ftype = fto, topo=True)
 else:
     m.write(fo, ftype = fto)
