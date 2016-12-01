@@ -4,10 +4,9 @@ from util import unit_cell
 from util import elems as elements
 from util import rotations
 from io import formats
-from bb import bb
 from mol import mol
 from topo import topo
 
 import addon
 
-__all__=["mol", "bb", "topo"]
+__all__=["mol", "topo"]
