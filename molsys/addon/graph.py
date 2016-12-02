@@ -64,6 +64,7 @@ class graph:
                         # print "bond from %d to %d" % (ia, ja)
                         # print self._mol.atypes[ia], self._mol.atypes[ja]
                         self.molg.add_edge(self.molg.vertex(i), self.molg.vertex(self.vert2atom.index(ja)))
+                        #self.molg.add_edge( self.molg.vertex(self.vert2atom.index(ja)),self.molg.vertex(i))
         return
 
     def plot_graph(self, fname, size=800, fsize=10):

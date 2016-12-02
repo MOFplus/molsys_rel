@@ -101,6 +101,8 @@ class mol:
             self.fragments = addon.fragments(self)
         elif addmod  == "bb":
             self.bb = addon.bb(self)
+        elif addmod  == "zmat":
+            self.zmat = addon.zmat(self)
         else:
             logger.error("the addon %s is unknown")
         return

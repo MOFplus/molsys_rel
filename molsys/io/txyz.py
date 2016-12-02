@@ -33,6 +33,7 @@ def read(mol, fname, topo = False):
                 (cellparams[0]==cellparams[2])):
                     boundarycond=1
     elif len(lbuffer) > 1:
+        mol.is_bb=True
         mol.center_point = lbuffer[1]
         con_info = lbuffer[2:]
         parse_connstring(mol,con_info, new = False)

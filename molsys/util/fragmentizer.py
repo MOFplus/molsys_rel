@@ -60,6 +60,7 @@ class fragmentizer:
         fi = 0
         for f in self.fragments.keys():
             fidx = mol.graph.find_fragment(self.fragments[f])
+            if len(fidx)!=0: logger.warning("fragment %s detected" % f)
             for flist in fidx:
                 for i in flist:
                     mol.fragtypes[i]   = f
