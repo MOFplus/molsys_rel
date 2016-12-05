@@ -60,10 +60,10 @@ class graph:
             ia = self.vert2atom[i]
             for ja in self._mol.conn[ia]:
                 if ja>=ia:   #we need a .le. here for those atoms/vertices connected to itself twice in different boxes
-                if ja in self.vert2atom:
+                    if ja in self.vert2atom:
                     # print "bond from %d to %d" % (ia, ja)
                     # print self._mol.atypes[ia], self._mol.atypes[ja]
-                    self.molg.add_edge(self.molg.vertex(i), self.molg.vertex(self.vert2atom.index(ja)))
+                        self.molg.add_edge(self.molg.vertex(i), self.molg.vertex(self.vert2atom.index(ja)))
         return
 
     def plot_graph(self, fname, size=800, fsize=10):
