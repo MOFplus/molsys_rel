@@ -20,7 +20,7 @@ class bb:
         self.mol.dummies_hidden=False
         self.mol.connectors = []
         self.mol.connector_dummies=[]
-        self.mol.connecting_atoms = []
+        self.mol.connector_atoms = []
         return
 
     def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=2, label = None):

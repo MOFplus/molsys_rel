@@ -71,16 +71,18 @@ class fragmentizer:
         # mol.graph.plot_graph("mol")
         fi = 0
         for f in self.frag_order:
-            fidx = mol.graph.find_fragment(self.fragments[f])
+            fidx = mol.graph.find_fragment(self.fragments[f],add_hydrogen=False)
             for flist in fidx:
                 exists=False
                 for i in flist:
                     if mol.fragtypes[i] != '0':
+#                        print mol.fragtypes[i],i,flist,f
                         exists=True
                         break
                     mol.fragtypes[i]   = f
                     mol.fragnumbers[i] = fi
-                if not exists: fi += 1
+                if exists==False: fi += 1
+                    
         # print mol.fragtypes
         # print mol.fragnumbers
-        return
+        return 

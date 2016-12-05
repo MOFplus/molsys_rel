@@ -154,7 +154,7 @@ def write_body(f, mol, frags=True, topo=False):
     for i in xrange(mol.natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
-        if frags == True: line += ("%-10s %5d") % tuple([fragtypes[i]]+[fragnumbers[i]])
+        if frags == True: line += ("%-16s %5d") % tuple([fragtypes[i]]+[fragnumbers[i]])
         conn = (numpy.array(cnct[i])+1).tolist()
         if len(conn) != 0:
             if topo:

@@ -627,7 +627,6 @@ class mol:
         ''' return a list of unique fragment types '''
         lset = list(set(self.fragtypes))
         if not count: return lset
-        print lset
         counts = []
         for i,ls in enumerate(lset):
             counts.append(self.fragtypes.count(ls))
