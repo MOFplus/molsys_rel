@@ -75,7 +75,7 @@ class fragmentizer:
             for flist in fidx:
                 exists=False
                 for i in flist:
-                    if mol.fragtypes[i] != '0':
+                    if mol.fragtypes[i] != '-1':
 #                        print mol.fragtypes[i],i,flist,f
                         exists=True
                         break
