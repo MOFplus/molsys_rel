@@ -102,7 +102,7 @@ class graph:
             if sl not in subs: subs.append(sl)
         return subs
 
-    def find_fragment(self, frag,add_hydrogen=True):
+    def find_fragment(self, frag,add_hydrogen=False):
         """
         find a complete fragment (including the hydrogen atoms not included in the graph)
         Note that the fragment found can be different from the fragment by the number of hydrogen atoms!!
