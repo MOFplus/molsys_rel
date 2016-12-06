@@ -41,7 +41,7 @@ def read(mol, fname, topo = False):
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
                 read_body(f,mol.natoms,frags=False)
     else:
-        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
+        mol.elems, mol.xyz, mol.atypes, mol.conn,\
                 mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
     ### this has to go at some point
     if 'con_info' in locals():
@@ -106,6 +106,7 @@ def read_body(f, natoms, frags = True, topo = False):
     fragtypes   = []
     fragnumbers = []
     pconn       = []
+    if topo: frags=False
     for i in xrange(natoms):
         lbuffer = string.split(f.readline())
         xyz.append(map(string.atof, lbuffer[2:5]))
@@ -129,7 +130,8 @@ def read_body(f, natoms, frags = True, topo = False):
             conn.append(c)
             pconn.append(pc)
     if topo:
-        return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers, pconn
+#        return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers, pconn
+        return elems, numpy.array(xyz), atypes, conn, pconn
     else:
         return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers
 
@@ -148,6 +150,7 @@ def write_body(f, mol, frags=True, topo=False):
     xyz         = mol.xyz
     cnct        = mol.conn
     natoms      = mol.natoms
+    if topo: frags = False   #from now on this is convention!
     if frags == True:
         fragtypes   = mol.fragtypes
         fragnumbers = mol.fragnumbers
