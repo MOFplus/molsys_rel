@@ -336,9 +336,9 @@ class mol:
             other_xyz *= np.array(scale)
         if roteuler != None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
-        if rotate   !=None:
+        if type(rotate)   !=None:
             other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
-        if translate!=None:
+        if type(translate)!=None:
             other_xyz += translate
         if self.natoms==0:
             self.xyz = other_xyz
