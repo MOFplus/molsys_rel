@@ -11,18 +11,12 @@ class atom:
         connatoms.sort()
         self.connatoms = connatoms
         self.nconns = len(self.connatoms)
-        if self.nconns > 0:
-            red = self.connatoms[0]
-            count = 1
-            for a in self.connatoms[1:]:
-                if a == red[-1]:
-                    count += 1
-                else:
-                    red += str(count)+a
-                    count = 1
-            red += str(count)
-        else:
-            red = ""
+        elist = list(set(connatoms))
+        elist.sort()
+        count = [connatoms.count(i) for i in elist]
+        red = ''        
+        for e,c in zip(elist,count):
+            red = red + e + str(c)
         self.connatoms_reduced = red
         self.type = ''
         return

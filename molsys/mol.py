@@ -624,6 +624,15 @@ class mol:
     def get_fragtypes(self):
         ''' return all fragment types '''
         return self.fragtypes
+        
+    def get_fragtypes_list(self,count=False):
+        ''' return a list of unique fragment types '''
+        lset = list(set(self.fragtypes))
+        if not count: return lset
+        counts = []
+        for i,ls in enumerate(lset):
+            counts.append(self.fragtypes.count(ls))
+        return [lset,counts]
 
     def set_fragtypes(self,fragtypes):
         ''' set fragment types
