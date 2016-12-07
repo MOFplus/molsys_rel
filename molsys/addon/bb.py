@@ -42,25 +42,16 @@ class bb:
 
     def center(self):
         if self.mol.center_point == "com":
-            # compute center of mass
-            amass = []
-            for e in self.mol.elems: amass.append(elements.mass[e])
-            amass = np.array(amass,"d")
-            molmass = np.sum(amass)
-            center = np.sum((self.mol.xyz*amass[:,np.newaxis]),axis=0)
-            center /= molmass
+            self.mol.set_real_mass()
+            center = self.mol.get_com()
         elif self.mol.center_point == "coc":
-            # compute center of connectors (all equal mass)
-            convec = []
-            for c in self.mol.connectors: convec.append(self.mol.xyz[c])
-            center = np.sum(np.array(convec),axis=0)
-            center /= float(len(self.mol.connectors))
+            self.mol.set_unit_mass()
+            center = self.mol.get_com(idx=self.mol.connectors)
         elif self.mol.center_point == "special":
             center = self.mol.special_center_point
         else:
             print "unknown center point option"
             raise IOError
-        #self.center_xyz = center
         self.mol.translate(-center)
         return
 
@@ -99,17 +90,6 @@ class bb:
             axis  = rotations.normalize(rotations.cross_prod(z_axis,c1_xyz)) # axis around which we rotate
             self.mol.xyz = rotations.rotate(self.mol.xyz, axis, -theta)
         return
-
-    def get_coc(self,conns):
-        amass = []
-        for e in conns: amass.append(1.0)
-        amass = np.array(amass,dtype='float64')
-        #print amass, amass[:,np.newaxis].shape,self.xyz.shape
-        conns=np.array(conns,dtype='int')
-        center = np.sum((amass[:,np.newaxis]*self.mol.xyz[conns,:]),axis=0)/np.sum(amass)
-        #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
-        return center
-
 
     def is_superpose(self, other, thresh=1.0e-1):
         """ we test if two molecular systems are equal (superimpose) by way of calculating the rmsd
