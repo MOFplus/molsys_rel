@@ -397,7 +397,7 @@ class mol:
         for i,e in enumerate(self.elems):
             if labels.count(e) != 0:
                 badlist.append(i)
-        print 'removing ', badlist[::-1]
+        logger.info('removing ', str(badlist[::-1])
         for i in badlist[::-1]: self.delete_atom(i)
         return
 
