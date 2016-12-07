@@ -11,7 +11,7 @@ try:
     import pandas
     import chemcoord
 except:
-    chemcoord = "None"
+    zmat = "None"
 else:
     from zmat import zmat
 

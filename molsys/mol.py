@@ -662,6 +662,15 @@ class mol:
             - conn    : List of lists describing the connectivity'''
         self.conn = conn
 
+    def set_empty_conn(self):
+        """
+        sets an empty list of lists for the connectivity
+        """
+        self.conn = []
+        for i in xrange(self.natoms):
+            self.conn.append([])
+        return
+
     def set_nofrags(self):
         ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''
         self.set_fragtypes(['-1']*self.natoms)
