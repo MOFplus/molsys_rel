@@ -388,6 +388,18 @@ class mol:
                     new_conn[i][j]=new_conn[i][j]-1
         self.conn = new_conn
         return
+        
+    def remove_dummies(self,labels=['x','xx']):
+        ''' removes atoms by atom labels 
+        :Parameters:
+            - labels (list): atom labels to be removed'''
+        badlist = []
+        for i,e in enumerate(self.elems):
+            if labels.count(e) != 0:
+                badlist.append(i)
+        print 'removing ', badlist[::-1]
+        for i in badlist[::-1]: self.delete_atom(i)
+        return
 
     def translate(self, vec):
         self.xyz += vec

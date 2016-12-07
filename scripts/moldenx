@@ -137,7 +137,7 @@ if [ ${1: -5} = ".mfpx" ]; then
     ###     remove the comments, "erase" 6th and 7th columns
     ###     and redirect to temporary file
     ###     if everything is fine: molden the temporary file
-    grep -v \# $1 | awk '{$6=""; $7=""; print}' > $TEMP_FILE && $COMMAND $TEMP_FILE
+    grep -v \# $1 | awk '{$6="5"; $7=""; $8=""; print}' > $TEMP_FILE && $COMMAND $TEMP_FILE
 else
     ### standard molden
     $COMMAND $1
