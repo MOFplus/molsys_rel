@@ -437,7 +437,7 @@ class mol:
         if idx == None:
             if self.periodic: return None
             xyz = self.get_xyz()
-            amass = self.amass
+            amass = np.array(self.amass)
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]

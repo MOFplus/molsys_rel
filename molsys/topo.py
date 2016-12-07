@@ -24,19 +24,7 @@ else:
 
 logger = logging.getLogger("molsys")
 
-"""
-
-        ToDo list ...
-
-        - if use_pconn: write tinker xyz file with images (add a keyword in the file)
-        ---> This is done, the file is now called topo file and can be i/o'd with read/write topo
-        - if this keyword is found in a tinker file read in with pconn
-
-"""
-
 np.set_printoptions(threshold=20000)
-
-
 
 deg2rad = np.pi/180.0
 SMALL_DIST = 1.0e-3
@@ -52,50 +40,6 @@ class topo(mol.mol):
         if spg:
             self.symprec = SMALL_DIST        # precsion in symmetry detection .. pyspglib default of 1.0e-5 seems to be way too small for large systems (in Angstrom)
             self.nonhydrogen = False  # use only non-hydrogen atoms if True in symmetry detection or any operation
-        return
-
-    ####  I/O stuff ############################
-
-
-    def write_topo(self,filename):
-        ff=open(filename,'w')
-        ff.write('%i %16.10f %16.10f %16.10f %10.6f %10.6f %10.6f\n' % (len(self.xyz),self.cellparams[0],self.cellparams[1],self.cellparams[2],self.cellparams[3],self.cellparams[4],self.cellparams[5]) )
-        for i in xrange(self.natoms):
-            line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
-               tuple([i+1]+[self.elems[i]]+ self.xyz[i].tolist() + [self.atypes[i]])
-            conn = (np.array(self.conn[i])+1).tolist()
-            pconn = self.pconn[i]
-            pimg = []
-            for pc in pconn:
-                for ii,img in enumerate(images):
-                    if all(img==pc):
-                        pimg.append(ii)
-                        break
-            if len(conn) != 0:
-                for cc,pp in zip(conn,pimg):
-                    if pp < 10:
-                        line += "%8d/%1d" % (cc,pp)
-                    else:
-                        line += "%7d/%2d" % (cc,pp)
-                #line += (len(conn)*"%7d") % tuple(conn)
-            ff.write("%s \n" % line)
-        ff.close()
-
-    def write_v1(self,fname):
-        if fname.split('.')[-1] != 'v1':
-            fname = fname + '.v1'
-        ff = open(fname,'w')
-        ff.write(("%s\n") % ("unit cell vectors:"))
-        ff.write("%s %12.6f %12.6f %12.6f\n" % ("va= ", self.cell[0,0], self.cell[1,0], self.cell[2,0]))
-        ff.write("%s %12.6f %12.6f %12.6f\n" % ("va= ", self.cell[0,1], self.cell[1,1], self.cell[2,1]))
-        ff.write("%s %12.6f %12.6f %12.6f\n" % ("va= ", self.cell[0,2], self.cell[1,2], self.cell[2,2]))
-        ff.write("%i\n" % self.natoms)
-
-        for i in range(self.natoms):
-            s=self.elems[i]
-            s = string.capitalize(s[0])+s[1:]
-            ff.write("%s %12.6f %12.6f %12.6f\n" % (s,self.xyz[i][0], self.xyz[i][1], self.xyz[i][2]))
-        ff.close()
         return
 
     ###### helper functions #######################
@@ -438,6 +382,7 @@ class topo(mol.mol):
 ############# Plotting
 
     def plot(self,scell=False,bonds=False,labels=False):
+        import matplotlib.pyplot as plt
         col = ['r','g','b','m','c','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k']+['k']*200
         fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
         ax = fig.add_subplot(111, projection='3d')
