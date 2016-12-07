@@ -37,7 +37,7 @@ class bb:
         #self.find_dummies()
         self.center()
         self.extract_connector_xyz()
-        self.hide_dummy_atoms()
+#        self.hide_dummy_atoms()
         return
 
     def center(self):
@@ -66,6 +66,8 @@ class bb:
 
 
     def hide_dummy_atoms(self):
+        ''' depreciated, has been used to remove dummies, requires them to be the last atoms
+            we now remove dummies after construction using remove_dummies() in mol.py'''
         self.mol.dummies_hidden=True
         self.mol.bb = copy.deepcopy(self.mol)
         self.mol.natoms = self.mol.natoms - len(self.mol.connector_dummies)
