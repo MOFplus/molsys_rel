@@ -6,7 +6,7 @@ Created on Tue Nov 29 21:30:26 2016
 """
 
 import logging
-logger = logging.getLogger("molsys.graph")
+logger = logging.getLogger("molsys.fragments")
 
 
 class fragments:

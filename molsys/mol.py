@@ -91,7 +91,6 @@ class mol:
             - addmol: string name of the addon module
         """
         if addmod == "graph":
-
             if addon.graph != None:
                 # ok, it is present and imported ...
                 self.graph = addon.graph(self)
@@ -102,9 +101,17 @@ class mol:
         elif addmod  == "bb":
             self.bb = addon.bb(self)
         elif addmod  == "zmat":
-            self.zmat = addon.zmat(self)
+            if addon.zmat != None:
+                self.zmat = addon.zmat(self)
+            else:
+                logger.error("pandas/chemcoord is not available! THis addon can not be used")
+        elif addmod  == "spg":
+            if addon.spg != None:
+                self.spg = addon.spg(self)
+            else:
+                logger.error("spglib is not available! THis addon can not be used")
         else:
-            logger.error("the addon %s is unknown")
+            logger.error("the addon %s is unknown" % addmod)
         return
 
     ##### connectivity ########################
@@ -397,7 +404,7 @@ class mol:
         for i,e in enumerate(self.elems):
             if labels.count(e) != 0:
                 badlist.append(i)
-        logger.info('removing ', str(badlist[::-1])
+        logger.info('removing ', str(badlist[::-1]))
         for i in badlist[::-1]: self.delete_atom(i)
         return
 
@@ -576,6 +583,10 @@ class mol:
     def get_elems(self):
         ''' return the list of element symbols '''
         return self.elems
+        
+    def get_elems_number(self):
+        ''' return a list of atomic numbers '''
+        return map(elements.number.__getitem__, self.elems)
 
     def get_elemlist(self):
         ''' Returns a list of unique elements '''
@@ -584,7 +595,7 @@ class mol:
             if not el.count(e): el.append(e)
         return el
 
-    def set_elements(self,elems):
+    def set_elems(self,elems):
         ''' set the elements
         :Parameters:
             - elems: list of elements to be set'''
@@ -611,11 +622,11 @@ class mol:
         self.atypes = atypes
 
     def get_cell(self):
-        ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
+        ''' return unit cell information (cell vectors) '''
         return self.cell
 
     def get_cellparams(self):
-        ''' return unit cell information (cell vectors) '''
+        ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
         return self.cellparams
 
     def set_bcond(self):
