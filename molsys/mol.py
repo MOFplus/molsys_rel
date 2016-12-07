@@ -408,13 +408,39 @@ class mol:
 
     def center_com(self):
         ''' centers the molsys at the center of mass '''
-        if self.periodic: return
-        amass = []
-        for e in self.elems: amass.append(elements.mass[e])
-        amass = np.array(amass)
-        center = np.sum((self.xyz*amass[:,np.newaxis]),axis=0)/np.sum(amass)
+        center = self.get_com() 
         self.translate(-center)
         return
+
+    def get_com(self, idx = None):
+        """
+        returns the center of mass of the mol object. 
+
+        :Parameters:
+            - idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
+        """
+        if hasattr(self,'masstype') == False: self.set_real_mass()
+        if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
+        if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
+        if idx == None:
+            if self.periodic: return None
+            xyz = self.get_xyz()
+            amass = self.amass
+        else:
+            xyz = self.get_xyz()[idx]
+            amass = np.array(self.amass)[idx]
+        if self.periodic:
+            fix = xyz[0,:]
+            a = xyz[1:,:] - fix
+            if self.bcond == 2:
+                cell_abc = self.cellparams[:3]
+                xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
+            elif self.bcond == 3:
+                inv_cell = np.linalg.inv(self.cell)
+                frac = np.dot(a, inv_cell)
+                xyz[1:,:] -= np.dot(np.around(frac),self.cell)
+        center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+        return center
 
     ##### distance measurements #####################
 
@@ -487,16 +513,6 @@ class mol:
         dr = ri-rj
         d = np.sqrt(np.sum(dr*dr))
         return d
-
-    def get_com(self):
-        ''' calculates and returns the center of mass'''
-        amass = []
-        for e in self.elems: amass.append(elements.mass[e])
-        amass = np.array(amass,dtype='float64')
-        #print amass, amass[:,np.newaxis].shape,self.xyz.shape
-        center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
-        #center = np.sum((amass[:,np.newaxis]*self.xyz),axis=0)/np.sum(amass)
-        return center
 
     def get_comdist(self,com,i):
         ''' Calculate the distances of an atom i from a given point (e.g. the center of mass)
@@ -590,6 +606,23 @@ class mol:
         ''' return unit cell information (cell vectors) '''
         return self.cellparams
 
+    def set_bcond(self):
+        """
+        sets the boundary conditions. 2 for cubic and orthorombic systems,
+        3 for triclinic systems
+        """
+        if list(self.cellparams[3:]) == [90.0,90.0,90.0]: 
+            self.bcond = 2
+        else:
+            self.bcond = 3
+        return
+
+    def get_bcond(self):
+        """
+        returns the boundary conditions
+        """
+        return self.bcond
+
     def set_cell(self,cell,cell_only = True):
         ''' set unit cell using cell vectors and assign cellparams
         :Parameters:
@@ -604,6 +637,7 @@ class mol:
         self.cell = cell
         self.cellparams = unit_cell.abc_from_vectors(self.cell)
         self.images_cellvec = np.dot(images, self.cell)
+        self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
 
     def set_cellparams(self,cellparams, cell_only = True):
@@ -619,6 +653,7 @@ class mol:
         self.cellparams = cellparams
         self.cell = unit_cell.vectors_from_abc(self.cellparams)
         self.images_cellvec = np.dot(images, self.cell)
+        self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
 
     def get_fragtypes(self):
@@ -670,6 +705,32 @@ class mol:
         for i in xrange(self.natoms):
             self.conn.append([])
         return
+
+    def set_unit_mass(self):
+        """
+        sets the mass for every atom to one
+        """
+        self.masstype = 'unit'
+        self.amass = []
+        for i in xrange(self.natoms):
+            self.amass.append(1.0)
+        return
+
+    def set_real_mass(self):
+        """
+        sets the physical mass for every atom
+        """
+        self.masstype = 'real'
+        self.amass = []
+        for i in self.elems:
+            self.amass.append(elements.mass[i])
+        return
+
+    def get_mass(self):
+        """
+        returns the mass for every atom as list
+        """
+        return self.amass
 
     def set_nofrags(self):
         ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''
