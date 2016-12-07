@@ -119,21 +119,17 @@ class mol:
         """
         xyz = self.xyz
         elems = self.elems
-        if type(self.cell) != type(None):
-            cell_abc = self.cellparams[:3]
-            cell_angles = self.cellparams[3:]
-            if cell_angles[0] != 90.0 or cell_angles[1] != 90.0 or cell_angles[2] != 90.0:
-                inv_cell = np.linalg.inv(self.cell)
         natoms = self.natoms
         conn = []
         duplicates = []
         for i in xrange(natoms):
             a = xyz - xyz[i]
-            if type(self.cell) != type(None):
-                if cell_angles[0] == 90.0 and cell_angles[1] == 90.0 and cell_angles[2] == 90.0:
+            if self.periodic:
+                if self.bcond == 2:
+                    cell_abc = self.cellparams[:3]
                     a -= cell_abc * np.around(a/cell_abc)
-                else:
-                    frac = np.dot(a, inv_cell)
+                elif self.bcond == 3:
+                    frac = np.dot(a, self.inv_cell)
                     frac -= np.around(frac)
                     a = np.dot(frac, self.cell)
             dist = ((a**2).sum(axis=1))**0.5 # distances from i to all other atoms
@@ -448,8 +444,7 @@ class mol:
                 cell_abc = self.cellparams[:3]
                 xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
             elif self.bcond == 3:
-                inv_cell = np.linalg.inv(self.cell)
-                frac = np.dot(a, inv_cell)
+                frac = np.dot(a, self.inv_cell)
                 xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
@@ -648,6 +643,7 @@ class mol:
         self.periodic = True
         self.cell = cell
         self.cellparams = unit_cell.abc_from_vectors(self.cell)
+        self.inv_cell = np.linalg.inv(self.cell)
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
@@ -664,6 +660,7 @@ class mol:
         self.periodic = True
         self.cellparams = cellparams
         self.cell = unit_cell.vectors_from_abc(self.cellparams)
+        self.inv_cell = np.linalg.inv(self.cell)
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
