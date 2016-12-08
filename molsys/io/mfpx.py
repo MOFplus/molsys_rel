@@ -70,7 +70,7 @@ def read(mol, fname):
         txyz.parse_connstring(mol,con_info)
     return
 
-def write(mol, fname, topo = False):
+def write(mol, fname):
     """
     Routine, which writes an mfpx file
     :Parameters:
@@ -79,7 +79,7 @@ def write(mol, fname, topo = False):
         -topo  (bool): flag to specify if pconn should be in mfpx file or not
     """
     f = open(fname, 'w')
-    if topo:
+    if mol.__class__.__name__ == 'topo':
         ftype = 'topo'
     else:
         ftype = 'xyz'

@@ -256,6 +256,8 @@ class mol:
         frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0+thresh*0.1), 1.0, 0.0)
         # convert back
         self.set_xyz_from_frac(frac_xyz)
+        if self.__class__.__name__=='topo':
+            self.add_pconn()
         return
 
     def get_frac_xyz(self):
@@ -400,7 +402,7 @@ class mol:
         for i,e in enumerate(self.elems):
             if labels.count(e) != 0:
                 badlist.append(i)
-        logger.info('removing ', str(badlist[::-1]))
+        logger.info('removing '+ str(badlist[::-1]))
         for i in badlist[::-1]: self.delete_atom(i)
         return
 

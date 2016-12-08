@@ -126,23 +126,6 @@ class topo(mol.mol):
 
     ######## manipulations in particular for blueprints
 
-    def wrap_in_box(self, thresh=SMALL_DIST):
-        if not self.periodic: return
-        # puts all atoms into the box again
-        frac_xyz = self.get_frac_xyz()
-        # now add 1 where the frac coord is negative and subtract where it is larger then 1
-        frac_xyz += np.where(np.less(frac_xyz, 0.0), 1.0, 0.0)
-        #frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0-thresh), 1.0, 0.0)
-        #frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0), 1.0, 0.0)
-        frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0+thresh*0.1), 1.0, 0.0)
-        # convert back
-        self.set_xyz_from_frac(frac_xyz)
-        # if pconn was set this needs to be redone now (conn is unaffected)
-        if self.use_pconn:
-            self.add_pconn()
-        return
-
-
     def make_supercell(self,supercell):
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
