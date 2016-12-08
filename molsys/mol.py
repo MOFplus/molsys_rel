@@ -235,14 +235,13 @@ class mol:
                 self.conn.append(c)
         self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
-        self.cellparams[0:3] *= np.array(supercell)
-        self.cell *= np.array(supercell)[:,np.newaxis]
+        cell = self.cell * np.array(supercell)[:,np.newaxis]
+        self.set_cell(cell)
         self.elems *= ntot
         self.atypes*=ntot
         self.fragtypes*=ntot
         self.fragnumbers*=ntot
         self.images_cellvec = np.dot(images, self.cell)
-        #print xyz
         return xyz,conn
 
     def wrap_in_box(self, thresh=SMALL_DIST):
