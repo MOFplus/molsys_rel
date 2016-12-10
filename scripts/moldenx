@@ -211,7 +211,7 @@ do
                 echo "    control number is: $iPOS" 1>&2
                 exit 1
             else
-                if [ $iPOS == 1 ] ###n.b.: for clarity
+                if [ $iPOS == 1 ]
                 then
                     _logecho "* FOUND argument for previous option: $POS"
                     (( iPOS += -1 ))
@@ -229,16 +229,21 @@ done
 
 if [ $iPOS != 0 ] || [ -z $REAL_FILE ] 
 then
-    echo "*** ERROR: filename unset OR last option needs an argument" 1>&2
-    echo "    filename is: $REAL_FILE" 1>&2
-    echo "    last option is: $POS" 1>&2
-    echo "    control number is: $iPOS" 1>&2
-    exit 1
+    if [ $POS != "-h" ]
+    then
+        echo "*** ERROR: filename unset OR last option needs an argument" 1>&2
+        echo "    filename is: $REAL_FILE" 1>&2
+        echo "    last option is: $POS" 1>&2
+        echo "    control number is: $iPOS" 1>&2
+        exit 1
+    else
+        $COMMAND -h ; exit #command-specific!
+    fi
 fi
 
 ### MOLDEN SPECIFIC OPTIONS ###############################
 
-if [ ${REAL_FILE: -5} = ".mfpx" ]; then
+if [ ${REAL_FILE: -5} == ".mfpx" ]; then
     ### if the extension is ".mfpx":
     ###     remove the comments, "erase" 6th and 7th columns
     ###     and redirect to temporary file
