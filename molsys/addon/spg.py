@@ -18,6 +18,10 @@ Created on Wed Dec  7 15:44:36 2016
 import spglib
 import numpy
 from molsys.util import elems
+import molsys
+
+import logging
+logger = logging.getLogger("molsys.spg")
 
 class spg:
 
@@ -34,13 +38,30 @@ class spg:
         #
         self.spg_version = spglib.get_version()
         self.symprec = 1.0e-4
+        logger.info("Addon spg loaded (version %d.%d.%d)" % self.spg_version)
         return
 
     def set_symprec(self, thresh):
+        """
+        set the symmetry threshold
+        """
         self.symprec = thresh
         return
 
+    def get_symprec(self, thresh):
+        """
+        get the symmetry threshold
+        """
+        return self.symprec
+
     def generate(self, omit=[]):
+        """
+        Generate the spglib specific representation of the structure
+        (Needs to be called before any other call to spg methods)
+         :Parameters:
+
+             - omit : a list of either integers (atomic numbers) or element strings to be omited [optional]
+        """
         # convert element symbols into atomic numbers
         if len(omit)>0:
             new_omit = []
@@ -67,7 +88,52 @@ class spg:
         return
 
     def get_spacegroup(self):
+        """
+        determine the space group of the current system
+        returns a tuple with the symbol and the integer number
+        """
+        assert self.spgcell != None
         result = spglib.get_spacegroup(self.spgcell, symprec=self.symprec)
-        return result
+        result = result.split()
+        symbol = result[0]
+        number = int(result[1][1:-1])
+        return (symbol, number)
+
+    def make_P1(self, spgnum):
+        """
+        to be implemented by Julian from his topo tools
+
+        :Parameters:
+
+            - spgnum : integer space group number
+        """
+        # how to convert international spgnum to hall number
+        dataset = spglib.get_symmetry_from_database(spgnum)
+        # apply operations to self._mol and generate a new mol object
+        # use detect_conn etc to complete it.
+        return
+
+    def get_primitive_cell(self):
+        """
+        get the primitve cell as a new mol object
+        """
+        assert self.spgcell != None
+        new_spgcell = spglib.find_primitive(self.spgcell)
+        if new_spgcell == None:
+            logger.error("Search for primitive cell failed with symprec %f" % self.symprec)
+            return
+        print new_spgcell[0]
+        print new_spgcell[2]
+        new_mol = molsys.mol()
+        new_mol.set_natoms(len(new_spgcell[2]))
+        new_mol.set_cell(new_spgcell[0])
+        new_mol.set_xyz(new_mol.get_real_from_frac(new_spgcell[1]))
+        new_mol.set_elems_number(new_spgcell[2])
+        # now add the connectivity
+        new_mol.detect_conn()
+        # RS: we could do atomtyping ... but this would have to be a method of mol ...
+        new_mol.set_atypes(["0"]*new_mol.get_natoms())
+        new_mol.set_nofrags()
+        return new_mol
 
 
