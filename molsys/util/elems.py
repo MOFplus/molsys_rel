@@ -1,4 +1,7 @@
-number ={'xx':0,
+
+from collections import OrderedDict
+
+number = {
         'x': 0,
         'h':1,
         'he':2,
@@ -118,6 +121,8 @@ number ={'xx':0,
         'uuh':116,
         'uus':117,
         'uuo':118}
+
+number = OrderedDict(sorted(number.items(), key=lambda t: t[1]))
 
 cov_radii={'xx':0.300000,
         'x': 0.0,
