@@ -21,7 +21,7 @@
 #
 #   Speechless...
 #   http://www.etymologiebank.nl/trefwoord/mof1
-#  
+#
 ###########################################################
 
 ### USE
@@ -29,7 +29,7 @@
 ### it works as tinker xyz file
 ###
 ### with any different extension:
-###     moldenx structure.txyz 
+###     moldenx structure.txyz
 ### it works as usual
 
 ### HINT
@@ -76,7 +76,7 @@ _tmpfold () {
 
 _tmpfile () {
     ###set temporary file if not previously set
-    if [ -z $TEMP_FILE ]; then    
+    if [ -z $TEMP_FILE ]; then
         TEMP_FILE=$TEMP_FOLD/molden.pid$$.$RANDOM
     fi
 }
@@ -131,7 +131,7 @@ _tmpfile
 _tmpcheck TEMP_FILE
 
 ###PROGRAM HERE###
-COMMAND='/usr/bin/molden -l -S -geom 1080x1080 -s5.0'
+COMMAND='molden -l -S -geom 1080x1080 -s5.0'
 if [ ${1: -5} = ".mfpx" ]; then
     ### if the extension is ".mfpx":
     ###     remove the comments, "erase" 6th and 7th columns
