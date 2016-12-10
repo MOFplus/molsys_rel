@@ -19,32 +19,30 @@
 #       clear and tidy
 #   NOT YET LICENSED
 #
-#   Speechless...
-#   http://www.etymologiebank.nl/trefwoord/mof1
-#
 ###########################################################
 
+VERSION=1.41
+
 ### USE
-###     moldenx structure.mfpx ### works as a tinker xyz
+###     moldenx structure.mfpx
 ### it works as tinker xyz file
 ###
 ### with any different extension:
-###     moldenx structure.txyz
+###     moldenx structure.xyz
 ### it works as usual
 
-### HINT
-### my (RA) suggestion is to add at your .bashrc:
-###     alias molden='moldenx'
+### HINT by RA
+### you only need to append an "x" to your molden alias
 ### to automatically handle mfpx files.
-### Copy your defined alias in the COMMAND var, e.g.:
-###     change in .bashrc:
-###         alias molden='/usr/bin/molden -l -S -geom 1080x1080 -s5.0'
-###     in:
-###         alias molden='moldenx'
-### AND
-###     change in moldenx script:
-###         COMMAND='/usr/bin/molden -l -S -geom 1080x1080 -s5.0'
+### E.g.:
+###     alias molden='molden -l -S -geom 1080x1080 -s5.0'
+### becomes:
+###     alias molden='moldenx -l -S -geom 1080x1080 -s 5.0'
+### KNOWN ISSUE: cannot handle "glued" option+argument
+### e.g. "-s5.0" must be changed in "-s 5.0"
+### TBI: allowing spaces in positional parameters
 
+COMMAND=$(which molden)
 DEBUG="False" ### "True" for debugging info
 
 ### AUXILIARY FUNCTIONS ###################################
@@ -93,7 +91,7 @@ _tmpcheck () {
         elif [ "${!2}" == "False" ]; then
             _logecho "$1 is set to ${!1}" and did not pre-exist
         else
-            _logecho "CRITICAL ERROR: $2 must be \"True\" or \"False\", not: \"${!2}\" "
+            echo "*** ERROR: $2 must be \"True\" or \"False\", not: \"${!2}\" " 1>&2
             exit 1
         fi
     fi
@@ -116,7 +114,7 @@ _tmpclean () {
         fi
     fi
 }
-###clean-up in any case but SIGKILL (e.g. 'kill -9 $pid')
+###clean-up in any exit case but SIGKILL (e.g. 'kill -9 $pid')
 trap _tmpclean SIGHUP SIGINT SIGTERM
 
 ###TEMPORARY SETS AND CHECKS
@@ -130,17 +128,125 @@ _tmpcheck TEMP_FOLD PRE_TEMP
 _tmpfile
 _tmpcheck TEMP_FILE
 
-###PROGRAM HERE###
-COMMAND='molden -l -S -geom 1080x1080 -s5.0'
-if [ ${1: -5} = ".mfpx" ]; then
+
+### SHELL-ARGUMENTS HANDLING #############################
+### TBI: allowing spaces in positional parameters
+### It does NOT support glued option + argument, e.g. "-s5.0"
+###     put a space in the between write e.g. "-s 5.0" instead
+### It DOES support arbitrary position of options! (GNU-compliant)
+
+OPTMODE="GIVEN"
+#OPTMODE="TAKEN"
+
+if [ $OPTMODE == "GIVEN" ] ###fast
+then
+    OPT1="+(-a|-b|-f|-g|-h|-hoff|-l|-m|-t|-u|-v|-z|-A|-C|-F|-H|-I|-L|-1|-2|-M|-O|-P|-Q|-S|-T|-U|-X|-W|-Z|-=)"
+    OPT2="+(-c|-geom|-hdmin|-hdmax|-hamin|-hamax|-i|-j|-k|-o|-p|-r|-s|-w|-x|-y|-D|-G|-R|-V)"
+fi
+
+if [ $OPTMODE == "TAKEN" ] ###versatile
+then
+    declare -a OPT1="+("
+    declare -a OPT2="+("
+    while read OPTMOL
+    do
+        OPTWRD=$(echo "$OPTMOL" | wc -w)
+        if [ $OPTWRD != 0 ]
+        then
+            if   [ $OPTWRD == 1 ]
+            then
+                OPT1+="$OPTMOL|"
+            elif [ $OPTWRD == 2 ]
+            then
+                OPT2+="${OPTMOL% *}|"
+            else
+                echo "*** ERROR: OPTIONS WITH MORE THAN 2 ARGUMENTS!" 1>&2
+                exit 1
+            fi
+        fi
+    done <<< "$( $COMMAND -h | awk -F "  " '{print $1}' | grep ' -' )" ###command-specific!
+    OPT1="${OPT1%|})" #trim last pipe, add brace
+    OPT2="${OPT2%|})" #trim last pipe, add brace
+fi
+
+_logecho "Options w/o argument"
+_logecho "    $OPT1"
+_logecho "Options w/i argument"
+_logecho "    $OPT2"
+_logecho
+
+shopt -s extglob ###needed even if $(shopt extglob) gives "extglob on"
+iPOS=0
+REAL_FILE=
+for POS in "$@"
+do
+    _logecho "control number = $iPOS; positional argument = $POS"
+    case $POS in
+        $OPT1)
+            _logecho "* FOUND option w/o argument: $POS"
+            if [ $iPOS == 0 ]
+            then
+                (( iPOS += 0 ))
+            else
+                echo "*** ERROR: expected 0 as control number, found: $iPOS" 1>&2
+                exit 1
+            fi
+        ;;
+        $OPT2)
+            _logecho "* FOUND option w/i argument: $POS"
+            if [ $iPOS == 0 ]
+            then
+                (( iPOS += 1 ))
+            else
+                echo "*** ERROR: expected 0 as control number, found: $iPOS" 1>&2
+                exit 1
+            fi
+        ;;
+        *)
+            if [ ! -z $REAL_FILE ] && [ $iPOS == 0 ]
+            then
+                echo "*** ERROR: filename set AND last argument needs an option" 1>&2
+                echo "    filename is: $REAL_FILE" 1>&2
+                echo "    last argument is: $POS" 1>&2
+                echo "    control number is: $iPOS" 1>&2
+                exit 1
+            else
+                if [ $iPOS == 1 ] ###n.b.: for clarity
+                then
+                    _logecho "* FOUND argument for previous option: $POS"
+                    (( iPOS += -1 ))
+                elif [ -z $REAL_FILE ]
+                then
+                    _logecho "* FOUND filename: $POS"
+                    REAL_FILE=$POS
+                fi
+            fi
+        ;;
+    esac
+    _logecho
+done
+
+
+if [ $iPOS != 0 ] || [ -z $REAL_FILE ] 
+then
+    echo "*** ERROR: filename unset OR last option needs an argument" 1>&2
+    echo "    filename is: $REAL_FILE" 1>&2
+    echo "    last option is: $POS" 1>&2
+    echo "    control number is: $iPOS" 1>&2
+    exit 1
+fi
+
+### MOLDEN SPECIFIC OPTIONS ###############################
+
+if [ ${REAL_FILE: -5} = ".mfpx" ]; then
     ### if the extension is ".mfpx":
     ###     remove the comments, "erase" 6th and 7th columns
     ###     and redirect to temporary file
     ###     if everything is fine: molden the temporary file
-    grep -v \# $1 | awk '{$6="5"; $7=""; $8=""; print}' > $TEMP_FILE && $COMMAND $TEMP_FILE
+    grep -v \# $REAL_FILE | awk '{$6="5"; $7=""; $8=""; print}' > $TEMP_FILE && $COMMAND $TEMP_FILE ${@//$REAL_FILE/}
 else
     ### standard molden
-    $COMMAND $1
+    $COMMAND $@
 fi
 
 ###CLEAN-UP OF TEMPORARY FILES AND FOLDERS###
