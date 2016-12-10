@@ -121,7 +121,7 @@ class mol:
         detects the connectivity of the system, based on covalent radii.
 
         :Parameters:
-            - tresh  (float): additive treshhold 
+            - tresh  (float): additive treshhold
             - remove_duplicates  (bool): flag for the detection of duplicates
         """
         xyz = self.xyz
@@ -392,9 +392,9 @@ class mol:
                     new_conn[i][j]=new_conn[i][j]-1
         self.conn = new_conn
         return
-        
+
     def remove_dummies(self,labels=['x','xx']):
-        ''' removes atoms by atom labels 
+        ''' removes atoms by atom labels
         :Parameters:
             - labels (list): atom labels to be removed'''
         badlist = []
@@ -424,13 +424,13 @@ class mol:
 
     def center_com(self):
         ''' centers the molsys at the center of mass '''
-        center = self.get_com() 
+        center = self.get_com()
         self.translate(-center)
         return
 
     def get_com(self, idx = None):
         """
-        returns the center of mass of the mol object. 
+        returns the center of mass of the mol object.
 
         :Parameters:
             - idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
@@ -565,6 +565,12 @@ class mol:
         ''' returns the number of Atoms '''
         return self.natoms
 
+    def set_natoms(self, natoms):
+        """ sets the number of atoms for a new moltype """
+        assert self.natoms == 0
+        self.natoms = natoms
+        return
+
     def get_xyz(self):
         ''' returns the xyz Coordinates '''
         return self.xyz
@@ -579,7 +585,7 @@ class mol:
     def get_elems(self):
         ''' return the list of element symbols '''
         return self.elems
-        
+
     def get_elems_number(self):
         ''' return a list of atomic numbers '''
         return map(elements.number.__getitem__, self.elems)
@@ -597,6 +603,15 @@ class mol:
             - elems: list of elements to be set'''
         assert len(elems) == self.natoms
         self.elems = elems
+
+    def set_elems_number(self, elems_number):
+        """ set the elemsnts from a list of atomic numbers ""
+        :Parameters:
+            - elem_number: list of atomic numbers
+        """
+        assert len(elems_number) == self.natoms
+        self.elems = map(elements.number.keys().__getitem__, elems_number)
+        return
 
     def get_atypes(self):
         ''' return the list of atom types '''
@@ -630,7 +645,7 @@ class mol:
         sets the boundary conditions. 2 for cubic and orthorombic systems,
         3 for triclinic systems
         """
-        if list(self.cellparams[3:]) == [90.0,90.0,90.0]: 
+        if list(self.cellparams[3:]) == [90.0,90.0,90.0]:
             self.bcond = 2
         else:
             self.bcond = 3
@@ -648,7 +663,7 @@ class mol:
             - cell: cell vectors (3,3)
             - cell_only (bool)  : if false, also the coordinates are changed
                                   in respect to new cell
-            
+
         '''
         assert np.shape(cell) == (3,3)
         if cell_only == False: frac_xyz = self.get_frac_xyz()
@@ -680,7 +695,7 @@ class mol:
     def get_fragtypes(self):
         ''' return all fragment types '''
         return self.fragtypes
-        
+
     def get_fragtypes_list(self,count=False):
         ''' return a list of unique fragment types '''
         lset = list(set(self.fragtypes))
@@ -755,8 +770,8 @@ class mol:
 
     def set_nofrags(self):
         ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''
-        self.set_fragtypes(['-1']*self.natoms)
-        self.set_fragnumbers([-1]*self.natoms)
+        self.set_fragtypes(['0']*self.natoms)
+        self.set_fragnumbers([0]*self.natoms)
 
 
 
