@@ -37,7 +37,7 @@ class spg:
         self.spgcell = None # tuple of (lattice, position, numbers) as used in spglib
         #
         self.spg_version = spglib.get_version()
-        self.symprec = 1.0e-4
+        self.symprec = 1.0e-2
         logger.info("Addon spg loaded (version %d.%d.%d)" % self.spg_version)
         return
 

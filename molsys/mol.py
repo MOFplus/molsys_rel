@@ -35,7 +35,6 @@ logger.addHandler(shandler)
 
 
 
-
 np.set_printoptions(threshold=20000)
 
 SMALL_DIST = 1.0e-3
@@ -582,6 +581,19 @@ class mol:
         assert np.shape(xyz) == (self.natoms,3)
         self.xyz = xyz
 
+    def get_sumformula(self):
+        """
+        returns the sumformula of the mol object
+        """
+        fsum = ''
+        unielems = sorted(list(set(self.elems)))
+        elemscount = [self.elems.count(i) for i in unielems]
+        for i,e in enumerate(unielems):
+            fe = string.upper(e[0])+e[1:]
+            fsum += fe
+            fsum += str(elemscount[i])
+        return fsum
+
     def get_elems(self):
         ''' return the list of element symbols '''
         return self.elems
@@ -772,6 +784,5 @@ class mol:
         ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''
         self.set_fragtypes(['0']*self.natoms)
         self.set_fragnumbers([0]*self.natoms)
-
 
 
