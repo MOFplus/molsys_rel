@@ -456,6 +456,37 @@ class mol:
                 xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
+    
+    def new_mol_by_index(self, idx):
+        """
+        Creates a new mol object which consists of the atoms specified in the argument.
+        """
+        m = mol()
+        m.set_natoms(len(idx))
+        d = {}
+        elems = []
+        xyz = []
+        atypes = []
+        for n,i in enumerate(idx):
+            d[i] = n
+            elems.append(self.elems[i])
+            xyz.append(self.xyz[i,:])
+            atypes.append(self.atypes[i])
+        m.set_elems(elems)
+        m.set_xyz(xyz)
+        m.set_atypes(atypes)
+        conn = []
+        for i in idx:
+            this_conn = []
+            for j in self.conn[i]:
+                try:
+                    this_conn.append(d[j])
+                except KeyError:
+                    pass
+            conn.append(this_conn)
+        m.set_conn(conn)
+        return m
+        
 
     ##### distance measurements #####################
 
