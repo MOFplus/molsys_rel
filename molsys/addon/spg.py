@@ -9,6 +9,10 @@
     you need a recent spglib (>= 1.9.0) because the python import has changed at some point
     it can be installed via pip (pip install spglib)
 
+    comment by JK: i've added spacegroups.py in util containing a (an incomplete) list of spacegroup
+    strings with the corresponding spacegroup numbers.
+    molsys.util.spacegroups (herein imported as spacegroup) call via:
+    spacegroup.get_spacegroup_number(sgname). returns None if not in dict.
 
 Created on Wed Dec  7 15:44:36 2016
 
@@ -18,6 +22,7 @@ Created on Wed Dec  7 15:44:36 2016
 import spglib
 import numpy
 from molsys.util import elems
+from molsys.util import spacegroups
 import molsys
 
 import logging
@@ -99,7 +104,7 @@ class spg:
         number = int(result[1][1:-1])
         return (symbol, number)
 
-    def make_P1(self, spgnum):
+    def make_P1(self, spgnum, sg_setting=1):
         """
         to be implemented by Julian from his topo tools
 
@@ -111,6 +116,29 @@ class spg:
         dataset = spglib.get_symmetry_from_database(spgnum)
         # apply operations to self._mol and generate a new mol object
         # use detect_conn etc to complete it.
+        
+        #Okay, what i did was to use ASE as:
+        try: 
+            from ase.lattice.spacegroup import Spacegroup
+        except:
+            logging.error('make_P1 requires ASE (i.e. ase.lattice.spacegroup) to function properly')
+            return
+        ### the Sg instance basically is a collection of data as in 'dataset', but it's easier 2use:
+        self.sg = Spacegroup(spgnum,setting=sg_setting,sprec = 1e-3)  
+        new_xyz = []
+        new_elems = []
+        new_atypes = []
+        new_xyz,kinds =self.sg.equivalent_sites(self.mol.xyz,symprec=self.symprec)
+        
+        #now do the new elems and stuff:
+        for i,k in enumerate(kinds):
+            new_elems = self.mol.elems[k]
+            new_atypes= self.mol.atypes[k]
+            # fragtypes = self.mol.fragtypes[k]  #### Q: work on this here? they there?
+        ## now we try to get the connectivity right and find duplicates during the search
+        self.mol.elems  = new_elems
+        self.mol.atypes = new_atypes
+        self.mol.detect_conn(tresh = 0.1,remove_duplicates = True)
         return
 
     def get_primitive_cell(self):
