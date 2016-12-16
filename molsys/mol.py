@@ -814,7 +814,7 @@ class mol:
 
     def set_nofrags(self):
         ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''
-        self.set_fragtypes(['0']*self.natoms)
-        self.set_fragnumbers([0]*self.natoms)
+        self.set_fragtypes(['-1']*self.natoms)
+        self.set_fragnumbers([-1]*self.natoms)
 
 
