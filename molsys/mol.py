@@ -484,6 +484,7 @@ class mol:
                     pass
             conn.append(this_conn)
         m.set_conn(conn)
+        # TODO: handle periodic boundary conditions
         return m
         
 
