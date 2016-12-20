@@ -52,6 +52,7 @@ class mol:
         self.conn=[]
         self.fragtypes=[]
         self.fragnumbers=[]
+        self.nfrags = 0
         self.periodic= None
         self.is_bb=False
         return
@@ -353,8 +354,11 @@ class mol:
             cn = (np.array(c)+self.natoms).tolist()
             self.conn.append(cn)
         self.natoms += other.natoms
-        self.fragtypes += other.fragtypes
-        self.fragnumbers += other.fragnumbers
+        self.add_fragtypes(other.fragtypes)
+        self.add_fragnumbers(other.fragnumbers)
+        #self.fragtypes += other.fragtypes
+        #start_fragnumber = sorted(self.fragnumbers)[-1]+1
+        #self.fragnumbers += list(np.array(other.fragnumbers)+start_fragnumber)
         return
 
     def add_bond(self,a1,a2):
@@ -766,6 +770,32 @@ class mol:
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         assert len(fragnumbers) == self.natoms
         self.fragnumbers = fragnumbers
+        self.nfrags = sorted(self.fragnumbers)[-1]+1
+
+    def get_nfrags(self):
+        """
+        returns the number of fragments in the actual system
+        """
+        return self.nfrags
+
+    def add_fragnumbers(self,fragnumbers):
+        """
+        adds a set of fragnumbers to the actual system
+        :Parameters:
+            - fragnumbers: the fragment numbers to be set (list of integers)'''
+        """
+        self.fragnumbers += list(np.array(fragnumbers)+self.get_nfrags())
+        self.nfrags = sorted(self.fragnumbers)[-1]+1
+        return
+
+    def add_fragtypes(self,fragtypes):
+        """
+        adds a set of fragntpyes to the actual system
+        :Parameters:
+            - fragtypes: the fragtypes to be set (list of strings)'''
+        """
+        self.fragtypes += fragtypes
+        return
 
     def get_conn(self):
         ''' returns the connectivity of the system '''
