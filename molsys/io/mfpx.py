@@ -94,7 +94,11 @@ def write(mol, fname):
             f.write('# bbcenter %s %12.6f %12.6f %12.6f\n' %
                     tuple([mol.center_point]+ mol.special_center_point.tolist()))
         connstrings = ''
+        ctype = 0
         for i,d in enumerate(mol.connector_atoms):
+            if mol.connectors_type[i] != ctype:
+                ctype +=1
+                connstrings += '/ '
             for j in d:
                 connstrings = connstrings + str(j+1) +','
             connstrings = connstrings[0:-1] + '*' + str(mol.connectors[i]+1)+' '

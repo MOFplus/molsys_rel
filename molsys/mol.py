@@ -668,10 +668,7 @@ class mol:
     def get_atypelist(self):
         ''' Returns a list of unique atom types '''
         if not self.atypes: return None
-        at = []
-        for a in self.atypes:
-            if not at.count(a): at.append(a)
-        return at
+        return list(set(self.get_atypes()))
 
     def set_atypes(self,atypes):
         ''' set the atomtypes
