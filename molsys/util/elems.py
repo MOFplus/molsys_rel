@@ -487,6 +487,12 @@ mass  ={'xx':0.000000,
         'uup':288.000000,
         'uuh':293.000000}
 
+topotypes = {
+        3:'n',
+        4:'c',
+        5:'p',
+        6:'o'}
+
 
 def get_covdistance(elements):
     ''' get covalent bond distances based on elems.py cov_radii
