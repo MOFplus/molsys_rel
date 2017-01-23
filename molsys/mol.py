@@ -617,6 +617,10 @@ class mol:
         ''' return the list of atom types '''
         return self.atypes
 
+    # just to make compatibel with pydlpoly standard API
+    def get_atomtypes(self):
+        return self.atypes
+
     def get_atypelist(self):
         ''' Returns a list of unique atom types '''
         if not self.atypes: return None
@@ -773,5 +777,7 @@ class mol:
         self.set_fragtypes(['0']*self.natoms)
         self.set_fragnumbers([0]*self.natoms)
 
-
+    def get_comm(self):
+        """ dummy call ... returns None ... for compatibility with pydlpoly system objects """
+        return None
 
