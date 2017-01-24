@@ -6,6 +6,7 @@ from graph_tool.topology import *
 import numpy
 import pdb
 import molsys.topo as topo
+import copy
 
 class reader(object):
 
@@ -38,13 +39,12 @@ class reader(object):
 
 class lqg(object):
 
-    def __init__(self):
-        self.dim = 3
+    def __init__(self, dim = 3):
+        self.dim = dim
         return
 
 
     def read_systre_key(self, skey):
-        assert self.dim == 3
         skey = string.split(skey)
         self.nedges = len(skey)/5
         self.nvertices = 1
@@ -58,8 +58,6 @@ class lqg(object):
             label = map(int, skey[i*5+2:i*5+5])
             self.edges.append(edge)
             self.labels.append(label)
-        print 'nedges'
-        print self.nedges
         return
 
     def get_lqg_from_topo(self,topo):
@@ -75,8 +73,6 @@ class lqg(object):
                     self.edges.append([i,v])
                     #pdb.set_trace()
                     self.labels.append(list(topo.pconn[i][j]))
-        print self.nvertices
-        print self.nedges
         return
 
 
@@ -102,7 +98,7 @@ class lqg(object):
         for e in self.molg.edges():
             if tree[e] == 0:
                 self.molg.set_edge_filter(tree)
-                vl, el = shortest_path(self.molg, e.source(), e.target())
+                vl, el = shortest_path(self.molg, self.molg.vertex(int(e.source())), self.molg.vertex(int(e.target())))
                 self.molg.set_edge_filter(None)
                 basis[i, self.molg.ep.number[e]] = 1
                 for eb in el:
@@ -117,7 +113,6 @@ class lqg(object):
         self.basis = basis
         self.molg.set_directed(True)
         return self.basis
-
 
     def get_ncocycles(self,n):
         self.molg.set_directed(False)
@@ -162,7 +157,7 @@ class lqg(object):
 
 
     def get_cell(self):
-        if self.nbasevec == 3:
+        if self.nbasevec == -5:
             self.cell = numpy.dot(self.basis, self.basis.T)
         else:
             k = numpy.zeros([self.nbasevec-3+self.nvertices-1,self.nedges])
@@ -193,9 +188,9 @@ class lqg(object):
             P = numpy.eye(self.nedges,self.nedges) - numpy.dot(k.T, 
                     numpy.dot(numpy.linalg.inv(S), k))
             self.cell = numpy.dot(L, numpy.dot(P,L.T))
-            print self.cell
-            import molsys.util.unit_cell as uc
-            print uc.abc_from_vectors(self.cell)
+        print self.cell
+        import molsys.util.unit_cell as uc
+        print uc.abc_from_vectors(self.cell)
         return self.cell
 
     def place_vertices(self, first = numpy.array([0,0,0])):
@@ -224,8 +219,6 @@ class lqg(object):
                     done.append(e[0])
         ### perhaps a flooring has to be performe
         self.frac_xyz = frac_xyz
-        print frac_xyz
-        print done
         return self.frac_xyz
 
     def make_mol(self):
@@ -246,7 +239,8 @@ class lqg(object):
 
     def get_edge_with_idx(self, idx):
         for i in self.molg.edges():
-            if self.molg.ep.number[i] == idx: return i
+            if self.molg.edge_index[i] == idx: return i
+            #if self.molg.ep.number[i] == idx: return i
 
     def find_li_vectors(self,R):
         rank = numpy.linalg.matrix_rank(R)
