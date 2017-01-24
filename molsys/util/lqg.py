@@ -44,24 +44,27 @@ class lqg(object):
         return
 
 
-    def read_systre_key(self, skey):
+    def read_systre_key(self, skey, dim=3):
+        self.dim = dim
+        dfac = 2+self.dim
         skey = string.split(skey)
-        self.nedges = len(skey)/5
+        self.nedges = len(skey)/dfac
         self.nvertices = 1
         self.edges = []
         self.labels = []
         for i in range(self.nedges):
-            edge = map(int, skey[i*5:i*5+2])
+            edge = map(int, skey[i*dfac:i*dfac+2])
             for j in edge:
                 if j > self.nvertices: self.nvertices = j
             edge = list(numpy.array(edge)-1)
-            label = map(int, skey[i*5+2:i*5+5])
+            label = map(int, skey[i*dfac+2:i*dfac+dfac])
             self.edges.append(edge)
             self.labels.append(label)
         return
 
     def get_lqg_from_topo(self,topo):
         # be careful not working for nets where an vertex is connected to itself
+        self.dim = 3
         self.nvertices = topo.get_natoms()
         self.nedges = 0
         self.edges = []
@@ -147,7 +150,10 @@ class lqg(object):
             img = numpy.sum(self.basis[i]* labels.T,axis = 1)
             vimg.append(img)
         for i in range(self.nedges-self.nbasevec):
-            vimg.append([0,0,0])
+            if self.dim == 2:
+                vimg.append([0,0])
+            else:
+                vimg.append([0,0,0])
         self.alpha = numpy.array(vimg)
         return self.alpha
 
@@ -160,16 +166,16 @@ class lqg(object):
         if self.nbasevec == -5:
             self.cell = numpy.dot(self.basis, self.basis.T)
         else:
-            k = numpy.zeros([self.nbasevec-3+self.nvertices-1,self.nedges])
+            k = numpy.zeros([self.nbasevec-self.dim+self.nvertices-1,self.nedges])
             idx = self.find_li_vectors(self.alpha)
             latbase = self.alpha[idx]
             Lr = self.basis[idx]
             ### we need to orthonormalize the latbase ###
-            L = numpy.zeros([3,self.nedges])
-            olatbase = numpy.array([[1,0,0],[0,1,0],[0,0,1]])
-            for i in range(3):
+            L = numpy.zeros([self.dim,self.nedges])
+            olatbase = numpy.eye(self.dim, self.dim)
+            for i in range(self.dim):
                 b = numpy.linalg.solve(latbase.T, olatbase[i,:])
-                for j in range(3):
+                for j in range(self.dim):
                     L[i,:]+= b[j]*Lr[j,:]
             counter = 0
             ### TODO: switsch to other basis to make it more beautiful
@@ -177,12 +183,12 @@ class lqg(object):
                 if i not in idx:
                     b = numpy.linalg.solve(latbase.T,self.alpha[i])
                     bb = numpy.zeros(self.nedges)
-                    for j in range(3):
+                    for j in range(self.dim):
                         bb += b[j]*self.basis[idx[j]]
                     k[counter] = self.basis[i]-bb
                     counter += 1
             if self.nvertices > 1:
-                k[self.nbasevec-3:,:] = self.get_ncocycles(self.nvertices-1)
+                k[self.nbasevec-self.dim:,:] = self.get_ncocycles(self.nvertices-1)
             ### do projection of L ###
             S = numpy.dot(k,k.T)
             P = numpy.eye(self.nedges,self.nedges) - numpy.dot(k.T, 
@@ -190,7 +196,7 @@ class lqg(object):
             self.cell = numpy.dot(L, numpy.dot(P,L.T))
         print self.cell
         import molsys.util.unit_cell as uc
-        print uc.abc_from_vectors(self.cell)
+        #print uc.abc_from_vectors(self.cell)
         return self.cell
 
     def place_vertices(self, first = numpy.array([0,0,0])):
