@@ -367,6 +367,14 @@ class topo(mol.mol):
         self.set_elems(elems)
         return
 
+    def set_empty_pconn(self):
+        """
+        sets an empty list of lists for the periodic connectivity
+        """
+        self.pconn = []
+        for i in xrange(self.natoms):
+            self.pconn.append([])
+        return
 
 
 ############# Plotting

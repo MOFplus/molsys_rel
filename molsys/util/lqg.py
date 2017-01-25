@@ -157,6 +157,10 @@ class lqg(object):
         self.alpha = numpy.array(vimg)
         return self.alpha
 
+    def get_image(self, vec):
+        labels = numpy.array(self.labels)
+        return  numpy.sum(vec*labels.T,axis = 1)
+
     def get_fracs(self):
         self.fracs = numpy.dot(numpy.linalg.inv(self.B),self.alpha)
         return self.fracs
@@ -186,6 +190,7 @@ class lqg(object):
                     for j in range(self.dim):
                         bb += b[j]*self.basis[idx[j]]
                     k[counter] = self.basis[i]-bb
+                    #print self.get_image(k[counter])
                     counter += 1
             if self.nvertices > 1:
                 k[self.nbasevec-self.dim:,:] = self.get_ncocycles(self.nvertices-1)
@@ -196,7 +201,7 @@ class lqg(object):
             self.cell = numpy.dot(L, numpy.dot(P,L.T))
         print self.cell
         import molsys.util.unit_cell as uc
-        #print uc.abc_from_vectors(self.cell)
+        print uc.abc_from_vectors(self.cell)
         return self.cell
 
     def place_vertices(self, first = numpy.array([0,0,0])):
@@ -234,9 +239,12 @@ class lqg(object):
         t.set_xyz_from_frac(self.frac_xyz)
         t.set_atypes(self.nvertices*['1'])
         t.set_empty_conn()
+        t.set_empty_pconn()
         for i,e in enumerate(self.edges):
             t.conn[e[0]].append(e[1])
             t.conn[e[1]].append(e[0])
+            t.pconn[e[0]].append(numpy.array(self.labels[i]))
+            t.pconn[e[1]].append(-1*numpy.array(self.labels[i]))
         #t.wrap_in_box()
         t.set_elems_by_coord_number()
         t.write('test.xyz', 'txyz')
@@ -251,8 +259,10 @@ class lqg(object):
     def find_li_vectors(self,R):
         rank = numpy.linalg.matrix_rank(R)
         idx = []
-        idx.append(0)
-        for i in range(1,R.shape[0]):
+        ### get first non zero vector of R
+        fn = numpy.nonzero(R)[0][0]
+        idx.append(fn)
+        for i in range(fn+1,R.shape[0]):
             indep = True
             for j in idx:
                 if i != j:
