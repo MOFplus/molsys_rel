@@ -358,7 +358,22 @@ class topo(mol.mol):
         self.pconn[el1].pop(idx1)
         self.pconn[el2].pop(idx2)
         logging.warning('pconn may not be properly updated!!!')
+        return
 
+    def set_elems_by_coord_number(self):
+        elems = []
+        for i in range(self.natoms):
+            elems.append(elements.topotypes[len(self.conn[i])])
+        self.set_elems(elems)
+        return
+
+    def set_empty_pconn(self):
+        """
+        sets an empty list of lists for the periodic connectivity
+        """
+        self.pconn = []
+        for i in xrange(self.natoms):
+            self.pconn.append([])
         return
 
 
