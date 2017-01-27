@@ -20,10 +20,8 @@ class conngraph:
         self.molg.vp.midx = self.molg.new_vertex_property("short")
         self.molg.vp.elem = self.molg.new_vertex_property("string")
         self.molg.vp.coord = self.molg.new_vertex_property("vector<double>")
-        self.molg.vp.inter = self.molg.new_vertex_property("bool")
+        self.molg.vp.inter = self.molg.new_vertex_property("bool") # what is this good for? i have no idea -marco
         self.molg.vp.filled = self.molg.new_vertex_property("bool") # boolean for flood fill
-        self.molg.ep.act = self.molg.new_edge_property("bool")
-        self.molg.ep.Nk = self.molg.new_edge_property("short")
         for i in xrange(self.mol.natoms):
             ig = self.molg.add_vertex()
             self.molg.vp.coord[ig] = self.mol.xyz[i,:]
@@ -35,6 +33,8 @@ class conngraph:
             else:
                 self.molg.vp.fix[ig] = 0
         # setup edges
+        self.molg.ep.act = self.molg.new_edge_property("bool")
+        self.molg.ep.Nk = self.molg.new_edge_property("short")
         for i in xrange(self.mol.natoms):
             for j in self.mol.conn[i]:
                 if j > i:
@@ -117,6 +117,7 @@ class conngraph:
         while iso == []:
             ngon = self.create_ngon(n)
             ngon.vp.fix = ngon.new_vertex_property("short")
+
             for v in ngon.vertices():
                 ngon.vp.fix[v] = 0
             iso = subgraph_isomorphism(ngon, self.molg, 1, (ngon.vp.fix, self.molg.vp.fix))
@@ -140,9 +141,6 @@ class conngraph:
             return True
         else:
             return False
-
-    def get_periodic_conn(self):
-        return
     
     def create_ngon(self, n):
         """
@@ -231,7 +229,10 @@ class conngraph:
         ### set edge filter
         self.molg.vp.filled.set_value(False)
         self.molg.ep.act.set_value(True)
-        thresh = self.threshes[0]
+        if self.threshes != []:
+            thresh = self.threshes[0]
+        else:
+            thresh = 0
         for e in self.molg.edges():
             if self.molg.ep.Nk[e] >= thresh:
                 self.molg.ep.act[e] = False
@@ -293,13 +294,13 @@ class conngraph:
                     clusters_atoms.append(this_cluster_atoms)
         self.molg.clear_filters()
         return clusters_vertices, clusters_atoms
-
-    def make_topo_graph(self):
+    
+    def make_topo_graph(self, verbose=True):
         try:
             assert self.clusters
         except:
             self.get_clusters()
-        tm = molsys.mol()
+        tm = molsys.topo()
         tm.natoms = len(self.clusters)
         tm.set_empty_conn()
         xyz = []
@@ -317,13 +318,13 @@ class conngraph:
                         ext_bond.append(int(str(j)))
             xyz.append(self.mol.get_com(cidx))
             #xyz.append(self.center(cxyz))
-            print "cluster %s consisting of %d atoms is %d times connected" % (str(i), 
+            if verbose: print "cluster %s consisting of %d atoms is %d times connected" % (str(i), 
                     len(cluster_atoms), len(ext_bond))
             # now check to which clusters these external bonds belong to
             for ea in ext_bond:
                 for ji, j in enumerate(self.clusters):
                     if ea in j:
-                        print " -> bonded to cluster ", ji
+                        if verbose: print " -> bonded to cluster ", ji
                         tm.conn[i].append(ji)
                         break
         ### check for consistence of conn
@@ -337,16 +338,109 @@ class conngraph:
             for j in tm.conn[i]:
                 if j>i:
                     if not i in tm.conn[j]:
-                        print "Fragment topology is inconsitent"
+                        if verbose: print "Fragment topology is inconsitent"
         tm.set_xyz(numpy.array(xyz))
         tm.set_elems(elems)
         tm.set_atypes(tm.natoms*['0'])
         tm.set_cell(self.mol.get_cell())
+        tm.add_pconn()
         topograph = self.__class__(tm)
         topograph.make_graph()
-        print self.threshes
+        if verbose: print self.threshes
         return topograph
 
+    def get_all_cs(self, depth, tg=None):
+        """
+        Calculates (coordination sequence) all cs values of the conngraph.
+        depth = maximum level
+        """
+        if tg == None:
+            tg = self.make_topo_graph(False)
+        cs_list = []
+        for i in range(len(self.clusters)):
+            cs = self.get_cs(depth, i, tg=tg)
+            if cs not in cs_list:
+                cs_list.append(cs)
+        return cs_list
+
+    def get_cs(self, depth, start_vertex=0, start_cell=numpy.array([0,0,0]), tg=None):
+        """
+        Calculates the cs (coordination sequence) values of the vertex specified in start_vertex and start_cell.
+        depth = maximum level
+        tg = topograph of this class - pre-calculate it if you want a faster execution speed when
+             calculating multiple cs values on the same conngraph.
+        """
+        def contains(l, obj):
+            # the normal construction "if x not in y" does not work if arrays are somehow involved inside a list
+            # thus, we need this helper function which is probably terribly slow (if anyone has a better solution, please let me hear it)
+            found = False
+            for i in l:
+                if i[0] == obj[0] and (i[1] == obj[1]).all():
+                    found = True
+            return found
+        # create cs with an appropriate length.
+        cs = depth*[0]
+        if tg == None:
+            # topograph should only be generated once, if it's not there yet, so the program runs more quickly.
+            tg = self.make_topo_graph(False)
+            # the data of the topo object is found at tg.mol
+        # now, if we want to have a cs_n value, we need to get all neighbours, then do the same thing for all neighbour's
+        # neighbours, and continue as many times as necessary.
+        # however, we must not start looking at the neighbour's neighbours before we looked at ALL neighbours, and set them
+        # into the ignore list!
+        ignore_list = [[start_vertex, start_cell]]
+        neighbours = [[start_vertex, start_cell]]
+        for level in range(depth):
+            neighbours2 = []
+            #print "--------- level "+str(level)+" -----------"
+            #print "neighbours: "+str(neighbours)
+            for n in neighbours:
+                # get the neighbours of the neighbours and add them to the list neighbours2
+                visited = self.get_cs1(n[0], n[1], tg)
+                for v in visited:
+                    if not contains(neighbours2, v):
+                        if not contains(ignore_list, v):
+                            neighbours2.append(v)
+            #print "ignore_list: " +str(ignore_list)
+            # put the neighbours2 into the ignore list
+            for n2 in neighbours2:
+                ignore_list.append(n2)
+            #print "neighbours2: "+str(neighbours2)
+            # the neighbours2 are all the vertices which can be reached with the cs_level operation.
+            cs[level] = len(neighbours2)
+            # if we want to repeat the procedure for the cs_(level+1) operation we have to make the neighbours2 to the neighbours
+            neighbours = neighbours2
+            # and remove neighbours2 because of side effects
+            del(neighbours2)
+        return cs
+    
+    def get_cs1(self, start_vertex=0, start_cell=numpy.array([0,0,0]), tg=None):
+        """
+        This function will return all vertices, which are connected to the vertices start_vertex in the cell start_cell.
+        """
+        assert self.clusters
+        visited = []
+        if tg==None:
+            tg = self.make_topo_graph(False)
+        # loop over all neighbouring clusters and add them to the list
+        for nj, j in enumerate(tg.mol.conn[start_vertex]):
+            current_vertex = j
+            current_cell = start_cell + tg.mol.pconn[start_vertex][nj]
+            visited.append([current_vertex, current_cell])
+        return visited
+    
+    def get_vertex_symbol(self, start_vertex):
+        """
+        In the vertex symbol, the number of the shortest ring at each angle of a vertex is given with
+        the number of such rings in brackets (originally: subscript, but this can't be realized in
+        python).
+        Relevant literature: O. Delgado-Friedrichs, M. O'Keeffe, Journal of Solid State Chemistry 178, 2005, p. 2480ff.
+        """
+        self.molg.vp.filled.set_value(False)
+        self.molg.vp.filled[start_vertex] = True
+        # ACHTUNG BAUSTELLE !!!!
+        return
+    
     def center(self,xyz):
         cell_abc = self.mol.cellparams[:3]
         fix = xyz[0,:]
@@ -428,7 +522,6 @@ class conngraph:
             if graph.vp.filled[n] == False:
                 self.flood_fill(graph, n, return_list)
         return return_list
-    
     
     def search_and_destroy(self, printout=False):
         """

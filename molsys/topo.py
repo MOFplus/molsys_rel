@@ -241,7 +241,7 @@ class topo(mol.mol):
             atoms_pconn = []
             atoms_image = []
             for ji, j in enumerate(c):
-                d,r,imgi = self.get_distvec(i,j)
+                d,r,imgi = self.get_distvec2(i,j)
                 if len(imgi) == 1:
                     # only one neighbor .. all is fine
                     atoms_pconn.append(images[imgi[0]])
