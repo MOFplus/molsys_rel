@@ -104,18 +104,52 @@ class lqg(object):
                 vl, el = shortest_path(self.molg, self.molg.vertex(int(e.source())), self.molg.vertex(int(e.target())))
                 self.molg.set_edge_filter(None)
                 basis[i, self.molg.ep.number[e]] = 1
+                neg = False
                 for eb in el:
                     idx = self.molg.ep.number[eb]
                     ebt = self.get_edge_with_idx(idx)
-                    if ebt.source() == e.source():
-                        basis[i, self.molg.ep.number[eb]] = -1
+#                    if ebt.source() == e.source():
+#                        basis[i, self.molg.ep.number[eb]] = -1
+#                    else:
+#                        basis[i, self.molg.ep.number[eb]] = 1
+                    if neg == False:
+                        if ebt.source() == e.source():
+                            basis[i, self.molg.ep.number[eb]] = -1
+                            neg = True
+                        else:
+                            basis[i, self.molg.ep.number[eb]] = 1
+                            neg = False
                     else:
-                        basis[i, self.molg.ep.number[eb]] = 1
+                        if ebt.source() == e.source():
+                            basis[i, self.molg.ep.number[eb]] = 1
+                            neg = False
+                        else:
+                            basis[i, self.molg.ep.number[eb]] = -1
+                            neg = True
                     e = ebt
                 i += 1
-        self.basis = basis
+        self.cyclic_basis = basis
         self.molg.set_directed(True)
-        return self.basis
+        return self.cyclic_basis
+
+    def get_cocycle_basis(self):
+        n = self.nedges - (self.nedges - self.nvertices +1)
+        cocycles = numpy.zeros([n, self.nedges])
+        self.molg.set_directed(False)
+        i = 0
+        for v in self.molg.vertices():
+            el = v.out_edges()
+            for eb in el:
+                idx = self.molg.ep.number[eb]
+                ebt = self.get_edge_with_idx(idx)
+                if ebt.source() == v:
+                    cocycles[i, idx] = 1
+                else:
+                    cocycles[i, idx] = -1
+            i+=1
+            if i == n: break
+            self.cocycle_basis = cocycles
+        return self.cocycle_basis
 
     def get_ncocycles(self,n):
         self.molg.set_directed(False)
@@ -137,17 +171,16 @@ class lqg(object):
     def get_B_matrix(self):
         n = self.nedges - (self.nedges - self.nvertices +1)
         if n > 0: 
-             cocycles = self.get_ncocycles(n)
-             self.B = numpy.append(self.basis, cocycles, axis = 0)
+             self.B = numpy.append(self.cyclic_basis, self.cocycle_basis, axis = 0)
         else:
-            self.B = self.basis
+            self.B = self.cyclic_basis
         return self.B
 
     def get_alpha(self):
         vimg = []
         labels = numpy.array(self.labels)
-        for i in range(numpy.shape(self.basis)[0]):
-            img = numpy.sum(self.basis[i]* labels.T,axis = 1)
+        for i in range(numpy.shape(self.cyclic_basis)[0]):
+            img = numpy.sum(self.cyclic_basis[i]* labels.T,axis = 1)
             vimg.append(img)
         for i in range(self.nedges-self.nbasevec):
             if self.dim == 2:
@@ -165,15 +198,58 @@ class lqg(object):
         self.fracs = numpy.dot(numpy.linalg.inv(self.B),self.alpha)
         return self.fracs
 
+    def get_lattice_basis(self):
+        idx = self.find_li_vectors(self.alpha)
+        latbase = self.alpha[idx]
+        Lr = self.cyclic_basis[idx]
+        ### we need to orthonormalize the latbase ###
+        L = numpy.zeros([self.dim,self.nedges])
+        olatbase = numpy.eye(self.dim, self.dim)
+        for i in range(self.dim):
+            b = numpy.linalg.solve(latbase.T, olatbase[i,:])
+            for j in range(self.dim):
+                L[i,:]+= b[j]*Lr[j,:]
+        self.lattice_basis = L
+        return self.lattice_basis
+
+    def get_kernel(self):
+        k = numpy.zeros([self.nbasevec-self.dim+self.nvertices-1,self.nedges])
+        idx = self.find_li_vectors(self.alpha)
+        latbase = self.alpha[idx]
+        counter = 0
+        ### TODO: switsch to other basis to make it more beautiful
+        for i in range(self.nbasevec):
+            if i not in idx:
+                b = numpy.linalg.solve(latbase.T,self.alpha[i])
+                bb = numpy.zeros(self.nedges)
+                for j in range(self.dim):
+                    bb += b[j]*self.cyclic_basis[idx[j]]
+                k[counter] = self.cyclic_basis[i]-bb
+                #print self.get_image(k[counter])
+                counter += 1
+        if self.nvertices > 1:
+            k[self.nbasevec-self.dim:,:] = self.cocycle_basis[0:self.nvertices-1,:]
+        self.kernel = k
+        return self.kernel
+
+    def get_cell2(self):
+        k = self.kernel
+        L = self.lattice_basis
+        S = numpy.dot(k,k.T)
+        P = numpy.eye(self.nedges,self.nedges) - numpy.dot(k.T, 
+                numpy.dot(numpy.linalg.inv(S), k))
+        self.cell = numpy.dot(L, numpy.dot(P,L.T))
+        return self.cell
+
 
     def get_cell(self):
         if self.nbasevec == -5:
-            self.cell = numpy.dot(self.basis, self.basis.T)
+            self.cell = numpy.dot(self.cyclic_basis, self.cyclic_basis.T)
         else:
             k = numpy.zeros([self.nbasevec-self.dim+self.nvertices-1,self.nedges])
             idx = self.find_li_vectors(self.alpha)
             latbase = self.alpha[idx]
-            Lr = self.basis[idx]
+            Lr = self.cyclic_basis[idx]
             ### we need to orthonormalize the latbase ###
             L = numpy.zeros([self.dim,self.nedges])
             olatbase = numpy.eye(self.dim, self.dim)
@@ -188,12 +264,13 @@ class lqg(object):
                     b = numpy.linalg.solve(latbase.T,self.alpha[i])
                     bb = numpy.zeros(self.nedges)
                     for j in range(self.dim):
-                        bb += b[j]*self.basis[idx[j]]
-                    k[counter] = self.basis[i]-bb
+                        bb += b[j]*self.cyclic_basis[idx[j]]
+                    k[counter] = self.cyclic_basis[i]-bb
                     #print self.get_image(k[counter])
                     counter += 1
             if self.nvertices > 1:
                 k[self.nbasevec-self.dim:,:] = self.get_ncocycles(self.nvertices-1)
+            print k
             ### do projection of L ###
             S = numpy.dot(k,k.T)
             P = numpy.eye(self.nedges,self.nedges) - numpy.dot(k.T, 
