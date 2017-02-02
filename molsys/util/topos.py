@@ -6,8 +6,35 @@ import molsys
 from graph_tool import Graph
 from graph_tool.topology import *
 import numpy
+import copy
+from operator import itemgetter
+#import pdb
 
 class conngraph:
+
+# This is the "conngraph" class
+# Its original purpose was to calculate a Graph from a molsys object and do graph manipulation things with it.
+# Inside this class is a lot of stuff, which is not needed any more, as well as a lot of stuff that doesn't belong here.
+# We should try to split the conngraph class into two classes: conngraph and topograph
+# with conngraph being the class handling graphs of the molecules, and a "mol" object as self.mol
+# and topograph being the class handling graphs of topologies, with a "topo" object as self.mol.
+# Everything here is still work in progress, and if you use this class, be aware that some functions might be moved into
+# other locations soon!
+#
+# For calculating cs values, you have to delete 2-connected linkers at the right location. This is an example code which works:
+# import molsys
+# import molsys.util.topos
+# import numpy
+# t = molsys.topo()
+# t.read(fname, ftype)
+# cg = molsys.util.topos.conngraph(t)
+# cg.make_graph()
+# cg.determine_Nk()
+# cg.get_clusters()
+# tg = cg.make_topo_graph(False)
+# tg.remove_2conns_from_mol()
+# cs = tg.get_all_cs(10, tg=tg)
+# print numpy.array(cs)
 
     def __init__(self,mol):
         self.mol = mol
@@ -47,8 +74,6 @@ class conngraph:
     def cut_to_2core(self):
         """
         Cuts graph to its 2-core
-        
-        Returns: Graph object
         """
         k = kcore_decomposition(self.molg).get_array()
         idxlist = numpy.argwhere(k==1).tolist()
@@ -104,6 +129,36 @@ class conngraph:
                     self.remove_2conns()
                     break
         return found_2conns
+    
+    def remove_2conns_from_mol(self):
+        """
+        Removes all vertices with 2 connecting edges from self.mol
+        """
+        # delete atoms
+        delete_list = []
+        for i in range(self.mol.natoms):
+            if len(self.mol.conn[i]) == 2:
+                delete_list.append(i)
+        for i in reversed(sorted(delete_list)):
+            # retain connectivity information
+            connected = []
+            for j in self.mol.conn[i]:
+                connected.append(j)
+            self.mol.conn[connected[0]].append(connected[1])
+            self.mol.conn[connected[1]].append(connected[0])
+            # now delete the atom
+            self.mol.delete_atom(i)
+        # now recompute pconn
+        topo = molsys.topo()
+        topo.natoms = self.mol.natoms
+        topo.set_xyz(self.mol.get_xyz())
+        topo.set_atypes(self.mol.get_atypes())
+        topo.set_conn(self.mol.get_conn())
+        topo.set_elems(self.mol.get_elems())
+        topo.set_cell(self.mol.get_cell())
+        topo.add_pconn()
+        self.mol = topo
+        return
     
     def dissolve_ngon(self, max_n=100):
         """
@@ -351,13 +406,14 @@ class conngraph:
 
     def get_all_cs(self, depth, tg=None):
         """
-        Calculates (coordination sequence) all cs values of the conngraph.
+        Calculates all cs (coordination sequence) values of the conngraph.
+        This function just loops over all vertices and calls get_cs for each one
         depth = maximum level
         """
         if tg == None:
             tg = self.make_topo_graph(False)
         cs_list = []
-        for i in range(len(self.clusters)):
+        for i in range(tg.mol.natoms):
             cs = self.get_cs(depth, i, tg=tg)
             if cs not in cs_list:
                 cs_list.append(cs)
@@ -418,7 +474,6 @@ class conngraph:
         """
         This function will return all vertices, which are connected to the vertices start_vertex in the cell start_cell.
         """
-        assert self.clusters
         visited = []
         if tg==None:
             tg = self.make_topo_graph(False)
@@ -429,16 +484,55 @@ class conngraph:
             visited.append([current_vertex, current_cell])
         return visited
     
-    def get_vertex_symbol(self, start_vertex):
+    def get_vertex_symbol(self, start_vertex, tg=None):
         """
         In the vertex symbol, the number of the shortest ring at each angle of a vertex is given with
         the number of such rings in brackets (originally: subscript, but this can't be realized in
         python).
         Relevant literature: O. Delgado-Friedrichs, M. O'Keeffe, Journal of Solid State Chemistry 178, 2005, p. 2480ff.
         """
-        self.molg.vp.filled.set_value(False)
-        self.molg.vp.filled[start_vertex] = True
-        # ACHTUNG BAUSTELLE !!!!
+        # WARNING: since this doesnt work with pconn, this will probably not work for most nets !!!
+        # NICHT FERTIG ACHTUNG BAUSTELLE
+        if tg==None:
+            tg = self.make_topo_graph(False)
+        tg.molg.vp.filled.set_value(False)
+        tg.molg.vp.filled[start_vertex] = True
+        vertex_symbol = []
+        paths = []
+        for source in tg.molg.vertex(start_vertex).all_neighbours():
+            for target in tg.molg.vertex(start_vertex).all_neighbours():
+                if source != target:
+                    tg.molg.set_vertex_filter(tg.molg.vp.filled, inverted=True)
+                    asp = all_shortest_paths(tg.molg, source, target)
+                    tg.molg.clear_filters()
+                    append_list = []
+                    for p1 in asp:
+                        path = p1.tolist()
+                        path = map(int, path)
+                        if list(reversed(path)) not in paths:
+                            paths.append(path)
+                            path = copy.deepcopy(path)
+                            path.append(start_vertex)
+                            append_list.append(path)
+                    # Here I have to recognize "forbidden" cycles (those which have a shorter path 
+                    # between two vertices on the cycle, than the shortest one that is part of the cycle)
+                    for path in append_list:
+                        for ni,i in enumerate(path):
+                            for nj in range(ni+1):
+                                d = shortest_distance(tg.molg, path[ni], path[nj])
+                                if d < ni-nj and d < (nj+len(path)-ni):
+                                    print "POLIZEI"
+                    # end forbidden cycle handling
+                    if len(append_list) != 0:
+                        vertex_symbol.append([len(append_list[0]), len(append_list)])
+        symbol_string = ""
+        for k, i in enumerate(sorted(vertex_symbol, key=itemgetter(0))):
+            symbol_string += str(i[0])
+            if i[1] != 1:
+                symbol_string += "(" + str(i[1]) + ")"
+            if k != len(vertex_symbol)-1:
+                symbol_string += "."
+        print symbol_string
         return
     
     def center(self,xyz):
