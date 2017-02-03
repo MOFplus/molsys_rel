@@ -101,29 +101,39 @@ class lqg(object):
         for e in self.molg.edges():
             if tree[e] == 0:
                 self.molg.set_edge_filter(tree)
-                vl, el = shortest_path(self.molg, self.molg.vertex(int(e.source())), self.molg.vertex(int(e.target())))
+                vl, el = shortest_path(self.molg, self.molg.vertex(int(e.target())), self.molg.vertex(int(e.source())))
                 self.molg.set_edge_filter(None)
                 basis[i, self.molg.ep.number[e]] = 1
                 neg = False
                 for eb in el:
                     idx = self.molg.ep.number[eb]
                     ebt = self.get_edge_with_idx(idx)
-#                    if ebt.source() == e.source():
-#                        basis[i, self.molg.ep.number[eb]] = -1
-#                    else:
-#                        basis[i, self.molg.ep.number[eb]] = 1
-                    if neg == False:
-                        if ebt.source() == e.source():
+                    if ebt.target() == e.target():
+                        if neg != True:
                             basis[i, self.molg.ep.number[eb]] = -1
                             neg = True
-                        else:
+                        else: 
                             basis[i, self.molg.ep.number[eb]] = 1
                             neg = False
-                    else:
-                        if ebt.source() == e.source():
+                    elif ebt.source() == e.source():
+                        if neg != True:
+                            basis[i, self.molg.ep.number[eb]] = -1
+                            neg = True
+                        else: 
                             basis[i, self.molg.ep.number[eb]] = 1
                             neg = False
-                        else:
+                    elif ebt.source() == e.target():
+                        if neg != True:
+                            basis[i, self.molg.ep.number[eb]] = 1
+                            neg = False
+                        else: 
+                            basis[i, self.molg.ep.number[eb]] = -1
+                            neg = True
+                    elif ebt.target() == e.source():
+                        if neg != True:
+                            basis[i, self.molg.ep.number[eb]] = 1
+                            neg = False
+                        else: 
                             basis[i, self.molg.ep.number[eb]] = -1
                             neg = True
                     e = ebt
@@ -232,53 +242,13 @@ class lqg(object):
         self.kernel = k
         return self.kernel
 
-    def get_cell2(self):
+    def get_cell(self):
         k = self.kernel
         L = self.lattice_basis
         S = numpy.dot(k,k.T)
         P = numpy.eye(self.nedges,self.nedges) - numpy.dot(k.T, 
                 numpy.dot(numpy.linalg.inv(S), k))
         self.cell = numpy.dot(L, numpy.dot(P,L.T))
-        return self.cell
-
-
-    def get_cell(self):
-        if self.nbasevec == -5:
-            self.cell = numpy.dot(self.cyclic_basis, self.cyclic_basis.T)
-        else:
-            k = numpy.zeros([self.nbasevec-self.dim+self.nvertices-1,self.nedges])
-            idx = self.find_li_vectors(self.alpha)
-            latbase = self.alpha[idx]
-            Lr = self.cyclic_basis[idx]
-            ### we need to orthonormalize the latbase ###
-            L = numpy.zeros([self.dim,self.nedges])
-            olatbase = numpy.eye(self.dim, self.dim)
-            for i in range(self.dim):
-                b = numpy.linalg.solve(latbase.T, olatbase[i,:])
-                for j in range(self.dim):
-                    L[i,:]+= b[j]*Lr[j,:]
-            counter = 0
-            ### TODO: switsch to other basis to make it more beautiful
-            for i in range(self.nbasevec):
-                if i not in idx:
-                    b = numpy.linalg.solve(latbase.T,self.alpha[i])
-                    bb = numpy.zeros(self.nedges)
-                    for j in range(self.dim):
-                        bb += b[j]*self.cyclic_basis[idx[j]]
-                    k[counter] = self.cyclic_basis[i]-bb
-                    #print self.get_image(k[counter])
-                    counter += 1
-            if self.nvertices > 1:
-                k[self.nbasevec-self.dim:,:] = self.get_ncocycles(self.nvertices-1)
-            print k
-            ### do projection of L ###
-            S = numpy.dot(k,k.T)
-            P = numpy.eye(self.nedges,self.nedges) - numpy.dot(k.T, 
-                    numpy.dot(numpy.linalg.inv(S), k))
-            self.cell = numpy.dot(L, numpy.dot(P,L.T))
-        print self.cell
-        import molsys.util.unit_cell as uc
-        print uc.abc_from_vectors(self.cell)
         return self.cell
 
     def place_vertices(self, first = numpy.array([0,0,0])):
@@ -356,37 +326,4 @@ class lqg(object):
                     idx.pop()
                 if len(idx)==rank: break
         return idx
-
-
-    def find_li_vectors_old(self,dim, R):
-        print R 
-        r = numpy.linalg.matrix_rank(R) 
-        index = numpy.zeros(r) #this will save the positions of the li columns in the matrix
-        counter = 0
-        index[0] = 0 #without loss of generality we pick the first column as linearly independent
-        j = 0 #therefore the second index is simply 0
-        for i in range(R.shape[0]): #loop over the columns
-            print i, j 
-            if i != j: #if the two columns are not the same
-                inner_product = numpy.dot( R[i,:], R[j,:] ) #compute the scalar product
-                norm_i = numpy.linalg.norm(R[i,:]) #compute norms
-                norm_j = numpy.linalg.norm(R[j,:])
-                #inner product and the product of the norms are equal only if the two vectors are parallel
-                #therefore we are looking for the ones which exhibit a difference which is bigger than a threshold
-                if abs(inner_product - norm_j * norm_i) > 1e-4:
-                    print 'lala'
-                    counter += 1 #counter is incremented
-                    print counter, index
-                    index[counter] = i #index is saved
-                    j = i #j is refreshed
-                    #do not forget to refresh j: otherwise you would compute only the vectors li with the first column!!
-        R_independent = numpy.zeros((r, dim))
-        i = 0
-        print index
-        #now save everything in a new matrix
-        while( i < r ):
-            R_independent[i,:] = R[index[i],:] 
-            i += 1
-        return R_independent
-
 
