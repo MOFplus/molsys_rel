@@ -77,19 +77,22 @@ class lqg_test(unittest.TestCase):
     def test_cycle_basis(self):
         netname = self.netname
         cb = self.g.get_cyclic_basis()
-        assert_allclose(cb, self.h5file[netname]['ref']['cycle_basis'].value)
+        assert_allclose(cb, self.h5file[netname]['ref']['cycle_basis'].value,
+                atol = 10**-12)
 
     def test_cocycle_basis(self):
         netname = self.netname
         cob = self.g.get_cocycle_basis()
-        assert_allclose(cob, self.h5file[netname]['ref']['cocycle_basis'].value)
+        assert_allclose(cob, self.h5file[netname]['ref']['cocycle_basis'].value,
+                atol = 10**-12)
 
     def test_alpha(self):
         netname = self.netname
         self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'].value
         self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'].value
         alpha = self.g.get_alpha()
-        assert_allclose(alpha, self.h5file[netname]['ref']['alpha'].value)
+        assert_allclose(alpha, self.h5file[netname]['ref']['alpha'].value,
+                atol = 10**-12)
 
     def test_lattice_basis(self):
         netname = self.netname
@@ -97,7 +100,8 @@ class lqg_test(unittest.TestCase):
         self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'].value
         self.g.alpha =  self.h5file[netname]['ref']['alpha'].value
         lb = self.g.get_lattice_basis()
-        assert_allclose(lb, self.h5file[netname]['ref']['lattice_basis'].value)
+        assert_allclose(lb, self.h5file[netname]['ref']['lattice_basis'].value,
+                atol = 10**-12)
 
     def test_kernel(self):
         netname = self.netname
@@ -106,7 +110,8 @@ class lqg_test(unittest.TestCase):
         self.g.alpha =  self.h5file[netname]['ref']['alpha'].value
         self.g.lattice_basis =  self.h5file[netname]['ref']['lattice_basis'].value
         k = self.g.get_kernel()
-        assert_allclose(k, self.h5file[netname]['ref']['kernel'].value)
+        assert_allclose(k, self.h5file[netname]['ref']['kernel'].value,
+                atol = 10**-12)
 
     def test_cell(self):
         netname = self.netname
@@ -116,7 +121,8 @@ class lqg_test(unittest.TestCase):
         self.g.lattice_basis =  self.h5file[netname]['ref']['lattice_basis'].value
         self.g.kernel =  self.h5file[netname]['ref']['kernel'].value
         cell = self.g.get_cell()
-        assert_allclose(cell, self.h5file[netname]['ref']['cell'].value)
+        assert_allclose(cell, self.h5file[netname]['ref']['cell'].value,
+                atol = 10**-12)
 
     def test_arcs(self):
         netname = self.netname
@@ -125,7 +131,8 @@ class lqg_test(unittest.TestCase):
         self.g.alpha =  self.h5file[netname]['ref']['alpha'].value
         self.g.get_B_matrix()
         arcs = self.g.get_fracs()
-        assert_allclose(arcs, self.h5file[netname]['ref']['arcs'].value)
+        assert_allclose(arcs, self.h5file[netname]['ref']['arcs'].value,
+                atol = 10**-12)
 
 if __name__ == '__main__':
     netname = sys.argv[1]
