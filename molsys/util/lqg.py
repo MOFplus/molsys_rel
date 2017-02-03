@@ -78,8 +78,17 @@ class lqg(object):
                     self.labels.append(list(topo.pconn[i][j]))
         return
 
+    def get_lqg_from_lists(self,edges,labels,nvertices,dim):
+        assert len(edges) == len(labels)
+        self.edges = edges
+        self.labels = labels
+        self.dim = dim
+        self.nedges = len(edges)
+        self.nvertices = nvertices
+        return
 
     def build_lqg(self):
+        self.nbasevec = self.nedges - self.nvertices + 1
         self.molg = Graph(directed=True)
         self.molg.ep.label  = self.molg.new_edge_property("vector<double>")
         self.molg.ep.number = self.molg.new_edge_property("int")
@@ -92,8 +101,7 @@ class lqg(object):
         return
 
     def get_cyclic_basis(self):
-        nbasevec = self.nedges - self.nvertices + 1
-        self.nbasevec = nbasevec
+        nbasevec = self.nbasevec
         basis = numpy.zeros([nbasevec,self.nedges], dtype="int")
         self.molg.set_directed(False)
         tree = min_spanning_tree(self.molg)
