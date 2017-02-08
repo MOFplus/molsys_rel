@@ -6,6 +6,7 @@ syntax: glob
 *.a
 *.so
 *.pyc
+*.pyo
 *.orig
 *_keep
 .swp.*
