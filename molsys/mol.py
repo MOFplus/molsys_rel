@@ -26,7 +26,7 @@ logger.setLevel(logging.DEBUG)
 fhandler  = logging.FileHandler("molsys.log")
 fhandler.setLevel(logging.DEBUG)
 shandler  = logging.StreamHandler()
-shandler.setLevel(logging.WARNING)
+shandler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 shandler.setFormatter(formatter)
@@ -66,6 +66,8 @@ class mol:
             - ftype="mfpx" : the parser type that is used to read the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
+                             
+        logger.info("reading file "+str(fname)+' as +'+str(ftype)+' file')
         formats.read[ftype](self,fname,**kwargs)
         return
 
@@ -76,6 +78,7 @@ class mol:
             - ftype="mfpx" : the parser type that is used to writen the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
+        logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
         formats.write[ftype](self,fname,**kwargs)
         return
 
@@ -124,6 +127,9 @@ class mol:
             - tresh  (float): additive treshhold
             - remove_duplicates  (bool): flag for the detection of duplicates
         """
+        
+        logger.info("detecting connectivity by distances ... ")
+        
         xyz = self.xyz
         elems = self.elems
         natoms = self.natoms
@@ -168,7 +174,8 @@ class mol:
     def report_conn(self):
         ''' Print infomration on current connectivity, coordination number
             and the respective atomic distances '''
-        print "REPORTING CONNECTIVITY"
+            
+        logger.info("reporting connectivity ... ")
         for i in xrange(self.natoms):
             conn = self.conn[i]
             print "atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn))
