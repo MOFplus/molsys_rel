@@ -15,3 +15,4 @@ syntax: glob
 .spyderproject
 molsys.log
 doc/_build
+doc/build
