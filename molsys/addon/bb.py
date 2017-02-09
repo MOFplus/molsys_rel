@@ -31,7 +31,7 @@ class bb:
         self.mol.nrot   = nrot
         if not linker:
             if self.mol.zflip: logger.warning("zflip only supported for linkers")
-            if self.mol.nrot>1: logger.warning("rotations only supported for linkers")
+            if self.mol.nrot>1: logger.debug("rotations only supported for linkers")
         if linker: self.rotate_on_z()
         self.mol.label = label
         #self.find_dummies()

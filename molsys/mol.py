@@ -67,7 +67,7 @@ class mol:
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
                              
-        logger.info("reading file "+str(fname)+' as +'+str(ftype)+' file')
+        logger.info("reading file "+str(fname)+' as .'+str(ftype)+' file')
         formats.read[ftype](self,fname,**kwargs)
         return
 
@@ -191,6 +191,7 @@ class mol:
             supercell upon preserving the connectivity of the initial system
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
+        logging.info('Generating %ix%ix%i supercell' % tuple(supercell))
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
         nat = copy.deepcopy(self.natoms)
