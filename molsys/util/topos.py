@@ -149,6 +149,7 @@ class conngraph:
             # now delete the atom
             self.mol.delete_atom(i)
         # now recompute pconn
+        ### in principle useles, to make a new object...
         topo = molsys.topo()
         topo.natoms = self.mol.natoms
         topo.set_xyz(self.mol.get_xyz())
@@ -501,7 +502,7 @@ class conngraph:
         paths = []
         for source in tg.molg.vertex(start_vertex).all_neighbours():
             for target in tg.molg.vertex(start_vertex).all_neighbours():
-                if source != target:
+                if source < target:
                     tg.molg.set_vertex_filter(tg.molg.vp.filled, inverted=True)
                     asp = all_shortest_paths(tg.molg, source, target)
                     tg.molg.clear_filters()
@@ -509,32 +510,50 @@ class conngraph:
                     for p1 in asp:
                         path = p1.tolist()
                         path = map(int, path)
-                        if list(reversed(path)) not in paths:
-                            paths.append(path)
-                            path = copy.deepcopy(path)
-                            path.append(start_vertex)
-                            append_list.append(path)
-                    # Here I have to recognize "forbidden" cycles (those which have a shorter path 
-                    # between two vertices on the cycle, than the shortest one that is part of the cycle)
-                    for path in append_list:
-                        for ni,i in enumerate(path):
-                            for nj in range(ni+1):
-                                d = shortest_distance(tg.molg, path[ni], path[nj])
-                                if d < ni-nj and d < (nj+len(path)-ni):
-                                    print "POLIZEI"
-                    # end forbidden cycle handling
+                        p2 = [start_vertex]+path
+                        vol = self.get_cycle_voltage(p2)
+                        if vol.any() != numpy.zeros(3).any():
+                            raise ValueError("Cycle with non zero voltage detected")
+                        path.append(start_vertex)
+                        append_list.append(path)
                     if len(append_list) != 0:
-                        vertex_symbol.append([len(append_list[0]), len(append_list)])
-        symbol_string = ""
-        for k, i in enumerate(sorted(vertex_symbol, key=itemgetter(0))):
-            symbol_string += str(i[0])
-            if i[1] != 1:
-                symbol_string += "(" + str(i[1]) + ")"
-            if k != len(vertex_symbol)-1:
-                symbol_string += "."
-        print symbol_string
-        return
-    
+                        vertex_symbol.append((len(append_list[0]), len(append_list)))
+        ws = self.compute_wells_symbol(vertex_symbol)
+        ls =  self.compute_long_symbol(vertex_symbol)
+        return ws, ls
+
+    def compute_wells_symbol(self, clist):
+        symbol = ""
+        clist = numpy.array(clist)[:,0].tolist()
+        sclist = sorted(set(clist))
+        for i, s in enumerate(sclist):
+            count = clist.count(s)
+            if count != 1:
+                symbol += "%s^%s." % (s,count)
+            else:
+                symbol += "%s." % s
+        return symbol[:-1]
+
+    def compute_long_symbol(self,clist):
+        symbol = ""
+        dtype = [("length",int),("number",int)]
+        clist = numpy.array(clist,dtype=dtype)
+        sclist = numpy.sort(clist, order=["length","number"]).tolist()
+        for i, s in enumerate(sclist):
+            if s[1]==1:
+                symbol += "%s." % s[0]
+            else:
+                symbol += "%s(%s)." % (s[0],s[1]) 
+        return symbol[:-1]
+
+    def get_cycle_voltage(self, cycle):
+        cycle.append(cycle[0])
+        vol = numpy.zeros(3)
+        for i in range(len(cycle)-1):
+            cidx = self.mol.conn[cycle[i]].index(cycle[i+1])
+            vol += self.mol.pconn[cycle[i]][cidx]
+        return vol
+
     def center(self,xyz):
         cell_abc = self.mol.cellparams[:3]
         fix = xyz[0,:]
