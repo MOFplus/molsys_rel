@@ -22,7 +22,18 @@ else:
     spg = True
 
 
-logger = logging.getLogger("molsys")
+import logging
+logger    = logging.getLogger("molsys")
+#logger.setLevel(logging.DEBUG)
+#fhandler  = logging.FileHandler("molsys.log")
+#fhandler.setLevel(logging.DEBUG)
+#shandler  = logging.StreamHandler()
+#shandler.setLevel(logging.INFO)
+#formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
+#fhandler.setFormatter(formatter)
+#shandler.setFormatter(formatter)
+#logger.addHandler(fhandler)
+#logger.addHandler(shandler)
 
 np.set_printoptions(threshold=20000)
 
@@ -127,6 +138,7 @@ class topo(mol.mol):
     ######## manipulations in particular for blueprints
 
     def make_supercell(self,supercell):
+        logger.info('Generating %i x %i x %i supercell' % tuple(supercell))
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
         nat = copy.deepcopy(self.natoms)
@@ -269,6 +281,7 @@ class topo(mol.mol):
             self.pconn.append(atoms_pconn)
         return
 
+        # 'na',lower(label),xyz,i,j)
     def insert_atom(self, lab, aty, xyz, i, j):
         xyz.shape=(1,3)
         self.xyz = np.concatenate((self.xyz, xyz))
