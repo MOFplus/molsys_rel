@@ -100,21 +100,21 @@ class topo(mol.mol):
 
     # thes following functions rely on an exisiting connectivity conn (and pconn)
 
-    def get_neighb_coords(self, i, ci):
-        """ returns coordinates of atom bonded to i which is ci'th in bond list """
-        j = self.conn[i][ci]
-        rj = self.xyz[j].copy()
-        if self.periodic:
-            if self.use_pconn:
-                img = self.pconn[i][ci]
-                rj += np.dot(img, self.cell)
-            else:
-                all_rj = rj + self.images_cellvec
-                all_r = all_rj - self.xyz[i]
-                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
-                closest = np.argsort(all_d)[0]
-                return all_rj[closest]
-        return rj
+    #def get_neighb_coords(self, i, ci):
+        #""" returns coordinates of atom bonded to i which is ci'th in bond list """
+        #j = self.conn[i][ci]
+        #rj = self.xyz[j].copy()
+        #if self.periodic:
+            #if self.use_pconn:
+                #img = self.pconn[i][ci]
+                #rj += np.dot(img, self.cell)
+            #else:
+                #all_rj = rj + self.images_cellvec
+                #all_r = all_rj - self.xyz[i]
+                #all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+                #closest = np.argsort(all_d)[0]
+                #return all_rj[closest]
+        #return rj
 
     def get_neighb_dist(self, i, ci):
         """ returns coordinates of atom bonded to i which is ci'th in bond list """

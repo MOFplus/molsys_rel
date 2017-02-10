@@ -794,7 +794,7 @@ class mol:
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         """
         self.fragnumbers += list(np.array(fragnumbers)+self.get_nfrags())
-        self.nfrags = sorted(self.fragnumbers)[-1]+1
+        self.nfrags = sorted(self.fragnumbers)[-1]  # changed this so they start at 1!
         return
 
     def add_fragtypes(self,fragtypes):

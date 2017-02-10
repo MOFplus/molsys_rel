@@ -6,6 +6,7 @@
 
 
 from numpy import *
+import numpy
 outerproduct = outer
 
 PI2 = pi*2.0
@@ -125,4 +126,15 @@ def rotate_by_triple(xyz, triple):
 
 def rotate_random(v):
     return apply_mat(quat_to_mat(random_quat()),v)
+
+
+def moi(rs, ms=None):
+    """Moment of inertia"""
+    if ms is None: ms = numpy.ones(len(rs))
+    else: ms = numpy.asarray(ms)
+    rs = numpy.asarray(rs)
+    N = rs.shape[1]
+    # Matrix is symmetric, so inner/outer loop doesn't matter
+    return [[(ms*rs[:,i]*rs[:,j]).sum()/ms.sum()
+             for i in range(N)] for j in range(N)]
     
