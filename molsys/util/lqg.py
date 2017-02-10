@@ -7,6 +7,7 @@ import numpy
 import pdb
 import molsys.topo as topo
 import copy
+from math import fmod
 
 class reader(object):
 
@@ -259,7 +260,7 @@ class lqg(object):
         self.cell = numpy.dot(L, numpy.dot(P,L.T))
         return self.cell
 
-    def place_vertices(self, first = numpy.array([0,0,0])):
+    def place_vertices(self, first = numpy.array([0.0,0.0,0.0])):
         frac_xyz = numpy.zeros([self.nvertices,3])
         frac_xyz[0,:] = first
         done = [0]
@@ -268,19 +269,27 @@ class lqg(object):
             for i,e in enumerate(self.edges):
                 if self.labels[i] == [0,0,0]:
                     if ((e[0] in done) and (e[1] not in done)):
-                        frac_xyz[e[1],:] = frac_xyz[e[0],:] + self.fracs[i,:]
+                        #print e, self.fracs[i,:]
+                        frac_xyz[e[1],:] = (frac_xyz[e[0],:] + self.fracs[i,:])
                         done.append(e[1])
                     elif ((e[1] in done) and (e[0] not in done)):
-                        frac_xyz[e[0],:] = frac_xyz[e[1],:] - self.fracs[i,:]
+                        nc = (frac_xyz[e[1],:] - self.fracs[i,:])
+                        frac_xyz[e[0],:] = nc
                         done.append(e[0])
             counter += 1
             if counter > 10: break
-        if len(done) != self.nvertices:
+            #frac_xyz = frac_xyz%1
+        print len(done)
+        if len(done) != self.nvertices: 
+            print 'proceed'
             for i,e in enumerate(self.edges):
                 if ((e[0] in done) and (e[1] not in done)):
+                    print e
                     frac_xyz[e[1],:] = frac_xyz[e[0],:] + self.fracs[i,:]
                     done.append(e[1])
                 elif ((e[1] in done) and (e[0] not in done)):
+                    print e, self.labels[i], self.fracs[i,:]
+                    #### problem!!!!!
                     frac_xyz[e[0],:] = frac_xyz[e[1],:] - self.fracs[i,:]
                     done.append(e[0])
         ### perhaps a flooring has to be performe
@@ -304,7 +313,6 @@ class lqg(object):
         t.set_elems_by_coord_number()
         t.write('test.xyz', 'txyz')
         return t
-
 
     def get_edge_with_idx(self, idx):
         for i in self.molg.edges():
@@ -334,4 +342,46 @@ class lqg(object):
                     idx.pop()
                 if len(idx)==rank: break
         return idx
+
+    def vertex_positions(self, edges, used, pos={}):
+        if self.dim == 2: return 'Not yet implemented'
+        if len(pos.keys()) == self.nvertices: return pos
+        self.molg.set_directed(True)
+        for i, ed in enumerate(edges):
+            e = ed
+            if i == 0: break
+        if int(str(e.source())) not in pos.keys() and int(str(e.target())) not in pos.keys():
+            pass
+        elif int(str(e.source())) not in pos.keys() or int(str(e.target())) not in pos.keys():
+            from_v = int(str(e.source())) if int(str(e.source())) in pos.keys() else int(str(e.target())) 
+            to_v = int(str(e.target())) if int(str(e.target())) not in pos.keys() else int(str(e.source())) 
+            
+            coeff = 0
+            for i,ed in enumerate(self.molg.vertex(from_v).out_edges()):
+                if e == ed: 
+                    coeff = 1
+                    break
+            if coeff == 0: coeff = -1
+            
+            index = self.molg.ep.number[e]
+
+            to_pos = coeff*numpy.array(self.fracs)[index] + pos[from_v]
+            newedges = []
+
+            to_pos = numpy.array([i%1 for i in to_pos])
+            pos[to_v]=to_pos
+            used.append(e)
+            self.molg.set_directed(False)
+            ee = self.molg.vertex(to_v).out_edges()
+            newedges = [i for i in ee if i not in used and i not in edges]
+            print newedges
+            edges = newedges + edges[1:]
+        else:
+            used.append(e)
+            edges = edges[1:]
+        return self.vertex_positions(edges, used, pos)
+
+
+
+
 
