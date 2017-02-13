@@ -498,11 +498,11 @@ class topograph(conngraph):
         else:
             vertexlist = range(self.mol.natoms)
         vs_list = []
-        supercells = [None, copy.deepcopy(self.mol)]
+        supercells = [None, copy.deepcopy(self.mol), None]
         keep = copy.deepcopy(self.mol)
         for i in vertexlist:
             success = False
-            supercell_size = 1
+            supercell_size = 3
             while not success:
                 if supercell_size > len(supercells)-1:
                     self.mol = copy.deepcopy(keep)
@@ -521,6 +521,8 @@ class topograph(conngraph):
             self.make_graph()
             vs = (ws, ls)
             if reduce_duplicates and vs not in vs_list:
+                vs_list.append(vs)
+            else:
                 vs_list.append(vs)
         return vs_list
     

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import numpy
+import string
 
 class rcsr(object):
 
@@ -8,9 +9,87 @@ class rcsr(object):
         self._nets = {}
         return
     
-    def read_arcs(self, fname):
+    def read_arc(self,fname):
+        f = open(fname, 'r')
+        for line in f.xreadlines():
+            sline = string.split(line)
+            if len(sline)>0:
+                if sline[0] == 'key':
+                    dim = int(sline[1])
+                    key = string.join(sline[2:])
+                if sline[0] == 'id':
+                    name = sline[1]
+                    if name.count('*') > 0:
+                        name = name.replace('*','s')
+        if name in self._nets: 
+            self._nets[name]['dim'] = dim
+            self._nets[name]['key'] = key
+        else:
+            self._nets[name] = {'dim':dim, 'key':key}
+        return
+
+    def write_arc(self,fname):
         pass
+
+    def read_cgd(self,fname):
+        entries = open(fname, 'r').read().split('CRYSTAL')[1:-1]
+        for i, e in enumerate(entries):
+            self.parse_cgd(e)
+        pass
+
+    def parse_cgd(self, entry):
+        dic = {}
+        nodes = []
+        edges = []
+        lines = entry.split("\n")[1:]
+        for i,l in enumerate(lines):
+            sline = l.split()
+            if sline[0] == 'NAME':
+                name = sline[1]
+                if name.count('*') > 0:
+                    name = name.replace('*','s')
+                dic['NAME'] = name
+            elif sline[0] == 'GROUP':
+                dic['GROUP'] = sline[1]
+            elif sline[0] == 'CELL':
+                dic['CELL'] = sline[1:7]
+            elif sline[0] == 'NODE':
+                nodes.append(sline[1:])
+            elif sline[0] == 'EDGE':
+                edges.append(sline[1:])
+            elif sline[0] == 'END':
+                break
+        dic['nodes'] = nodes
+        dic['edges'] = edges
+        if name in self._nets.keys():
+            self._nets[name]['cgd'] = dic
+        else:
+            self._nets[name] = {'cgd':dic}
+        return
    
+    def write_cgd(self, names, fname):
+        def write_entry(f, name):
+            try:
+                cgd = self._nets[name]['cgd']
+            except KeyError:
+                return
+            f.write('CRYSTAL\n')
+            f.write('  NAME %s\n'  % name)
+            f.write('  GROUP %s\n' % cgd['GROUP'])
+            f.write('  CELL %s\n' % string.join(cgd['CELL']))
+            for i in cgd['nodes']:
+                f.write('  NODE %s\n' % string.join(i))
+            for i in cgd['edges']:
+                f.write('  EDGE %s\n' % string.join(i))
+            f.write('END\n\n')
+            return
+
+        f = open(fname, 'w')
+        for i,n in enumerate(names):
+            write_entry(f, n)
+        f.close()
+        return
+
     def read_3dall(self, fname):
         txt = open(fname,'r').read().split('start')[1:-1]
         for i,t in enumerate(txt):
@@ -19,11 +98,15 @@ class rcsr(object):
 
     def parse_3dall(self, txt):
         ndic = {}
+#        print txt
         lines = txt.split('\n')[1:]
         # jump over line cotaining the id
         lines.pop(0)
         # get the netname
         name = lines.pop(0).split()[0]
+        if name.count('*') > 0:
+            name = name.replace('*','s')
+        
         ndic['name'] = name
         ndic['embed_type'] = lines.pop(0)
 
