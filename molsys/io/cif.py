@@ -43,3 +43,50 @@ def write(mol,fname, name=''):
     f.write("#END  \n")
     f.close()
     return
+
+def read(mol,fname,make_P1=True,detect_conn=True):
+    try: 
+        import CifFile
+    except:
+        print 'ERROR, pycifrw not installed, install via pip!'
+    cf = CifFile.ReadCif(fname)
+    if len(cf.keys()) != 1:
+        for key in cf.keys: print key
+        raise IOError('Cif File has multiple entries ?!')
+    cf = cf[cf.keys()[0]]
+    cellparams=[]
+    cellparams.append(cf['_cell_length_a'])
+    
+    elems = map(str.lower,map(str,cf.GetItemValue('_atom_site_type_symbol')))
+    x = map(format_float, cf.GetItemValue('_atom_site_fract_x'))
+    y = map(format_float, cf.GetItemValue('_atom_site_fract_y'))
+    z = map(format_float, cf.GetItemValue('_atom_site_fract_z'))
+    a = format_float(cf.GetItemValue('_cell_length_a'))
+    b = format_float(cf.GetItemValue('_cell_length_b'))
+    c = format_float(cf.GetItemValue('_cell_length_c'))
+    alpha = format_float(cf.GetItemValue('_cell_angle_alpha'))
+    beta = format_float(cf.GetItemValue('_cell_angle_beta'))
+    gamma = format_float(cf.GetItemValue('_cell_angle_gamma'))
+    mol.set_natoms(len(elems))
+    mol.set_cellparams([a,b,c,alpha,beta,gamma])
+    mol.set_xyz_from_frac(numpy.array([x,y,z]).T)
+    mol.wrap_in_box()
+    mol.set_elems(elems)
+    mol.set_atypes(['-1']*len(elems))
+    mol.set_nofrags()
+    mol.set_empty_conn()
+    mol.cifdata = cf
+    if make_P1: 
+        mol.addon('spg')
+        mol.spg.make_P1()
+    if detect_conn:
+        mol.detect_conn()
+    
+    return
+    #import pdb; pdb.set_trace()
+
+def format_float(data):
+    if data.count('(') != 0:
+        data = data.split('(')[0]
+    return float(data)
+            

@@ -24,6 +24,7 @@ import numpy
 from molsys.util import elems
 from molsys.util import spacegroups
 import molsys
+import sys
 
 import logging
 logger = logging.getLogger("molsys.spg")
@@ -38,7 +39,7 @@ class spg:
 
             - mol: mol object to be kept as a parent ref
         """
-        self._mol = mol
+        self.mol = mol
         self.spgcell = None # tuple of (lattice, position, numbers) as used in spglib
         #
         self.spg_version = spglib.get_version()
@@ -59,7 +60,7 @@ class spg:
         """
         return self.symprec
 
-    def generate(self, omit=[]):
+    def generate_spgcell(self, omit=[]):
         """
         Generate the spglib specific representation of the structure
         (Needs to be called before any other call to spg methods)
@@ -76,14 +77,14 @@ class spg:
                 else:
                     new_omit.append(e)
             omit = new_omit
-        lattice = numpy.array(self._mol.get_cell(), order="C", dtype="double")
-        pos     = self._mol.get_frac_xyz()
+        lattice = numpy.array(self.mol.get_cell(), order="C", dtype="double")
+        pos     = self.mol.get_frac_xyz()
         pos     = pos%1.0
         # pos     = pos%1.0
-        num     = self._mol.get_elems_number()
+        num     = self.mol.get_elems_number()
         pos_rem = []
         num_rem = []
-        for i in xrange(self._mol.natoms):
+        for i in xrange(self.mol.natoms):
             if num[i] not in omit:
                 pos_rem.append(pos[i])
                 num_rem.append(num[i])
@@ -97,14 +98,22 @@ class spg:
         determine the space group of the current system
         returns a tuple with the symbol and the integer number
         """
-        assert self.spgcell != None
-        result = spglib.get_spacegroup(self.spgcell, symprec=self.symprec)
+        try:
+            assert self.spgcell != None
+        except:
+            self.generate_spgcell()
+        #print self.spgcell
+        result = spglib.get_spacegroup(self.spgcell, symprec=0.0001)
         result = result.split()
         symbol = result[0]
         number = int(result[1][1:-1])
+        if number == 1:
+            logger.warning("symmetry detection claims it's P1")
+        else:
+            logger.info('detected spacegroup %s %i with symprec=%5.4f' % (symbol, number, self.symprec))
         return (symbol, number)
 
-    def make_P1(self, spgnum, sg_setting=1):
+    def make_P1(self, spgnum=-1, sg_setting=1):
         """
         to be implemented by Julian from his topo tools
 
@@ -113,8 +122,7 @@ class spg:
             - spgnum : integer space group number
         """
         # how to convert international spgnum to hall number
-        dataset = spglib.get_symmetry_from_database(spgnum)
-        # apply operations to self._mol and generate a new mol object
+        # apply operations to self.mol and generate a new mol object
         # use detect_conn etc to complete it.
         
         #Okay, what i did was to use ASE as:
@@ -123,21 +131,71 @@ class spg:
         except:
             logging.error('make_P1 requires ASE (i.e. ase.lattice.spacegroup) to function properly')
             return
-        ### the Sg instance basically is a collection of data as in 'dataset', but it's easier 2use:
-        self.sg = Spacegroup(spgnum,setting=sg_setting,sprec = 1e-3)  
+        
+        # 1) the spacegroup number is supplied with the cif
+        # 2) there is at least the H-M symbol of it, try to find it via the dictionary!
+        # 3) there is nothing inside the cif data, try to detect via spglib BUG: i can only detect P1!
+        # 4) ok, nvm... spgnum needs to be supplied by the user!
+        try:
+            spgnum_cif = int(self.mol.cifdata['_symmetry_int_tables_number'])
+            try:
+                spgsym_cif = self.mol.cifdata['_symmetry_space_group_name_H-M'].replace(' ','')
+            except:
+                sgs = spacegroups.spacegroups
+                spgsym_cif = str([i for i in sgs.keys() if sgs[i] == spgsym_cif][0])
+            logger.info('using spacegroup number from cif file: %i (%s)' % (spgnum_cif,spgsym_cif))
+            spgnum=spgnum_cif
+        except:
+            try:
+                spgsym_cif = self.mol.cifdata['_symmetry_space_group_name_H-M'].replace(' ','')
+                spgnum_cif = spacegroups.get_spacegroup_number(spgsym_cif)
+                logger.info('using spacegroup number from cif fileb: %i (%s)' % (spgnum_cif,spgsym_cif))
+                if spgnum_cif ==None: raise ValueError
+                spgnum = spgnum_cif
+            except:
+                if spgnum == -1:
+                    logger.info('detecting spacegroup ... ')
+                    self.generate_spgcell()
+                    spgnum = self.get_spacegroup()[1]
+                    #self.mol.cifdata['_symmetry_int_tables_number'])
+                else:
+                    logger.info('using provided spacegroup_number %i' % spgnum)
+        #self.generate_spgcell()                           #uncomment here to test for 
+        #spgnum = self.get_spacegroup()[1]
+        #print spgnum, 'SPGNUM FROM GET_SPACEGROUP!'
+            
+        dataset = spglib.get_symmetry_from_database(spgnum)
+        #print dataset
+        
+        #self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
+        self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
+        
         new_xyz = []
         new_elems = []
         new_atypes = []
-        new_xyz,kinds =self.sg.equivalent_sites(self.mol.xyz,symprec=self.symprec)
-        
+        frac_xyz = self.mol.get_frac_xyz()
+        #new_xyz,kinds =self.sg.equivalent_sites(frac_xyz,symprec=self.symprec)
+        try:
+            new_xyz,kinds =self.sg.equivalent_sites(frac_xyz,symprec=1.0e-6)
+        except:
+            import sys
+            logger.error('could not get equivalent sites, '+str(sys.exc_info()[1]))
+            import pdb; pdb.set_trace()
+            return
         #now do the new elems and stuff:
         for i,k in enumerate(kinds):
-            new_elems = self.mol.elems[k]
-            new_atypes= self.mol.atypes[k]
+            new_elems.append(self.mol.elems[k])
+            new_atypes.append(self.mol.atypes[k])
             # fragtypes = self.mol.fragtypes[k]  #### Q: work on this here? they there?
         ## now we try to get the connectivity right and find duplicates during the search
-        self.mol.elems  = new_elems
-        self.mol.atypes = new_atypes
+        self.mol.set_natoms(len(new_xyz))
+        self.mol.set_elems(new_elems)
+        self.mol.set_atypes(new_atypes)
+        self.mol.set_xyz_from_frac(new_xyz)
+        self.mol.set_nofrags()
+        
+        #self.mol.elems  = new_elems
+        #self.mol.atypes = new_atypes
         self.mol.detect_conn(tresh = 0.1,remove_duplicates = True)
         return
 

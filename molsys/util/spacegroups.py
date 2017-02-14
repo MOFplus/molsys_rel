@@ -261,7 +261,7 @@ def get_spacegroup_number(sg_name):
         -sg_name    (str): name(symbol) of the spacegroup
     '''
     try:
-        sgnum = spacegroups(sg_name)
+        sgnum = spacegroups[sg_name]
     except:
         sgnum = None
     return sgnum
