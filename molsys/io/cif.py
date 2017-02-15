@@ -70,7 +70,7 @@ def read(mol,fname,make_P1=True,detect_conn=True):
     mol.set_natoms(len(elems))
     mol.set_cellparams([a,b,c,alpha,beta,gamma])
     mol.set_xyz_from_frac(numpy.array([x,y,z]).T)
-    mol.wrap_in_box()
+    #mol.wrap_in_box()
     mol.set_elems(elems)
     mol.set_atypes(['-1']*len(elems))
     mol.set_nofrags()
@@ -78,7 +78,7 @@ def read(mol,fname,make_P1=True,detect_conn=True):
     mol.cifdata = cf
     if make_P1: 
         mol.addon('spg')
-        mol.spg.make_P1()
+        mol.proper_cif = mol.spg.make_P1()
     if detect_conn:
         mol.detect_conn()
     

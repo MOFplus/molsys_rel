@@ -132,38 +132,34 @@ class spg:
             logging.error('make_P1 requires ASE (i.e. ase.lattice.spacegroup) to function properly')
             return
         
-        # 1) the spacegroup number is supplied with the cif
-        # 2) there is at least the H-M symbol of it, try to find it via the dictionary!
-        # 3) there is nothing inside the cif data, try to detect via spglib BUG: i can only detect P1!
-        # 4) ok, nvm... spgnum needs to be supplied by the user!
-        try:
-            spgnum_cif = int(self.mol.cifdata['_symmetry_int_tables_number'])
+        # 1) if provided, use the spacegroup set by the user
+        # 2) the spacegroup number is supplied with the cif
+        # 3) there is at least the H-M symbol of it, try to find it via the dictionary!
+        
+        if spgnum == -1:
             try:
-                spgsym_cif = self.mol.cifdata['_symmetry_space_group_name_H-M'].replace(' ','')
+                spgnum_cif = int(self.mol.cifdata['_symmetry_int_tables_number'])
+                try:
+                    spgsym_cif = self.mol.cifdata['_symmetry_space_group_name_H-M'].replace(' ','')
+                except:
+                    sgs = spacegroups.spacegroups
+                    spgsym_cif = str([i for i in sgs.keys() if sgs[i] == spgsym_cif][0])
+                logger.info('using spacegroup number from cif file: %i (%s)' % (spgnum_cif,spgsym_cif))
+                spgnum=spgnum_cif
             except:
-                sgs = spacegroups.spacegroups
-                spgsym_cif = str([i for i in sgs.keys() if sgs[i] == spgsym_cif][0])
-            logger.info('using spacegroup number from cif file: %i (%s)' % (spgnum_cif,spgsym_cif))
-            spgnum=spgnum_cif
-        except:
-            try:
-                spgsym_cif = self.mol.cifdata['_symmetry_space_group_name_H-M'].replace(' ','')
-                spgnum_cif = spacegroups.get_spacegroup_number(spgsym_cif)
-                logger.info('using spacegroup number from cif fileb: %i (%s)' % (spgnum_cif,spgsym_cif))
-                if spgnum_cif ==None: raise ValueError
-                spgnum = spgnum_cif
-            except:
-                if spgnum == -1:
-                    logger.info('detecting spacegroup ... ')
-                    self.generate_spgcell()
-                    spgnum = self.get_spacegroup()[1]
-                    #self.mol.cifdata['_symmetry_int_tables_number'])
-                else:
-                    logger.info('using provided spacegroup_number %i' % spgnum)
-        #self.generate_spgcell()                           #uncomment here to test for 
-        #spgnum = self.get_spacegroup()[1]
-        #print spgnum, 'SPGNUM FROM GET_SPACEGROUP!'
-            
+                try:
+                    spgsym_cif = self.mol.cifdata['_symmetry_space_group_name_H-M'].replace(' ','')
+                    spgnum_cif = spacegroups.get_spacegroup_number(spgsym_cif)
+                    if spgnum_cif ==None: 
+                        logger.error('spacegroup %s could not be found, add it to spacegroups.py ?!' %spgsym_cif)
+                        logger.error('make_P1 failed')
+                        return False
+                    logger.info('using spacegroup symbol from cif file, sgnumber looked up: %i (%s)' % (spgnum_cif,spgsym_cif))
+                    spgnum = spgnum_cif
+                except:
+                    logger.error('I do not have any spacegroup informations, make_P1 failed!')
+                    return False
+        
         dataset = spglib.get_symmetry_from_database(spgnum)
         #print dataset
         
@@ -180,8 +176,8 @@ class spg:
         except:
             import sys
             logger.error('could not get equivalent sites, '+str(sys.exc_info()[1]))
-            import pdb; pdb.set_trace()
-            return
+            #import pdb; pdb.set_trace()
+            return False
         #now do the new elems and stuff:
         for i,k in enumerate(kinds):
             new_elems.append(self.mol.elems[k])
@@ -197,7 +193,7 @@ class spg:
         #self.mol.elems  = new_elems
         #self.mol.atypes = new_atypes
         self.mol.detect_conn(tresh = 0.1,remove_duplicates = True)
-        return
+        return True
 
     def get_primitive_cell(self):
         """
