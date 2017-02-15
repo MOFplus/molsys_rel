@@ -182,7 +182,7 @@ class molgraph(conngraph):
             #print self.molg.ep.Nk[e]
         return
 
-    def find_cluster_threshold(self):
+    def find_cluster_treshold(self):
         """
         Finds thresholds.
         Needs Nk values of the edges -> determine_Nk() has to be called before calling this method.
@@ -424,6 +424,8 @@ class topograph(conngraph):
             cs = self.get_cs(depth, i)
             if reduce_duplicates and cs not in cs_list:
                 cs_list.append(cs)
+            else:
+                cs_list.append(cs)
         return cs_list
 
     def get_cs(self, depth, start_vertex=0, start_cell=numpy.array([0,0,0])):
@@ -483,7 +485,7 @@ class topograph(conngraph):
             visited.append([current_vertex, current_cell])
         return visited
 
-    def get_all_vertex_symbols(self, use_atypes=False, reduce_duplicates=True):
+    def get_all_vertex_symbols(self, use_atypes=False, reduce_duplicates=True, wells = False):
         """
         Calculates all vertex symbols of the graph.
         use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
@@ -498,11 +500,11 @@ class topograph(conngraph):
         else:
             vertexlist = range(self.mol.natoms)
         vs_list = []
-        supercells = [None, copy.deepcopy(self.mol), None]
+        supercells = [None, copy.deepcopy(self.mol)]
         keep = copy.deepcopy(self.mol)
         for i in vertexlist:
             success = False
-            supercell_size = 3
+            supercell_size = 2
             while not success:
                 if supercell_size > len(supercells)-1:
                     self.mol = copy.deepcopy(keep)
@@ -519,7 +521,10 @@ class topograph(conngraph):
                     success = False
             self.mol = keep
             self.make_graph()
-            vs = (ws, ls)
+            if wells: 
+                vs = (ws, ls)
+            else:
+                vs = ls
             if reduce_duplicates and vs not in vs_list:
                 vs_list.append(vs)
             else:
