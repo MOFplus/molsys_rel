@@ -485,7 +485,7 @@ class topograph(conngraph):
             visited.append([current_vertex, current_cell])
         return visited
 
-    def get_all_vertex_symbols(self, use_atypes=False, reduce_duplicates=True, wells = False):
+    def get_all_vs(self, use_atypes=False, reduce_duplicates=True, wells = False):
         """
         Calculates all vertex symbols of the graph.
         use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
@@ -598,4 +598,17 @@ class topograph(conngraph):
             vol += self.mol.pconn[cycle[i]][cidx]
         return vol
 
-
+    def get_unique_vd(self, cs, vs):
+        assert type(cs) == list
+        assert type(vs) == list
+        assert len(vs) == len(cs)
+        uvd = []
+        for c,v in zip(cs,vs):
+            vd = tuple([tuple(c),v])
+            if vd not in uvd: uvd.append(vd)
+        ucs = []
+        uvs = []
+        for i in uvd:
+            ucs.append(i[0])
+            uvs.append(i[1])
+        return ucs, uvs
