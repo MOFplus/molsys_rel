@@ -39,7 +39,7 @@ def read(mol, fname):
                 mol.is_bb = True
                 mol.center_point = lbuffer[2]
                 if mol.center_point == 'special':
-                    mol.special_center_point = np.array(map(float,lbuffer[3:6]))
+                    mol.special_center_point = numpy.array(map(float,lbuffer[3:6]))
             elif keyword == 'bbconn':
                 mol.is_bb = True
                 con_info = lbuffer[2:]

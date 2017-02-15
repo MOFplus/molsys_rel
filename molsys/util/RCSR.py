@@ -169,5 +169,5 @@ class rcsr(object):
         if self._nets.keys().count(name) == 0:
             self._nets[name] = ndic
         else:
-            sef._nets[name].update(ndic)
+            self._nets[name].update(ndic)
         return 

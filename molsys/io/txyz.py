@@ -46,7 +46,7 @@ def read(mol, fname, topo = False):
     ### this has to go at some point
     if 'con_info' in locals():
         if mol.center_point == "special":
-            line = string.split(f.readline)
+            line = string.split(f.readline())
             mol.special_center_point = numpy.array(map(string.atof,line[0:3]),"d")
         try:
             line = f.readline().split()

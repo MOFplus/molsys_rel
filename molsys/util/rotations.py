@@ -128,7 +128,7 @@ def rotate_random(v):
     return apply_mat(quat_to_mat(random_quat()),v)
 
 
-def moi(rs, ms=None):
+def moi2(rs, ms=None):
     """Moment of inertia"""
     if ms is None: ms = numpy.ones(len(rs))
     else: ms = numpy.asarray(ms)
@@ -137,4 +137,27 @@ def moi(rs, ms=None):
     # Matrix is symmetric, so inner/outer loop doesn't matter
     return [[(ms*rs[:,i]*rs[:,j]).sum()/ms.sum()
              for i in range(N)] for j in range(N)]
+
+def moi(rs,ms=None):
+    if ms is None: ms = numpy.ones(len(rs))
+    else: ms = numpy.asarray(ms)
+    rs = numpy.asarray(rs)
+
+    Ixx = (ms* (rs[:,1]*rs[:,1] + rs[:,2]*rs[:,2])).sum()
+    Iyy = (ms* (rs[:,0]*rs[:,0] + rs[:,2]*rs[:,2])).sum()
+    Izz = (ms* (rs[:,0]*rs[:,0] + rs[:,1]*rs[:,1])).sum()
+    Ixy =-(ms* rs[:,0] * rs[:,1]).sum()
+    Ixz =-(ms* rs[:,0] * rs[:,2]).sum()
+    Iyz =-(ms* rs[:,1] * rs[:,2]).sum()
+    I = [[Ixx,Ixy,Ixy],[Ixy,Iyy,Iyz],[Ixz,Iyz,Izz]]
+    return numpy.array(I)/ms.sum()
+
+def pax(rs,ms=None):
+    if ms is None: ms = numpy.ones(len(rs))
+    else: ms = numpy.asarray(ms)
+    rs = numpy.asarray(rs)
+    I = moi(rs,ms=ms)
+    #print I
+    eigval, eigvec = numpy.linalg.eigh(I)
+    return eigval,eigvec
     

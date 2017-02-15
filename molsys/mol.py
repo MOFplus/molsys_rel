@@ -35,7 +35,7 @@ logger.addHandler(shandler)
 
 
 
-np.set_printoptions(threshold=20000)
+np.set_printoptions(threshold=20000,precision=5)
 
 SMALL_DIST = 1.0e-3
 
@@ -162,7 +162,7 @@ class mol:
                 logger.warning("Found %d duplicates" % len(duplicates))
                 self.natoms -= len(duplicates)
                 self.set_xyz(np.delete(xyz, duplicates,0))
-                self.set_elements(np.delete(elems, duplicates))
+                self.set_elems(np.delete(elems, duplicates))
                 self.set_atypes(np.delete(self.atypes,duplicates))
                 self.set_fragtypes(np.delete(self.fragtypes,duplicates))
                 self.set_fragnumbers(np.delete(self.fragnumbers,duplicates))
@@ -290,7 +290,7 @@ class mol:
         Parameter:
             - '''
         if not self.periodic: return
-        self.xyz = np.dot(frac_xyz,self.cell)
+        self.xyz = np.dot(frac_xyz,self.cell)#
 
     def get_image(self,xyz, img):
         ''' returns the xyz coordinates of a set of coordinates in a specific cell
@@ -610,7 +610,7 @@ class mol:
 
     def set_natoms(self, natoms):
         """ sets the number of atoms for a new moltype """
-        assert self.natoms == 0
+        #assert self.natoms == 0
         self.natoms = natoms
         return
 

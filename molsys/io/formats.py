@@ -6,7 +6,8 @@ import xyz, txyz, mfpx, cif
 read = {
         'xyz':xyz.read,
         'txyz':txyz.read,
-        'mfpx':mfpx.read}
+        'mfpx':mfpx.read,
+        'cif':cif.read}
 
 write = {
         'xyz':xyz.write,
