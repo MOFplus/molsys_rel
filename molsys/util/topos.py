@@ -183,6 +183,10 @@ class molgraph(conngraph):
         return
 
     def find_cluster_treshold(self):
+        self.find_cluster_threshold()
+        return self.threshes
+
+    def find_cluster_threshold(self):
         """
         Finds thresholds.
         Needs Nk values of the edges -> determine_Nk() has to be called before calling this method.
@@ -485,7 +489,7 @@ class topograph(conngraph):
             visited.append([current_vertex, current_cell])
         return visited
 
-    def get_all_vs(self, use_atypes=False, reduce_duplicates=True, wells = False):
+    def get_all_vs(self, use_atypes=False, wells = False):
         """
         Calculates all vertex symbols of the graph.
         use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
@@ -525,10 +529,7 @@ class topograph(conngraph):
                 vs = (ws, ls)
             else:
                 vs = ls
-            if reduce_duplicates and vs not in vs_list:
-                vs_list.append(vs)
-            else:
-                vs_list.append(vs)
+            vs_list.append(vs)
         return vs_list
     
     def get_vertex_symbol(self, start_vertex):
