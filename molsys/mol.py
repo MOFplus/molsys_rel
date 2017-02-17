@@ -502,7 +502,7 @@ class mol:
 
     ##### distance measurements #####################
 
-    def get_distvec(self, i, j):
+    def get_distvec(self, i, j, thresh=SMALL_DIST):
         """ vector from i to j
         This is a tricky bit, because it is needed also for distance detection in the blueprint
         where there can be small cell params wrt to the vertex distances.
@@ -519,16 +519,16 @@ class mol:
             d_sort = np.argsort(all_d)
             if i == j:
                 # if this was requested for i==j then we have to eliminate the shortest
-                # distance which NOTE unfinished!!!!!!!!
-                pass
+                # distance
+                d_sort = d_sort[1:]
             closest = d_sort[0]
             closest=[closest]  # THIS IS A BIT OF A HACK BUT WE MAKE IT ALWAYS A LIST ....
-            if (abs(all_d[closest[0]]-all_d[d_sort[1]]) < SMALL_DIST):
+            if (abs(all_d[closest[0]]-all_d[d_sort[1]]) < thresh):
                 # oops ... there is more then one image atom in the same distance
                 #  this means the distance is larger then half the cell width
                 # in this case we have to return a list of distances
                 for k in d_sort[1:]:
-                    if (abs(all_d[d_sort[0]]-all_d[k]) < SMALL_DIST):
+                    if (abs(all_d[d_sort[0]]-all_d[k]) < thresh):
                         closest.append(k)
             d = all_d[closest[0]]
             r = all_r[closest[0]]

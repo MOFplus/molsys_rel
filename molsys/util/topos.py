@@ -183,6 +183,10 @@ class molgraph(conngraph):
         return
 
     def find_cluster_treshold(self):
+        self.find_cluster_threshold()
+        return self.threshes
+
+    def find_cluster_threshold(self):
         """
         Finds thresholds.
         Needs Nk values of the edges -> determine_Nk() has to be called before calling this method.
@@ -272,17 +276,18 @@ class molgraph(conngraph):
             self.get_clusters()
         midx_list = self.keep.vp.midx.get_array().tolist()
         # set edge filter
-        self.keep.vp.filled.set_value(False)
-        self.keep.ep.act.set_value(True)
-        thresh = self.threshes[0]  # temporary...
-        for e in self.molg.edges():
-            if self.molg.ep.Nk[e] >= thresh:
-                src = e.source()
-                trg = e.target()
-                midx = (self.molg.vp.midx[src], self.molg.vp.midx[trg])
-                atomid = (midx_list.index(midx[0]), midx_list.index(midx[1]))
-                keepedge = self.keep.edge(atomid[0], atomid[1])
-                self.keep.ep.act[keepedge] = False
+        for i, c in enumerate(self.clusters):
+            ext_bond = []
+            cluster_atoms = self.clusters[i]
+            for ia in cluster_atoms:
+                via = self.molg.vertex(ia)
+                for j in via.all_neighbours():
+                    if j not in cluster_atoms:
+                        # found external bond, set edge filter here
+                        midx = (self.molg.vp.midx[via], self.molg.vp.midx[j])
+                        atomid = (midx_list.index(midx[0]), midx_list.index(midx[1]))
+                        keepedge = self.keep.edge(atomid[0], atomid[1])
+                        self.keep.ep.act[keepedge] = False
         self.keep.set_edge_filter(self.keep.ep.act)
         # then find all connecting atoms
         clusters_vertices = []
@@ -302,6 +307,55 @@ class molgraph(conngraph):
                     clusters_atoms.append(this_cluster_atoms)
         self.molg.clear_filters()
         return clusters_vertices, clusters_atoms
+    
+    def get_bbs(self):
+        """
+        Returns the building blocks (BBs) of the MOF.
+        Since the definition of "building block" is arbitrary, this function will do the following things:
+        - if multiple 2-connected clusters are connected to each other, these clusters will be summarized
+          as one BB.
+        The function will OVERWRITE self.clusters and replace it with the newly generated building blocks!
+        """
+        try:
+            assert self.clusters
+        except:
+            self.get_clusters()
+        # summarize 2-connected clusters:
+        while True:
+            # find external bonds
+            cluster_conn = []
+            for i, c in enumerate(self.clusters):
+                this_cluster_conn = []
+                ext_bond = []
+                cluster_atoms = self.clusters[i]
+                for ia in cluster_atoms:
+                    via = self.molg.vertex(ia)
+                    for j in via.all_neighbours():
+                        if j not in cluster_atoms:
+                            ext_bond.append(int(str(j)))
+                # now check to which clusters these external bonds belong to
+                for ea in ext_bond:
+                    for ji, j in enumerate(self.clusters):
+                        if ea in j:
+                            this_cluster_conn.append(ji)
+                            break
+                cluster_conn.append(this_cluster_conn)
+            # find out if 2-connected clusters are bonded to other 2-connected clusters
+            remove_list = []
+            for i, c in enumerate(cluster_conn):
+                if len(c) == 2 and i not in remove_list:
+                    for b in c:
+                        if len(cluster_conn[b]) == 2 and b not in remove_list:
+                            # and if they are, create new clusters which contain everything the first clusters contained
+                            self.clusters.append(self.clusters[i] + self.clusters[b])
+                            # and then remove those clusters
+                            remove_list.append(i)
+                            remove_list.append(b)
+            for i in reversed(sorted(remove_list)):
+                del self.clusters[i]
+            if remove_list == []:
+                break
+        return self.clusters
     
     def make_topograph(self, verbose=True, allow_2conns=False):
         """

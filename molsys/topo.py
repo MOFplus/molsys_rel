@@ -86,7 +86,7 @@ class topo(mol.mol):
             all_r = all_rj - ri
             all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
             d_sort = np.argsort(all_d)
-            if (np.linalg.norm(ri-rj) <= 0.001) and exclude_self:
+            if exclude_self and (np.linalg.norm(ri-rj) <= 0.001):
                 d_sort = d_sort[1:]
             closest = d_sort[0]
             closest=[closest]
@@ -253,7 +253,19 @@ class topo(mol.mol):
             atoms_pconn = []
             atoms_image = []
             for ji, j in enumerate(c):
-                d,r,imgi = self.get_distvec2(i,j)
+                # If an atom or vertex is connected to another one multiple times (in an image), this
+                # will be visible in the self.conn attribute, where the same neighbour will be listed
+                # multiple times.
+                # Sometimes, the distances are a bit different from each other, and in this case, we
+                # have to increase the threshold, until the get_distvec function will find all imgis.
+                n_conns = c.count(j)
+                t = 0.01
+                stop = False
+                while not stop:
+                    d,r,imgi = self.get_distvec(i,j,thresh=t)
+                    t += 0.01
+                    if n_conns == len(imgi):
+                        stop = True
                 if len(imgi) == 1:
                     # only one neighbor .. all is fine
                     atoms_pconn.append(images[imgi[0]])
