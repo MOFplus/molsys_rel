@@ -277,7 +277,6 @@ class molgraph(conngraph):
         midx_list = self.keep.vp.midx.get_array().tolist()
         # set edge filter
         for i, c in enumerate(self.clusters):
-            ext_bond = []
             cluster_atoms = self.clusters[i]
             for ia in cluster_atoms:
                 via = self.molg.vertex(ia)
