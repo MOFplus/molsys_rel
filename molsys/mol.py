@@ -603,6 +603,15 @@ class mol:
 
 
     ### get and set methods ###
+    def add_atom(self, elem, atype, xyz):
+        assert type(elem) == str
+        assert type(atype)== str
+        assert np.shape(xyz) == (3,)
+        self.natoms += 1
+        self.elems.append(elem)
+        self.atypes.append(atype)
+        self.xyz = np.concatanate(self.xyz, xyz)
+        return self.natoms -1 
 
     def get_natoms(self):
         ''' returns the number of Atoms '''

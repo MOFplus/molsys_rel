@@ -456,7 +456,7 @@ class topograph(conngraph):
         """
         return copy.deepcopy(self.mol)
     
-    def get_all_cs(self, depth=10, use_atypes=False, reduce_duplicates=True):
+    def get_all_cs(self, depth=10, use_atypes=False):
         """
         Calculates all cs (coordination sequence) values of the graph.
         This function just loops over all vertices and calls get_cs for each one
@@ -475,10 +475,7 @@ class topograph(conngraph):
         cs_list = []
         for i in vertexlist:
             cs = self.get_cs(depth, i)
-            if reduce_duplicates and cs not in cs_list:
-                cs_list.append(cs)
-            else:
-                cs_list.append(cs)
+            cs_list.append(cs)
         return cs_list
 
     def get_cs(self, depth, start_vertex=0, start_cell=numpy.array([0,0,0])):
@@ -662,3 +659,69 @@ class topograph(conngraph):
             ucs.append(i[0])
             uvs.append(i[1])
         return ucs, uvs
+
+    def build_coordination_pattern(self,pattern):
+        assert type(pattern) == list
+        assert len(pattern) == 2
+        ### build subgraph
+        patg = Graph(directed=False)
+        patg.vp.cn = self.molg.new_vertex_property("short")
+        for i in pattern:
+            v = patg.add_vertex()
+            patg.vp.cn[v] = i
+        patg.add_edge(patg.vertex(0),patg.vertex(1))
+        for i, c in enumerate(pattern):
+            for j in range(c-1):
+                v = patg.add_vertex()
+                patg.vp.cn[v] = 4
+                patg.add_edge(v, patg.vertex(i))
+        return patg
+
+    def search_coordination_pattern(self,patg):
+        assert type(patg) == Graph
+        self.molg.vp.cn = self.molg.new_vertex_property("short")
+        for v in self.molg.vertices():
+            self.molg.vp.cn[v] = len(list(v.out_neighbours()))
+        maps = subgraph_isomorphism(patg, self.molg, vertex_label =
+                (patg.vp.cn, self.molg.vp.cn))
+        subs = []
+        for m in maps:
+            sl = list(m)
+            sl.sort()
+            if sl not in subs: subs.append(sl)
+        return subs
+
+    def collapse_subs(self, subs, pattern = [3,3]):
+        dl = []
+        for s in subs:
+            center = []
+            v = self.molg.add_vertex()
+            for vidx in s: 
+                vi = self.molg.vertex(vidx)
+                if self.molg.vp.cn[vi] in pattern:
+                    center.append(vidx)
+                    if vidx not in dl: dl.append(vidx)
+            self.mol.set_unit_mass()
+            xyz = self.mol.get_com(center)
+            self.molg.vp.coord[v] = xyz
+            self.mol.insert_atom('c','1',xyz,center[0],center[1])
+            ### coordinates
+            for vidx in s:
+                vi = self.molg.vertex(vidx)
+                if self.molg.vp.cn[vi] not in pattern:
+                    self.molg.add_edge(vi, v)
+                    self.mol.conn[-1].append(vidx)
+                    self.mol.conn[vidx].append(self.mol.natoms-1)
+#            self.mol.set_unit_mass()
+#            xyz = self.mol.get_com(center)
+#            self.molg.vp.coord[v] = xyz
+#            self.mol.insert_atom('c','1',xyz,center[0],center[1])
+#            self.mol.xyz[midx,:] = xyz
+        for v in reversed(sorted(dl)):
+            self.molg.remove_vertex(v)
+            self.mol.delete_atom(v)
+        self.mol.add_pconn()
+
+
+
+
