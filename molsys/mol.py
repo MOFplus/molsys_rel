@@ -58,6 +58,17 @@ class mol:
         return
 
     #####  I/O stuff ############################
+    
+    def set_logger_level(level='INFO'):
+        if level=='INFO':
+            logger.setLevel(logging.INFO)
+        if level=='WARNING':
+            logger.setLevel(logging.WARNING)
+        if level=='ERROR':
+            logger.setLevel(logging.ERROR)
+        if level=='DEBUG':
+            logger.setLevel(logging.DEBUG)
+        return
 
     def read(self,fname,ftype='mfpx',**kwargs):
         ''' generic reader for the mol class
@@ -260,7 +271,7 @@ class mol:
         frac_xyz = self.get_frac_xyz()
         # now add 1 where the frac coord is negative and subtract where it is larger then 1
         frac_xyz += np.where(np.less(frac_xyz, 0.0), 1.0, 0.0)
-        frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0+thresh*0.1), 1.0, 0.0)
+        frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0), 1.0, 0.0)
         # convert back
         self.set_xyz_from_frac(frac_xyz)
         if self.__class__.__name__=='topo':
