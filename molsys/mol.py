@@ -4,6 +4,8 @@ import numpy as np
 import types
 import copy
 import string
+import os
+import subprocess
 
 from util import unit_cell
 from util import elems as elements
@@ -93,6 +95,20 @@ class mol:
         formats.write[ftype](self,fname,**kwargs)
         return
 
+    def view(self, **kwargs):
+        ''' launch graphics visualisation tool, i.e. moldenx.
+        Debugging purpose.'''
+        logger.info("invoking moldenx as visualisation tool")
+        _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
+        self.write(_tmpfname)
+        try:
+            ret = subprocess.call(["moldenx", _tmpfname])
+        except KeyboardInterrupt:
+            pass
+        finally:
+            os.remove(_tmpfname)
+            logger.info("temporary file "+_tmpfname+" removed")
+        return
 
     ##### addons ##################################
 
