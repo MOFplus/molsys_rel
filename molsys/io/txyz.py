@@ -54,6 +54,8 @@ def read(mol, fname, topo = False):
                 mol.angleterm = line
         except:
             pass
+    
+    mol.set_nofrags()
     return
 
 def parse_connstring(mol, con_info, new = True):
