@@ -4,6 +4,8 @@ import numpy as np
 import types
 import copy
 import string
+import os
+import subprocess
 
 from util import unit_cell
 from util import elems as elements
@@ -58,6 +60,17 @@ class mol:
         return
 
     #####  I/O stuff ############################
+    
+    def set_logger_level(level='INFO'):
+        if level=='INFO':
+            logger.setLevel(logging.INFO)
+        if level=='WARNING':
+            logger.setLevel(logging.WARNING)
+        if level=='ERROR':
+            logger.setLevel(logging.ERROR)
+        if level=='DEBUG':
+            logger.setLevel(logging.DEBUG)
+        return
 
     def read(self,fname,ftype='mfpx',**kwargs):
         ''' generic reader for the mol class
@@ -82,6 +95,20 @@ class mol:
         formats.write[ftype](self,fname,**kwargs)
         return
 
+    def view(self, **kwargs):
+        ''' launch graphics visualisation tool, i.e. moldenx.
+        Debugging purpose.'''
+        logger.info("invoking moldenx as visualisation tool")
+        _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
+        self.write(_tmpfname)
+        try:
+            ret = subprocess.call(["moldenx", _tmpfname])
+        except KeyboardInterrupt:
+            pass
+        finally:
+            os.remove(_tmpfname)
+            logger.info("temporary file "+_tmpfname+" removed")
+        return
 
     ##### addons ##################################
 
@@ -260,7 +287,7 @@ class mol:
         frac_xyz = self.get_frac_xyz()
         # now add 1 where the frac coord is negative and subtract where it is larger then 1
         frac_xyz += np.where(np.less(frac_xyz, 0.0), 1.0, 0.0)
-        frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0+thresh*0.1), 1.0, 0.0)
+        frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0), 1.0, 0.0)
         # convert back
         self.set_xyz_from_frac(frac_xyz)
         if self.__class__.__name__=='topo':

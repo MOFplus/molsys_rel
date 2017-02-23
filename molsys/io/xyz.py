@@ -27,6 +27,8 @@ def read(mol, fname):
     mol.xyz = numpy.array(xyz)
     mol.elems = elements
     mol.atypes = atypes
+    mol.set_empty_conn()
+    mol.set_nofrags()
     return
 
 def write(mol, fname):
