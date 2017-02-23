@@ -7,6 +7,11 @@ import logging
 logger = logging.getLogger("molsys.transformer")
 
 def to_pymatgen(mol):
+    """
+    Creates a pymatgen structure object from a mol object
+    :Parameters:
+        - mol: mol object
+    """
     try:
         import pymatgen as mg
     except ImportError:
