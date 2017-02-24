@@ -733,5 +733,17 @@ class topograph(conngraph):
         self.mol.add_pconn()
 
 
+class topotyper(object):
 
+    def __init__(self, mol):
+        return
 
+    def deconstruct(self):
+        """ perform deconstruction """
+        return
+
+    def topotype(self):
+        return
+
+    def get_bbs(self):
+        return
