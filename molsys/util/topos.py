@@ -645,19 +645,27 @@ class topograph(conngraph):
             vol += self.mol.pconn[cycle[i]][cidx]
         return vol
 
-    def get_unique_vd(self, cs, vs):
+    def get_unique_vd(self, cs, vs, atype = True):
         assert type(cs) == list
         assert type(vs) == list
         assert len(vs) == len(cs)
+        atypes = []
         uvd = []
+        atcount = 0
         for c,v in zip(cs,vs):
             vd = tuple([tuple(c),v])
-            if vd not in uvd: uvd.append(vd)
+            if vd not in uvd: 
+                uvd.append(vd)
+                atypes.append(str(atcount))
+                atcount += 1
+            else:
+                atypes.append(str(uvd.index(vd)))
         ucs = []
         uvs = []
         for i in uvd:
             ucs.append(i[0])
             uvs.append(i[1])
+        if atype: self.mol.set_atypes(atypes)
         return ucs, uvs
 
     def build_coordination_pattern(self,pattern):
@@ -704,7 +712,7 @@ class topograph(conngraph):
             self.mol.set_unit_mass()
             xyz = self.mol.get_com(center)
             self.molg.vp.coord[v] = xyz
-            self.mol.insert_atom('c','1',xyz,center[0],center[1])
+            self.mol.insert_atom('c','n',xyz,center[0],center[1])
             ### coordinates
             for vidx in s:
                 vi = self.molg.vertex(vidx)
