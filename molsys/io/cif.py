@@ -51,7 +51,7 @@ def read(mol,fname,make_P1=True,detect_conn=True):
         print 'ERROR, pycifrw not installed, install via pip!'
     cf = CifFile.ReadCif(fname)
     if len(cf.keys()) != 1:
-        for key in cf.keys: print key
+        for key in cf.keys(): print key
         raise IOError('Cif File has multiple entries ?!')
     cf = cf[cf.keys()[0]]
     cellparams=[]

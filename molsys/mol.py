@@ -523,7 +523,23 @@ class mol:
                     pass
             conn.append(this_conn)
         m.set_conn(conn)
-        # TODO: handle periodic boundary conditions
+        # handle periodic boundary conditions
+        if type(self.cell) != type(None):
+            m.set_cell(self.cell)
+            m.periodic = True
+            stop = False
+            while not stop:
+                stop = True
+                for i, conns in enumerate(m.conn):
+                    for j in conns:
+                        d, r, imgi = m.get_distvec(i, j)
+                        if imgi != [13]:
+                            stop = False
+                            for ik, k in enumerate(self.cell):
+                                m.xyz[j] += k * images[imgi][0][ik]
+                            break
+            m.cell = None
+            m.periodic = False
         return m
         
 
@@ -660,6 +676,7 @@ class mol:
             - xyz: coordinates to be set'''
         assert np.shape(xyz) == (self.natoms,3)
         self.xyz = xyz
+        return
 
     def get_sumformula(self):
         """
