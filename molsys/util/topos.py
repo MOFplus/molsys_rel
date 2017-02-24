@@ -7,6 +7,7 @@ from graph_tool import Graph
 from graph_tool.topology import *
 import numpy
 import copy
+from weaver import mofplus_api
 
 class conngraph:
     # This is the "conngraph" class
@@ -325,10 +326,9 @@ class molgraph(conngraph):
         while True:
             # find external bonds
             cluster_conn = []
-            for i, c in enumerate(self.clusters):
+            for i, cluster_atoms in enumerate(self.clusters):
                 this_cluster_conn = []
                 ext_bond = []
-                cluster_atoms = self.clusters[i]
                 for ia in cluster_atoms:
                     via = self.molg.vertex(ia)
                     for j in via.all_neighbours():
@@ -373,9 +373,8 @@ class molgraph(conngraph):
         tm.set_empty_conn()
         xyz = []
         elems = []
-        for i, c in enumerate(self.clusters):
+        for i, cluster_atoms in enumerate(self.clusters):
             ext_bond = []
-            cluster_atoms = self.clusters[i]
             cidx = []
             for ia in cluster_atoms:
                 cidx.append(self.molg.vp.midx[ia])
@@ -463,7 +462,8 @@ class topograph(conngraph):
         Calculates all cs (coordination sequence) values of the graph.
         This function just loops over all vertices and calls get_cs for each one
         depth = maximum level
-        use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
+        use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once. 
+                    (do NOT use this for topographs deconstructed from a molgraph !!!)
         """
         if use_atypes:
             vertexlist = []
@@ -734,16 +734,89 @@ class topograph(conngraph):
 
 
 class topotyper(object):
-
+    # Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures.
+ 
     def __init__(self, mol):
+        self.mg = molgraph(mol)
+        self.api = mofplus_api()
+        self.deconstruct()
         return
-
+ 
     def deconstruct(self):
         """ perform deconstruction """
+        self.mg.handle_islands()
+        self.mg.determine_Nk()
+        self.mg.find_cluster_threshold()
+        self.mg.get_clusters()
+        self.mg.get_bbs()
+        self.tg = self.mg.make_topograph(False)
+        cs = self.tg.get_all_cs()
+        vs = self.tg.get_all_vs()
+        self.cs, self.vs = self.tg.get_unique_vd(cs, vs)
         return
 
-    def topotype(self):
-        return
+    def get_net(self):
+        self.nets = self.api.search_cs(self.cs, self.vs)
+        return self.nets
 
-    def get_bbs(self):
-        return
+    def write_bbs(self, foldername):
+        cv, ca = self.mg.get_cluster_atoms()
+        bbs = []
+        for i, atoms in enumerate(ca):
+            m = self.mg.mol.new_mol_by_index(atoms)
+            bbs.append(m)
+        # Use the atomtypes to identify "vertex" BBs
+        atomtype_dict = {}
+        for i, atype in enumerate(self.tg.mol.atypes):
+            try:
+                atomtype_dict[atype]
+            except KeyError:
+                atomtype_dict[atype] = []
+            atomtype_dict[atype].append(i)
+        # Calculate the "edge" BBs (with exactly 2 neighbours)
+        tg2c = self.mg.make_topograph(False, True)
+        list2c = []
+        for i in range(tg2c.mol.natoms):
+            if len(tg2c.mol.conn[i]) == 2:
+                list2c.append(i)
+        # prepare vertex_bb_list (to translate indices of a list with 2-connected clusters to those of one without them)
+        vertex_bb_list = range(tg2c.mol.natoms)
+        for i in list2c:
+            del vertex_bb_list[vertex_bb_list.index(i)]
+        # Check to which vertex BBs they are connected
+        conn_atypes = []
+        for i in list2c:
+            conn = []
+            ext_bond = []
+            cluster_atoms = self.mg.clusters[i]
+            for ia in cluster_atoms:
+                via = self.mg.molg.vertex(ia)
+                for j in via.all_neighbours():
+                    if j not in cluster_atoms:
+                        # thus bond is an external bond
+                        ext_bond.append(int(str(j)))
+            print "cluster %s consisting of %d atoms is %d times connected" % (str(i), 
+                    len(cluster_atoms), len(ext_bond))
+            # now check to which clusters these external bonds belong to
+            for ea in ext_bond:
+                for ji, j in enumerate(self.mg.clusters):
+                    if ea in j:
+                        print " -> bonded to cluster ", ji
+                        conn.append(ji)
+                        break
+            conn_atype = []
+            for c in conn:
+                conn_atype.append(self.tg.mol.atypes[vertex_bb_list.index(c)])
+            conn_atypes.append([i, list(sorted(conn_atype))])
+        # Return all "vertex" BBs (more than 2 neighbours)
+        if not os.path.exists(foldername):
+            os.mkdir(foldername)
+        for i in atomtype_dict.keys():
+            bbs[vertex_bb_list[atomtype_dict[i][0]]].write(foldername + "/" + str(i) + ".mfpx", "mfpx")
+        # print out "edge" BBs.
+        used = []
+        for conn_atype in conn_atypes:
+            if conn_atype[1] not in used:
+                bbs[conn_atype[0]].write(foldername + "/" + str(conn_atype[1][0]) + "-" + str(conn_atype[1][1]) + ".mfpx", "mfpx")
+                used.append(conn_atype[1])
+        return 
