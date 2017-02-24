@@ -291,7 +291,7 @@ class molgraph(conngraph):
         # then find all connecting atoms
         clusters_vertices = []
         clusters_atoms = []
-        for c in self.clusters:
+        for ic, c in enumerate(self.clusters):
             for vid in c:
                 v = self.molg.vertex(vid)
                 midx = self.molg.vp.midx[v]
@@ -303,6 +303,8 @@ class molgraph(conngraph):
                     this_cluster_atoms = []
                     for i in this_cluster_verts:
                         this_cluster_atoms.append(self.keep.vp.midx[i])
+                        # set atomtypes in self.mol
+                        self.mol.atypes[self.keep.vp.midx[i]] = ic
                     clusters_atoms.append(this_cluster_atoms)
         self.molg.clear_filters()
         return clusters_vertices, clusters_atoms

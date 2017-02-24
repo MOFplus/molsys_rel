@@ -660,6 +660,7 @@ class mol:
             - xyz: coordinates to be set'''
         assert np.shape(xyz) == (self.natoms,3)
         self.xyz = xyz
+        return
 
     def get_sumformula(self):
         """
