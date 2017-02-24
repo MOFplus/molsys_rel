@@ -70,7 +70,7 @@ def read(mol, fname):
         txyz.parse_connstring(mol,con_info)
     return
 
-def write(mol, fname, frags=False):
+def write(mol, fname):
     """
     Routine, which writes an mfpx file
     :Parameters:
@@ -78,6 +78,7 @@ def write(mol, fname, frags=False):
         -fname (str) : name of the mfpx file
         -topo  (bool): flag to specify if pconn should be in mfpx file or not
     """
+    if mol.fragtypes == []: mol.set_nofrags()
     f = open(fname, 'w')
     if mol.__class__.__name__ == 'topo':
         ftype = 'topo'
@@ -105,9 +106,9 @@ def write(mol, fname, frags=False):
         f.write('# bbconn %s\n' % connstrings)
     f.write('%i\n' % mol.natoms)
     if ftype == 'xyz':
-        txyz.write_body(f, mol, frags=frags)
+        txyz.write_body(f,mol)
     else:
-        txyz.write_body(f, mol, topo=True, frags=frags)
+        txyz.write_body(f,mol,topo=True)
     f.close()
     return
 
