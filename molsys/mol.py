@@ -61,7 +61,7 @@ class mol:
 
     #####  I/O stuff ############################
     
-    def set_logger_level(level='INFO'):
+    def set_logger_level(self,level='INFO'):
         if level=='INFO':
             logger.setLevel(logging.INFO)
         if level=='WARNING':
