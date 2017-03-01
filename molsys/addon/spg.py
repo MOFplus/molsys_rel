@@ -54,7 +54,7 @@ class spg:
         self.symprec = thresh
         return
 
-    def get_symprec(self, thresh):
+    def get_symprec(self):
         """
         get the symmetry threshold
         """

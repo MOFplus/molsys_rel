@@ -491,7 +491,10 @@ topotypes = {
         3:'n',
         4:'c',
         5:'p',
-        6:'o'}
+        6:'o',
+        7:'i',
+        8:'v',
+        }
 
 
 def get_covdistance(elements):

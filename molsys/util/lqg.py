@@ -8,6 +8,7 @@ import pdb
 import molsys.topo as topo
 import copy
 from math import fmod
+from molsys.util import RCSR
 
 class reader(object):
 
@@ -62,6 +63,14 @@ class lqg(object):
             self.edges.append(edge)
             self.labels.append(label)
         return
+
+    def write_systre_pgr(self, id = "mfpb"):
+        pgr = "PERIODIC_GRAPH\nID %s\nEDGES\n" % id
+        for e,l in zip(self.edges,self.labels):
+            entry = (" %s %s" + self.dim*" %1.0f" + "\n") % tuple(list(numpy.array(e)+1)+l)
+            pgr += entry
+        pgr += "END"
+        return pgr
 
     def get_lqg_from_topo(self,topo):
         # be careful not working for nets where an vertex is connected to itself
@@ -296,7 +305,7 @@ class lqg(object):
         self.frac_xyz = frac_xyz
         return self.frac_xyz
 
-    def make_mol(self):
+    def to_mol(self):
         t = topo()
         t.natoms = self.nvertices
         t.set_cell(self.cell)
@@ -311,7 +320,6 @@ class lqg(object):
             t.pconn[e[1]].append(-1*numpy.array(self.labels[i]))
         #t.wrap_in_box()
         t.set_elems_by_coord_number()
-        t.write('test.xyz', 'txyz')
         return t
 
     def get_edge_with_idx(self, idx):
@@ -380,6 +388,63 @@ class lqg(object):
             used.append(e)
             edges = edges[1:]
         return self.vertex_positions(edges, used, pos)
+
+    def __call__(self):
+        self.build_lqg()
+        self.get_cyclic_basis()
+        self.get_cocycle_basis()
+        self.get_B_matrix()
+        self.get_alpha()
+        self.get_lattice_basis()
+        self.get_kernel()
+        self.get_cell()
+        self.get_fracs()
+        self.place_vertices()
+
+
+class Systre(object):
+
+    def __init__(self):
+        self._mol = topo()
+        return
+
+    def get_cgd_info(self,reader, netname):
+        info = reader._nets[netname]['cgd']
+        self._mol.set_cellparams(numpy.array(map(float,info['CELL'])))
+        self._mol.natoms = len(info['nodes'])
+        self.nodes = numpy.array(info['nodes'])
+        self._mol.set_xyz_from_frac(self.nodes)
+        self._mol.set_elems(self._mol.natoms*["c"])
+        self.edges = []
+        for e in info['edges']:
+            ed = []
+            ed.append(e[0:3])
+            ed.append(e[3:6])
+            self.edges.append(numpy.array(ed))
+
+    def compute_conn(self):
+        conn = []
+        for i in range(self._mol.natoms):
+            conn.append([])
+        for i,e in enumerate(self.edges):
+            n1 = e[0]
+            n1idx = self.find_vertex(n1)
+            n2 = e[1]
+            n2idx = self.find_vertex(n2)
+            conn[n1idx].append(n2idx)
+        self._mol.conn = conn
+        self._mol.add_pconn()
+            
+    def find_vertex(self, pos):
+        pos = numpy.array([i%1 for i in pos])
+        dist = numpy.linalg.norm(self.nodes - pos,axis = 1)
+        less = numpy.less(dist,0.0001)
+        return numpy.where(less)[0][0]
+
+
+
+
+
 
 
 

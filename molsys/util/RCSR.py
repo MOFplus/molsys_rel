@@ -32,7 +32,9 @@ class rcsr(object):
         pass
 
     def read_cgd(self,fname):
-        entries = open(fname, 'r').read().split('CRYSTAL')[1:-1]
+        entries = open(fname, 'r').read().split('CRYSTAL')[1:]
+        #entries = open(fname, 'r').read().split('CRYSTAL')[1:-1]
+        #entries = open(fname, 'r').read()
         for i, e in enumerate(entries):
             self.parse_cgd(e)
         pass
@@ -54,9 +56,9 @@ class rcsr(object):
             elif sline[0] == 'CELL':
                 dic['CELL'] = sline[1:7]
             elif sline[0] == 'NODE':
-                nodes.append(sline[1:])
+                nodes.append(map(float,sline[3:]))
             elif sline[0] == 'EDGE':
-                edges.append(sline[1:])
+                edges.append(map(float,sline[1:]))
             elif sline[0] == 'END':
                 break
         dic['nodes'] = nodes
