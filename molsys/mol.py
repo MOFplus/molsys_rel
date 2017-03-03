@@ -6,6 +6,7 @@ import copy
 import string
 import os
 import subprocess
+from cStringIO import StringIO
 
 from util import unit_cell
 from util import elems as elements
@@ -75,13 +76,26 @@ class mol:
     def read(self,fname,ftype='mfpx',**kwargs):
         ''' generic reader for the mol class
         :Parameters:
-            - fname        : the filename to be red
+            - fname        : the filename to be read
             - ftype="mfpx" : the parser type that is used to read the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
                              
         logger.info("reading file "+str(fname)+' as .'+str(ftype)+' file')
-        formats.read[ftype](self,fname,**kwargs)
+        f = open(fname, "r")
+        formats.read[ftype](self,f,**kwargs)
+        return
+
+    def fromString(self, istring, ftype='mfpx', **kwargs):
+        ''' generic reader for the mol class, reading from a string
+        :Parameters:
+            - string       : the string to be read
+            - ftype="mfpx" : the parser type that is used to read the file
+            - **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        logger.info("reading string as %s" % str(ftype))
+        f = StringIO(istring)
+        formats.read[ftype](self,f,**kwargs)
         return
 
     def write(self,fname,ftype='mfpx',**kwargs):

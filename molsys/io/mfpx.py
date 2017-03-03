@@ -6,16 +6,15 @@ import logging
 
 logger = logging.getLogger("molsys.io")
 
-def read(mol, fname):
+def read(mol, f):
     """
     Routine, which reads an mfpx file
     :Parameters:
         -fname  (str): name of the txyz file
         -mol    (obj): instance of a molclass
     """
-    ftype = 'xyz'
-    f = open(fname, "r")
     ### read header ###
+    ftype = 'xyz'
     lbuffer = string.split(f.readline())
     stop = False
     while not stop:
