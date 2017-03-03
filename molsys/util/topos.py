@@ -670,9 +670,12 @@ class topograph(conngraph):
         if atype: self.mol.set_atypes(atypes)
         return ucs, uvs
 
-    def build_coordination_pattern(self,pattern):
+    def build_coordination_pattern(self,pattern, cn):
         assert type(pattern) == list
         assert len(pattern) == 2
+        assert type(cn) == list
+        assert len(cn) == pattern[0]-1 + pattern[1]-1
+        assert cn.count(pattern[0]) == cn.count(pattern[1]) == 0
         ### build subgraph
         patg = Graph(directed=False)
         patg.vp.cn = self.molg.new_vertex_property("short")
@@ -683,7 +686,7 @@ class topograph(conngraph):
         for i, c in enumerate(pattern):
             for j in range(c-1):
                 v = patg.add_vertex()
-                patg.vp.cn[v] = 4
+                patg.vp.cn[v] = cn[i+j]
                 patg.add_edge(v, patg.vertex(i))
         return patg
 
@@ -701,7 +704,7 @@ class topograph(conngraph):
             if sl not in subs: subs.append(sl)
         return subs
 
-    def collapse_subs(self, subs, pattern = [3,3]):
+    def collapse_subs(self, subs, pattern):
         dl = []
         for s in subs:
             center = []
@@ -722,11 +725,6 @@ class topograph(conngraph):
                     self.molg.add_edge(vi, v)
                     self.mol.conn[-1].append(vidx)
                     self.mol.conn[vidx].append(self.mol.natoms-1)
-#            self.mol.set_unit_mass()
-#            xyz = self.mol.get_com(center)
-#            self.molg.vp.coord[v] = xyz
-#            self.mol.insert_atom('c','1',xyz,center[0],center[1])
-#            self.mol.xyz[midx,:] = xyz
         for v in reversed(sorted(dl)):
             self.molg.remove_vertex(v)
             self.mol.delete_atom(v)
