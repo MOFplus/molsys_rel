@@ -511,7 +511,7 @@ class mol:
             xyz.append(self.xyz[i,:])
             atypes.append(self.atypes[i])
         m.set_elems(elems)
-        m.set_xyz(xyz)
+        m.set_xyz(np.array(xyz))
         m.set_atypes(atypes)
         conn = []
         for i in idx:

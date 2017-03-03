@@ -307,8 +307,33 @@ class molgraph(conngraph):
                         # set atomtypes in self.mol
                         self.mol.atypes[self.keep.vp.midx[i]] = ic
                     clusters_atoms.append(this_cluster_atoms)
-        self.molg.clear_filters()
+        self.keep.clear_filters()
         return clusters_vertices, clusters_atoms
+    
+    def cluster_conn(self):
+        """
+        Helper function that returns a list, which describes, which clusters are connected with each other.
+        """
+        assert self.clusters
+        cluster_conn = []
+        for i, cluster_atoms in enumerate(self.clusters):
+            this_cluster_conn = []
+            ext_bond = []
+            for ia in cluster_atoms:
+                via = self.molg.vertex(ia)
+                for j in via.all_neighbours():
+                    if j not in cluster_atoms:
+                        ext_bond.append(int(str(j)))
+            #print "cluster %s consisting of %d atoms is %d times connected" % (str(i), len(cluster_atoms), len(ext_bond))
+            # now check to which clusters these external bonds belong to
+            for ea in ext_bond:
+                for ji, j in enumerate(self.clusters):
+                    if ea in j:
+                        this_cluster_conn.append(ji)
+            #            print " -> bonded to cluster ", ji
+                        break
+            cluster_conn.append(this_cluster_conn)
+        return cluster_conn
     
     def get_bbs(self):
         """
@@ -323,39 +348,88 @@ class molgraph(conngraph):
         except:
             self.get_clusters()
         # summarize 2-connected clusters:
-        while True:
+        stop = False
+        while not stop:
+            stop = True
             # find external bonds
-            cluster_conn = []
-            for i, cluster_atoms in enumerate(self.clusters):
-                this_cluster_conn = []
-                ext_bond = []
-                for ia in cluster_atoms:
-                    via = self.molg.vertex(ia)
-                    for j in via.all_neighbours():
-                        if j not in cluster_atoms:
-                            ext_bond.append(int(str(j)))
-                # now check to which clusters these external bonds belong to
-                for ea in ext_bond:
-                    for ji, j in enumerate(self.clusters):
-                        if ea in j:
-                            this_cluster_conn.append(ji)
-                            break
-                cluster_conn.append(this_cluster_conn)
+            cluster_conn = self.cluster_conn()
             # find out if 2-connected clusters are bonded to other 2-connected clusters
-            remove_list = []
             for i, c in enumerate(cluster_conn):
-                if len(c) == 2 and i not in remove_list:
+                if len(c) == 2:
                     for b in c:
-                        if len(cluster_conn[b]) == 2 and b not in remove_list:
+                        if len(cluster_conn[b]) == 2:
                             # and if they are, create new clusters which contain everything the first clusters contained
                             self.clusters.append(self.clusters[i] + self.clusters[b])
                             # and then remove those clusters
-                            remove_list.append(i)
-                            remove_list.append(b)
-            for i in reversed(sorted(remove_list)):
-                del self.clusters[i]
-            if remove_list == []:
-                break
+                            if i > b:
+                                del self.clusters[i]
+                            del self.clusters[b]
+                            if i < b:
+                                del self.clusters[i]
+                            stop = False
+                            break
+                if not stop:
+                    break
+        return self.clusters
+    
+    def detect_organicity(self, organic_elements = ["h", "b", "c", "n", "o", "f", "si", "p", "s", "cl", "as", "se", "br", "i"]):
+        """
+        Finds out whether a cluster classifies as "organic" or "inorganic".
+        "Organic" clusters will only contain the following elements:
+        H, B, C, N, O, F, Si, P, S, Cl, As, Se, Br, I
+        Returns a list, each element is True (for organic) or False (for inorganic), and
+        the index is equivalent to the index of the cluster in self.clusters
+        """
+        try:
+            assert self.clusters
+        except:
+            self.get_clusters()        
+        # go through each atom in every cluster and compare the elements
+        self.cluster_organicity = []
+        for cluster in self.clusters:
+            org = True
+            for i in cluster:
+                v = self.molg.vertex(i)
+                midx = self.molg.vp.midx[v]
+                if self.mol.elems[midx].lower() not in organic_elements:
+                    org = False
+                    break
+            self.cluster_organicity.append(org)
+        return self.cluster_organicity
+    
+    def get_bbs_by_organicity(self):
+        """
+        Groups all organic clusters, which are connected with each other, into a single cluster.
+        Like self.get_bbs, this method will OVERWRITE self.clusters.
+        """
+        try:
+            assert self.cluster_organicity
+        except:
+            self.detect_organicity()
+        stop = False
+        while not stop:
+            stop = True
+            # find external bonds
+            cluster_conn = self.cluster_conn()
+            # find out if organic clusters are bonded to other organic clusters
+            for i, c in enumerate(cluster_conn):
+                if self.cluster_organicity[i] == True:
+                    for b in c:
+                        if self.cluster_organicity[b] == True:
+                            # and if they are, create new clusters which contain everything the first clusters contained
+                            self.clusters.append(self.clusters[i] + self.clusters[b])
+                            # and then remove those clusters
+                            if i > b:
+                                del self.clusters[i]
+                            del self.clusters[b]
+                            if i < b:
+                                del self.clusters[i]
+                            stop = False
+                            # recompute organicity, because of the changed indices
+                            self.detect_organicity()
+                            break
+                if not stop:
+                    break
         return self.clusters
     
     def make_topograph(self, verbose=True, allow_2conns=False):
@@ -423,7 +497,7 @@ class topograph(conngraph):
     def __init__(self, mol, allow_2conns=False):
         self.mol = mol
         if not allow_2conns:
-            self.remove_2conns_from_mol()
+            self.midx_2conns = self.remove_2conns_from_mol()
         self.make_graph()
         return
     
@@ -447,7 +521,7 @@ class topograph(conngraph):
             self.mol.delete_atom(i)
         # recompute pconn
         self.mol.add_pconn()
-        return
+        return delete_list
     
     def graph2topo(self):
         """
@@ -736,19 +810,22 @@ class topograph(conngraph):
 class topotyper(object):
     # Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures.
  
-    def __init__(self, mol):
+    def __init__(self, mol, split_by_org=True):
         self.mg = molgraph(mol)
-        self.api = mofplus_api()
-        self.deconstruct()
+        self.api = mofplus_api(experimental=False)
+        self.deconstruct(split_by_org)
         return
  
-    def deconstruct(self):
+    def deconstruct(self, split_by_org=True):
         """ perform deconstruction """
         self.mg.handle_islands()
         self.mg.determine_Nk()
         self.mg.find_cluster_threshold()
         self.mg.get_clusters()
-        self.mg.get_bbs()
+        if split_by_org:
+            self.mg.get_bbs_by_organicity()
+        else:
+            self.mg.get_bbs()
         self.tg = self.mg.make_topograph(False)
         cs = self.tg.get_all_cs()
         vs = self.tg.get_all_vs()
@@ -759,12 +836,29 @@ class topotyper(object):
         self.nets = self.api.search_cs(self.cs, self.vs)
         return self.nets
 
-    def write_bbs(self, foldername):
+    def write_bbs_old(self, foldername):
+        """
+        Writes the clusters of the molgraph down. This is the old method, which
+        will use the atomtypes in the topograph to determine, which vertices are 
+        identical. It will fail, when two different vertices have the same cs and vs,
+        and you have to use the new method instead.
+        The new method can do everything the old one can. It is only here on jpd's
+        request!
+        """
         cv, ca = self.mg.get_cluster_atoms()
         bbs = []
+        organicity = []
+        try:
+            assert self.mg.cluster_organicity
+        except:
+            self.mg.detect_organicity()
         for i, atoms in enumerate(ca):
             m = self.mg.mol.new_mol_by_index(atoms)
             bbs.append(m)
+            if self.mg.cluster_organicity[i] == True:
+                organicity.append("ORG")
+            else:
+                organicity.append("INO")
         # Use the atomtypes to identify "vertex" BBs
         atomtype_dict = {}
         for i, atype in enumerate(self.tg.mol.atypes):
@@ -773,17 +867,13 @@ class topotyper(object):
             except KeyError:
                 atomtype_dict[atype] = []
             atomtype_dict[atype].append(i)
-        # Calculate the "edge" BBs (with exactly 2 neighbours)
-        tg2c = self.mg.make_topograph(False, True)
-        list2c = []
-        for i in range(tg2c.mol.natoms):
-            if len(tg2c.mol.conn[i]) == 2:
-                list2c.append(i)
+        # Get the "edge" BBs (with exactly 2 neighbours)
+        list2c = self.tg.midx_2conns
         # prepare vertex_bb_list (to translate indices of a list with 2-connected clusters to those of one without them)
-        vertex_bb_list = range(tg2c.mol.natoms)
+        vertex_bb_list = range(self.mg.mol.natoms)
         for i in list2c:
             del vertex_bb_list[vertex_bb_list.index(i)]
-        # Check to which vertex BBs they are connected
+        # Check to which vertex BBs the edge BBs are connected
         conn_atypes = []
         for i in list2c:
             conn = []
@@ -795,13 +885,13 @@ class topotyper(object):
                     if j not in cluster_atoms:
                         # thus bond is an external bond
                         ext_bond.append(int(str(j)))
-            print "cluster %s consisting of %d atoms is %d times connected" % (str(i), 
-                    len(cluster_atoms), len(ext_bond))
+            #print "cluster %s consisting of %d atoms is %d times connected" % (str(i), 
+            #        len(cluster_atoms), len(ext_bond))
             # now check to which clusters these external bonds belong to
             for ea in ext_bond:
                 for ji, j in enumerate(self.mg.clusters):
                     if ea in j:
-                        print " -> bonded to cluster ", ji
+            #            print " -> bonded to cluster ", ji
                         conn.append(ji)
                         break
             conn_atype = []
@@ -812,11 +902,126 @@ class topotyper(object):
         if not os.path.exists(foldername):
             os.mkdir(foldername)
         for i in atomtype_dict.keys():
-            bbs[vertex_bb_list[atomtype_dict[i][0]]].write(foldername + "/" + str(i) + ".mfpx", "mfpx")
+            index = vertex_bb_list[atomtype_dict[i][0]]
+            bbs[index].write(foldername + "/" + str(i) + "_" + organicity[index] + ".mfpx", "mfpx")
         # print out "edge" BBs.
         used = []
         for conn_atype in conn_atypes:
             if conn_atype[1] not in used:
-                bbs[conn_atype[0]].write(foldername + "/" + str(conn_atype[1][0]) + "-" + str(conn_atype[1][1]) + ".mfpx", "mfpx")
+                index = conn_atype[0]
+                bbs[index].write(foldername + "/" + str(conn_atype[1][0]) + "-" + str(conn_atype[1][1]) + "_" + organicity[index] + ".mfpx", "mfpx")
                 used.append(conn_atype[1])
-        return 
+        return
+    
+    def write_bbs(self, foldername):
+        """
+        Write the clusters of the molgraph into the folder specified in the parameters.
+        The names of the clusters written out will be those of the atomtypes of the vertices 
+        in the topograph, if they are "vertex" building blocks (i.e. they have more than
+        2 neighbours). If they are "edge" building blocks (they have exactly 2 neighbours), 
+        their name will be the atomtypes of the vertex BBs they are connected to.
+        Additionally, at the end of the filename, "_ORG" denotes an organic building block,
+        while "_INO" denotes a inorganic BB.
+        """
+        cv, ca = self.mg.get_cluster_atoms()
+        bbs = []
+        bb_molgraphs = []
+        organicity = []
+        try:
+            assert self.mg.cluster_organicity
+        except:
+            self.mg.detect_organicity()
+        for i, atoms in enumerate(ca):
+            m = self.mg.mol.new_mol_by_index(atoms)
+            bbs.append(m)
+            bb_molgraphs.append(molgraph(m))
+            if self.mg.cluster_organicity[i] == True:
+                organicity.append("ORG")
+            else:
+                organicity.append("INO")
+        # prepare vertex_bb_list (to translate indices of a list with 2-connected clusters to those of one without them)
+        list2c = self.tg.midx_2conns
+        vertex_bb_list = range(self.mg.mol.natoms)
+        for i in list2c:
+            del vertex_bb_list[vertex_bb_list.index(i)]
+        # Use the atomtypes to identify "vertex" BBs
+        atomtype_dict = {}
+        for i, atype in enumerate(self.tg.mol.atypes):
+            try:
+                atomtype_dict[atype]
+            except KeyError:
+                atomtype_dict[atype] = []
+            atomtype_dict[atype].append(vertex_bb_list[i])
+        # Categorize all clusters into isomorphic groups
+        # possible todo: compare the elements with each other
+        cluster_names = {}
+        unique_bbs = []
+        not_categorized = range(len(bb_molgraphs))
+        c = 0
+        while not_categorized != []:
+            j = not_categorized.pop(0)
+            mg = bb_molgraphs[j]
+            this_bb = [j]
+            for i in not_categorized:
+                mg2 = bb_molgraphs[i]
+                atype_j = None
+                atype_i = None
+                for key in atomtype_dict.keys():
+                    if j in atomtype_dict[key]:
+                        atype_j = key
+                    if i in atomtype_dict[key]:
+                        atype_i = key
+                if atype_j == atype_i:
+                    if isomorphism(mg.molg, mg2.molg):
+                        this_bb.append(i)
+                        not_categorized = [x for x in not_categorized if x != i]
+            unique_bbs.append(this_bb)
+            if atype_j != None:
+                cluster_names[c] = atype_j
+            c += 1
+        # determine which of the clusters are "edge" BBs.
+        unique_2c = []
+        for i in list2c:
+            for n, j in enumerate(unique_bbs):
+                if i in j:
+                    if n not in unique_2c:
+                        unique_2c.append(n)
+        # Check to which vertex BBs the edge BBs are connected
+        cluster_conn = self.mg.cluster_conn()
+        for i in unique_2c:
+            neighbour_atypes = []
+            for j in unique_bbs[i]:
+                neighbour_atype = []
+                # find out which atomtype this cluster has:
+                for cc in cluster_conn[j]:
+                    for key in atomtype_dict.keys():
+                        if cc in atomtype_dict[key]:
+                            neighbour_atype.append(key)
+                    if len(neighbour_atype) >= 2:
+                        break
+                neighbour_atype = list(sorted(neighbour_atype))
+                if neighbour_atype not in neighbour_atypes:
+                    neighbour_atypes.append(neighbour_atype)
+            for j in neighbour_atypes:
+                try:
+                    cluster_names[i] += "_" + str(j[0]) + "-" + str(j[1])
+                except KeyError:
+                    cluster_names[i] = str(j[0]) + "-" + str(j[1])
+        # Now write building blocks
+        #print "============"
+        #print unique_bbs
+        #print atomtype_dict
+        #print organicity
+        #try:
+        #    print neighbour_atypes
+        #except:
+        #    print "no 2-conns"
+        #print "============"
+        if not os.path.exists(foldername):
+            os.mkdir(foldername)
+        for n, i in enumerate(unique_bbs):
+            m = bbs[i[0]]
+            m.write(foldername+"/"+cluster_names[n]+"_"+organicity[i[0]]+".mfpx", "mfpx")
+        return
+
+
