@@ -6,6 +6,7 @@ import copy
 import string
 import os
 import subprocess
+from cStringIO import StringIO
 
 from util import unit_cell
 from util import elems as elements
@@ -62,7 +63,7 @@ class mol:
 
     #####  I/O stuff ############################
     
-    def set_logger_level(level='INFO'):
+    def set_logger_level(self,level='INFO'):
         if level=='INFO':
             logger.setLevel(logging.INFO)
         if level=='WARNING':
@@ -76,13 +77,26 @@ class mol:
     def read(self,fname,ftype='mfpx',**kwargs):
         ''' generic reader for the mol class
         :Parameters:
-            - fname        : the filename to be red
+            - fname        : the filename to be read
             - ftype="mfpx" : the parser type that is used to read the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
                              
         logger.info("reading file "+str(fname)+' as .'+str(ftype)+' file')
-        formats.read[ftype](self,fname,**kwargs)
+        f = open(fname, "r")
+        formats.read[ftype](self,f,**kwargs)
+        return
+
+    def fromString(self, istring, ftype='mfpx', **kwargs):
+        ''' generic reader for the mol class, reading from a string
+        :Parameters:
+            - string       : the string to be read
+            - ftype="mfpx" : the parser type that is used to read the file
+            - **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        logger.info("reading string as %s" % str(ftype))
+        f = StringIO(istring)
+        formats.read[ftype](self,f,**kwargs)
         return
 
     def write(self,fname,ftype='mfpx',**kwargs):
@@ -512,7 +526,7 @@ class mol:
             xyz.append(self.xyz[i,:])
             atypes.append(self.atypes[i])
         m.set_elems(elems)
-        m.set_xyz(xyz)
+        m.set_xyz(np.array(xyz))
         m.set_atypes(atypes)
         conn = []
         for i in idx:
@@ -524,7 +538,23 @@ class mol:
                     pass
             conn.append(this_conn)
         m.set_conn(conn)
-        # TODO: handle periodic boundary conditions
+        # handle periodic boundary conditions
+        if type(self.cell) != type(None):
+            m.set_cell(self.cell)
+            m.periodic = True
+            stop = False
+            while not stop:
+                stop = True
+                for i, conns in enumerate(m.conn):
+                    for j in conns:
+                        d, r, imgi = m.get_distvec(i, j)
+                        if imgi != [13]:
+                            stop = False
+                            for ik, k in enumerate(self.cell):
+                                m.xyz[j] += k * images[imgi][0][ik]
+                            break
+            m.cell = None
+            m.periodic = False
         return m
         
 
@@ -661,6 +691,7 @@ class mol:
             - xyz: coordinates to be set'''
         assert np.shape(xyz) == (self.natoms,3)
         self.xyz = xyz
+        return
 
     def get_sumformula(self):
         """

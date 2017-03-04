@@ -6,16 +6,15 @@ import logging
 
 logger = logging.getLogger("molsys.io")
 
-def read(mol, fname):
+def read(mol, f):
     """
     Routine, which reads an mfpx file
     :Parameters:
         -fname  (str): name of the txyz file
         -mol    (obj): instance of a molclass
     """
-    ftype = 'xyz'
-    f = open(fname, "r")
     ### read header ###
+    ftype = 'xyz'
     lbuffer = string.split(f.readline())
     stop = False
     while not stop:
@@ -78,6 +77,7 @@ def write(mol, fname):
         -fname (str) : name of the mfpx file
         -topo  (bool): flag to specify if pconn should be in mfpx file or not
     """
+    if mol.fragtypes == []: mol.set_nofrags()
     f = open(fname, 'w')
     if mol.__class__.__name__ == 'topo':
         ftype = 'topo'

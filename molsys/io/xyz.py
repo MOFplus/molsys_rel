@@ -1,14 +1,13 @@
 import numpy
 import string
 
-def read(mol, fname):
+def read(mol, f):
     """
     Routine, which reads an xyz file
     :Parameters:
         -fname  (str): name of the xyz file
         -mol    (obj): instance of a molclass
     """
-    f = open(fname, 'r')
     fline = string.split(f.readline())
     natoms = string.atoi(fline[0])
     if len(fline)>1:

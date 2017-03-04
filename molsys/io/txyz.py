@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger("molsys.io")
 
-def read(mol, fname, topo = False):
+def read(mol, f, topo = False):
     """
     Routine, which reads an txyz file
     :Parameters:
@@ -14,7 +14,6 @@ def read(mol, fname, topo = False):
         -mol    (obj) : instance of a molclass
         -topo   (bool): flag for reading topo information
     """
-    f = open(fname, "r")
     lbuffer = string.split(f.readline())
     mol.natoms = string.atoi(lbuffer[0])
     if len(lbuffer) > 1 and lbuffer[1] not in ['special','coc','com']:
