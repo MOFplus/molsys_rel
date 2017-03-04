@@ -57,6 +57,7 @@ class mol:
         self.nfrags = 0
         self.periodic= None
         self.is_bb=False
+        self.weight=1
         return
 
     #####  I/O stuff ############################
@@ -896,3 +897,13 @@ class mol:
         """ dummy call ... returns None ... for compatibility with pydlpoly system objects """
         return None
 
+    def set_weight(self, weight):
+        ''' sets the weight of the system
+        :Parameters:
+            - weight    : int/float'''
+        self.weight = weight
+        return
+
+    def get_weight(self):
+        ''' gets the weight of the system. Default: 1.'''
+        return self.weight
