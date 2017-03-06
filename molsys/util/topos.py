@@ -7,7 +7,7 @@ from graph_tool import Graph
 from graph_tool.topology import *
 import numpy
 import copy
-from weaver import mofplus_api
+from weaver import user_api as mofplus_api
 
 class conngraph:
     # This is the "conngraph" class
