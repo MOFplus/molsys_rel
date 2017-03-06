@@ -753,14 +753,17 @@ class topograph(conngraph):
         ### build subgraph
         patg = Graph(directed=False)
         patg.vp.cn = self.molg.new_vertex_property("short")
+        patg.vp.type = self.molg.new_vertex_property("string")
         for i in pattern:
             v = patg.add_vertex()
             patg.vp.cn[v] = i
+            patg.vp.type[v] = "c"
         patg.add_edge(patg.vertex(0),patg.vertex(1))
         for i, c in enumerate(pattern):
             for j in range(c-1):
                 v = patg.add_vertex()
                 patg.vp.cn[v] = cn[i+j]
+                patg.vp.type[v] = "p"
                 patg.add_edge(v, patg.vertex(i))
         return patg
 
@@ -772,33 +775,51 @@ class topograph(conngraph):
         maps = subgraph_isomorphism(patg, self.molg, vertex_label =
                 (patg.vp.cn, self.molg.vp.cn))
         subs = []
+        smaps = []
         for m in maps:
             sl = list(m)
             sl.sort()
-            if sl not in subs: subs.append(sl)
-        return subs
+            if sl not in subs: 
+                subs.append(sl)
+                smaps.append(m)
+        return smaps
 
-    def collapse_subs(self, subs, pattern):
+    def collapse_subs(self, maps, patg):
+        assert type(patg) == Graph
+        assert type(maps) == list
         dl = []
-        for s in subs:
+        ### search centers,removals and planets
+        for m in maps:
             center = []
-            v = self.molg.add_vertex()
-            for vidx in s: 
+            planets = []
+            #v = self.molg.add_vertex()
+            for v in patg.vertices(): 
+                if patg.vp.type[v] == "c":
+                    center.append(int(m[v]))
+                elif patg.vp.type[v] == "p":
+                    planets.append(int(m[v]))
+                else:
+                    dl.append(int(m[v]))
+            if len(center)==1:
+                v = self.molg.vertex(center[0])
+                cidx = center[0]
+            elif len(center) > 1:
+                v = self.molg.add_vertex()
+                dl += center
+                self.mol.set_unit_mass()
+                xyz = self.mol.get_com(center)
+                self.molg.vp.coord[v] = xyz
+                self.mol.add_atom('c','n',xyz)
+                cidx = self.mol.natoms-1
+            else:
+                logger.error("No Center Vertex found")
+                return
+            for vidx in planets:
                 vi = self.molg.vertex(vidx)
-                if self.molg.vp.cn[vi] in pattern:
-                    center.append(vidx)
-                    if vidx not in dl: dl.append(vidx)
-            self.mol.set_unit_mass()
-            xyz = self.mol.get_com(center)
-            self.molg.vp.coord[v] = xyz
-            self.mol.insert_atom('c','n',xyz,center[0],center[1])
-            ### coordinates
-            for vidx in s:
-                vi = self.molg.vertex(vidx)
-                if self.molg.vp.cn[vi] not in pattern:
-                    self.molg.add_edge(vi, v)
-                    self.mol.conn[-1].append(vidx)
-                    self.mol.conn[vidx].append(self.mol.natoms-1)
+                self.molg.add_edge(vi, v)
+                self.mol.add_bond(cidx,vidx)
+                #self.mol.conn[cidx].append(vidx)
+                #self.mol.conn[vidx].append(cidx)
         for v in reversed(sorted(dl)):
             self.molg.remove_vertex(v)
             self.mol.delete_atom(v)
