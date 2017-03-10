@@ -8,6 +8,7 @@ from graph_tool.topology import *
 import numpy
 import copy
 from weaver import user_api
+from string import ascii_lowercase
 
 class conngraph:
     # This is the "conngraph" class
@@ -292,6 +293,7 @@ class molgraph(conngraph):
         # then find all connecting atoms
         clusters_vertices = []
         clusters_atoms = []
+        self.keep.vp.filled.set_value(False)
         for ic, c in enumerate(self.clusters):
             for vid in c:
                 v = self.molg.vertex(vid)
@@ -844,84 +846,42 @@ class topotyper(object):
         self.nets = self.api.search_cs(self.cs, self.vs)
         return self.nets
 
-    def write_bbs_old(self, foldername):
+    def tg_atypes_by_isomorphism(self):
         """
-        Writes the clusters of the molgraph down. This is the old method, which
-        will use the atomtypes in the topograph to determine, which vertices are 
-        identical. It will fail, when two different vertices have the same cs and vs,
-        and you have to use the new method instead.
-        The new method can do everything the old one can. The old one is only here on jpd's
-        request!
+        This method will change the atomtypes in the topograph (i.e. "vertex types"): If
+        two vertices with the same atomtype have different structures, the atomtype will be
+        changed.
+        Possible todo: compare the elements with each other
         """
         cv, ca = self.mg.get_cluster_atoms()
-        bbs = []
-        organicity = []
+        bb_molgraphs = []
         try:
             assert self.mg.cluster_organicity
         except:
             self.mg.detect_organicity()
+        # Remove all 2-connected clusters, since they aren't in the topograph
+        list2c = self.tg.midx_2conns
+        for i in reversed(sorted(list2c)):
+            del ca[i]
+        # check for isomorphism
         for i, atoms in enumerate(ca):
             m = self.mg.mol.new_mol_by_index(atoms)
-            bbs.append(m)
-            if self.mg.cluster_organicity[i] == True:
-                organicity.append("ORG")
-            else:
-                organicity.append("INO")
-        # Use the atomtypes to identify "vertex" BBs
-        atomtype_dict = {}
-        for i, atype in enumerate(self.tg.mol.atypes):
-            try:
-                atomtype_dict[atype]
-            except KeyError:
-                atomtype_dict[atype] = []
-            atomtype_dict[atype].append(i)
-        # Get the "edge" BBs (with exactly 2 neighbours)
-        list2c = self.tg.midx_2conns
-        # prepare vertex_bb_list (to translate indices of a list with 2-connected clusters to those of one without them)
-        vertex_bb_list = range(self.mg.mol.natoms)
-        for i in list2c:
-            del vertex_bb_list[vertex_bb_list.index(i)]
-        # Check to which vertex BBs the edge BBs are connected
-        conn_atypes = []
-        for i in list2c:
-            conn = []
-            ext_bond = []
-            cluster_atoms = self.mg.clusters[i]
-            for ia in cluster_atoms:
-                via = self.mg.molg.vertex(ia)
-                for j in via.all_neighbours():
-                    if j not in cluster_atoms:
-                        # thus bond is an external bond
-                        ext_bond.append(int(str(j)))
-            #print "cluster %s consisting of %d atoms is %d times connected" % (str(i), 
-            #        len(cluster_atoms), len(ext_bond))
-            # now check to which clusters these external bonds belong to
-            for ea in ext_bond:
-                for ji, j in enumerate(self.mg.clusters):
-                    if ea in j:
-            #            print " -> bonded to cluster ", ji
-                        conn.append(ji)
-                        break
-            conn_atype = []
-            for c in conn:
-                conn_atype.append(self.tg.mol.atypes[vertex_bb_list.index(c)])
-            conn_atypes.append([i, list(sorted(conn_atype))])
-        # Return all "vertex" BBs (more than 2 neighbours)
-        if not os.path.exists(foldername):
-            os.mkdir(foldername)
-        for i in atomtype_dict.keys():
-            index = vertex_bb_list[atomtype_dict[i][0]]
-            bbs[index].write(foldername + "/" + str(i) + "_" + organicity[index] + ".mfpx", "mfpx")
-        # print out "edge" BBs.
-        used = []
-        for conn_atype in conn_atypes:
-            if conn_atype[1] not in used:
-                index = conn_atype[0]
-                bbs[index].write(foldername + "/" + str(conn_atype[1][0]) + "-" + str(conn_atype[1][1]) + "_" + organicity[index] + ".mfpx", "mfpx")
-                used.append(conn_atype[1])
+            mg = molgraph(m)
+            #print "i "+str(i)
+            for j, mg2 in enumerate(bb_molgraphs):
+                #print "  j "+str(j)
+                if self.tg.mol.atypes[j] == self.tg.mol.atypes[i]:
+                    if not isomorphism(mg.molg, mg2.molg):
+                        self.tg.mol.atypes[i] += "#"
+            bb_molgraphs.append(mg)
+        for i in range(len(self.tg.mol.atypes)):
+            n = self.tg.mol.atypes[i].count("#")
+            if n > 0:
+                self.tg.mol.atypes[i] = self.tg.mol.atypes[i].replace("#", "")
+                self.tg.mol.atypes[i] += ascii_lowercase[n-1]
         return
     
-    def write_bbs(self, foldername):
+    def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
         """
         Write the clusters of the molgraph into the folder specified in the parameters.
         The names of the clusters written out will be those of the atomtypes of the vertices 
@@ -931,26 +891,21 @@ class topotyper(object):
         Additionally, at the end of the filename, "_ORG" denotes an organic building block,
         while "_INO" denotes a inorganic BB.
         """
+        self.tg_atypes_by_isomorphism()
         cv, ca = self.mg.get_cluster_atoms()
         bbs = []
-        bb_molgraphs = []
         organicity = []
-        try:
-            assert self.mg.cluster_organicity
-        except:
-            self.mg.detect_organicity()
         for i, atoms in enumerate(ca):
             m = self.mg.mol.new_mol_by_index(atoms)
             bbs.append(m)
-            bb_molgraphs.append(molgraph(m))
             if self.mg.cluster_organicity[i] == True:
-                organicity.append("ORG")
+                organicity.append(org_flag)
             else:
-                organicity.append("INO")
+                organicity.append(ino_flag)
         # prepare vertex_bb_list (to translate indices of a list with 2-connected clusters to those of one without them)
         list2c = self.tg.midx_2conns
-        vertex_bb_list = range(self.mg.mol.natoms)
-        for i in list2c:
+        vertex_bb_list = range(len(self.mg.clusters))
+        for i in reversed(sorted(list2c)):
             del vertex_bb_list[vertex_bb_list.index(i)]
         # Use the atomtypes to identify "vertex" BBs
         atomtype_dict = {}
@@ -960,61 +915,27 @@ class topotyper(object):
             except KeyError:
                 atomtype_dict[atype] = []
             atomtype_dict[atype].append(vertex_bb_list[i])
-        # Categorize all clusters into isomorphic groups
-        # possible todo: compare the elements with each other
-        cluster_names = {}
         unique_bbs = []
-        not_categorized = range(len(bb_molgraphs))
-        c = 0
-        while not_categorized != []:
-            j = not_categorized.pop(0)
-            mg = bb_molgraphs[j]
-            this_bb = [j]
-            for i in not_categorized:
-                mg2 = bb_molgraphs[i]
-                atype_j = None
-                atype_i = None
-                for key in atomtype_dict.keys():
-                    if j in atomtype_dict[key]:
-                        atype_j = key
-                    if i in atomtype_dict[key]:
-                        atype_i = key
-                if atype_j == atype_i:
-                    if isomorphism(mg.molg, mg2.molg):
-                        this_bb.append(i)
-                        not_categorized = [x for x in not_categorized if x != i]
-            unique_bbs.append(this_bb)
-            if atype_j != None:
-                cluster_names[c] = atype_j
-            c += 1
-        # determine which of the clusters are "edge" BBs.
-        unique_2c = []
-        for i in list2c:
-            for n, j in enumerate(unique_bbs):
-                if i in j:
-                    if n not in unique_2c:
-                        unique_2c.append(n)
+        cluster_names = []
+        for key in atomtype_dict.keys():
+            unique_bbs.append(atomtype_dict[key])
+            cluster_names.append(key)
+        # determine which of the clusters are "edge" BBs and
         # Check to which vertex BBs the edge BBs are connected
         cluster_conn = self.mg.cluster_conn()
-        for i in unique_2c:
-            neighbour_atypes = []
-            for j in unique_bbs[i]:
-                neighbour_atype = []
-                # find out which atomtype this cluster has:
-                for cc in cluster_conn[j]:
-                    for key in atomtype_dict.keys():
-                        if cc in atomtype_dict[key]:
-                            neighbour_atype.append(key)
-                    if len(neighbour_atype) >= 2:
+        neighbour_atypes = []
+        for i in list2c:
+            neighbour_atype = []
+            for cc in cluster_conn[i]:
+                for key in atomtype_dict.keys():
+                    if cc in atomtype_dict[key]:
+                        neighbour_atype.append(key)
                         break
-                neighbour_atype = list(sorted(neighbour_atype))
-                if neighbour_atype not in neighbour_atypes:
-                    neighbour_atypes.append(neighbour_atype)
-            for j in neighbour_atypes:
-                try:
-                    cluster_names[i] += "_" + str(j[0]) + "-" + str(j[1])
-                except KeyError:
-                    cluster_names[i] = str(j[0]) + "-" + str(j[1])
+            neighbour_atype = list(sorted(neighbour_atype))
+            if neighbour_atype not in neighbour_atypes:
+                neighbour_atypes.append(neighbour_atype)
+                unique_bbs.append([i])
+                cluster_names.append(neighbour_atype[0]+"-"+neighbour_atype[1])
         # Now write building blocks
         #print "============"
         #print unique_bbs
@@ -1029,7 +950,7 @@ class topotyper(object):
             os.mkdir(foldername)
         for n, i in enumerate(unique_bbs):
             m = bbs[i[0]]
-            m.write(foldername+"/"+cluster_names[n]+"_"+organicity[i[0]]+".mfpx", "mfpx")
+            m.write(foldername+"/"+cluster_names[n]+organicity[i[0]]+".mfpx", "mfpx")
         return
 
 
