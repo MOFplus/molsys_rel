@@ -752,8 +752,8 @@ class topograph(conngraph):
         assert cn.count(pattern[0]) == cn.count(pattern[1]) == 0
         ### build subgraph
         patg = Graph(directed=False)
-        patg.vp.cn = self.molg.new_vertex_property("short")
-        patg.vp.type = self.molg.new_vertex_property("string")
+        patg.vp.cn = patg.new_vertex_property("short")
+        patg.vp.type = patg.new_vertex_property("string")
         for i in pattern:
             v = patg.add_vertex()
             patg.vp.cn[v] = i
@@ -766,6 +766,25 @@ class topograph(conngraph):
                 patg.vp.type[v] = "p"
                 patg.add_edge(v, patg.vertex(i))
         return patg
+
+    def build_coordination_pattern_from_mol(self,mol):
+        atypes = mol.get_atypes()
+        types = []
+        cns = []
+        for a in atypes:
+            sa = a.split("_")
+            t = sa[0]
+            assert ["c","r","p"].count(t) > 0
+            cn = int(sa[1])
+            types.append(t)
+            cns.append(cn)
+        mol.addon("graph")
+        mol.graph.make_graph()
+        mol.graph.molg.vp.cn = mol.graph.molg.new_vertex_property("short")
+        for v in mol.graph.molg.vertices():
+            mol.graph.molg.vp.cn[v] = cns[int(v)]
+            mol.graph.molg.vp.type[v] = types[int(v)]
+        return mol.graph.molg
 
     def search_coordination_pattern(self,patg):
         assert type(patg) == Graph
