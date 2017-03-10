@@ -7,7 +7,7 @@ from graph_tool import Graph
 from graph_tool.topology import *
 import numpy
 import copy
-from weaver import mofplus_api
+from weaver import user_api
 
 class conngraph:
     # This is the "conngraph" class
@@ -375,7 +375,7 @@ class molgraph(conngraph):
     def detect_organicity(self, organic_elements = ["h", "b", "c", "n", "o", "f", "si", "p", "s", "cl", "as", "se", "br", "i"]):
         """
         Finds out whether a cluster classifies as "organic" or "inorganic".
-        "Organic" clusters will only contain the following elements:
+        "Organic" clusters will by default only contain the following elements:
         H, B, C, N, O, F, Si, P, S, Cl, As, Se, Br, I
         Returns a list, each element is True (for organic) or False (for inorganic), and
         the index is equivalent to the index of the cluster in self.clusters
@@ -601,7 +601,7 @@ class topograph(conngraph):
     
     def get_cs1(self, start_vertex=0, start_cell=numpy.array([0,0,0])):
         """
-        This function will return all vertices, which are connected to the vertices start_vertex in the cell start_cell.
+        This function will return all vertices, which are connected to the vertex start_vertex in the cell start_cell.
         """
         visited = []
         # loop over all neighbouring clusters and add them to the list
@@ -722,6 +722,15 @@ class topograph(conngraph):
         return vol
 
     def get_unique_vd(self, cs, vs, atype = True):
+        """
+        Returns the unique cs values and vertex symbols ("vertex descriptors", vd). 
+        Parameters:
+        - cs: list of cs values
+        - vs: list of vertex symbols
+        - atype: If this is True, the function also changes the atomtypes in the 
+          topograph (i.e. the "vertex types"), according to the different vertex 
+          descriptors.
+        """
         assert type(cs) == list
         assert type(vs) == list
         assert len(vs) == len(cs)
@@ -810,7 +819,7 @@ class topotyper(object):
  
     def __init__(self, mol, split_by_org=True):
         self.mg = molgraph(mol)
-        self.api = mofplus_api(experimental=False)
+        self.api = None
         self.deconstruct(split_by_org)
         return
  
@@ -831,6 +840,7 @@ class topotyper(object):
         return
 
     def get_net(self):
+        self.api = user_api(experimental=False)
         self.nets = self.api.search_cs(self.cs, self.vs)
         return self.nets
 
@@ -840,7 +850,7 @@ class topotyper(object):
         will use the atomtypes in the topograph to determine, which vertices are 
         identical. It will fail, when two different vertices have the same cs and vs,
         and you have to use the new method instead.
-        The new method can do everything the old one can. It is only here on jpd's
+        The new method can do everything the old one can. The old one is only here on jpd's
         request!
         """
         cv, ca = self.mg.get_cluster_atoms()
