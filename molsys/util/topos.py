@@ -868,11 +868,15 @@ class topotyper(object):
             m = self.mg.mol.new_mol_by_index(atoms)
             mg = molgraph(m)
             #print "i "+str(i)
-            for j, mg2 in enumerate(bb_molgraphs):
+            j = len(bb_molgraphs) - 1
+            while j >= 0:
+                mg2 = bb_molgraphs[j]
                 #print "  j "+str(j)
                 if self.tg.mol.atypes[j] == self.tg.mol.atypes[i]:
                     if not isomorphism(mg.molg, mg2.molg):
                         self.tg.mol.atypes[i] += "#"
+                        j = len(bb_molgraphs)
+                j -= 1
             bb_molgraphs.append(mg)
         for i in range(len(self.tg.mol.atypes)):
             n = self.tg.mol.atypes[i].count("#")
