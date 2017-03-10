@@ -7,22 +7,26 @@ from graph_tool import Graph
 from graph_tool.topology import *
 import numpy
 import copy
-from weaver import user_api as mofplus_api
+from weaver import user_api
+from string import ascii_lowercase
 
 class conngraph:
-    # This is the "conngraph" class
-    # It is the basis of the molgraph and topograph classes, which use graph theory for the deconstruction of
-    # MOF structures, or the analysis of topologies, respectively. It provides the important ground functions
-    # used by both classes, like make_graph, flood_fill and center.
+    """ This is the "conngraph" class
+    It is the basis of the molgraph and topograph classes, which use graph theory for the deconstruction of
+    MOF structures, or the analysis of topologies, respectively. It provides the important ground functions
+    used by both classes, like make_graph, flood_fill and center.
+    """
 
     def __init__(self, mol):
+        """
+        :Parameters:
+        - mol: molsys.mol or molsys.topo object
+        """
         self.mol = mol
         self.make_graph()
 
     def make_graph(self, forbidden = None):
-        """
-        Create a Graph object from a molsys.mol object.
-        """
+        """ Create a Graph object from a molsys.mol object. """
         self.molg = Graph(directed=False)
         ig = 0
         # setup vertices
@@ -90,10 +94,14 @@ class conngraph:
     
     def handle_islands(self, thresh_small=0.2, silent=False):
         """
-        Handles parts of the structure which are not connected to the rest ("islands"):
-        - if the island is smaller than the size of largest island times thresh_small, it will be deleted.
-        - else, a warning will be printed out, since the structure might be bugged or an interpenetrated network.
-        Returns:
+        Handles parts of the structure which are not connected to the rest ("islands").
+        
+        :Parameters:
+        - thresh_small: If the island is smaller than the size of the largest island multiplied by
+          thresh_small, it will be deleted.
+        - silent: if True, a warning will be printed out when there are multiple large islands.
+        
+        :Returns:
         - n_removed_atoms: Number of removed atoms
         - multiple_large_islands: boolean if there are multiple large islands
         """
@@ -127,9 +135,7 @@ class conngraph:
             return n_removed_atoms, multiple_large_islands
     
     def get_islands(self):
-        """
-        Finds all islands.
-        """
+        """ Finds all islands. """
         self.molg.vp.filled.set_value(False)
         remain_list = range(self.molg.num_vertices())
         islands = []
@@ -146,12 +152,12 @@ class conngraph:
         Uses flood fill to find all vertices that are connected to the starting vertex.
         Caution: You might want to reset the vertex property "filled" before calling flood_fill!
         
-        Parameters:
+        :Parameters:
         - vertex: starting vertex
         - return_list: list of vertices which have already been iterated (when calling the function, you might have to force this to be [])
         - graph: The graph in which flood fill should be performed
         
-        Returns:
+        :Returns:
         - list of all vertices that could be reached by flood fill.
         """
         # perform flood fill
@@ -163,12 +169,10 @@ class conngraph:
         return return_list
     
 class molgraph(conngraph):
-    # This class handles the deconstruction of a MOF structure into a graph.
+    """ This class handles the deconstruction of a MOF structure into a graph. """
     
     def determine_Nk(self):
-        """
-        Assigns size of minimal ring to every edge
-        """
+        """ Assigns size of minimal ring to every edge """
         i = 0
         for e in self.molg.edges():
             i += 1
@@ -203,6 +207,12 @@ class molgraph(conngraph):
     def get_clusters(self):
         """
         Get the clusters of the MOF.
+        
+        The clusters (saved in self.clusters) are lists of atoms, which belong in one group or form 
+        one 'building block'. They are firstly defined by ring sizes: If the Nk value is higher or equal 
+        than the threshold, this bond will be defined as an inter-cluster bond.
+        The clusters can be later modified to create different representations of the framework, for 
+        example by summarizing all organic clusters which are bonded to each other.
         """
         try:
             assert self.threshes
@@ -267,7 +277,7 @@ class molgraph(conngraph):
         Get all atoms in the clusters of the conngraph.
         Needs clusters in self.clusters -> call get_clusters before calling this method!
         
-        Returns: 
+        :Returns: 
         -List of list of vertices of each cluster in the backup "self.keep" graph.
         -List of list of atom ids of each cluster
         """
@@ -292,6 +302,7 @@ class molgraph(conngraph):
         # then find all connecting atoms
         clusters_vertices = []
         clusters_atoms = []
+        self.keep.vp.filled.set_value(False)
         for ic, c in enumerate(self.clusters):
             for vid in c:
                 v = self.molg.vertex(vid)
@@ -375,10 +386,15 @@ class molgraph(conngraph):
     def detect_organicity(self, organic_elements = ["h", "b", "c", "n", "o", "f", "si", "p", "s", "cl", "as", "se", "br", "i"]):
         """
         Finds out whether a cluster classifies as "organic" or "inorganic".
-        "Organic" clusters will only contain the following elements:
-        H, B, C, N, O, F, Si, P, S, Cl, As, Se, Br, I
-        Returns a list, each element is True (for organic) or False (for inorganic), and
-        the index is equivalent to the index of the cluster in self.clusters
+        
+        :Parameters:
+        - organic_elements: This is a list which defines, which elements are allowed inside
+          an "organic" building block. All element symbols must be lower case. Default:
+          H, B, C, N, O, F, Si, P, S, Cl, As, Se, Br, I
+          
+        :Returns:
+        - self.cluster_organicity: list, each element is True (for organic) or False (for 
+          inorganic), and the index is equivalent to the index of the cluster in self.clusters
         """
         try:
             assert self.clusters
@@ -435,8 +451,10 @@ class molgraph(conngraph):
     def make_topograph(self, verbose=True, allow_2conns=False):
         """
         Create the topograph of the topology of the MOF.
-        verbose: if True, there will be some information printed out
-        allow_2conns: if True, 2-connected vertices will be allowed in the topograph
+        
+        :Parameters:
+        - verbose: if True, there will be some information printed out
+        - allow_2conns: if True, 2-connected vertices will be allowed in the topograph
         """
         try:
             assert self.clusters
@@ -492,9 +510,14 @@ class molgraph(conngraph):
     
 
 class topograph(conngraph):
-    # This class handles the analysis of nets using graph theory.
+    """ This class handles the analysis of nets using graph theory. """
     
     def __init__(self, mol, allow_2conns=False):
+        """
+        :Parameters:
+        - mol: molsys.topo object
+        - allow_2conns: if False, all 2-connected vertices will be deleted.
+        """
         self.mol = mol
         if not allow_2conns:
             self.midx_2conns = self.remove_2conns_from_mol()
@@ -502,9 +525,7 @@ class topograph(conngraph):
         return
     
     def remove_2conns_from_mol(self):
-        """
-        Removes all vertices with 2 connecting edges from self.mol
-        """
+        """ Removes all vertices with 2 connecting edges from self.mol """
         # delete atoms
         delete_list = []
         for i in range(self.mol.natoms):
@@ -535,9 +556,11 @@ class topograph(conngraph):
         """
         Calculates all cs (coordination sequence) values of the graph.
         This function just loops over all vertices and calls get_cs for each one
-        depth = maximum level
-        use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once. 
-                    (do NOT use this for topographs deconstructed from a molgraph !!!)
+        
+        :Parameters:
+        - depth: maximum level
+        - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once. 
+                      (do NOT use this for topographs deconstructed from a molgraph !!!)
         """
         if use_atypes:
             vertexlist = []
@@ -557,7 +580,11 @@ class topograph(conngraph):
     def get_cs(self, depth, start_vertex=0, start_cell=numpy.array([0,0,0])):
         """
         Calculates the cs (coordination sequence) values of the vertex specified in start_vertex and start_cell.
-        depth = maximum level
+        
+        :Parameters:
+        - depth: maximum level
+        - start_vertex: ID of vertex, of which the cs value should be calculated
+        - start_cell: starting cell of the function
         """
         def contains(l, obj):
             # the normal construction "if x not in y" does not work if arrays are somehow involved inside a list
@@ -600,9 +627,7 @@ class topograph(conngraph):
         return cs
     
     def get_cs1(self, start_vertex=0, start_cell=numpy.array([0,0,0])):
-        """
-        This function will return all vertices, which are connected to the vertices start_vertex in the cell start_cell.
-        """
+        """ This function will return all vertices, which are connected to the vertex start_vertex in the cell start_cell. """
         visited = []
         # loop over all neighbouring clusters and add them to the list
         for nj, j in enumerate(self.mol.conn[start_vertex]):
@@ -614,7 +639,10 @@ class topograph(conngraph):
     def get_all_vs(self, use_atypes=False, wells = False):
         """
         Calculates all vertex symbols of the graph.
-        use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
+        
+        :Parameters:
+        - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
+        - wells: If True, the Wells and the long symbols will be returned. If False, only the long symbols are used
         """
         if use_atypes:
             vertexlist = []
@@ -722,6 +750,15 @@ class topograph(conngraph):
         return vol
 
     def get_unique_vd(self, cs, vs, atype = True):
+        """
+        Returns the unique cs values and vertex symbols ("vertex descriptors", vd). 
+        :Parameters:
+        - cs: list of cs values
+        - vs: list of vertex symbols
+        - atype: If this is True, the function also changes the atomtypes in the 
+          topograph (i.e. the "vertex types"), according to the different vertex 
+          descriptors.
+        """
         assert type(cs) == list
         assert type(vs) == list
         assert len(vs) == len(cs)
@@ -846,11 +883,16 @@ class topograph(conngraph):
 
 
 class topotyper(object):
-    # Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures.
- 
+    """ Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures. """
+  
     def __init__(self, mol, split_by_org=True):
+        """
+        :Parameters:
+        - mol: molsys.mol object which should be deconstructed
+        - split_by_org: if True, organicity is used for defining building blocks.
+        """
         self.mg = molgraph(mol)
-        self.api = mofplus_api(experimental=False)
+        self.api = None
         self.deconstruct(split_by_org)
         return
  
@@ -871,116 +913,81 @@ class topotyper(object):
         return
 
     def get_net(self):
+        """ Connects to mofplus API to compare the cs and vs value to the database, and return the topology. """
+        self.api = user_api(experimental=False)
         self.nets = self.api.search_cs(self.cs, self.vs)
         return self.nets
 
-    def write_bbs_old(self, foldername):
+    def tg_atypes_by_isomorphism(self):
         """
-        Writes the clusters of the molgraph down. This is the old method, which
-        will use the atomtypes in the topograph to determine, which vertices are 
-        identical. It will fail, when two different vertices have the same cs and vs,
-        and you have to use the new method instead.
-        The new method can do everything the old one can. It is only here on jpd's
-        request!
+        This method will modify the atomtypes in the topograph (i.e. "vertex types"): If
+        two vertices with the same atomtype have different structures, the atomtype will be
+        changed.
+        Possible todo: compare the elements with each other
         """
         cv, ca = self.mg.get_cluster_atoms()
-        bbs = []
-        organicity = []
+        bb_molgraphs = []
         try:
             assert self.mg.cluster_organicity
         except:
             self.mg.detect_organicity()
+        # Remove all 2-connected clusters, since they aren't in the topograph
+        list2c = self.tg.midx_2conns
+        for i in reversed(sorted(list2c)):
+            del ca[i]
+        # check for isomorphism
         for i, atoms in enumerate(ca):
             m = self.mg.mol.new_mol_by_index(atoms)
-            bbs.append(m)
-            if self.mg.cluster_organicity[i] == True:
-                organicity.append("ORG")
-            else:
-                organicity.append("INO")
-        # Use the atomtypes to identify "vertex" BBs
-        atomtype_dict = {}
-        for i, atype in enumerate(self.tg.mol.atypes):
-            try:
-                atomtype_dict[atype]
-            except KeyError:
-                atomtype_dict[atype] = []
-            atomtype_dict[atype].append(i)
-        # Get the "edge" BBs (with exactly 2 neighbours)
-        list2c = self.tg.midx_2conns
-        # prepare vertex_bb_list (to translate indices of a list with 2-connected clusters to those of one without them)
-        vertex_bb_list = range(self.mg.mol.natoms)
-        for i in list2c:
-            del vertex_bb_list[vertex_bb_list.index(i)]
-        # Check to which vertex BBs the edge BBs are connected
-        conn_atypes = []
-        for i in list2c:
-            conn = []
-            ext_bond = []
-            cluster_atoms = self.mg.clusters[i]
-            for ia in cluster_atoms:
-                via = self.mg.molg.vertex(ia)
-                for j in via.all_neighbours():
-                    if j not in cluster_atoms:
-                        # thus bond is an external bond
-                        ext_bond.append(int(str(j)))
-            #print "cluster %s consisting of %d atoms is %d times connected" % (str(i), 
-            #        len(cluster_atoms), len(ext_bond))
-            # now check to which clusters these external bonds belong to
-            for ea in ext_bond:
-                for ji, j in enumerate(self.mg.clusters):
-                    if ea in j:
-            #            print " -> bonded to cluster ", ji
-                        conn.append(ji)
-                        break
-            conn_atype = []
-            for c in conn:
-                conn_atype.append(self.tg.mol.atypes[vertex_bb_list.index(c)])
-            conn_atypes.append([i, list(sorted(conn_atype))])
-        # Return all "vertex" BBs (more than 2 neighbours)
-        if not os.path.exists(foldername):
-            os.mkdir(foldername)
-        for i in atomtype_dict.keys():
-            index = vertex_bb_list[atomtype_dict[i][0]]
-            bbs[index].write(foldername + "/" + str(i) + "_" + organicity[index] + ".mfpx", "mfpx")
-        # print out "edge" BBs.
-        used = []
-        for conn_atype in conn_atypes:
-            if conn_atype[1] not in used:
-                index = conn_atype[0]
-                bbs[index].write(foldername + "/" + str(conn_atype[1][0]) + "-" + str(conn_atype[1][1]) + "_" + organicity[index] + ".mfpx", "mfpx")
-                used.append(conn_atype[1])
+            mg = molgraph(m)
+            #print "i "+str(i)
+            j = len(bb_molgraphs) - 1
+            while j >= 0:
+                mg2 = bb_molgraphs[j]
+                #print "  j "+str(j)
+                if self.tg.mol.atypes[j] == self.tg.mol.atypes[i]:
+                    if not isomorphism(mg.molg, mg2.molg):
+                        self.tg.mol.atypes[i] += "#"
+                        j = len(bb_molgraphs)
+                j -= 1
+            bb_molgraphs.append(mg)
+        for i in range(len(self.tg.mol.atypes)):
+            n = self.tg.mol.atypes[i].count("#")
+            if n > 0:
+                self.tg.mol.atypes[i] = self.tg.mol.atypes[i].replace("#", "")
+                self.tg.mol.atypes[i] += ascii_lowercase[n-1]
         return
     
-    def write_bbs(self, foldername):
+    def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
         """
         Write the clusters of the molgraph into the folder specified in the parameters.
         The names of the clusters written out will be those of the atomtypes of the vertices 
         in the topograph, if they are "vertex" building blocks (i.e. they have more than
         2 neighbours). If they are "edge" building blocks (they have exactly 2 neighbours), 
         their name will be the atomtypes of the vertex BBs they are connected to.
-        Additionally, at the end of the filename, "_ORG" denotes an organic building block,
-        while "_INO" denotes a inorganic BB.
+        Additionally, at the end of the filename, a string defined by the parameters org_flag
+        and ino_flag will be appended to denote whether the BB is organic.
+        
+        :Parameters:
+        - foldername: Name of the folder, in which the mfpx files of the building blocks 
+          should be saved.
+        - org_flag: String, which will be added to the filename if the BB is organic.
+        - ino_flag: String, which will be added to the filename if the BB is inorganic.
         """
+        self.tg_atypes_by_isomorphism()
         cv, ca = self.mg.get_cluster_atoms()
         bbs = []
-        bb_molgraphs = []
         organicity = []
-        try:
-            assert self.mg.cluster_organicity
-        except:
-            self.mg.detect_organicity()
         for i, atoms in enumerate(ca):
             m = self.mg.mol.new_mol_by_index(atoms)
             bbs.append(m)
-            bb_molgraphs.append(molgraph(m))
             if self.mg.cluster_organicity[i] == True:
-                organicity.append("ORG")
+                organicity.append(org_flag)
             else:
-                organicity.append("INO")
+                organicity.append(ino_flag)
         # prepare vertex_bb_list (to translate indices of a list with 2-connected clusters to those of one without them)
         list2c = self.tg.midx_2conns
-        vertex_bb_list = range(self.mg.mol.natoms)
-        for i in list2c:
+        vertex_bb_list = range(len(self.mg.clusters))
+        for i in reversed(sorted(list2c)):
             del vertex_bb_list[vertex_bb_list.index(i)]
         # Use the atomtypes to identify "vertex" BBs
         atomtype_dict = {}
@@ -990,61 +997,27 @@ class topotyper(object):
             except KeyError:
                 atomtype_dict[atype] = []
             atomtype_dict[atype].append(vertex_bb_list[i])
-        # Categorize all clusters into isomorphic groups
-        # possible todo: compare the elements with each other
-        cluster_names = {}
         unique_bbs = []
-        not_categorized = range(len(bb_molgraphs))
-        c = 0
-        while not_categorized != []:
-            j = not_categorized.pop(0)
-            mg = bb_molgraphs[j]
-            this_bb = [j]
-            for i in not_categorized:
-                mg2 = bb_molgraphs[i]
-                atype_j = None
-                atype_i = None
-                for key in atomtype_dict.keys():
-                    if j in atomtype_dict[key]:
-                        atype_j = key
-                    if i in atomtype_dict[key]:
-                        atype_i = key
-                if atype_j == atype_i:
-                    if isomorphism(mg.molg, mg2.molg):
-                        this_bb.append(i)
-                        not_categorized = [x for x in not_categorized if x != i]
-            unique_bbs.append(this_bb)
-            if atype_j != None:
-                cluster_names[c] = atype_j
-            c += 1
-        # determine which of the clusters are "edge" BBs.
-        unique_2c = []
-        for i in list2c:
-            for n, j in enumerate(unique_bbs):
-                if i in j:
-                    if n not in unique_2c:
-                        unique_2c.append(n)
+        cluster_names = []
+        for key in atomtype_dict.keys():
+            unique_bbs.append(atomtype_dict[key])
+            cluster_names.append(key)
+        # determine which of the clusters are "edge" BBs and
         # Check to which vertex BBs the edge BBs are connected
         cluster_conn = self.mg.cluster_conn()
-        for i in unique_2c:
-            neighbour_atypes = []
-            for j in unique_bbs[i]:
-                neighbour_atype = []
-                # find out which atomtype this cluster has:
-                for cc in cluster_conn[j]:
-                    for key in atomtype_dict.keys():
-                        if cc in atomtype_dict[key]:
-                            neighbour_atype.append(key)
-                    if len(neighbour_atype) >= 2:
+        neighbour_atypes = []
+        for i in list2c:
+            neighbour_atype = []
+            for cc in cluster_conn[i]:
+                for key in atomtype_dict.keys():
+                    if cc in atomtype_dict[key]:
+                        neighbour_atype.append(key)
                         break
-                neighbour_atype = list(sorted(neighbour_atype))
-                if neighbour_atype not in neighbour_atypes:
-                    neighbour_atypes.append(neighbour_atype)
-            for j in neighbour_atypes:
-                try:
-                    cluster_names[i] += "_" + str(j[0]) + "-" + str(j[1])
-                except KeyError:
-                    cluster_names[i] = str(j[0]) + "-" + str(j[1])
+            neighbour_atype = list(sorted(neighbour_atype))
+            if neighbour_atype not in neighbour_atypes:
+                neighbour_atypes.append(neighbour_atype)
+                unique_bbs.append([i])
+                cluster_names.append(neighbour_atype[0]+"-"+neighbour_atype[1])
         # Now write building blocks
         #print "============"
         #print unique_bbs
@@ -1059,7 +1032,7 @@ class topotyper(object):
             os.mkdir(foldername)
         for n, i in enumerate(unique_bbs):
             m = bbs[i[0]]
-            m.write(foldername+"/"+cluster_names[n]+"_"+organicity[i[0]]+".mfpx", "mfpx")
+            m.write(foldername+"/"+cluster_names[n]+organicity[i[0]]+".mfpx", "mfpx")
         return
 
 
