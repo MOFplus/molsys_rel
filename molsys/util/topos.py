@@ -11,19 +11,22 @@ from weaver import user_api
 from string import ascii_lowercase
 
 class conngraph:
-    # This is the "conngraph" class
-    # It is the basis of the molgraph and topograph classes, which use graph theory for the deconstruction of
-    # MOF structures, or the analysis of topologies, respectively. It provides the important ground functions
-    # used by both classes, like make_graph, flood_fill and center.
+    """ This is the "conngraph" class
+    It is the basis of the molgraph and topograph classes, which use graph theory for the deconstruction of
+    MOF structures, or the analysis of topologies, respectively. It provides the important ground functions
+    used by both classes, like make_graph, flood_fill and center.
+    """
 
     def __init__(self, mol):
+        """
+        :Parameters:
+        - mol: molsys.mol or molsys.topo object
+        """
         self.mol = mol
         self.make_graph()
 
     def make_graph(self, forbidden = None):
-        """
-        Create a Graph object from a molsys.mol object.
-        """
+        """ Create a Graph object from a molsys.mol object. """
         self.molg = Graph(directed=False)
         ig = 0
         # setup vertices
@@ -91,10 +94,14 @@ class conngraph:
     
     def handle_islands(self, thresh_small=0.2, silent=False):
         """
-        Handles parts of the structure which are not connected to the rest ("islands"):
-        - if the island is smaller than the size of largest island times thresh_small, it will be deleted.
-        - else, a warning will be printed out, since the structure might be bugged or an interpenetrated network.
-        Returns:
+        Handles parts of the structure which are not connected to the rest ("islands").
+        
+        :Parameters:
+        - thresh_small: If the island is smaller than the size of the largest island multiplied by
+          thresh_small, it will be deleted.
+        - silent: if True, a warning will be printed out when there are multiple large islands.
+        
+        :Returns:
         - n_removed_atoms: Number of removed atoms
         - multiple_large_islands: boolean if there are multiple large islands
         """
@@ -128,9 +135,7 @@ class conngraph:
             return n_removed_atoms, multiple_large_islands
     
     def get_islands(self):
-        """
-        Finds all islands.
-        """
+        """ Finds all islands. """
         self.molg.vp.filled.set_value(False)
         remain_list = range(self.molg.num_vertices())
         islands = []
@@ -147,12 +152,12 @@ class conngraph:
         Uses flood fill to find all vertices that are connected to the starting vertex.
         Caution: You might want to reset the vertex property "filled" before calling flood_fill!
         
-        Parameters:
+        :Parameters:
         - vertex: starting vertex
         - return_list: list of vertices which have already been iterated (when calling the function, you might have to force this to be [])
         - graph: The graph in which flood fill should be performed
         
-        Returns:
+        :Returns:
         - list of all vertices that could be reached by flood fill.
         """
         # perform flood fill
@@ -164,12 +169,10 @@ class conngraph:
         return return_list
     
 class molgraph(conngraph):
-    # This class handles the deconstruction of a MOF structure into a graph.
+    """ This class handles the deconstruction of a MOF structure into a graph. """
     
     def determine_Nk(self):
-        """
-        Assigns size of minimal ring to every edge
-        """
+        """ Assigns size of minimal ring to every edge """
         i = 0
         for e in self.molg.edges():
             i += 1
@@ -204,6 +207,12 @@ class molgraph(conngraph):
     def get_clusters(self):
         """
         Get the clusters of the MOF.
+        
+        The clusters (saved in self.clusters) are lists of atoms, which belong in one group or form 
+        one 'building block'. They are firstly defined by ring sizes: If the Nk value is higher or equal 
+        than the threshold, this bond will be defined as an inter-cluster bond.
+        The clusters can be later modified to create different representations of the framework, for 
+        example by summarizing all organic clusters which are bonded to each other.
         """
         try:
             assert self.threshes
@@ -266,9 +275,8 @@ class molgraph(conngraph):
     def get_cluster_atoms(self):
         """
         Get all atoms in the clusters of the conngraph.
-        Needs clusters in self.clusters -> call get_clusters before calling this method!
         
-        Returns: 
+        :Returns: 
         -List of list of vertices of each cluster in the backup "self.keep" graph.
         -List of list of atom ids of each cluster
         """
@@ -377,10 +385,15 @@ class molgraph(conngraph):
     def detect_organicity(self, organic_elements = ["h", "b", "c", "n", "o", "f", "si", "p", "s", "cl", "as", "se", "br", "i"]):
         """
         Finds out whether a cluster classifies as "organic" or "inorganic".
-        "Organic" clusters will by default only contain the following elements:
-        H, B, C, N, O, F, Si, P, S, Cl, As, Se, Br, I
-        Returns a list, each element is True (for organic) or False (for inorganic), and
-        the index is equivalent to the index of the cluster in self.clusters
+        
+        :Parameters:
+        - organic_elements: This is a list which defines, which elements are allowed inside
+          an "organic" building block. All element symbols must be lower case. Default:
+          H, B, C, N, O, F, Si, P, S, Cl, As, Se, Br, I
+          
+        :Returns:
+        - self.cluster_organicity: list, each element is True (for organic) or False (for 
+          inorganic), and the index is equivalent to the index of the cluster in self.clusters
         """
         try:
             assert self.clusters
@@ -437,8 +450,10 @@ class molgraph(conngraph):
     def make_topograph(self, verbose=True, allow_2conns=False):
         """
         Create the topograph of the topology of the MOF.
-        verbose: if True, there will be some information printed out
-        allow_2conns: if True, 2-connected vertices will be allowed in the topograph
+        
+        :Parameters:
+        - verbose: if True, there will be some information printed out
+        - allow_2conns: if True, 2-connected vertices will be allowed in the topograph
         """
         try:
             assert self.clusters
@@ -494,9 +509,14 @@ class molgraph(conngraph):
     
 
 class topograph(conngraph):
-    # This class handles the analysis of nets using graph theory.
+    """ This class handles the analysis of nets using graph theory. """
     
     def __init__(self, mol, allow_2conns=False):
+        """
+        :Parameters:
+        - mol: molsys.topo object
+        - allow_2conns: if False, all 2-connected vertices will be deleted.
+        """
         self.mol = mol
         if not allow_2conns:
             self.midx_2conns = self.remove_2conns_from_mol()
@@ -504,9 +524,7 @@ class topograph(conngraph):
         return
     
     def remove_2conns_from_mol(self):
-        """
-        Removes all vertices with 2 connecting edges from self.mol
-        """
+        """ Removes all vertices with 2 connecting edges from self.mol """
         # delete atoms
         delete_list = []
         for i in range(self.mol.natoms):
@@ -537,9 +555,11 @@ class topograph(conngraph):
         """
         Calculates all cs (coordination sequence) values of the graph.
         This function just loops over all vertices and calls get_cs for each one
-        depth = maximum level
-        use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once. 
-                    (do NOT use this for topographs deconstructed from a molgraph !!!)
+        
+        :Parameters:
+        - depth: maximum level
+        - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once. 
+                      (do NOT use this for topographs deconstructed from a molgraph !!!)
         """
         if use_atypes:
             vertexlist = []
@@ -559,7 +579,11 @@ class topograph(conngraph):
     def get_cs(self, depth, start_vertex=0, start_cell=numpy.array([0,0,0])):
         """
         Calculates the cs (coordination sequence) values of the vertex specified in start_vertex and start_cell.
-        depth = maximum level
+        
+        :Parameters:
+        - depth: maximum level
+        - start_vertex: ID of vertex, of which the cs value should be calculated
+        - start_cell: starting cell of the function
         """
         def contains(l, obj):
             # the normal construction "if x not in y" does not work if arrays are somehow involved inside a list
@@ -602,9 +626,7 @@ class topograph(conngraph):
         return cs
     
     def get_cs1(self, start_vertex=0, start_cell=numpy.array([0,0,0])):
-        """
-        This function will return all vertices, which are connected to the vertex start_vertex in the cell start_cell.
-        """
+        """ This function will return all vertices, which are connected to the vertex start_vertex in the cell start_cell. """
         visited = []
         # loop over all neighbouring clusters and add them to the list
         for nj, j in enumerate(self.mol.conn[start_vertex]):
@@ -616,7 +638,10 @@ class topograph(conngraph):
     def get_all_vs(self, use_atypes=False, wells = False):
         """
         Calculates all vertex symbols of the graph.
-        use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
+        
+        :Parameters:
+        - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
+        - wells: If True, the Wells and the long symbols will be returned. If False, only the long symbols are used
         """
         if use_atypes:
             vertexlist = []
@@ -726,7 +751,7 @@ class topograph(conngraph):
     def get_unique_vd(self, cs, vs, atype = True):
         """
         Returns the unique cs values and vertex symbols ("vertex descriptors", vd). 
-        Parameters:
+        :Parameters:
         - cs: list of cs values
         - vs: list of vertex symbols
         - atype: If this is True, the function also changes the atomtypes in the 
@@ -817,9 +842,14 @@ class topograph(conngraph):
 
 
 class topotyper(object):
-    # Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures.
- 
+    """ Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures. """
+  
     def __init__(self, mol, split_by_org=True):
+        """
+        :Parameters:
+        - mol: molsys.mol object which should be deconstructed
+        - split_by_org: if True, organicity is used for defining building blocks.
+        """
         self.mg = molgraph(mol)
         self.api = None
         self.deconstruct(split_by_org)
@@ -842,13 +872,14 @@ class topotyper(object):
         return
 
     def get_net(self):
+        """ Connects to mofplus API to compare the cs and vs value to the database, and return the topology. """
         self.api = user_api(experimental=False)
         self.nets = self.api.search_cs(self.cs, self.vs)
         return self.nets
 
     def tg_atypes_by_isomorphism(self):
         """
-        This method will change the atomtypes in the topograph (i.e. "vertex types"): If
+        This method will modify the atomtypes in the topograph (i.e. "vertex types"): If
         two vertices with the same atomtype have different structures, the atomtype will be
         changed.
         Possible todo: compare the elements with each other
@@ -892,8 +923,14 @@ class topotyper(object):
         in the topograph, if they are "vertex" building blocks (i.e. they have more than
         2 neighbours). If they are "edge" building blocks (they have exactly 2 neighbours), 
         their name will be the atomtypes of the vertex BBs they are connected to.
-        Additionally, at the end of the filename, "_ORG" denotes an organic building block,
-        while "_INO" denotes a inorganic BB.
+        Additionally, at the end of the filename, a string defined by the parameters org_flag
+        and ino_flag will be appended to denote whether the BB is organic.
+        
+        :Parameters:
+        - foldername: Name of the folder, in which the mfpx files of the building blocks 
+          should be saved.
+        - org_flag: String, which will be added to the filename if the BB is organic.
+        - ino_flag: String, which will be added to the filename if the BB is inorganic.
         """
         self.tg_atypes_by_isomorphism()
         cv, ca = self.mg.get_cluster_atoms()
