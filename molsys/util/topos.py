@@ -1031,6 +1031,9 @@ class topotyper(object):
                         if isomorphism(mg.molg, mg2.molg):
                             isomorphic_with_any = True
                             break
+                    else:
+                        # this is a workaround, so multiple edge BBs with 1 atom will always be isomorphic...
+                        isomorphic_with_any = True
                 if not isomorphic_with_any:
                     unique_2c.append(i)
                     unique_bbs.append([i])
