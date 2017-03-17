@@ -944,10 +944,11 @@ class topotyper(object):
             while j >= 0:
                 mg2 = bb_molgraphs[j]
                 #print "  j "+str(j)
-                if self.tg.mol.atypes[j] == self.tg.mol.atypes[i]:
-                    if not isomorphism(mg.molg, mg2.molg):
-                        self.tg.mol.atypes[i] += "#"
-                        j = len(bb_molgraphs)
+                if mg.mol.natoms > 1 and mg2.mol.natoms > 1:
+                    if self.tg.mol.atypes[j] == self.tg.mol.atypes[i]:
+                        if not isomorphism(mg.molg, mg2.molg):
+                            self.tg.mol.atypes[i] += "#"
+                            j = len(bb_molgraphs)
                 j -= 1
             bb_molgraphs.append(mg)
         for i in range(len(self.tg.mol.atypes)):
