@@ -898,7 +898,7 @@ class topotyper(object):
  
     def deconstruct(self, split_by_org=True):
         """ perform deconstruction """
-        self.mg.handle_islands()
+        self.mg.handle_islands(silent=True)
         self.mg.determine_Nk()
         self.mg.find_cluster_threshold()
         self.mg.get_clusters()
@@ -1007,6 +1007,7 @@ class topotyper(object):
         # Check to which vertex BBs the edge BBs are connected
         cluster_conn = self.mg.cluster_conn()
         neighbour_atypes = []
+        unique_2c = []
         for i in list2c:
             neighbour_atype = []
             for cc in cluster_conn[i]:
@@ -1017,8 +1018,28 @@ class topotyper(object):
             neighbour_atype = list(sorted(neighbour_atype))
             if neighbour_atype not in neighbour_atypes:
                 neighbour_atypes.append(neighbour_atype)
+                unique_2c.append(i)
                 unique_bbs.append([i])
                 cluster_names.append(neighbour_atype[0]+"-"+neighbour_atype[1])
+            else:
+                # check for isomorphism
+                mg = molgraph(bbs[i])
+                isomorphic_with_any = False
+                for i2 in unique_2c:
+                    mg2 = molgraph(bbs[i2])
+                    if mg.mol.natoms > 1 and mg2.mol.natoms > 1:
+                        if isomorphism(mg.molg, mg2.molg):
+                            isomorphic_with_any = True
+                            break
+                if not isomorphic_with_any:
+                    unique_2c.append(i)
+                    unique_bbs.append([i])
+                    name = neighbour_atype[0]+"-"+neighbour_atype[1]
+                    j = 0
+                    while name in cluster_names:
+                        name = neighbour_atype[0]+"-"+neighbour_atype[1]+ascii_lowercase[j]
+                        j += 1
+                    cluster_names.append(name)
         # Now write building blocks
         #print "============"
         #print unique_bbs

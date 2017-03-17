@@ -281,12 +281,11 @@ class topo(mol.mol):
                 # have to increase the threshold, until the get_distvec function will find all imgis.
                 n_conns = c.count(j)
                 t = 0.01
-                stop = False
-                while not stop:
+                while True:
                     d,r,imgi = self.get_distvec(i,j,thresh=t)
                     t += 0.01
                     if n_conns == len(imgi):
-                        stop = True
+                        break
                 if len(imgi) == 1:
                     # only one neighbor .. all is fine
                     atoms_pconn.append(images[imgi[0]])
@@ -303,7 +302,7 @@ class topo(mol.mol):
                         else:
                             # ok, we have this image already
                             use_it = True
-                            #print c
+                            #print c, "=>", j
                             #print atoms_image
                             for k, iii in enumerate(atoms_image):
                                 #print 'k',k
@@ -312,6 +311,7 @@ class topo(mol.mol):
                                 atoms_image.append(ii)
                                 atoms_pconn.append(images[ii])
             self.pconn.append(atoms_pconn)
+            #if len(atoms_pconn) != len(c): print "AOSUHDAPUFHPOUFHPWOUFHPOUDHSPUODHASIUDHAUSIDHSD"
         return
 
         # 'na',lower(label),xyz,i,j)
