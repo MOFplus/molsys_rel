@@ -80,7 +80,9 @@ class fragments:
                                       (i, f, j, self.fraglist[j], self._mol.atypes[ia], self._mol.atypes[ja]))
         return
 
-    def analyze_frag_conn(self, validator, reset_atypes=True):
+    # TODO(RS): put the "validaor in here" ... no extra class. source is like in fragmentizer either "file" or "mofp"
+    #           remove the reset_atypes stuff. we do not need this anymore
+    def analyze_frag_conn(self, validator, reset_atypes=False):
         """
         detect all types of inter-fragment bonds out of frag_conn and frag_conn_atoms
 
@@ -123,5 +125,14 @@ class fragments:
                     self._mol.atypes[i] += "_"+ft
         return
 
-
+    def make_frag_graph(self):
+        """
+        generate a graph of the frag_conn in analogy to the graph addon on the molecular level
+        using the graph addons util_graph method
+        """
+        self._mol.addon("graph")
+        self.frag_graph = self._mol.graph.util_graph(self.fraglist, self.frag_conn)
+        # DEBUG here just for debug reasons
+        self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
+        return
 
