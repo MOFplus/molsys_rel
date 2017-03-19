@@ -67,7 +67,7 @@ class graph:
                         #self.molg.add_edge( self.molg.vertex(self.vert2atom.index(ja)),self.molg.vertex(i))
         return
 
-    def plot_graph(self, fname, size=800, fsize=10):
+    def plot_graph(self, fname, g = None, size=800, fsize=10):
         """
         plot the grap (needs more tuning options
 
@@ -77,8 +77,12 @@ class graph:
             - fsize : font size [default 10]
 
         """
+        if g:
+            draw_g = g
+        else:
+            draw_g = self.molg
         from graph_tool.draw import graph_draw
-        graph_draw(self.molg, vertex_text=self.molg.vp.type, vertex_font_size=10,  \
+        graph_draw(draw_g, vertex_text=draw_g.vp.type, vertex_font_size=10,  \
             output_size=(size, size), output=fname+".pdf")
         return
 
@@ -131,5 +135,21 @@ class graph:
             frags.append(f)
         return frags
 
+    def util_graph(self, vertices, conn):
+        """
+        generate a generate a graph with vertices and connectivity in conn
+        """
+        g = Graph(directed=False)
+        # now add vertices
+        g.vp.type = g.new_vertex_property("string")
+        for i, v in enumerate(vertices):
+            g.add_vertex()
+            g.vp.type[i] = v
+        # now add edges ...
+        for i, v in enumerate(vertices):
+            for j in conn[i]:
+                if j>=i:
+                    g.add_edge(g.vertex(i), g.vertex(j))
+        return g
 
 
