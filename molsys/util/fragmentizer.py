@@ -15,6 +15,7 @@ import numpy
 import logging
 import glob
 import molsys
+import csv
 
 import logging
 
@@ -22,38 +23,59 @@ logger = logging.getLogger("molsys.fragmentizer")
 
 class fragmentizer:
 
-    def __init__(self):
+    def __init__(self, source="file"):
         """
-        fragmentizer loads a catalog of fragments with ending .frag from either
-        the current directory or from $MOLSYS_FRAGS
+        fragmentizer gets a catalog of fragments
+        if source is "file" it reads from local disk either
+              from the current directory or from $MOLSYS_FRAGS
+              a catalog is expected to be in fragments.csv
+        if source is "mofp" it will use the API to download from MOF+
 
+        :Paramters:
+
+            - source: either "file" or "mofp"
         """
-        if os.environ.has_key("MOLSYS_FRAGS"):
-            self.frag_path = os.environ["MOLSYS_FRAGS"]
-        else:
-            self.frag_path = "."
-        self.read_frags()
-        return
-        
-    def read_frags(self):
-        logger.info("Fragmentizer reading frags from %s" % self.frag_path)
-        frag_files = glob.glob(self.frag_path + "/*.mfpb")
+        # default
         self.fragments = {}
-        frag_natoms,fragnames=[],[]
-        for f in frag_files:
-            m = molsys.mol()
-            m.read(f, ftype="mfpx")
-            frag_natoms.append(m.natoms)
-            m.addon("graph")
-            m.graph.make_graph()
-            # m.graph.plot_graph(f)
-            logger.info("read %s" % f)
-            fragname = f.split("/")[-1].split(".")[0]
-            fragnames.append(fragname)
-            self.fragments[fragname] = m
-        ### okay, we want the large fragments to be tested first
-        self.frag_order = [fragnames[i] for i in numpy.argsort(frag_natoms)[::-1]]#[::-1]]
-        print self.frag_order 
+        self.frag_vtypes = {}
+        self.frag_prio = {}
+        self.source = source
+        if source == "file":
+            if os.environ.has_key("MOLSYS_FRAGS"):
+                self.frag_path = os.environ["MOLSYS_FRAGS"]
+            else:
+                self.frag_path = "."
+            self.read_catalog()
+        else:
+            raise "ValueError", "API retrieval of fragments needs to be implemented"
+        return
+
+    def read_catalog(self):
+        """
+        file-mode: read available fragments from csv file
+        """
+        f = open(self.frag_path + "/fragments.csv", "rb")
+        csvf = csv.reader(f, delimiter=",")
+        for row in csvf:
+            fname  = row[0]
+            vtypes = row[1].split()
+            prio   = int(row[2])
+            self.fragments[fname] = None
+            self.frag_vtypes[fname] = vtypes
+            self.frag_prio[fname] = prio
+        f.close()
+        return
+
+    def read_frag(self, fname):
+        """
+        file-mode: read a fragment and convert to a graph
+        """
+        m = molsys.mol()
+        m.read(self.frag_path + "/" + fname + ".mfpx", ftype="mfpx")
+        m.addon("graph")
+        m.graph.make_graph()
+        self.fragments[fname] = m
+        return
 
     def __call__(self, mol):
         """
@@ -64,24 +86,49 @@ class fragmentizer:
             - mol : mol object to be fragmentized
 
         """
+        # set all fragment info to none
+        mol.set_nofrags()
+        #
         mol.addon("graph")
         mol.graph.make_graph()
         mol.set_nofrags()
-        # mol.graph.plot_graph("mol")
+        # get list of atypes
+        atypes = mol.get_atypelist()
+        vtype = map(lambda e: e.split("_")[0], atypes)
+        vtype = filter(lambda e: (e[0] != "x") and (e[0] != "h"), vtype)
+        vtype = list(set(vtype))
+        print vtype
+        # scan for relevant fragments
+        scan_frag = []
+        scan_prio = []
+        for fname in self.fragments.keys():
+            # check if all vtypes in frag appear in the systems vtype
+            if all(v in vtype for v in self.frag_vtypes[fname]):
+                scan_frag.append(fname)
+                scan_prio.append(self.frag_prio[fname])
+                if self.fragments[fname] == None:
+                    # not read in yet
+                    if self.source == "file":
+                        self.read_frag(fname)
+                    elif self.source == "mofp":
+                        raise ValueError, "to be implemented"
+                    else:
+                        raise ValueError, "unknwon source for fragments"
+        # now sort according to prio
+        sorted_scan_frag = [scan_frag[i] for i in numpy.argsort(scan_prio)]
+        sorted_scan_frag.reverse()
+        # now run over the system and test the fragments
+        atypes = mol.get_atypes()
         fi = 0
-        for f in self.frag_order:
-            fidx = mol.graph.find_fragment(self.fragments[f],add_hydrogen=False)
-            for flist in fidx:
-                exists=False
-                for i in flist:
-                    if mol.fragtypes[i] != '-1':
-#                        print mol.fragtypes[i],i,flist,f
-                        exists=True
-                        break
-                    mol.fragtypes[i]   = f
-                    mol.fragnumbers[i] = fi
-                if exists==False: fi += 1
-                    
-        # print mol.fragtypes
-        # print mol.fragnumbers
-        return 
+        for fname in sorted_scan_frag:
+            fidx = mol.graph.find_fragment(self.fragments[fname],add_hydrogen=True)
+            for alist in fidx:
+                # if any of the atoms in alist is already in a fragment we can skip
+                assigned_already = any(mol.fragnumbers[i] >= 0 for i in alist)
+                if not assigned_already:
+                    for i in alist:
+                        mol.fragtypes[i]   = fname
+                        mol.fragnumbers[i] = fi
+                        # print "atom %s set to fragment %s" % (atypes[i], fname)
+                    fi += 1
+        return
