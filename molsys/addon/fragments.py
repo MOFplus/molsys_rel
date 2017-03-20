@@ -133,6 +133,6 @@ class fragments:
         self._mol.addon("graph")
         self.frag_graph = self._mol.graph.util_graph(self.fraglist, self.frag_conn)
         # DEBUG here just for debug reasons
-        self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
+        #self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
         return
 

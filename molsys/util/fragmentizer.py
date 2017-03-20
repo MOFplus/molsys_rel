@@ -46,8 +46,12 @@ class fragmentizer:
             else:
                 self.frag_path = "."
             self.read_catalog()
+        elif source == "API":
+            from weaver import FF_api
+            self.api = FF_api()
+            self.catalog_from_API()
         else:
-            raise "ValueError", "API retrieval of fragments needs to be implemented"
+            raise ValueError("Unknown source specified")
         return
 
     def read_catalog(self):
@@ -66,12 +70,27 @@ class fragmentizer:
         f.close()
         return
 
+    def catalog_from_API(self):
+        frags = self.api.list_FFfrags()
+        for f in frags:
+            self.fragments[f[0]]= None
+            self.frag_vtypes[f[0]] = f[2]
+            self.frag_prio[f[0]] = f[1]
+        return
+
     def read_frag(self, fname):
         """
         file-mode: read a fragment and convert to a graph
         """
         m = molsys.mol()
         m.read(self.frag_path + "/" + fname + ".mfpx", ftype="mfpx")
+        m.addon("graph")
+        m.graph.make_graph()
+        self.fragments[fname] = m
+        return
+
+    def read_frag_from_API(self,fname):
+        m = self.api.get_FFfrag(fname, mol = True)
         m.addon("graph")
         m.graph.make_graph()
         self.fragments[fname] = m
@@ -110,8 +129,8 @@ class fragmentizer:
                     # not read in yet
                     if self.source == "file":
                         self.read_frag(fname)
-                    elif self.source == "mofp":
-                        raise ValueError, "to be implemented"
+                    elif self.source == "API":
+                        self.read_frag_from_API(fname)
                     else:
                         raise ValueError, "unknwon source for fragments"
         # now sort according to prio
