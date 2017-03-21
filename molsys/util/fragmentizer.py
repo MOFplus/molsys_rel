@@ -23,7 +23,7 @@ logger = logging.getLogger("molsys.fragmentizer")
 
 class fragmentizer:
 
-    def __init__(self, source="file"):
+    def __init__(self, source="mofp"):
         """
         fragmentizer gets a catalog of fragments
         if source is "file" it reads from local disk either
@@ -33,7 +33,7 @@ class fragmentizer:
 
         :Paramters:
 
-            - source: either "file" or "mofp"
+            - source: either "file" or "mofp" [default "mofp"]
         """
         # default
         self.fragments = {}
@@ -46,7 +46,7 @@ class fragmentizer:
             else:
                 self.frag_path = "."
             self.read_catalog()
-        elif source == "API":
+        elif source == "mofp":
             from weaver import FF_api
             self.api = FF_api()
             self.catalog_from_API()
@@ -72,6 +72,7 @@ class fragmentizer:
 
     def catalog_from_API(self):
         frags = self.api.list_FFfrags()
+        print frags
         for f in frags:
             self.fragments[f[0]]= None
             self.frag_vtypes[f[0]] = f[2]
@@ -129,7 +130,7 @@ class fragmentizer:
                     # not read in yet
                     if self.source == "file":
                         self.read_frag(fname)
-                    elif self.source == "API":
+                    elif self.source == "mofp":
                         self.read_frag_from_API(fname)
                     else:
                         raise ValueError, "unknwon source for fragments"
