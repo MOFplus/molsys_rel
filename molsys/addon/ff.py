@@ -14,6 +14,8 @@ import numpy as np
 from molsys.util.timing import timer, Timer
 
 import itertools
+import copy
+import string
 
 import logging
 logger = logging.getLogger("molsys.ff")
@@ -135,7 +137,7 @@ class ff:
         self.timer = Timer()
         logger.debug("generated the ff addon")
         return
-        
+
     @timer("assign parameter")
     def assign_params(self, FF, source="mofp"):
         """
@@ -147,6 +149,7 @@ class ff:
             - FF :    [string] name of the force field to be used in the parameter search
             - source: [string, default=mofp] where to get the data from
         """
+        self.timer.start("connect to DB")
         self.FF = FF
         self.source = source
         if self.source == "mofp":
@@ -156,6 +159,7 @@ class ff:
             raise ValueError, "to be implemented"
         else:
             raise ValueError, "unknown source for assigning parameters"
+        self.timer.stop()
         # as a first step we need to generate the fragment graph
         self.timer.start("fragment graph")
         self._mol.addon("fragments")
@@ -169,21 +173,60 @@ class ff:
             self.aftypes.append(a+"@"+self._mol.fragtypes[i])
         self.timer.stop()
         # detect refsystems
-        self.find_refsystems()  
-        #
-        for r in self.scan_ref:
-            print r
-            print self.ref_fraglists[r]
+        self.find_refsystems()
+        # make data structures
+        with self.timer("make data structures"):
+            self.bnd_parind = [None]*len(self.ric.bnd)
+            self.bnd_par = {}
+        with self.timer("parameter assignement loop"):
+            for ref in self.scan_ref:
+                logger.info("assigning params for ref system %s" % ref)
+                curr_fraglist = self.ref_fraglists[ref]
+                # BONDS
+                curr_bnd_par = self.ref_params[ref]["twobody"]["bond"]
+                for i, b in enumerate(self.ric.bnd):
+                    if self.bnd_parind[i] == None:
+                        if self.atoms_in_subsys(b, curr_fraglist):
+                            # no params yet and in current refsystem => check for params
+                            found = True
+                            parname = self.get_parname(b)
+                            if parname in curr_bnd_par:
+                                pass
+                            else:
+                                parname = self.get_parname_sort(b, "bnd")
+                                if not parname in curr_bnd_par:
+                                    found = False
+                            if found:
+                                full_parname = parname +"|"+ref
+                                if not full_parname in self.bnd_par:
+                                    self.bnd_par[full_parname] = curr_bnd_par[parname]
+                                self.bnd_parind[i] = full_parname
+                #EQUIVALENCE
+                # now all params for this ref have been assigned ... any equivalnce will be renamed now in aftypes
+                curr_equi_par = self.ref_params[ref]["onebody"]["equil"]
+                for i,a in enumerate(copy.copy(self.aftypes)):
+                    if self.atoms_in_subsys([i], curr_fraglist):
+                        if a in curr_equi_par:
+                            # revised aftype is second entry (list)
+                            self.aftypes[i] = curr_equi_par[a][1][0]
+        print self.bnd_par
+        for i, b in enumerate(self.ric.bnd):
+            if self.bnd_parind[i] == None:
+                print "No params for %s" % self.get_parname(b)
         self.timer.write_logger(logger.info)
         return
-       
-        
-        
-        
-    @timer("find reference systems")        
+
+
+
+
+    @timer("find reference systems")
     def find_refsystems(self):
         """
-        function to detect the reference systems (in self.ref_systems)
+        function to detect the reference systems:
+            - self.scan_ref      : list of ref names in the order to be searched
+            - self.ref_systems   : dictionary of mol objects
+            - self.ref_fraglist  : list of fragment indices belonging to this refsystem
+            - self.ref_params    : paramtere dictionaries per refsystem (n-body/type)
         """
         if self.source == "mofp":
             self.timer.start("get reference systems")
@@ -200,7 +243,7 @@ class ff:
             self.scan_ref.reverse()
             self.timer.stop()
             # now get the refsystems and make their fraggraphs
-            self.timer.start("get ref frag graphs")
+            self.timer.start("make ref frag graphs")
             self.ref_systems = {}
             for ref in self.scan_ref:
                 ref_mol = self.api.get_FFref_graph(ref, mol=True)
@@ -210,11 +253,13 @@ class ff:
             self.timer.stop()
             # now search in the fraggrpah for the reference systems
             self.timer.start("scan for ref systems")
+            logger.info("Searching for reference systems:")
             self.ref_fraglists = {}
-            for ref in self.ref_systems.keys():
+            for ref in copy.copy(self.scan_ref):
                 # TODO: if a ref system has only one fragment we do not need to do a substructure search but
                 #       could pick it from self.fragemnts.fraglist
                 subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
                 if len(subs) == 0:
                     # this ref system does not appear => discard
                     self.scan_ref.remove(ref)
@@ -223,6 +268,13 @@ class ff:
                 subs_flat = itertools.chain.from_iterable(subs)
                 self.ref_fraglists[ref] = list(set(subs_flat))
             self.timer.stop()
+            # get the parameters
+            self.timer.start("get ref parmeter sets")
+            self.ref_params = {}
+            for ref in self.scan_ref:
+                logger.info("Getting params for %s" % ref)
+                self.ref_params[ref] = self.api.get_params_from_ref(self.FF, ref)
+            self.timer.stop()
         elif source == "file":
             raise ValueError, "assigning reference systems from file needs to be implemeted"
         else:
@@ -230,12 +282,42 @@ class ff:
         return
 
 
-    @timer("check atoms in subsystem")
+    #### general helper functions
+
     def atoms_in_subsys(self, alist, fsubsys):
         """
         this helper function checks if all fragments of atoms (indices) in alist
         appear in the list of fragemnts (indices) in fsubsys
         """
-        return all(f in fsubsys for f in map(lambda a: self._mol.fragnumber[a], alist))
-        
-        
+        return all(f in fsubsys for f in map(lambda a: self._mol.fragnumbers[a], alist))
+
+    def get_parname(self, alist):
+        """
+        helper function to produce the name string using the self.aftypes
+        """
+        l = map(lambda a: self.aftypes[a], alist)
+        return string.join(l, ":")
+
+    def get_parname_sort(self, alist, sort):
+        """
+        helper function to produce the name string using the self.aftypes
+        """
+        if sort == "bnd":
+            l = map(lambda a: self.aftypes[a], alist)
+            l.sort()
+        elif sort == "ang":
+            l = map(lambda a: self.aftypes[a], alist)
+            if cmp(l[0], l[1]) > 0:
+                l.reverse()
+        elif sort == "dih":
+            l = map(lambda a: self.aftypes[a], alist)
+            if cmp(l[1], l[2]) > 0:
+                l.reverse()
+            if cmp(l[1], l[2]) == 0:
+                if cmp(l[0], l[3]) > 0:
+                    l.reverse()
+        elif sort == "oop":
+            l = map(lambda a: self.aftypes[a], alist[1:])
+            l.sort()
+            l = [self.aftypes[alist[0]]]+l
+        return string.join(l, ":")
