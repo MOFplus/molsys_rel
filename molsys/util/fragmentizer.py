@@ -47,7 +47,7 @@ class fragmentizer:
                 self.frag_path = "."
             self.read_catalog()
         elif source == "mofp":
-            from weaver import FF_api
+            from mofplus import FF_api
             self.api = FF_api()
             self.catalog_from_API()
         else:
@@ -72,7 +72,6 @@ class fragmentizer:
 
     def catalog_from_API(self):
         frags = self.api.list_FFfrags()
-        print frags
         for f in frags:
             self.fragments[f[0]]= None
             self.frag_vtypes[f[0]] = f[2]
