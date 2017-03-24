@@ -161,6 +161,8 @@ class mol:
             else:
                 logger.error("spglib is not available! THis addon can not be used")
                 return
+        elif addmod == "ff":
+            self.ff = addon.ff(self)
         else:
             logger.error("the addon %s is unknown" % addmod)
             return
