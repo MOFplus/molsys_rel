@@ -135,7 +135,8 @@ class ff:
         self.timer = Timer()
         logger.debug("generated the ff addon")
         return
-
+        
+    @timer("assign parameter")
     def assign_params(self, FF, source="mofp"):
         """
         method to orchestrate the parameter assigenemntfor this sytem using a force ifled defined with
@@ -146,6 +147,7 @@ class ff:
             - FF :    [string] name of the force field to be used in the parameter search
             - source: [string, default=mofp] where to get the data from
         """
+        self.FF = FF
         self.source = source
         if self.source == "mofp":
             from mofplus import FF_api
@@ -159,27 +161,48 @@ class ff:
         self._mol.addon("fragments")
         self.fragments = self._mol.fragments
         self.fragments.make_frag_graph()
-        fragnames  = self.fragments.get_fragnames()
         self.timer.stop()
-        # now we load all the reference systems of relevance
-        if source == "mofp":
+        # now make a private list of atom types including the fragment name
+        self.timer.start("make atypes")
+        self.aftypes = []
+        for i, a in enumerate(self._mol.get_atypes()):
+            self.aftypes.append(a+"@"+self._mol.fragtypes[i])
+        self.timer.stop()
+        # detect refsystems
+        self.find_refsystems()  
+        #
+        for r in self.scan_ref:
+            print r
+            print self.ref_fraglists[r]
+        self.timer.write_logger(logger.info)
+        return
+       
+        
+        
+        
+    @timer("find reference systems")        
+    def find_refsystems(self):
+        """
+        function to detect the reference systems (in self.ref_systems)
+        """
+        if self.source == "mofp":
             self.timer.start("get reference systems")
             scan_ref  = []
             scan_prio = []
-            ref_list = self.api.list_FFrefs(FF)
+            ref_list = self.api.list_FFrefs(self.FF)
             for ref in ref_list:
                 refname, prio, reffrags = ref
-                if len(reffrags) > 0 and all(f in fragnames for f in reffrags):
+                if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
                     scan_ref.append(refname)
                     scan_prio.append(prio)
             # sort to be scanned referecnce systems by their prio
-            scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
-            scan_ref.reverse()
+            self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
+            self.scan_ref.reverse()
             self.timer.stop()
             # now get the refsystems and make their fraggraphs
             self.timer.start("get ref frag graphs")
             self.ref_systems = {}
-            for ref in scan_ref:
+            for ref in self.scan_ref:
                 ref_mol = self.api.get_FFref_graph(ref, mol=True)
                 ref_mol.addon("fragments")
                 ref_mol.fragments.make_frag_graph()
@@ -194,17 +217,25 @@ class ff:
                 subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
                 if len(subs) == 0:
                     # this ref system does not appear => discard
-                    scan_ref.remove(ref)
+                    self.scan_ref.remove(ref)
                     del(self.ref_systems[ref])
                 # join all fragments
                 subs_flat = itertools.chain.from_iterable(subs)
                 self.ref_fraglists[ref] = list(set(subs_flat))
             self.timer.stop()
+        elif source == "file":
+            raise ValueError, "assigning reference systems from file needs to be implemeted"
+        else:
+            raise ValueError, "unknown source %s" % source
+        return
 
-            for r in scan_ref:
-                print r
-                print self.ref_fraglists[r]
 
-            self.timer.write_logger(logger.info)
-            return
-
+    @timer("check atoms in subsystem")
+    def atoms_in_subsys(self, alist, fsubsys):
+        """
+        this helper function checks if all fragments of atoms (indices) in alist
+        appear in the list of fragemnts (indices) in fsubsys
+        """
+        return all(f in fsubsys for f in map(lambda a: self._mol.fragnumber[a], alist))
+        
+        
