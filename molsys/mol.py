@@ -59,10 +59,11 @@ class mol:
         self.periodic= None
         self.is_bb=False
         self.weight=1
+        self.loaded_addons =  []
         return
 
     #####  I/O stuff ############################
-    
+
     def set_logger_level(self,level='INFO'):
         if level=='INFO':
             logger.setLevel(logging.INFO)
@@ -81,7 +82,7 @@ class mol:
             - ftype="mfpx" : the parser type that is used to read the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
-                             
+
         logger.info("reading file "+str(fname)+' as .'+str(ftype)+' file')
         f = open(fname, "r")
         formats.read[ftype](self,f,**kwargs)
@@ -135,12 +136,15 @@ class mol:
 
             - addmol: string name of the addon module
         """
+        if addmod in self.loaded_addons:
+            return
         if addmod == "graph":
             if addon.graph != None:
                 # ok, it is present and imported ...
                 self.graph = addon.graph(self)
             else:
                 logger.error("graph_tool is not installed! This addon can not be used")
+                return
         elif addmod  == "fragments":
             self.fragments = addon.fragments(self)
         elif addmod  == "bb":
@@ -150,13 +154,17 @@ class mol:
                 self.zmat = addon.zmat(self)
             else:
                 logger.error("pandas/chemcoord is not available! THis addon can not be used")
+                return
         elif addmod  == "spg":
             if addon.spg != None:
                 self.spg = addon.spg(self)
             else:
                 logger.error("spglib is not available! THis addon can not be used")
+                return
         else:
             logger.error("the addon %s is unknown" % addmod)
+            return
+        self.loaded_addons.append(addmod)
         return
 
     ##### connectivity ########################
@@ -169,9 +177,9 @@ class mol:
             - tresh  (float): additive treshhold
             - remove_duplicates  (bool): flag for the detection of duplicates
         """
-        
+
         logger.info("detecting connectivity by distances ... ")
-        
+
         xyz = self.xyz
         elems = self.elems
         natoms = self.natoms
@@ -216,7 +224,7 @@ class mol:
     def report_conn(self):
         ''' Print infomration on current connectivity, coordination number
             and the respective atomic distances '''
-            
+
         logger.info("reporting connectivity ... ")
         for i in xrange(self.natoms):
             conn = self.conn[i]
@@ -509,7 +517,7 @@ class mol:
                 xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
-    
+
     def new_mol_by_index(self, idx):
         """
         Creates a new mol object which consists of the atoms specified in the argument.
@@ -556,7 +564,7 @@ class mol:
             m.cell = None
             m.periodic = False
         return m
-        
+
 
     ##### distance measurements #####################
 
@@ -672,7 +680,7 @@ class mol:
         self.xyz = np.concatenate((self.xyz, xyz))
         self.conn.append([])
         self.pconn.append([])
-        return self.natoms -1 
+        return self.natoms -1
 
     def get_natoms(self):
         ''' returns the number of Atoms '''
