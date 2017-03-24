@@ -34,13 +34,11 @@ class conngraph:
         self.molg.vp.midx = self.molg.new_vertex_property("short")
         self.molg.vp.elem = self.molg.new_vertex_property("string")
         self.molg.vp.coord = self.molg.new_vertex_property("vector<double>")
-        self.molg.vp.inter = self.molg.new_vertex_property("bool") # what is this good for? i have no idea -marco
         self.molg.vp.filled = self.molg.new_vertex_property("bool") # boolean for flood fill
         for i in xrange(self.mol.natoms):
             ig = self.molg.add_vertex()
             self.molg.vp.coord[ig] = self.mol.xyz[i,:]
             self.molg.vp.elem[ig] = self.mol.elems[i]
-            self.molg.vp.inter[ig] = False
             self.molg.vp.midx[ig] = i
             if type(forbidden) != type(None) and int(ig) in forbidden:
                 self.molg.vp.fix[ig] = 1
@@ -204,7 +202,7 @@ class molgraph(conngraph):
                 self.threshes.append(Nk[i+1])
         return self.threshes
 
-    def get_clusters(self):
+    def get_clusters(self, remove_side_chains=False):
         """
         Get the clusters of the MOF.
         
@@ -218,37 +216,38 @@ class molgraph(conngraph):
             assert self.threshes
         except:
             self.find_cluster_threshold()
-        # remove side chains
-        def forloop():
-            broken = False
-            for e in self.molg.edges():
-                # since the indices of the edges will change when one edge is removed, the for loop has to be
-                # restarted every time an edge is deleted, or else there will be problems when the next edge 
-                # should be deleted...
-                if self.molg.ep.Nk[e] == 0:
-                    # found a sidechain... now use flood_fill to find out which side of the
-                    # edge belongs to the sidechain and which to the main framework
-                    src = e.source()
-                    trg = e.target()
-                    self.molg.remove_edge(e)
-                    self.molg.vp.filled.set_value(False)
-                    struc1 = self.flood_fill(self.molg, src, [])
-                    struc2 = self.flood_fill(self.molg, trg, [])
-                    # the larger structure is the framework
-                    if len(struc1) < len(struc2):
-                        for i in reversed(sorted(struc1)):
-                            self.molg.remove_vertex(i)
-                    elif len(struc2) < len(struc1):
-                        for i in reversed(sorted(struc2)):
-                            self.molg.remove_vertex(i)
-                    else:
-                        # both structures have same size
-                        pass
-                    broken = True
-                    break
-            return broken
-        while forloop():
-            pass
+        # remove side chains (unnecessary at the moment)
+        if remove_side_chains:
+            def forloop():
+                broken = False
+                for e in self.molg.edges():
+                    # since the indices of the edges will change when one edge is removed, the for loop has to be
+                    # restarted every time an edge is deleted, or else there will be problems when the next edge 
+                    # should be deleted...
+                    if self.molg.ep.Nk[e] == 0:
+                        # found a sidechain... now use flood_fill to find out which side of the
+                        # edge belongs to the sidechain and which to the main framework
+                        src = e.source()
+                        trg = e.target()
+                        self.molg.remove_edge(e)
+                        self.molg.vp.filled.set_value(False)
+                        struc1 = self.flood_fill(self.molg, src, [])
+                        struc2 = self.flood_fill(self.molg, trg, [])
+                        # the larger structure is the framework
+                        if len(struc1) < len(struc2):
+                            for i in reversed(sorted(struc1)):
+                                self.molg.remove_vertex(i)
+                        elif len(struc2) < len(struc1):
+                            for i in reversed(sorted(struc2)):
+                                self.molg.remove_vertex(i)
+                        else:
+                            # both structures have same size
+                            pass
+                        broken = True
+                        break
+                return broken
+            while forloop():
+                pass
         ### set edge filter
         self.molg.vp.filled.set_value(False)
         self.molg.ep.act.set_value(True)
@@ -1031,6 +1030,9 @@ class topotyper(object):
                         if isomorphism(mg.molg, mg2.molg):
                             isomorphic_with_any = True
                             break
+                    else:
+                        # this is a workaround, so multiple edge BBs with 1 atom will always be isomorphic...
+                        isomorphic_with_any = True
                 if not isomorphic_with_any:
                     unique_2c.append(i)
                     unique_bbs.append([i])
