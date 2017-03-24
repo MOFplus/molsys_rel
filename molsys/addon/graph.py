@@ -86,6 +86,28 @@ class graph:
             output_size=(size, size), output=fname+".pdf")
         return
 
+    def find_subgraph(self, graph, subg):
+        """
+        use graph_tools subgraph_isomorphism tool to find substructures
+
+        :Parameter:
+
+            - graph : parent graph to be searched
+            - subg  : graph to be found
+
+        :Returns:
+
+            a list of lists with the (sorted) vertex indices of the substructure
+        """
+        maps = subgraph_isomorphism(subg, graph, vertex_label=(subg.vp.type, graph.vp.type))
+        subs = []
+        for m in maps:
+            sl = list(m)
+            sl.sort()
+            if sl not in subs: subs.append(sl)
+        return subs
+
+
     def find_sub(self, subg):
         """
         use graph_tools subgraph_isomorphism tool to find substructures
@@ -98,12 +120,7 @@ class graph:
 
             a list of lists with the (sorted) vertex indices of the substructure
         """
-        maps = subgraph_isomorphism(subg.molg, self.molg, vertex_label=(subg.molg.vp.type, self.molg.vp.type))
-        subs = []
-        for m in maps:
-            sl = list(m)
-            sl.sort()
-            if sl not in subs: subs.append(sl)
+        subs = find_subgraph(self.molg, subg.molg)
         return subs
 
     def find_fragment(self, frag,add_hydrogen=False):
