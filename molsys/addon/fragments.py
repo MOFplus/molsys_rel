@@ -58,6 +58,10 @@ class fragments:
             raise ValueError, "A fragment name is missing"
         return
 
+    def get_fragnames(self):
+        return self.fragnames
+
+
     def make_frag_conn(self):
         """
         generate a fragment connectivity
@@ -134,5 +138,5 @@ class fragments:
         self.frag_graph = self._mol.graph.util_graph(self.fraglist, self.frag_conn)
         # DEBUG here just for debug reasons
         #self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
-        return
+        return self.frag_graph
 
