@@ -16,6 +16,7 @@ from molsys.util.timing import timer, Timer
 import itertools
 import copy
 import string
+import json
 
 import logging
 logger = logging.getLogger("molsys.ff")
@@ -176,43 +177,81 @@ class ff:
         self.find_refsystems()
         # make data structures
         with self.timer("make data structures"):
-            self.bnd_parind = [None]*len(self.ric.bnd)
-            self.bnd_par = {}
+            ric_type = {"bnd":self.ric.bnd, "ang":self.ric.ang, "dih":self.ric.dih, "oop":self.ric.oop}
+            self.parind = {\
+                "bnd": [None]*len(self.ric.bnd),\
+                "ang": [None]*len(self.ric.ang),\
+                "dih": [None]*len(self.ric.dih),\
+                "oop": [None]*len(self.ric.oop)\
+                }
+            self.par = {\
+                "bnd": {},\
+                "ang": {},\
+                "dih": {},\
+                "oop": {}\
+                }
         with self.timer("parameter assignement loop"):
             for ref in self.scan_ref:
                 logger.info("assigning params for ref system %s" % ref)
                 curr_fraglist = self.ref_fraglists[ref]
-                # BONDS
-                curr_bnd_par = self.ref_params[ref]["twobody"]["bond"]
-                for i, b in enumerate(self.ric.bnd):
-                    if self.bnd_parind[i] == None:
-                        if self.atoms_in_subsys(b, curr_fraglist):
-                            # no params yet and in current refsystem => check for params
-                            found = True
-                            parname = self.get_parname(b)
-                            if parname in curr_bnd_par:
-                                pass
-                            else:
-                                parname = self.get_parname_sort(b, "bnd")
-                                if not parname in curr_bnd_par:
-                                    found = False
-                            if found:
-                                full_parname = parname +"|"+ref
-                                if not full_parname in self.bnd_par:
-                                    self.bnd_par[full_parname] = curr_bnd_par[parname]
-                                self.bnd_parind[i] = full_parname
+                curr_par = {\
+                    "bnd" : self.ref_params[ref]["twobody"]["bond"],\
+                    "ang" : self.ref_params[ref]["threebody"]["angle"],\
+                    "dih" : self.ref_params[ref]["fourbody"]["dihedral"],\
+                    "oop" : self.ref_params[ref]["fourbody"]["oop"]}
+                for ic in ["bnd", "ang", "dih", "oop"]:
+                    for i, r in enumerate(ric_type[ic]):
+                        if self.parind[ic][i] == None:
+                            if self.atoms_in_subsys(r, curr_fraglist):
+                                # no params yet and in current refsystem => check for params
+                                params = []
+                                ptypes = []
+                                full_parname_list = []
+                                # check unsorted list first
+                                parname = self.get_parname(r)
+                                if parname in curr_par[ic]:
+                                    for par in curr_par[ic][parname]:
+                                        ptypes.append(par[0])
+                                        full_parname = par[0] + "->" + parname +"|"+ref
+                                        full_parname_list.append(full_parname)
+                                        if not full_parname in self.par[ic]:
+                                            self.par[ic][full_parname] = par
+                                # now check sorted list (if already in ptype skip)
+                                parname = self.get_parname_sort(r, ic)
+                                if parname in curr_par[ic]:
+                                    for par in curr_par[ic][parname]:
+                                        if not par[0] in ptypes:
+                                            ptypes.append(par[0])
+                                            full_parname = par[0] + "->" + parname +"|"+ref
+                                            full_parname_list.append(full_parname)
+                                            if not full_parname in self.par[ic]:
+                                                self.par[ic][full_parname] = par
+                                if full_parname_list != []:
+                                    self.parind[ic][i] = full_parname_list
+                                else:
+                                    print "DEBUG DEBUG DEBUG %s" % ic
+                                    print self.get_parname(r)
+                                    print self.get_parname_sort(r, ic)
                 #EQUIVALENCE
                 # now all params for this ref have been assigned ... any equivalnce will be renamed now in aftypes
                 curr_equi_par = self.ref_params[ref]["onebody"]["equil"]
                 for i,a in enumerate(copy.copy(self.aftypes)):
                     if self.atoms_in_subsys([i], curr_fraglist):
                         if a in curr_equi_par:
-                            # revised aftype is second entry (list)
-                            self.aftypes[i] = curr_equi_par[a][1][0]
-        print self.bnd_par
-        for i, b in enumerate(self.ric.bnd):
-            if self.bnd_parind[i] == None:
-                print "No params for %s" % self.get_parname(b)
+                            # revised aftype : curr_equi_par[a] is a list of a tuple with ("equiv", ("new aftype"))
+                            self.aftypes[i] = curr_equi_par[a][0][1][0]
+        # DEBUG DEBUG
+        for ic in ["bnd", "ang", "dih", "oop"]:
+            print "Located Paramters for %3s" % ic
+            for k in self.par[ic].keys(): print k
+            unknown_par = []
+            for i, p in enumerate(ric_type[ic]):
+                if self.parind[ic][i] == None:
+                    parname = self.get_parname(p)
+                    if not parname in unknown_par:
+                        unknown_par.append(parname)
+            for p in unknown_par: print "No params for %3s %s" % (ic, p)
+
         self.timer.write_logger(logger.info)
         return
 
@@ -307,7 +346,7 @@ class ff:
             l.sort()
         elif sort == "ang":
             l = map(lambda a: self.aftypes[a], alist)
-            if cmp(l[0], l[1]) > 0:
+            if cmp(l[0], l[2]) > 0:
                 l.reverse()
         elif sort == "dih":
             l = map(lambda a: self.aftypes[a], alist)
