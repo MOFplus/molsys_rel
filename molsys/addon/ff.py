@@ -12,6 +12,7 @@ Created on Thu Mar 23 11:25:43 2017
 
 import numpy as np
 from molsys.util.timing import timer, Timer
+from mofplus import aftype, aftype_sort
 
 import itertools
 import copy
@@ -171,7 +172,7 @@ class ff:
         self.timer.start("make atypes")
         self.aftypes = []
         for i, a in enumerate(self._mol.get_atypes()):
-            self.aftypes.append(a+"@"+self._mol.fragtypes[i])
+            self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
         self.timer.stop()
         # detect refsystems
         self.find_refsystems()
@@ -212,7 +213,7 @@ class ff:
                                 if parname in curr_par[ic]:
                                     for par in curr_par[ic][parname]:
                                         ptypes.append(par[0])
-                                        full_parname = par[0] + "->" + parname +"|"+ref
+                                        full_parname = par[0] + "->" + str(parname) + "|" + ref
                                         full_parname_list.append(full_parname)
                                         if not full_parname in self.par[ic]:
                                             self.par[ic][full_parname] = par
@@ -222,24 +223,26 @@ class ff:
                                     for par in curr_par[ic][parname]:
                                         if not par[0] in ptypes:
                                             ptypes.append(par[0])
-                                            full_parname = par[0] + "->" + parname +"|"+ref
+                                            full_parname = par[0] + "->" + str(parname) + "|" + ref
                                             full_parname_list.append(full_parname)
                                             if not full_parname in self.par[ic]:
                                                 self.par[ic][full_parname] = par
                                 if full_parname_list != []:
                                     self.parind[ic][i] = full_parname_list
-                                else:
-                                    print "DEBUG DEBUG DEBUG %s" % ic
-                                    print self.get_parname(r)
-                                    print self.get_parname_sort(r, ic)
+                                #else:
+                                #    print "DEBUG DEBUG DEBUG %s" % ic
+                                #    print self.get_parname(r)
+                                #    print self.get_parname_sort(r, ic)
                 #EQUIVALENCE
                 # now all params for this ref have been assigned ... any equivalnce will be renamed now in aftypes
                 curr_equi_par = self.ref_params[ref]["onebody"]["equil"]
                 for i,a in enumerate(copy.copy(self.aftypes)):
                     if self.atoms_in_subsys([i], curr_fraglist):
-                        if a in curr_equi_par:
+                        # NOTE: new aftype keys are now always tuples of aftypes
+                        if (a,) in curr_equi_par:
                             # revised aftype : curr_equi_par[a] is a list of a tuple with ("equiv", ("new aftype"))
-                            self.aftypes[i] = curr_equi_par[a][0][1][0]
+                            at, ft = curr_equi_par[(a,)][0][1][0].split("@")
+                            self.aftypes[i] = aftype(at, ft)
         # DEBUG DEBUG
         for ic in ["bnd", "ang", "dih", "oop"]:
             print "Located Paramters for %3s" % ic
@@ -313,6 +316,8 @@ class ff:
             for ref in self.scan_ref:
                 logger.info("Getting params for %s" % ref)
                 self.ref_params[ref] = self.api.get_params_from_ref(self.FF, ref)
+                print "DEBUG DEBUG Ref system %s" % ref
+                print self.ref_params[ref]
             self.timer.stop()
         elif source == "file":
             raise ValueError, "assigning reference systems from file needs to be implemeted"
@@ -335,28 +340,12 @@ class ff:
         helper function to produce the name string using the self.aftypes
         """
         l = map(lambda a: self.aftypes[a], alist)
-        return string.join(l, ":")
+        return tuple(l)
 
-    def get_parname_sort(self, alist, sort):
+    def get_parname_sort(self, alist, ic):
         """
         helper function to produce the name string using the self.aftypes
         """
-        if sort == "bnd":
-            l = map(lambda a: self.aftypes[a], alist)
-            l.sort()
-        elif sort == "ang":
-            l = map(lambda a: self.aftypes[a], alist)
-            if cmp(l[0], l[2]) > 0:
-                l.reverse()
-        elif sort == "dih":
-            l = map(lambda a: self.aftypes[a], alist)
-            if cmp(l[1], l[2]) > 0:
-                l.reverse()
-            if cmp(l[1], l[2]) == 0:
-                if cmp(l[0], l[3]) > 0:
-                    l.reverse()
-        elif sort == "oop":
-            l = map(lambda a: self.aftypes[a], alist[1:])
-            l.sort()
-            l = [self.aftypes[alist[0]]]+l
-        return string.join(l, ":")
+        l = map(lambda a: self.aftypes[a], alist)
+        return tuple(aftype_sort(l, ic))
+
