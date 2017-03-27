@@ -178,18 +178,24 @@ class ff:
         self.find_refsystems()
         # make data structures
         with self.timer("make data structures"):
-            ric_type = {"bnd":self.ric.bnd, "ang":self.ric.ang, "dih":self.ric.dih, "oop":self.ric.oop}
+            ric_type = {"cha":[[i] for i in range(self._mol.natoms)], 
+                    "bnd":self.ric.bnd, 
+                    "ang":self.ric.ang, 
+                    "dih":self.ric.dih, 
+                    "oop":self.ric.oop}
             self.parind = {\
                 "bnd": [None]*len(self.ric.bnd),\
                 "ang": [None]*len(self.ric.ang),\
                 "dih": [None]*len(self.ric.dih),\
-                "oop": [None]*len(self.ric.oop)\
+                "oop": [None]*len(self.ric.oop),
+                "cha": [None]*self._mol.natoms,
                 }
             self.par = {\
                 "bnd": {},\
                 "ang": {},\
                 "dih": {},\
-                "oop": {}\
+                "oop": {},
+                "cha": {}\
                 }
         with self.timer("parameter assignement loop"):
             for ref in self.scan_ref:
@@ -199,8 +205,10 @@ class ff:
                     "bnd" : self.ref_params[ref]["twobody"]["bnd"],\
                     "ang" : self.ref_params[ref]["threebody"]["ang"],\
                     "dih" : self.ref_params[ref]["fourbody"]["dih"],\
-                    "oop" : self.ref_params[ref]["fourbody"]["oop"]}
-                for ic in ["bnd", "ang", "dih", "oop"]:
+                    "oop" : self.ref_params[ref]["fourbody"]["oop"],
+                    "cha" : self.ref_params[ref]["onebody"]["charge"],
+                    }
+                for ic in ["bnd", "ang", "dih", "oop", "cha"]:
                     for i, r in enumerate(ric_type[ic]):
                         if self.parind[ic][i] == None:
                             if self.atoms_in_subsys(r, curr_fraglist):
@@ -244,7 +252,7 @@ class ff:
                             at, ft = curr_equi_par[(a,)][0][1][0].split("@")
                             self.aftypes[i] = aftype(at, ft)
         # DEBUG DEBUG
-        for ic in ["bnd", "ang", "dih", "oop"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha"]:
             print "Located Paramters for %3s" % ic
             for k in self.par[ic].keys(): print k
             unknown_par = []
@@ -254,12 +262,8 @@ class ff:
                     if not parname in unknown_par:
                         unknown_par.append(parname)
             for p in unknown_par: print "No params for %3s %s" % (ic, p)
-
         self.timer.write_logger(logger.info)
         return
-
-
-
 
     @timer("find reference systems")
     def find_refsystems(self):
