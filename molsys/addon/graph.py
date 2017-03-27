@@ -120,7 +120,7 @@ class graph:
 
             a list of lists with the (sorted) vertex indices of the substructure
         """
-        subs = find_subgraph(self.molg, subg.molg)
+        subs = self.find_subgraph(self.molg, subg.molg)
         return subs
 
     def find_fragment(self, frag,add_hydrogen=False):

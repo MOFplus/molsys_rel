@@ -196,9 +196,9 @@ class ff:
                 logger.info("assigning params for ref system %s" % ref)
                 curr_fraglist = self.ref_fraglists[ref]
                 curr_par = {\
-                    "bnd" : self.ref_params[ref]["twobody"]["bond"],\
-                    "ang" : self.ref_params[ref]["threebody"]["angle"],\
-                    "dih" : self.ref_params[ref]["fourbody"]["dihedral"],\
+                    "bnd" : self.ref_params[ref]["twobody"]["bnd"],\
+                    "ang" : self.ref_params[ref]["threebody"]["ang"],\
+                    "dih" : self.ref_params[ref]["fourbody"]["dih"],\
                     "oop" : self.ref_params[ref]["fourbody"]["oop"]}
                 for ic in ["bnd", "ang", "dih", "oop"]:
                     for i, r in enumerate(ric_type[ic]):
