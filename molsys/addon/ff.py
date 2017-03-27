@@ -25,7 +25,7 @@ logger = logging.getLogger("molsys.ff")
 
 class ric:
     """
-    class to detact and keep all the (redundant) internal coordinates of the system
+    class to detect and keep all the (redundant) internal coordinates of the system
     """
 
 
@@ -143,7 +143,7 @@ class ff:
     @timer("assign parameter")
     def assign_params(self, FF, source="mofp"):
         """
-        method to orchestrate the parameter assigenemntfor this sytem using a force ifled defined with
+        method to orchestrate the parameter assignment for this system using a force field defined with
         FF
 
         :Parameter:
