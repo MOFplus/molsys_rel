@@ -178,24 +178,27 @@ class ff:
         self.find_refsystems()
         # make data structures
         with self.timer("make data structures"):
-            ric_type = {"cha":[[i] for i in range(self._mol.natoms)], 
+            ric_type = {"cha":[[i] for i in range(self._mol.natoms)],
+                    "vdw":[[i] for i in range(self._mol.natoms)], 
                     "bnd":self.ric.bnd, 
                     "ang":self.ric.ang, 
                     "dih":self.ric.dih, 
                     "oop":self.ric.oop}
-            self.parind = {\
-                "bnd": [None]*len(self.ric.bnd),\
-                "ang": [None]*len(self.ric.ang),\
-                "dih": [None]*len(self.ric.dih),\
+            self.parind = {
+                "bnd": [None]*len(self.ric.bnd),
+                "ang": [None]*len(self.ric.ang),
+                "dih": [None]*len(self.ric.dih),
                 "oop": [None]*len(self.ric.oop),
                 "cha": [None]*self._mol.natoms,
+                "vdw": [None]*self._mol.natoms,
                 }
-            self.par = {\
-                "bnd": {},\
-                "ang": {},\
-                "dih": {},\
+            self.par = {
+                "bnd": {},
+                "ang": {},
+                "dih": {},
                 "oop": {},
-                "cha": {}\
+                "vdw": {},
+                "cha": {},
                 }
         with self.timer("parameter assignement loop"):
             for ref in self.scan_ref:
@@ -207,8 +210,9 @@ class ff:
                     "dih" : self.ref_params[ref]["fourbody"]["dih"],\
                     "oop" : self.ref_params[ref]["fourbody"]["oop"],
                     "cha" : self.ref_params[ref]["onebody"]["charge"],
+                    "vdw" : self.ref_params[ref]["onebody"]["vdw"]
                     }
-                for ic in ["bnd", "ang", "dih", "oop", "cha"]:
+                for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                     for i, r in enumerate(ric_type[ic]):
                         if self.parind[ic][i] == None:
                             if self.atoms_in_subsys(r, curr_fraglist):
@@ -225,16 +229,17 @@ class ff:
                                         full_parname_list.append(full_parname)
                                         if not full_parname in self.par[ic]:
                                             self.par[ic][full_parname] = par
-                                # now check sorted list (if already in ptype skip)
-                                parname = self.get_parname_sort(r, ic)
-                                if parname in curr_par[ic]:
-                                    for par in curr_par[ic][parname]:
-                                        if not par[0] in ptypes:
-                                            ptypes.append(par[0])
-                                            full_parname = par[0] + "->" + str(parname) + "|" + ref
-                                            full_parname_list.append(full_parname)
-                                            if not full_parname in self.par[ic]:
-                                                self.par[ic][full_parname] = par
+                                # now check sorted list (if already in ptype skip), only for manybody ics
+                                if ic not in ["cha", "vdw"]:
+                                    parname = self.get_parname_sort(r, ic)
+                                    if parname in curr_par[ic]:
+                                        for par in curr_par[ic][parname]:
+                                            if not par[0] in ptypes:
+                                                ptypes.append(par[0])
+                                                full_parname = par[0] + "->" + str(parname) + "|" + ref
+                                                full_parname_list.append(full_parname)
+                                                if not full_parname in self.par[ic]:
+                                                    self.par[ic][full_parname] = par
                                 if full_parname_list != []:
                                     self.parind[ic][i] = full_parname_list
                                 #else:
@@ -252,7 +257,7 @@ class ff:
                             at, ft = curr_equi_par[(a,)][0][1][0].split("@")
                             self.aftypes[i] = aftype(at, ft)
         # DEBUG DEBUG
-        for ic in ["bnd", "ang", "dih", "oop", "cha"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             print "Located Paramters for %3s" % ic
             for k in self.par[ic].keys(): print k
             unknown_par = []
@@ -262,8 +267,46 @@ class ff:
                     if not parname in unknown_par:
                         unknown_par.append(parname)
             for p in unknown_par: print "No params for %3s %s" % (ic, p)
+        self.setup_pair_potentials()
         self.timer.write_logger(logger.info)
         return
+    
+    def setup_pair_potentials(self, radfact = 1.0, radrule="arithmetic", epsrule="geometric"):
+        """
+        Method to setup the pair potentials based on the per atom type assigned parameters
+        :Parameters:
+            - radfact (int): factor to be multiplied during radius generation, default to 1.0
+            - radrule (str): radiusrule, default to arithmetic
+            - epsrule (str): epsilonrule, default to geometric
+        """
+        self.vdwdata = {}
+        self.types2numbers = {} #equivalent to self.dlp_types
+        types = self.par["vdw"].keys()
+        for i, t in enumerate(types):
+            if t not in self.types2numbers.keys():
+                self.types2numbers[t]=str(i)
+        ntypes = len(types)
+        for i in xrange(ntypes):
+            for j in xrange(i, ntypes):
+                pair = types[i]+":"+types[j]
+                #TODO check availability of an explicit paramerter
+                par_i = self.par["vdw"][types[i]][1]
+                par_j = self.par["vdw"][types[j]][1]
+                if radrule == "arithmetic":
+                    rad = radfact+(par_i[0]+par_j[0])
+                elif radrule == "geometric":
+                    rad = 2.0*radfact*np.sqrt(par_i[0]*par_j[0])
+                else:
+                    raise IOError("Unknown radius rule %s specified" % radrule)
+                if epsrule == "arithmetic":
+                    eps = 0.5 * (par_i[1]+par_j[1])
+                elif epsrule == "geometric":
+                    eps = np.sqrt(par_i[1]*par_j[1])
+                else:
+                    raise IOError("Unknown radius rule %s specified" % radrule)
+                self.vdwdata[pair] = [rad,eps]
+        return
+
 
     @timer("find reference systems")
     def find_refsystems(self):
@@ -329,8 +372,6 @@ class ff:
             raise ValueError, "unknown source %s" % source
         return
 
-
-    #### general helper functions
 
     def atoms_in_subsys(self, alist, fsubsys):
         """
