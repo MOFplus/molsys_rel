@@ -25,8 +25,9 @@ else:
 from fragments import fragments
 from bb import bb
 from ff import ff
+from molecules import molecules
 
-__all__=["graph", "fragments", "bb", "zmat", "spg", "ff"]
+__all__=["graph", "fragments", "bb", "zmat", "spg", "ff", "molecules"]
 
 
 

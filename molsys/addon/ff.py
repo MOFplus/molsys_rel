@@ -22,6 +22,14 @@ import json
 import logging
 logger = logging.getLogger("molsys.ff")
 
+class ic(list):
+
+    def __init__(self, *args, **kwargs):
+        list.__init__(self,*args)
+        for k,v in kwargs.items():
+            setattr(self, k, v)
+        return
+
 
 class ric:
     """
@@ -56,7 +64,7 @@ class ric:
         bonds=[]
         for a1 in xrange(self.natoms):
             for a2 in self.conn[a1]:
-                if a2 > a1: bonds.append([a1, a2])
+                if a2 > a1: bonds.append(ic([a1, a2]))
         return bonds
 
     @timer("find angles")
@@ -69,7 +77,7 @@ class ric:
                 aa1 = apex_atoms[ia]
                 other_apex_atoms = apex_atoms[ia+1:]
                 for aa2 in other_apex_atoms:
-                    angles.append([aa1, ca, aa2])
+                    angles.append(ic([aa1, ca, aa2]))
         return angles
 
     @timer("find oops")
@@ -81,7 +89,7 @@ class ric:
             if (len(self.conn[ta]) == 3):
                 # ah! we have an oop
                 a1, a2, a3 = tuple(self.conn[ta])
-                oops.append([ta, a1, a2, a3])
+                oops.append(ic([ta, a1, a2, a3]))
                 #oops.append([ta, a2, a1, a3])
                 #oops.append([ta, a3, a1, a2])
         return oops
@@ -100,17 +108,17 @@ class ric:
                     for a1 in endatom1:
                         con1 = list(self.conn[a1])
                         for a4 in endatom4:
-                            # code to detect 4 and 5 rings
-                            #smallring = 0
-                            #if con1.count(a4):
-                            #    smallring = 4
-                            #else:
-                            #    con4 = list(self.conn[a4])
-                            #    for c1 in con1:
-                            #        if con4.count(c1):
-                            #            smallring = 5
-                            #            break
-                            if a1 != a4: dihedrals.append([a1,a2,a3,a4])
+                            smallring = 0
+                            if a1 == a4: continue
+                            if con1.count(a4):
+                                smallring = 4
+                            else:
+                                con4 = list(self.conn[a4])
+                                for c1 in con1:
+                                    if con4.count(c1):
+                                        smallring = 5
+                                        break
+                            dihedrals.append(ic([a1,a2,a3,a4],smallring = smallring))
         return dihedrals
 
     def report(self):
@@ -292,8 +300,14 @@ class ff:
                 #TODO check availability of an explicit paramerter
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
+                pot_i =  self.par["vdw"][types[i]][0]
+                pot_j =  self.par["vdw"][types[j]][0]
+                if pot_i == pot_j:
+                    pot = pot_i
+                else:
+                    raise IOErrror("Can not combine %s and %s" % (pot_i, pot_j))
                 if radrule == "arithmetic":
-                    rad = radfact+(par_i[0]+par_j[0])
+                    rad = radfact*(par_i[0]+par_j[0])
                 elif radrule == "geometric":
                     rad = 2.0*radfact*np.sqrt(par_i[0]*par_j[0])
                 else:
@@ -304,7 +318,7 @@ class ff:
                     eps = np.sqrt(par_i[1]*par_j[1])
                 else:
                     raise IOError("Unknown radius rule %s specified" % radrule)
-                self.vdwdata[pair] = [rad,eps]
+                self.vdwdata[pair] = (pot,[rad,eps])
         return
 
 

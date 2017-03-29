@@ -49,6 +49,7 @@ class mol:
         self.cell=None
         self.cellparams=None
         self.images_cellvec=None
+        self.bcond = 0
         self.xyz=None
         self.elems=[]
         self.atypes=[]
@@ -163,6 +164,8 @@ class mol:
                 return
         elif addmod == "ff":
             self.ff = addon.ff(self)
+        elif addmod == "molecules":
+            self.molecules = addon.molecules(self)
         else:
             logger.error("the addon %s is unknown" % addmod)
             return
@@ -785,6 +788,8 @@ class mol:
         """
         if list(self.cellparams[3:]) == [90.0,90.0,90.0]:
             self.bcond = 2
+            if self.cellparams[0] == self.cellparams[1] == self.cellparams[2]:
+                self.bcond = 1
         else:
             self.bcond = 3
         return
