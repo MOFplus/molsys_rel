@@ -38,6 +38,8 @@ class graph:
         self.molg = Graph(directed=False)
         # now add vertices
         self.molg.vp.type = self.molg.new_vertex_property("string")
+        self.molg.vp.filter = self.molg.new_vertex_property("bool")
+        self.molg.vp.filter.set_value(False)
         self.vert2atom = [] # this list maps vertex indices to the real atoms becasue we omit the hydrogens in the graph
         ig = 0
         for i in xrange(self._mol.natoms):
@@ -168,5 +170,14 @@ class graph:
                 if j>=i:
                     g.add_edge(g.vertex(i), g.vertex(j))
         return g
+
+    def filter_graph(self, idx):
+        self.molg.set_vertex_filter(None)
+        for i in idx:
+            self.molg.vp.filter[self.molg.vertex(i)]=True
+        self.molg.set_vertex_filter(self.molg.vp.filter)
+        return
+
+
 
 
