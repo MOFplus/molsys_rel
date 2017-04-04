@@ -20,6 +20,7 @@ import string
 import json
 
 import logging
+import pdb
 logger = logging.getLogger("molsys.ff")
 
 class ic(list):
@@ -159,6 +160,14 @@ class ff:
             - FF :    [string] name of the force field to be used in the parameter search
             - source: [string, default=mofp] where to get the data from
         """
+        def get_equivalences():
+            ### check for equivalences
+            for aidx in r:
+                aft = self.aftypes[aidx]
+                if ((str(aft) == par[1][0]) and (aidx not in curr_equi_par)):
+                    curr_equi_par[aidx] = par[1][1]
+            return
+
         self.timer.start("connect to DB")
         self.FF = FF
         self.source = source
@@ -175,6 +184,8 @@ class ff:
         self._mol.addon("fragments")
         self.fragments = self._mol.fragments
         self.fragments.make_frag_graph()
+        # create full atomistic graph
+        self._mol.graph.make_graph()
         self.timer.stop()
         # now make a private list of atom types including the fragment name
         self.timer.start("make atypes")
@@ -210,8 +221,10 @@ class ff:
                 }
         with self.timer("parameter assignement loop"):
             for ref in self.scan_ref:
+                counter = 0
                 logger.info("assigning params for ref system %s" % ref)
                 curr_fraglist = self.ref_fraglists[ref]
+                curr_atomlist = self.ref_atomlists[ref]
                 curr_par = {\
                     "bnd" : self.ref_params[ref]["twobody"]["bnd"],\
                     "ang" : self.ref_params[ref]["threebody"]["ang"],\
@@ -220,10 +233,12 @@ class ff:
                     "cha" : self.ref_params[ref]["onebody"]["charge"],
                     "vdw" : self.ref_params[ref]["onebody"]["vdw"]
                     }
+                curr_equi_par = {}
                 for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                     for i, r in enumerate(ric_type[ic]):
                         if self.parind[ic][i] == None:
-                            if self.atoms_in_subsys(r, curr_fraglist):
+                            if ((self.atoms_in_subsys(r, curr_fraglist)) and
+                                    (self.atoms_in_active(r, curr_atomlist))):
                                 # no params yet and in current refsystem => check for params
                                 params = []
                                 ptypes = []
@@ -233,6 +248,16 @@ class ff:
                                 if parname in curr_par[ic]:
                                     for par in curr_par[ic][parname]:
                                         ptypes.append(par[0])
+                                        ### check for equivalences
+                                        if par[0] == "equiv":
+                                            get_equivalences()
+                                            continue
+#                                            ### loop over aftypes of ic
+#                                            for aidx in r:
+#                                                aft = self.aftypes[aidx]
+#                                                if aft == par[1][0]:
+#                                                    equivs[aidx] = par[1][1]
+                                        ### proceed with standard assignment
                                         full_parname = par[0] + "->" + str(parname) + "|" + ref
                                         full_parname_list.append(full_parname)
                                         if not full_parname in self.par[ic]:
@@ -244,37 +269,43 @@ class ff:
                                         for par in curr_par[ic][parname]:
                                             if not par[0] in ptypes:
                                                 ptypes.append(par[0])
+                                                if par[0] == "equiv":
+                                                    get_equivalences()
+                                                    continue
                                                 full_parname = par[0] + "->" + str(parname) + "|" + ref
                                                 full_parname_list.append(full_parname)
                                                 if not full_parname in self.par[ic]:
                                                     self.par[ic][full_parname] = par
                                 if full_parname_list != []:
+                                    counter += 1
                                     self.parind[ic][i] = full_parname_list
                                 #else:
                                 #    print "DEBUG DEBUG DEBUG %s" % ic
                                 #    print self.get_parname(r)
                                 #    print self.get_parname_sort(r, ic)
+                logger.info("%i parameters assigned for ref system %s" % (counter,ref))
                 #EQUIVALENCE
                 # now all params for this ref have been assigned ... any equivalnce will be renamed now in aftypes
-                curr_equi_par = self.ref_params[ref]["onebody"]["equil"]
-                for i,a in enumerate(copy.copy(self.aftypes)):
-                    if self.atoms_in_subsys([i], curr_fraglist):
-                        # NOTE: new aftype keys are now always tuples of aftypes
-                        if (a,) in curr_equi_par:
-                            # revised aftype : curr_equi_par[a] is a list of a tuple with ("equiv", ("new aftype"))
-                            at, ft = curr_equi_par[(a,)][0][1][0].split("@")
-                            self.aftypes[i] = aftype(at, ft)
-        # DEBUG DEBUG
+                for i, a in enumerate(copy.copy(self.aftypes)):
+                    if i in curr_equi_par.keys():
+                        at, ft = curr_equi_par[i].split("@")
+                        self.aftypes[i] = aftype(at,ft)
+        # Consistency check, check if params for all ics had been assignend
+        complete = True
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
-            print "Located Paramters for %3s" % ic
-            for k in self.par[ic].keys(): print k
             unknown_par = []
             for i, p in enumerate(ric_type[ic]):
                 if self.parind[ic][i] == None:
                     parname = self.get_parname(p)
                     if not parname in unknown_par:
                         unknown_par.append(parname)
-            for p in unknown_par: print "No params for %3s %s" % (ic, p)
+            if len(unknown_par) > 0:
+                complete = False
+                for p in unknown_par: logger.error("No params for %3s %s" % (ic, p))
+        if complete == False:
+            raise IOError("Assignend parameter set incomplete!")
+        else:
+            logger.info("Parameter assignment successfull")
         self.setup_pair_potentials()
         self.timer.write_logger(logger.info)
         return
@@ -335,9 +366,9 @@ class ff:
             self.timer.start("get reference systems")
             scan_ref  = []
             scan_prio = []
-            ref_list = self.api.list_FFrefs(self.FF)
-            for ref in ref_list:
-                refname, prio, reffrags = ref
+            ref_dic = self.api.list_FFrefs(self.FF)
+            for refname in ref_dic.keys():
+                prio, reffrags, active = ref_dic[refname]
                 if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
                     scan_ref.append(refname)
                     scan_prio.append(prio)
@@ -345,31 +376,49 @@ class ff:
             self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
             self.scan_ref.reverse()
             self.timer.stop()
-            # now get the refsystems and make their fraggraphs
+            # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
             self.timer.start("make ref frag graphs")
             self.ref_systems = {}
             for ref in self.scan_ref:
                 ref_mol = self.api.get_FFref_graph(ref, mol=True)
                 ref_mol.addon("fragments")
                 ref_mol.fragments.make_frag_graph()
+                # if active space is defined create atomistic graph of active zone
+                active = ref_dic[ref][2]
+                if active: ref_mol.graph.make_graph(active)
                 self.ref_systems[ref] = ref_mol
             self.timer.stop()
-            # now search in the fraggrpah for the reference systems
+            # now search in the fraggraph for the reference systems
             self.timer.start("scan for ref systems")
             logger.info("Searching for reference systems:")
             self.ref_fraglists = {}
+            self.ref_atomlists = {}
             for ref in copy.copy(self.scan_ref):
                 # TODO: if a ref system has only one fragment we do not need to do a substructure search but
                 #       could pick it from self.fragemnts.fraglist
                 subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                asubs_all = []
                 logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
                 if len(subs) == 0:
                     # this ref system does not appear => discard
                     self.scan_ref.remove(ref)
                     del(self.ref_systems[ref])
-                # join all fragments
-                subs_flat = itertools.chain.from_iterable(subs)
-                self.ref_fraglists[ref] = list(set(subs_flat))
+                else:
+                    # join all fragments
+                    subs_flat = list(set(itertools.chain.from_iterable(subs)))
+                    self.ref_fraglists[ref] = subs_flat
+                    # now we have to search for the active space
+                    # first construct the atomistic graph for the sub in the real system if 
+                    # an active zone is defined
+                    if ref_dic[ref][2] != None:
+                        idx = self.fragments.frags2atoms(subs_flat)
+                        self._mol.graph.filter_graph(idx)
+                        asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
+                        self._mol.graph.molg.clear_filters()
+                        asubs_flat = itertools.chain.from_iterable(asubs)
+                        self.ref_atomlists[ref] = list(set(asubs_flat))
+                    else:
+                        self.ref_atomlists[ref] = None
             self.timer.stop()
             # get the parameters
             self.timer.start("get ref parmeter sets")
@@ -377,8 +426,8 @@ class ff:
             for ref in self.scan_ref:
                 logger.info("Getting params for %s" % ref)
                 self.ref_params[ref] = self.api.get_params_from_ref(self.FF, ref)
-                print "DEBUG DEBUG Ref system %s" % ref
-                print self.ref_params[ref]
+                #print "DEBUG DEBUG Ref system %s" % ref
+                #print self.ref_params[ref]
             self.timer.stop()
         elif source == "file":
             raise ValueError, "assigning reference systems from file needs to be implemeted"
@@ -393,6 +442,14 @@ class ff:
         appear in the list of fragemnts (indices) in fsubsys
         """
         return all(f in fsubsys for f in map(lambda a: self._mol.fragnumbers[a], alist))
+
+    def atoms_in_active(self, alist, subsys):
+        """
+        this helper function checks if any  atom (indices) in alist
+        appear in the list of active atoms (indices) in fsubsys
+        """
+        if subsys == None: return True
+        return any(a in subsys for a in alist)
 
     def get_parname(self, alist):
         """

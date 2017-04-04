@@ -49,7 +49,7 @@ class fragments:
                 else:
                     # check if this is the same name
                     assert self.fraglist[fn] == ft, \
-                         "The fragmentname %s of atom %d does not match with the prior definition %s" % (ft, fn, self.fraglist[fn])
+                         "The fragmentname %s of atom %d does not match with the prior definition %s" % (ft, i, self.fraglist[fn])
                 if ft not in self.fragnames:
                     self.fragnames.append(ft)
                 self.frag_atoms[self._mol.fragnumbers[i]].append(i)
@@ -139,4 +139,17 @@ class fragments:
         # DEBUG here just for debug reasons
         #self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
         return self.frag_graph
+
+    def frags2atoms(self, frags):
+        # TODO improve speed
+        #assert type(frags) == list
+        idx = []
+        for i in range(self._mol.natoms):
+            if self._mol.fragnumbers[i] in frags:
+                idx.append(i)
+        return idx
+
+
+
+
 
