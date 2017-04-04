@@ -28,13 +28,14 @@ class graph:
         logger.debug("generated the graph addon")
         return
 
-    def make_graph(self):
+    def make_graph(self, idx = None):
         """
         generate a graph for the mol object (atoms should be typed)
         we use the atomtype name with the "_" and everything after it (rule=2) truncated.
         in other words the vertex property is the element plus the coordination number
 
         """
+        if idx == None: idx = range(self._mol.natoms)
         self.molg = Graph(directed=False)
         # now add vertices
         self.molg.vp.type = self.molg.new_vertex_property("string")
@@ -42,7 +43,7 @@ class graph:
         self.molg.vp.filter.set_value(False)
         self.vert2atom = [] # this list maps vertex indices to the real atoms becasue we omit the hydrogens in the graph
         ig = 0
-        for i in xrange(self._mol.natoms):
+        for i in idx:
             if self._mol.elems[i] != "x":
                 self.molg.add_vertex()
                 self.vert2atom.append(i)
