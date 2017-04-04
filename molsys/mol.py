@@ -303,7 +303,11 @@ class mol:
         self.elems *= ntot
         self.atypes*=ntot
         self.fragtypes*=ntot
-        self.fragnumbers*=ntot
+        mfn = max(self.fragnumbers)+1
+        nfragnumbers = []
+        for i in range(ntot):
+            nfragnumbers += list(np.array(self.fragnumbers)+i*mfn)
+        self.fragnumbers=nfragnumbers
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn
 
