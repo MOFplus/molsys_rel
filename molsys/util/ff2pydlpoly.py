@@ -115,6 +115,7 @@ class wrapper(object):
         f.write("ATOMS %d\n" % self.natoms)
         ### setup and charges ###
         self.m.set_real_mass()
+        chargesum = 0
         for i in xrange(self.natoms):
             p = self.m.ff.parind["vdw"][i][0]
             atype = self.m.ff.types2numbers[p]
@@ -123,8 +124,10 @@ class wrapper(object):
             potential, params = self.m.ff.par["cha"][p]
             if potential != "gaussian": 
                 raise ValueError("Chargetype %s not implemented" % potential)
+            chargesum += params[0]
             f.write("   %8s  %10.4f %10.4f %10.4f 1 %1d\n" % 
                     (atype, self.get_mass()[i], params[0], params[1], 0))
+        print "Net charge of the system: %10.5f" % chargesum
         ### bonded potentials ###
         for ict in ["bnd", "ang", "dih", "oop"]:
             buffer_out = ""
