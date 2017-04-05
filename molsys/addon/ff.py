@@ -503,3 +503,16 @@ class ff:
         l = map(lambda a: self.aftypes[a], alist)
         return tuple(aftype_sort(l, ic))
 
+    def report_params(self):
+        """
+        TODO: improve this ..write to file or logger in DEBUG level?
+        better sorting and commenting?
+        """
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            print "TYPE: " + ic.upper()
+            pstrings = self.par[ic].keys()
+            pstrings.sort()
+            for s in pstrings:
+                print s
+            print "\n"
+        return
