@@ -38,20 +38,23 @@ class ric:
     """
 
 
-    def __init__(self, mol):
+    def __init__(self, mol, specials = {"linear": []}):
         """
         find all bonds, angles, oops and dihedrals in the molsys mol object
         """
 
         self.timer = Timer()
 
-        self.conn   = mol.get_conn()
-        self.natoms = mol.get_natoms()
+        self.conn      = mol.get_conn()
+        self.natoms    = mol.get_natoms()
+        self.aftypes   = []
+        for i, a in enumerate(mol.get_atypes()):
+            self.aftypes.append(aftype(a, mol.fragtypes[i]))
 
         self.bnd    = self.find_bonds()
         self.ang    = self.find_angles()
         self.oop    = self.find_oops()
-        self.dih    = self.find_dihedrals()
+        self.dih    = self.find_dihedrals(specials["linear"])
         self.report()
         self.timer.write_logger(logger.info)
         return
@@ -96,7 +99,7 @@ class ric:
         return oops
 
     @timer("find dihedrals")
-    def find_dihedrals(self):
+    def find_dihedrals(self, lin_types = []):
         dihedrals=[]
         for a2 in xrange(self.natoms):
             for a3 in self.conn[a2]:
@@ -106,6 +109,33 @@ class ric:
                     endatom4 = list(self.conn[a3])
                     endatom1.remove(a3)
                     endatom4.remove(a2)
+                    ### check if a3 or a2 is a linear one
+                    lin = False
+                    stubb = False
+                    while self.aftypes[a2] in lin_types:
+                        assert len(endatom1) == 1
+                        lin = True
+                        a2old = a2
+                        a2 = endatom1[0]
+                        endatom1 = list(self.conn[a2])
+                        endatom1.remove(a2old)
+                        ### we have now to check for stubbs
+                        if len(endatom1) == 0:
+                            stubb = True
+                            break
+                    if stubb: continue
+                    while self.aftypes[a3] in lin_types:
+                        assert len(endatom4) == 1
+                        lin = True
+                        a3old = a3
+                        a3 = endatom4[0]
+                        endatom4 = list(self.conn[a3])
+                        endatom4.remove(a3old)
+                        ### we have now to check for stubbs
+                        if len(endatom1) == 0:
+                            stubb = True
+                            break
+                    if stubb: continue
                     for a1 in endatom1:
                         con1 = list(self.conn[a1])
                         for a4 in endatom4:
@@ -119,7 +149,14 @@ class ric:
                                     if con4.count(c1):
                                         smallring = 5
                                         break
-                            dihedrals.append(ic([a1,a2,a3,a4],smallring = smallring))
+                            d = ic([a1,a2,a3,a4], smallring = smallring)
+                            if lin:
+                                ### in case of a dihedral due to dihedral shifts,
+                                ### it has to be checked if we have this dihedral already
+                                if d not in dihedrals:
+                                    dihedrals.append(d)
+                            else:
+                                dihedrals.append(d)
         return dihedrals
 
     def report(self):
@@ -134,42 +171,20 @@ class ric:
 
 class ff:
 
-    def __init__(self, mol):
+    def __init__(self, mol,source = "mofp"):
         """
         instantiate a ff object which will be attached to the parent mol
 
         :Parameter:
 
              - mol : a mol type object (can be a derived type like bb or topo as well)
+             - source: [string, default=mofp] where to get the data from
         """
 
-        self._mol = mol
-        self.ric = ric(mol)
         self.timer = Timer()
-        logger.debug("generated the ff addon")
-        return
-
-    @timer("assign parameter")
-    def assign_params(self, FF, source="mofp"):
-        """
-        method to orchestrate the parameter assignment for this system using a force field defined with
-        FF
-
-        :Parameter:
-
-            - FF :    [string] name of the force field to be used in the parameter search
-            - source: [string, default=mofp] where to get the data from
-        """
-        def get_equivalences():
-            ### check for equivalences
-            for aidx in r:
-                aft = self.aftypes[aidx]
-                if ((str(aft) == par[1][0]) and (aidx not in curr_equi_par)):
-                    curr_equi_par[aidx] = par[1][1]
-            return
-
+        self._mol = mol
+        ### init api
         self.timer.start("connect to DB")
-        self.FF = FF
         self.source = source
         if self.source == "mofp":
             from mofplus import FF_api
@@ -179,6 +194,29 @@ class ff:
         else:
             raise ValueError, "unknown source for assigning parameters"
         self.timer.stop()
+        self.ric = ric(mol, specials = self.api.list_special_atypes())
+        logger.debug("generated the ff addon")
+        return
+
+    @timer("assign parameter")
+    def assign_params(self, FF):
+        """
+        method to orchestrate the parameter assignment for this system using a force field defined with
+        FF
+
+        :Parameter:
+
+            - FF :    [string] name of the force field to be used in the parameter search
+        """
+        def get_equivalences():
+            ### check for equivalences
+            for aidx in r:
+                aft = self.aftypes[aidx]
+                if ((str(aft) == par[1][0]) and (aidx not in curr_equi_par)):
+                    curr_equi_par[aidx] = par[1][1]
+            return
+
+        self.FF = FF
         # as a first step we need to generate the fragment graph
         self.timer.start("fragment graph")
         self._mol.addon("fragments")
