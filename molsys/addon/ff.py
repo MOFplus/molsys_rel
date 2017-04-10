@@ -44,9 +44,11 @@ class ric:
         """
 
         self.timer = Timer()
-
+        
+        self._mol      = mol
         self.conn      = mol.get_conn()
         self.natoms    = mol.get_natoms()
+        self.xyz       = mol.xyz
         self.aftypes   = []
         for i, a in enumerate(mol.get_atypes()):
             self.aftypes.append(aftype(a, mol.fragtypes[i]))
@@ -159,6 +161,69 @@ class ric:
                                 dihedrals.append(d)
         return dihedrals
 
+    def get_distance(self,atoms):
+        """
+        Computes distance between two atoms
+        :Parameters:
+            - atoms (list): list of atomindices
+        """
+        xyz = self._mol.map2image(self.xyz[atoms])
+        apex_1 = xyz[0]
+        apex_2 = xyz[1]
+        return np.linalg.norm(apex_1-apex_2)
+
+    def get_angle(self,atoms):
+        """
+        Computes angle between three atoms
+        :Parameters:
+            - atoms (list): list of atomindices
+        """
+        xyz = self._mol.map2image(self.xyz[atoms])
+        apex_1 = xyz[0]
+        apex_2 = xyz[2]
+        central = xyz[1]
+        r1 = apex_1 - central
+        r2 = apex_2 - central
+        s = np.dot(r1,r2)/(np.linalg.norm(r1)*np.linalg.norm(r2))
+        if s < -1.0: s=-1.0
+        if s >  1.0: s=1.0
+        phi = np.arccos(s)
+        return phi * (180.0/np.pi)
+
+    def get_dihedral(self, atoms):
+        """
+        Computes dihedral angle between four atoms
+        :Parameters:
+            - atoms (list): list of atomindices
+        """
+        xyz = self._mol.map2image(self.xyz[atoms])
+        apex1 = xyz[0]
+        apex2 = xyz[3]
+        central1 = xyz[1]
+        central2 = xyz[2]
+        b0 = -1.0*(central1-apex1)
+        b1 = central2-central1
+        b2 = apex2-central2
+        n1 = np.cross(b0,b1)
+        n2 = np.cross(b1,b2)
+        arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
+        if abs(1.0-arg) < 10**-14:
+            arg = 1.0
+        elif abs(1.0+arg) < 10**-14:
+            arg = -1.0
+        phi = np.arccos(arg)
+        return phi * (180.0/np.pi)
+
+    def compute_rics(self):
+        """
+        Computes the values of the rics and attaches 
+        them to the corresponding ic
+        """
+        for b in self.bnd: b.value = self.get_distance(b)
+        for a in self.ang: a.value = self.get_angle(a)
+        for d in self.dih: d.value = self.get_dihedral(d)
+        return
+
     def report(self):
         logger.info("Reporting RICs")
         logger.info("%7d bonds"     % len(self.bnd))
@@ -166,7 +231,6 @@ class ric:
         logger.info("%7d oops"      % len(self.oop))
         logger.info("%7d dihedrals" % len(self.dih))
         return
-
 
 
 class ff:
@@ -235,7 +299,7 @@ class ff:
         self.find_refsystems()
         # make data structures
         with self.timer("make data structures"):
-            ric_type = {"cha":[[i] for i in range(self._mol.natoms)],
+            self.ric_type = {"cha":[[i] for i in range(self._mol.natoms)],
                     "vdw":[[i] for i in range(self._mol.natoms)], 
                     "bnd":self.ric.bnd, 
                     "ang":self.ric.ang, 
@@ -273,7 +337,7 @@ class ff:
                     }
                 curr_equi_par = {}
                 for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
-                    for i, r in enumerate(ric_type[ic]):
+                    for i, r in enumerate(self.ric_type[ic]):
                         if self.parind[ic][i] == None:
                             if ((self.atoms_in_subsys(r, curr_fraglist)) and
                                     (self.atoms_in_active(r, curr_atomlist))):
@@ -282,7 +346,9 @@ class ff:
                                 ptypes = []
                                 full_parname_list = []
                                 # check unsorted list first
-                                parname = self.get_parname(r)
+                                # it hat to be checked for several parnames, since upgrades could be 
+                                # possible, therefor the parname is downgraded
+                                parname = self.get_parname(r,)
                                 if parname in curr_par[ic]:
                                     for par in curr_par[ic][parname]:
                                         ptypes.append(par[0])
@@ -328,12 +394,19 @@ class ff:
                     if i in curr_equi_par.keys():
                         at, ft = curr_equi_par[i].split("@")
                         self.aftypes[i] = aftype(at,ft)
-        # Consistency check, check if params for all ics had been assignend
+        self.check_consistency()
+        self.setup_pair_potentials()
+        self.timer.write_logger(logger.info)
+        return
+
+    def check_consistency(self):
         complete = True
+        active_zone = []
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             unknown_par = []
-            for i, p in enumerate(ric_type[ic]):
+            for i, p in enumerate(self.ric_type[ic]):
                 if self.parind[ic][i] == None:
+                    if ic == "cha" and i not in active_zone: active_zone.append(i)
                     parname = self.get_parname(p)
                     if not parname in unknown_par:
                         unknown_par.append(parname)
@@ -344,9 +417,40 @@ class ff:
             raise IOError("Assignend parameter set incomplete!")
         else:
             logger.info("Parameter assignment successfull")
-        self.setup_pair_potentials()
-        self.timer.write_logger(logger.info)
         return
+
+    def write_params_to_key(self):
+        self.ric.compute_rics()
+        ### gather params
+        icmapper = {"bnd": "bond", "ang": "angle", "dih": "torsion", 
+                "oop": "opbend", "cha":"charge", "vdw":"vdw"}
+        ics = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
+        data = {"bnd": {}, "ang": {}, "dih": {}, "oop": {}, "cha": {}, "vdw": {}}
+        for ic in ics:
+            for i,p in enumerate(self.ric_type[ic]):
+                parname = self.get_parname(p)
+                if not parname in data[ic].keys():
+                    if self.parind[ic][i] != None:
+                        for j in self.parind[ic][i]:
+                            #data[ic][parname] = self.par[ic][self.parind[ic][i][0]]
+                            data[ic][parname] = [self.par[ic][j],[[p.value],[],[]]]
+                    else:
+                        data[ic][parname] = [[],[[p.value],[],[]]]
+                else:
+                    data[ic][parname][1][0].append(p.value)
+#        from ff_gen import tools
+#        kc = tools.keycreator()
+#        buffer = ""
+#        for i in ics:
+#            for ic, p in data[i].items():
+#                if p != None:
+#                    buffer+= kc.formatter(icmapper[i], list(ic), params = p[1])
+#                else:
+#                    buffer+= kc.formatter(icmapper[i], list(ic), params = p)
+#        print buffer
+        return data
+
+
     
     def setup_pair_potentials(self, radfact = 1.0, radrule="arithmetic", epsrule="geometric"):
         """
@@ -406,10 +510,18 @@ class ff:
             scan_prio = []
             ref_dic = self.api.list_FFrefs(self.FF)
             for refname in ref_dic.keys():
-                prio, reffrags, active = ref_dic[refname]
+                prio, reffrags, active, upgrades = ref_dic[refname]
                 if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
                     scan_ref.append(refname)
                     scan_prio.append(prio)
+                # check for upgrades
+                elif upgrades and len(reffrags) > 0:
+                    oreffrags = copy.deepcopy(reffrags)
+                    for d,u in upgrades.items():
+                        reffrags = [i.replace(d,u) for i in reffrags]
+                        if all(f in self.fragments.get_fragnames() for f in reffrags):
+                            scan_ref.append(refname)
+                            scan_prio.append(prio)
             # sort to be scanned referecnce systems by their prio
             self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
             self.scan_ref.reverse()
@@ -435,7 +547,15 @@ class ff:
                 # TODO: if a ref system has only one fragment we do not need to do a substructure search but
                 #       could pick it from self.fragemnts.fraglist
                 subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
-                asubs_all = []
+                # in the case that an upgrade for a reference system is available, it has also to be searched
+                # for the upgraded reference systems
+                upgrades = ref_dic[ref][3]
+                if upgrades:
+                    # if upgrades should be applied, also an active zone has to be present
+                    assert ref_dic[ref][2] != None
+                    for s,r in upgrades.items():
+                        self.ref_systems[ref].fragments.upgrade(s, r)
+                        subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
                 logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
                 if len(subs) == 0:
                     # this ref system does not appear => discard
@@ -501,5 +621,4 @@ class ff:
         helper function to produce the name string using the self.aftypes
         """
         l = map(lambda a: self.aftypes[a], alist)
-        return tuple(aftype_sort(l, ic))
-
+        return tuple(aftype_sort(l,ic))

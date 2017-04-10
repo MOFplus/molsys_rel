@@ -57,7 +57,7 @@ class mol:
         self.fragtypes=[]
         self.fragnumbers=[]
         self.nfrags = 0
-        self.periodic= None
+        self.periodic=False
         self.is_bb=False
         self.weight=1
         self.loaded_addons =  []
@@ -518,7 +518,7 @@ class mol:
         if self.periodic:
             fix = xyz[0,:]
             a = xyz[1:,:] - fix
-            if self.bcond == 2:
+            if self.bcond <= 2:
                 cell_abc = self.cellparams[:3]
                 xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
             elif self.bcond == 3:
@@ -526,6 +526,19 @@ class mol:
                 xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
+
+    def map2image(self,xyz):
+        if self.periodic == False: return xyz
+        fix = xyz[0]
+        a = xyz[1:,:] - fix
+        if self.bcond <= 2:
+            cell_abc = self.cellparams[:3]
+            xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
+        elif self.bcond == 3:
+            frac = np.dot(a, self.inv_cell)
+            xyz[1:,:] -= np.dot(np.around(frac),self.cell)
+        return xyz
+
 
     def new_mol_by_index(self, idx):
         """

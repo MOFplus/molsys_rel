@@ -140,6 +140,21 @@ class fragments:
         #self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
         return self.frag_graph
 
+    def upgrade(self, se, rep):
+        """
+        upgrades the vertex labels in a frag graph
+        :Parameters:
+            - se  (str): vertex label to be replaced
+            - rep (str): new vertex label
+        """
+        assert type(se) == type(rep) == str
+        assert hasattr(self, "frag_graph")
+        for v in self.frag_graph.vertices():
+            if self.frag_graph.vp.type[v] == se: 
+                self.frag_graph.vp.type[v] = rep
+        return
+
+
     def frags2atoms(self, frags):
         # TODO improve speed
         #assert type(frags) == list
