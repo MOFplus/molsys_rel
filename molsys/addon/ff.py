@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# RS .. to overload print in parallel case (needs to be the first line)
+from __future__ import print_function
 """
 Created on Thu Mar 23 11:25:43 2017
 
@@ -8,6 +10,16 @@ Created on Thu Mar 23 11:25:43 2017
         addon module FF to implement force field infrastructure to the molsys
 
 """
+
+from mpi4py import MPI
+mpi_rank = MPI.COMM_WORLD.Get_rank()
+# overload print function in parallel case
+import __builtin__
+def print(*args, **kwargs):
+    if mpi_rank == 0:
+        return __builtin__.print(*args, **kwargs)
+    else:
+        return
 
 
 import numpy as np
@@ -262,14 +274,21 @@ class ff:
         self.timer.start("connect to DB")
         self.source = source
         if self.source == "mofp":
-            from mofplus import FF_api
-            self.api = FF_api()
+            if self._mol.mpi_rank == 0:
+                from mofplus import FF_api
+                self.api = FF_api()
+                self.special_atypes = self.api.list_special_atypes()
+            else:
+                self.api = None
+                self.special_atypes = None
+            if self._mol.mpi_size > 1:
+                self.special_atypes = self._mol.mpi_comm.bcast(self.special_atypes, root = 0)
         elif self.source == "file":
             raise ValueError, "to be implemented"
         else:
             raise ValueError, "unknown source for assigning parameters"
         self.timer.stop()
-        self.ric = ric(mol, specials = self.api.list_special_atypes())
+        self.ric = ric(mol, specials = self.special_atypes)
         logger.debug("generated the ff addon")
         return
 
@@ -393,9 +412,9 @@ class ff:
                                     counter += 1
                                     self.parind[ic][i] = full_parname_list
                                 #else:
-                                #    print "DEBUG DEBUG DEBUG %s" % ic
-                                #    print self.get_parname(r)
-                                #    print self.get_parname_sort(r, ic)
+                                #    print ("DEBUG DEBUG DEBUG %s" % ic)
+                                #    print (self.get_parname(r))
+                                #    print (self.get_parname_sort(r, ic))
                 logger.info("%i parameters assigned for ref system %s" % (counter,ref))
                 #EQUIVALENCE
                 # now all params for this ref have been assigned ... any equivalnce will be renamed now in aftypes
@@ -487,7 +506,7 @@ class ff:
                         gp = [defaults[i], np.mean(p[1][0])]
                         buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
             buffer += "\n"
-        print buffer
+        print (buffer)
         return data
 
 
@@ -518,7 +537,7 @@ class ff:
                 if pot_i == pot_j:
                     pot = pot_i
                 else:
-                    raise IOErrror("Can not combine %s and %s" % (pot_i, pot_j))
+                    raise IOError("Can not combine %s and %s" % (pot_i, pot_j))
                 if radrule == "arithmetic":
                     rad = radfact*(par_i[0]+par_j[0])
                 elif radrule == "geometric":
@@ -548,7 +567,12 @@ class ff:
             self.timer.start("get reference systems")
             scan_ref  = []
             scan_prio = []
-            ref_dic = self.api.list_FFrefs(self.FF)
+            if self._mol.mpi_rank == 0:
+                ref_dic = self.api.list_FFrefs(self.FF)
+            else:
+                ref_dic = []
+            if self._mol.mpi_size > 1:
+                ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
             for refname in ref_dic.keys():
                 prio, reffrags, active, upgrades = ref_dic[refname]
                 if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
@@ -570,7 +594,12 @@ class ff:
             self.timer.start("make ref frag graphs")
             self.ref_systems = {}
             for ref in self.scan_ref:
-                ref_mol = self.api.get_FFref_graph(ref, mol=True)
+                if self._mol.mpi_rank == 0:
+                    ref_mol = self.api.get_FFref_graph(ref, mol=True)
+                else:
+                    ref_mol = None
+                if self._mol.mpi_size > 1:
+                    ref_mol = self._mol.mpi_comm.bcast(ref_mol, root=0)
                 ref_mol.addon("fragments")
                 ref_mol.fragments.make_frag_graph()
                 # if active space is defined create atomistic graph of active zone
@@ -623,9 +652,15 @@ class ff:
             self.ref_params = {}
             for ref in self.scan_ref:
                 logger.info("Getting params for %s" % ref)
-                self.ref_params[ref] = self.api.get_params_from_ref(self.FF, ref)
-                #print "DEBUG DEBUG Ref system %s" % ref
-                #print self.ref_params[ref]
+                if self._mol.mpi_rank == 0:
+                    ref_par = self.api.get_params_from_ref(self.FF, ref)
+                else:
+                    ref_par = None
+                if self._mol.mpi_size > 1:
+                    ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
+                self.ref_params[ref] = ref_par
+                #print ("DEBUG DEBUG Ref system %s" % ref)
+                #print (self.ref_params[ref])
             self.timer.stop()
         elif source == "file":
             raise ValueError, "assigning reference systems from file needs to be implemeted"
@@ -669,10 +704,10 @@ class ff:
         better sorting and commenting?
         """
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
-            print "TYPE: " + ic.upper()
+            print ("TYPE: " + ic.upper())
             pstrings = self.par[ic].keys()
             pstrings.sort()
             for s in pstrings:
-                print s
-            print "\n"
+                print (s)
+            print ("\n")
         return
