@@ -243,6 +243,7 @@ class ric:
         return
 
 
+
 class ff:
 
     def __init__(self, mol,source = "mofp"):
@@ -356,9 +357,7 @@ class ff:
                                 ptypes = []
                                 full_parname_list = []
                                 # check unsorted list first
-                                # it hat to be checked for several parnames, since upgrades could be 
-                                # possible, therefor the parname is downgraded
-                                parname = self.get_parname(r,)
+                                parname = self.get_parname(r)
                                 if parname in curr_par[ic]:
                                     for par in curr_par[ic][parname]:
                                         ptypes.append(par[0])
@@ -427,6 +426,8 @@ class ff:
             raise IOError("Assignend parameter set incomplete!")
         else:
             logger.info("Parameter assignment successfull")
+        self.setup_pair_potentials()
+        self.timer.write_logger(logger.info)
         return
 
     def write_params_to_key(self):
@@ -661,3 +662,17 @@ class ff:
         """
         l = map(lambda a: self.aftypes[a], alist)
         return tuple(aftype_sort(l,ic))
+
+    def report_params(self):
+        """
+        TODO: improve this ..write to file or logger in DEBUG level?
+        better sorting and commenting?
+        """
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            print "TYPE: " + ic.upper()
+            pstrings = self.par[ic].keys()
+            pstrings.sort()
+            for s in pstrings:
+                print s
+            print "\n"
+        return

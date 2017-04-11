@@ -927,7 +927,31 @@ class mol:
         for i in xrange(self.natoms):
             self.conn.append([])
         return
-
+        
+    def get_conn_as_tab(self):
+        """
+        gets the connectivity as a table of bonds with shape (nbonds, 2)
+        """
+        ctab = []
+        for i, ci in enumerate(self.conn):
+            for j in ci:
+                if j > i:
+                    ctab.append([i,j])
+        return ctab
+        
+    def set_conn_from_tab(self, ctab):
+        """
+        sets the connectivity froma table of bonds
+        :Parameters:
+            - ctab   : list of bonds (nbonds, 2)
+        """
+        self.set_empty_conn()
+        for c in ctab:
+            i,j = c
+            self.conn[i].append(j)
+            self.conn[j].append(i)
+        return
+        
     def set_unit_mass(self):
         """
         sets the mass for every atom to one
