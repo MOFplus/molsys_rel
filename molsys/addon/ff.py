@@ -12,7 +12,8 @@ Created on Thu Mar 23 11:25:43 2017
 
 import numpy as np
 from molsys.util.timing import timer, Timer
-from mofplus import aftype, aftype_sort
+from molsys.util import elems
+from mofplus import aftype, aftype_sort,afdict
 
 import itertools
 import copy
@@ -214,6 +215,14 @@ class ric:
         phi = np.arccos(arg)
         return phi * (180.0/np.pi)
 
+    def get_oop(self,atoms):
+        """
+        Dummy function to the the value of an oop by default to 0.0
+        :Parameters:
+            - atoms (list): list of atomindices
+        """
+        return 0.0
+
     def compute_rics(self):
         """
         Computes the values of the rics and attaches 
@@ -222,6 +231,7 @@ class ric:
         for b in self.bnd: b.value = self.get_distance(b)
         for a in self.ang: a.value = self.get_angle(a)
         for d in self.dih: d.value = self.get_dihedral(d)
+        for o in self.oop: o.value = self.get_oop(o)
         return
 
     def report(self):
@@ -394,7 +404,7 @@ class ff:
                     if i in curr_equi_par.keys():
                         at, ft = curr_equi_par[i].split("@")
                         self.aftypes[i] = aftype(at,ft)
-        self.check_consistency()
+        #self.check_consistency()
         self.setup_pair_potentials()
         self.timer.write_logger(logger.info)
         return
@@ -421,33 +431,62 @@ class ff:
 
     def write_params_to_key(self):
         self.ric.compute_rics()
-        ### gather params
+        from ff_gen import tools
+        kc = tools.keycreator()
+        buffer = ""
+        ### gather types to make key file more readable
+        buffer += "### type lookup table ###\n"
+        typemapper =  {}
+        for i, aft in enumerate(self.aftypes):
+            if str(aft) not in typemapper.keys():
+                typemapper[str(aft)] = str(len(typemapper.keys()))
+                buffer += "# %-20s %-5s\n" % (str(aft), typemapper[str(aft)])
+        buffer += "\n"
+        ### gather nonbonded params
+        saftypes = map(str, self.aftypes)
+        for aft in typemapper.keys():
+            idx = saftypes.index(aft)
+            buffer += kc.formatter("atom", [typemapper[aft]], params = [elems.mass[self._mol.elems[idx]]])
+            #if self.parind["cha"][idx] != None:
+            #    buffer += kc.formatter("atom", aft, [elems.mass[self._mol.elems[idx]]])
+            #else:
+            #    pass
+
+        ### gather bonded params
         icmapper = {"bnd": "bond", "ang": "angle", "dih": "torsion", 
-                "oop": "opbend", "cha":"charge", "vdw":"vdw"}
-        ics = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
-        data = {"bnd": {}, "ang": {}, "dih": {}, "oop": {}, "cha": {}, "vdw": {}}
+                "oop": "opbend", "cha":"charge", "vdw":"vdw", "strbnd":"strbnd"}
+        ics = [ "bnd", "ang", "dih", "oop"]#, "cha", "vdw"]
+        data = {"bnd": {}, "ang": {}, "dih": {}, "strbnd": {}, "oop":{}} #, "oop": {}}#, "cha": {}, "vdw": {}}
         for ic in ics:
             for i,p in enumerate(self.ric_type[ic]):
-                parname = self.get_parname(p)
-                if not parname in data[ic].keys():
+                parname = string.join(map(lambda a: typemapper[a],map(str,self.get_parname_sort(p,ic))), ":")
+                if not parname in data[ic]:
                     if self.parind[ic][i] != None:
                         for j in self.parind[ic][i]:
-                            #data[ic][parname] = self.par[ic][self.parind[ic][i][0]]
-                            data[ic][parname] = [self.par[ic][j],[[p.value],[],[]]]
+                            if self.par[ic][j][0] == "strbnd":
+                                data["strbnd"][parname] = [self.par[ic][j],[[p.value],[],[]]]
+                            else:
+                                data[ic][parname] = [self.par[ic][j],[[p.value],[],[]]]
                     else:
                         data[ic][parname] = [[],[[p.value],[],[]]]
                 else:
                     data[ic][parname][1][0].append(p.value)
-#        from ff_gen import tools
-#        kc = tools.keycreator()
-#        buffer = ""
-#        for i in ics:
-#            for ic, p in data[i].items():
-#                if p != None:
-#                    buffer+= kc.formatter(icmapper[i], list(ic), params = p[1])
-#                else:
-#                    buffer+= kc.formatter(icmapper[i], list(ic), params = p)
-#        print buffer
+        ### write to key
+        defaults = {"bnd": 2.0, "ang": 1.0, "dih": 1.0, "oop": 0.1}
+        for i in ["bnd", "ang", "strbnd", "dih", "oop",]:
+            for ic, p in data[i].items():
+                lic = string.split(ic,":")
+                if p[0] != []:
+                    buffer+= kc.formatter(icmapper[i], lic, params = p[0][1])
+                else:
+                    if i == "dih":
+                        ### tbi
+                        pass
+                    else:
+                        gp = [defaults[i], np.mean(p[1][0])]
+                        buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
+            buffer += "\n"
+        print buffer
         return data
 
 
