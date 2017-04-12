@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# RS .. to overload print in parallel case (needs to be the first line)
+from __future__ import print_function
 import string as st
 import numpy as np
 import types
@@ -7,6 +9,7 @@ import string
 import os
 import subprocess
 from cStringIO import StringIO
+from mpi4py import MPI
 
 from util import unit_cell
 from util import elems as elements
@@ -23,18 +26,35 @@ import addon
 # NOTE: this needs to be done once only here for the root logger molsys
 # any other module can use either this logger or a child logger
 # no need to redo this config in the other modules!
+# NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the 
+#        master node writes INFO to stdout
 import logging
+mpi_rank = MPI.COMM_WORLD.Get_rank()
+mpi_size = MPI.COMM_WORLD.Get_size()
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
-fhandler  = logging.FileHandler("molsys.log")
+if mpi_size > 1:
+    logger_file_name = "molsys.%d.log" % mpi_rank
+else:
+    logger_file_name = "molsys.log"
+fhandler  = logging.FileHandler(logger_file_name)
 fhandler.setLevel(logging.DEBUG)
-shandler  = logging.StreamHandler()
-shandler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
-shandler.setFormatter(formatter)
 logger.addHandler(fhandler)
-logger.addHandler(shandler)
+if mpi_rank == 0:
+    shandler  = logging.StreamHandler()
+    shandler.setLevel(logging.INFO)
+    shandler.setFormatter(formatter)
+    logger.addHandler(shandler)
+    
+# overload print function in parallel case
+import __builtin__
+def print(*args, **kwargs):
+    if mpi_rank == 0:
+        return __builtin__.print(*args, **kwargs)
+    else:
+        return
 
 
 
@@ -44,7 +64,13 @@ SMALL_DIST = 1.0e-3
 
 class mol:
 
-    def __init__(self):
+    def __init__(self, mpi_comm=None):
+        if mpi_comm:
+            self.mpi_comm = mpi_comm
+        else:
+            self.mpi_comm = MPI.COMM_WORLD
+        self.mpi_rank = self.mpi_comm.Get_rank()
+        self.mpi_size = self.mpi_comm.Get_size()
         self.natoms=0
         self.cell=None
         self.cellparams=None
@@ -61,6 +87,7 @@ class mol:
         self.is_bb=False
         self.weight=1
         self.loaded_addons =  []
+        self.set_logger_level()
         return
 
     #####  I/O stuff ############################
@@ -108,23 +135,25 @@ class mol:
             - ftype="mfpx" : the parser type that is used to writen the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
-        logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-        formats.write[ftype](self,fname,**kwargs)
+        if self.mpi_rank == 0:
+            logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
+            formats.write[ftype](self,fname,**kwargs)
         return
 
     def view(self, **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
-        logger.info("invoking moldenx as visualisation tool")
-        _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
-        self.write(_tmpfname)
-        try:
-            ret = subprocess.call(["moldenx", _tmpfname])
-        except KeyboardInterrupt:
-            pass
-        finally:
-            os.remove(_tmpfname)
-            logger.info("temporary file "+_tmpfname+" removed")
+        if self.mpi_rank == 0:
+            logger.info("invoking moldenx as visualisation tool")
+            _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
+            self.write(_tmpfname)
+            try:
+                ret = subprocess.call(["moldenx", _tmpfname])
+            except KeyboardInterrupt:
+                pass
+            finally:
+                os.remove(_tmpfname)
+                logger.info("temporary file "+_tmpfname+" removed")
         return
 
     ##### addons ##################################
@@ -233,10 +262,10 @@ class mol:
         logger.info("reporting connectivity ... ")
         for i in xrange(self.natoms):
             conn = self.conn[i]
-            print "atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn))
+            print ("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
             for j in xrange(len(conn)):
                 d = self.get_neighb_dist(i,j)
-                print "   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d)
+                print ("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
 
     ###  periodic systems .. cell manipulation ############
@@ -280,8 +309,8 @@ class mol:
                         for c in range(len(conn[i][cc])):
                             pc = self.get_distvec(cc,conn[i][cc][c])[2]
                             if len(pc) != 1:
-                                print self.get_distvec(cc,conn[i][cc][c])
-                                print c,conn[i][cc][c]
+                                print (self.get_distvec(cc,conn[i][cc][c]))
+                                print (c,conn[i][cc][c])
                                 raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
                             pc = pc[0]
                             if pc == 13:
@@ -395,7 +424,7 @@ class mol:
                 - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
-                print "can not add periodic systems with unequal cells!!"
+                raise ValueError, "can not add periodic systems with unequal cells!!"
                 return
         other_xyz = other.xyz.copy()
         # NOTE: it is important ot keep the order of operations

@@ -7,15 +7,30 @@ Created on Mon Nov 28 18:29:19 2016
           Fragmentizer class
 
           depends on graph addon (this means graph_tool must be installed)
+          
+          MPI-safe version .. Warning: use prnt function which is overloaded
 
 """
-
+from __future__ import print_function
 import os
 import numpy
 import logging
 import glob
 import molsys
 import csv
+from mpi4py import MPI
+
+mpi_comm = MPI.COMM_WORLD
+mpi_rank = MPI.COMM_WORLD.Get_rank()
+mpi_size = MPI.COMM_WORLD.Get_size()
+# overload print function in parallel case
+import __builtin__
+def print(*args, **kwargs):
+    if mpi_rank == 0:
+        return __builtin__.print(*args, **kwargs)
+    else:
+        return
+
 
 import logging
 
@@ -47,8 +62,12 @@ class fragmentizer:
                 self.frag_path = "."
             self.read_catalog()
         elif source == "mofp":
-            from mofplus import FF_api
-            self.api = FF_api()
+            # API calls are done on the master only
+            if mpi_rank == 0:
+                from mofplus import FF_api
+                self.api = FF_api()
+            else:
+                self.api = None
             self.catalog_from_API()
         else:
             raise ValueError("Unknown source specified")
@@ -71,7 +90,15 @@ class fragmentizer:
         return
 
     def catalog_from_API(self):
-        frags = self.api.list_FFfrags()
+        """
+        API call on master only ... broadcasted to other nodes
+        """
+        if mpi_rank == 0:
+            frags = self.api.list_FFfrags()
+        else:
+            frags = None
+        if mpi_size > 1:
+            frags = mpi_comm.bcast(frags, root=0)
         for f in frags:
             self.fragments[f[0]]= None
             self.frag_vtypes[f[0]] = f[2]
@@ -90,7 +117,15 @@ class fragmentizer:
         return
 
     def read_frag_from_API(self,fname):
-        m = self.api.get_FFfrag(fname, mol = True)
+        """
+        API call on master only ... broadcsted to other nodes 
+        """
+        if mpi_rank == 0:
+            m = self.api.get_FFfrag(fname, mol = True)
+        else:
+            m = []
+        if mpi_size > 1:
+            m = mpi_comm.bcast(m, root=0)
         m.addon("graph")
         m.graph.make_graph()
         self.fragments[fname] = m
@@ -116,7 +151,7 @@ class fragmentizer:
         vtype = map(lambda e: e.split("_")[0], atypes)
         vtype = filter(lambda e: (e[0] != "x") and (e[0] != "h"), vtype)
         vtype = list(set(vtype))
-        print vtype
+        # print vtype
         # scan for relevant fragments
         scan_frag = []
         scan_prio = []
