@@ -25,7 +25,7 @@ def print(*args, **kwargs):
 import numpy as np
 from molsys.util.timing import timer, Timer
 from molsys.util import elems
-from mofplus import aftype, aftype_sort,afdict
+from molsys.util.aftypes import aftype, aftype_sort,afdict
 
 import itertools
 import copy
