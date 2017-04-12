@@ -506,8 +506,8 @@ class mol:
             - idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
         if hasattr(self,'masstype') == False: self.set_real_mass()
-        if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
-        if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
+        #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
+        #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
         if idx == None:
             if self.periodic: return None
             xyz = self.get_xyz()
