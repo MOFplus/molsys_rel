@@ -203,6 +203,25 @@ class ric:
         phi = np.arccos(s)
         return phi * (180.0/np.pi)
 
+    def get_multiplicity(self, n1, n2):
+        """
+        Routine to estimate m from local topology
+        :Parameters:
+            - n1 (int): number of connections of central atom 1
+            - n2 (int): number of connections of central atom 2
+        """
+        assert type(n1) == type(n2) == int
+        if   set([n1,n2])==set([5,5]): return 4
+        elif set([n1,n2])==set([4,4]): return 3
+        elif set([n1,n2])==set([2,4]): return 3
+        elif set([n1,n2])==set([3,4]): return 3
+        elif set([n1,n2])==set([3,3]): return 2
+        elif set([n1,n2])==set([2,3]): return 2
+        elif set([n1,n2])==set([2,2]): return 1
+        else:                          return None
+
+
+
     def get_dihedral(self, atoms):
         """
         Computes dihedral angle between four atoms
@@ -225,7 +244,10 @@ class ric:
         elif abs(1.0+arg) < 10**-14:
             arg = -1.0
         phi = np.arccos(arg)
-        return phi * (180.0/np.pi)
+        ### get multiplicity
+        m = self.get_multiplicity(len(self._mol.conn[atoms[1]]),
+                len(self._mol.conn[atoms[2]]))
+        return (phi * (180.0/np.pi), m)
 
     def get_oop(self,atoms):
         """
@@ -449,10 +471,11 @@ class ff:
         self.timer.write_logger(logger.info)
         return
 
-    def write_params_to_key(self):
+    def write_params_to_key(self, fname = "new"):
         self.ric.compute_rics()
         from ff_gen import tools
         kc = tools.keycreator()
+        vdw = tools.vdwp()
         buffer = ""
         ### gather types to make key file more readable
         buffer += "### type lookup table ###\n"
@@ -467,11 +490,18 @@ class ff:
         for aft in typemapper.keys():
             idx = saftypes.index(aft)
             buffer += kc.formatter("atom", [typemapper[aft]], params = [elems.mass[self._mol.elems[idx]]])
-            #if self.parind["cha"][idx] != None:
-            #    buffer += kc.formatter("atom", aft, [elems.mass[self._mol.elems[idx]]])
-            #else:
-            #    pass
-
+            pcha = []
+            vdw(string.split(aft, "@")[0].split("_")[0])
+            pvdw = vdw.set
+            for i, aft2 in enumerate(self.aftypes):
+                if str(aft2) == aft:
+                    if self.parind["cha"][i] != None:
+                        pcha = self.par["cha"][self.parind["cha"][i][0]][1]
+                        pvdw = self.par["vdw"][self.parind["vdw"][i][0]][1]
+                    break
+            buffer += kc.formatter("vdw", [typemapper[aft]], params = pvdw)
+            buffer += kc.formatter("charge", [typemapper[aft]], params = pcha)
+            buffer += "\n"
         ### gather bonded params
         icmapper = {"bnd": "bond", "ang": "angle", "dih": "torsion", 
                 "oop": "opbend", "cha":"charge", "vdw":"vdw", "strbnd":"strbnd"}
@@ -497,20 +527,37 @@ class ff:
             for ic, p in data[i].items():
                 lic = string.split(ic,":")
                 if p[0] != []:
-                    buffer+= kc.formatter(icmapper[i], lic, params = p[0][1])
+                    if i == "strbnd":
+                        buffer+= kc.formatter(icmapper[i], lic, params = p[0][1][0:3])
+                    else:
+                        buffer+= kc.formatter(icmapper[i], lic, params = p[0][1])
                 else:
                     if i == "dih":
+                        m = int(np.round(np.mean(np.array(p[1][0])[:,1])))
+                        vals = np.array(p[1][0])[:,0]
+                        gp =  self.get_torsion(vals, m, thresshold = 10)
                         ### tbi
-                        pass
+                        buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
                     else:
                         gp = [defaults[i], np.mean(p[1][0])]
-                        buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
+                        if i == "strbnd":
+                            buffer+= kc.formatter(icmapper[i], lic, params = gp[0:3], var = True)
+                        else:
+                            buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
             buffer += "\n"
-        print (buffer)
+        ### buffer to key
+        with open(fname+".key", "w") as fkey:
+            fkey.write(kc.head)
+            fkey.write(buffer)
+        ### write txyz file with substituded atomtypes --> numbers
+        numbers = map(lambda a: typemapper[a], saftypes)
+        otypes  = copy.copy(self._mol.atypes)
+        self._mol.atypes = numbers
+        self._mol.write(fname +".txyz", ftype = "txyz")
+        self._mol.atypes = otypes
         return data
 
 
-    
     def setup_pair_potentials(self, radfact = 1.0, radrule="arithmetic", epsrule="geometric"):
         """
         Method to setup the pair potentials based on the per atom type assigned parameters
@@ -711,3 +758,50 @@ class ff:
                 print (s)
             print ("\n")
         return
+
+    def get_torsion(self, values, m, thresshold=5):
+        '''
+            Get a rest value of 0.0, 360/(2*m) or None depending on the given
+            equilbrium values
+            (stolen from QuickFF)
+        '''
+        multidict = {
+                1: [180.0],
+                2: [0.0, 180.0],
+                3: [60.0, 180.0, 240.0],
+                4: [0.0, 90.0, 180.0, 270.0],
+                }
+        tor = [0.0, 0.0, 0.0]
+        if m == 4: tor = [0.0,0.0,0.0,0.0]
+        if m == None:
+            return tor
+        rv = None
+        per = 360/m
+        for value in values:
+            x = value % per
+            if abs(x)<=thresshold or abs(per-x)<thresshold:
+                if rv is not None and rv!=0.0:
+                    #tor[m-1] = 1.0
+                    return tor
+                    #return [None, None, None, None]
+                elif rv is None:
+                    rv = 0.0
+            elif abs(x-per/2.0)<thresshold:
+                if rv is not None and rv!=per/2.0:
+                    #tor[m-1] = 1.0
+                    return tor
+                    #return [None, None, None, None]
+                elif rv is None:
+                    rv = per/2.0
+            else:
+                #tor[m-1] = 1.0
+                return tor
+                #return [None, None, None, None]
+        if rv in multidict[m]:
+            tor[m-1] = 1.0
+            return tor
+        else:
+            tor[m-1] = -1.0
+            return tor
+
+
