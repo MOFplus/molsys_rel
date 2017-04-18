@@ -601,6 +601,7 @@ class mol:
         if type(self.cell) != type(None):
             m.set_cell(self.cell)
             m.periodic = True
+            """ ###SOURCE OF BUG, YET NOT STUDIED
             stop = False
             while not stop:
                 stop = True
@@ -612,6 +613,15 @@ class mol:
                             for ik, k in enumerate(self.cell):
                                 m.xyz[j] += k * images[imgi][0][ik]
                             break
+            """
+            ### it SEEMS to work now without the while loop, NO WARRANTY (RA+MD)
+            for i, conns in enumerate(m.conn):
+                for j in conns:
+                    d, r, imgi = m.get_distvec(i, j)
+                    if imgi != [13]:
+                        for ik, k in enumerate(self.cell):
+                            m.xyz[j] += k * images[imgi][0][ik]
+                        break
             m.cell = None
             m.periodic = False
         return m
