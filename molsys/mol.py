@@ -103,17 +103,26 @@ class mol:
             logger.setLevel(logging.DEBUG)
         return
 
-    def read(self,fname,ftype='mfpx',**kwargs):
+    def read(self,fname,ftype=None,**kwargs):
         ''' generic reader for the mol class
         :Parameters:
             - fname        : the filename to be read
             - ftype="mfpx" : the parser type that is used to read the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
-
-        logger.info("reading file "+str(fname)+' as .'+str(ftype)+' file')
+        if ftype is None:
+            fsplit = fname.rsplit('.',1)[-1]
+            if fsplit != fname: #there is an extension
+                ftype = fsplit #ftype is inferred from extension
+            else: #there is no extension
+                ftype = 'mfpx' #default
+        logger.info("reading file "+str(fname)+' in '+str(ftype)+' format')
         f = open(fname, "r")
-        formats.read[ftype](self,f,**kwargs)
+        if ftype in formats.read:
+            formats.read[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
         return
 
     def fromString(self, istring, ftype='mfpx', **kwargs):
@@ -125,10 +134,14 @@ class mol:
                              see molsys.io.* for detailed info'''
         logger.info("reading string as %s" % str(ftype))
         f = StringIO(istring)
-        formats.read[ftype](self,f,**kwargs)
+        if ftype in formats.read:
+            formats.read[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
         return
 
-    def write(self,fname,ftype='mfpx',**kwargs):
+    def write(self,fname,ftype=None,**kwargs):
         ''' generic writer for the mol class
         :Parameters:
             - fname        : the filename to be written
@@ -136,8 +149,18 @@ class mol:
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if self.mpi_rank == 0:
+            if ftype is None:
+                fsplit = fname.rsplit('.',1)[-1]
+                if fsplit != fname: #there is an extension
+                    ftype = fsplit #ftype is inferred from extension
+                else: #there is no extension
+                    ftype = 'mfpx' #default
             logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-            formats.write[ftype](self,fname,**kwargs)
+            if ftype in formats.read:
+                formats.write[ftype](self,fname,**kwargs)
+            else:
+                logger.error("unsupported format: %s" % ftype)
+                raise IOError("Unsupported format")
         return
 
     def view(self, **kwargs):
