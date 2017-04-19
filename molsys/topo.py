@@ -210,7 +210,10 @@ class topo(mol.mol):
 
     def detect_conn(self, fixed_cutoff=None, pconn=False, exclude_pairs=None, cov_rad_buffer=0.1):
         self.conn = []
-        if pconn: self.use_pconn=True
+        if pconn:
+            self.use_pconn=True
+        else:
+            self.use_pconn=False
         for i in xrange(self.natoms):
             self.conn.append([])
             if self.use_pconn: self.pconn.append([])
@@ -518,7 +521,7 @@ class topo(mol.mol):
             for i in xrange(p*nc): col.append(c)
             colors += col
         self.colors = np.array(colors)
-        numrand.shuffle(self.colors)
+        random.shuffle(self.colors)
         # generate the bcolors table (same as self.conn but with colors)
         self.bcolors = copy.deepcopy(self.conn)
         for i in xrange(self.nbonds):
