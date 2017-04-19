@@ -12,6 +12,7 @@ import util.rotations as rotations
 import util.images as images
 import random
 import mol
+from weaver import vector
 
 try:
     from ase import Atoms
