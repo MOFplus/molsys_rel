@@ -474,7 +474,7 @@ class topo(mol.mol):
 
 # ########## additional stuff for edge coloring ############################################
 
-    def color_edges(self, proportions, maxiter=100, maxstep=100000, penref=0.3):
+    def color_edges(self, proportions, maxiter=100, maxstep=100000, nprint=1000, penref=0.3):
         """
         wrapper to search for a zero penalty solution of edge coloring. An initial coloring is generated
         randomly and a flipMC run is started ... if no zero penalty is found after maxsteps it is repeated ...
@@ -483,7 +483,7 @@ class topo(mol.mol):
         niter = 0
         while not (converged and (niter<maxiter)):
             self.init_color_edges(proportions)
-            result = self.run_flip(maxstep, penref=penref)
+            result = self.run_flip(maxstep, nprint=nprint, penref=penref)
             if result[0] : converged=True
             niter += 1
         print "**********************************************************************"
