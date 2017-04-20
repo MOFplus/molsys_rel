@@ -146,6 +146,11 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
         -frags  (bool) : flag to specify if fragment info should be in body or not
         -topo   (bool) : flag to specigy if pconn info should be in body or not
     """
+    if topo: frags = False   #from now on this is convention!
+    if topo: pconn = mol.pconn
+    if frags == True:
+        fragtypes   = mol.fragtypes
+        fragnumbers = mol.fragnumbers
     elems       = mol.elems
     xyz         = mol.xyz
     cnct        = mol.conn
@@ -153,18 +158,17 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
     if moldenr:
         moltypes = {}
         moldentypes = []
-        for i, item in enumerate(mol.atypes):
+        for i in xrange(mol.natoms):
+            #if frags: item = '__'.join([mol.atypes[i], mol.fragtypes[i], str(mol.fragnumbers[i])]) 
+            if frags: item = '__'.join([mol.atypes[i], mol.fragtypes[i]]) 
+            else: item = mol.atypes[i]
             if not item in moltypes:
                 moltypes[item]=(len(moltypes)+1, mol.elems[i])
             moldentypes.append( moltypes[item][0] )
-        atypes      = moldentypes
+        atypes = moldentypes
+        frags=False ### => only one column all together
     else:
         atypes      = mol.atypes
-    if topo: frags = False   #from now on this is convention!
-    if frags == True:
-        fragtypes   = mol.fragtypes
-        fragnumbers = mol.fragnumbers
-    if topo: pconn = mol.pconn
     for i in xrange(mol.natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
