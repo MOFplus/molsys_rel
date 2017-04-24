@@ -12,7 +12,6 @@ import util.rotations as rotations
 import util.images as images
 import random
 import mol
-from weaver import vector
 
 try:
     from ase import Atoms
@@ -706,7 +705,8 @@ class topo(mol.mol):
             v = []
             for ji in xrange(len(self.conn[i])):
                 v.append(self.get_neighb_coords(i, ji)-self.xyz[i])
-            vn = vector.normalize(np.array(v))
+            v = np.array(v)
+            vn = v / np.linalg.norm(v, axis=-1)[:, np.newaxis]
             mat = np.sum(vn[:,np.newaxis,:]*vn[np.newaxis,:,:], axis=2)
             self.scalmat.append(mat)
         #self.scalmat = np.array(self.scalmat)
