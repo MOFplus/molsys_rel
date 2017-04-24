@@ -147,12 +147,19 @@ class wrapper(object):
         ### pair potentials ###
         buffer_out = ""
         count = 0
+        # RS: vdwdata contains the full matrix (both ways A:B and B:A) to work with codes
+        #     that want them the other way around .. here we need to skip those which are done already
+        done_pairs = []
         for pair in self.m.ff.vdwdata.keys():
-            potential, params = self.m.ff.vdwdata[pair]
-            vdw_out = self.vdwterm_formatter(pair, potential, params)
-            if vdw_out:
-                buffer_out += vdw_out
-                count += 1
+            rev_pair = pair.split(":")
+            rev_pair.reverse()
+            if not rev_pair in done_pairs:
+                potential, params = self.m.ff.vdwdata[pair]
+                vdw_out = self.vdwterm_formatter(pair, potential, params)
+                if vdw_out:
+                    buffer_out += vdw_out
+                    count += 1
+                done_pairs.append(pair.split(":"))
         f.write("VDW %d\n" % count)
         f.write(buffer_out)
         f.write("CLOSE\n")
