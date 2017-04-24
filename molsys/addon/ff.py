@@ -388,6 +388,8 @@ class ff:
                     "vdw" : self.ref_params[ref]["onebody"]["vdw"]
                     }
                 curr_equi_par = {}
+                print (curr_par["oop"])
+                print (type(curr_par["oop"]))
                 for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                     for i, r in enumerate(self.ric_type[ic]):
                         if self.parind[ic][i] == None:
@@ -399,6 +401,10 @@ class ff:
                                 full_parname_list = []
                                 # check unsorted list first
                                 parname = self.get_parname(r)
+                                if ic == "oop":
+                                    print (r)
+                                    print (parname)
+                                    print (parname in curr_par[ic])
                                 if parname in curr_par[ic]:
                                     for par in curr_par[ic][parname]:
                                         ptypes.append(par[0])
@@ -419,6 +425,10 @@ class ff:
                                 # now check sorted list (if already in ptype skip), only for manybody ics
                                 if ic not in ["cha", "vdw"]:
                                     parname = self.get_parname_sort(r, ic)
+                                    if ic == "oop":
+                                        print (r)
+                                        print (parname)
+                                        print (parname in curr_par[ic])
                                     if parname in curr_par[ic]:
                                         for par in curr_par[ic][parname]:
                                             if not par[0] in ptypes:
@@ -444,7 +454,7 @@ class ff:
                     if i in curr_equi_par.keys():
                         at, ft = curr_equi_par[i].split("@")
                         self.aftypes[i] = aftype(at,ft)
-        #self.check_consistency()
+        self.check_consistency()
         self.setup_pair_potentials()
         self.timer.write_logger(logger.info)
         return
@@ -575,7 +585,6 @@ class ff:
         ntypes = len(types)
         for i in xrange(ntypes):
             for j in xrange(i, ntypes):
-                pair = types[i]+":"+types[j]
                 #TODO check availability of an explicit paramerter
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
@@ -597,7 +606,10 @@ class ff:
                     eps = np.sqrt(par_i[1]*par_j[1])
                 else:
                     raise IOError("Unknown radius rule %s specified" % radrule)
-                self.vdwdata[pair] = (pot,[rad,eps])
+                par_ij = (pot,[rad,eps])
+                # all combinations are symmetric .. store pairs bith ways
+                self.vdwdata[types[i]+":"+types[j]] = par_ij
+                self.vdwdata[types[j]+":"+types[i]] = par_ij                
         return
 
 
