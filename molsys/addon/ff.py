@@ -315,23 +315,16 @@ class ff:
         return
 
     @timer("assign parameter")
-    def assign_params(self, FF):
+    def assign_params(self, FF, verbose=0):
         """
         method to orchestrate the parameter assignment for this system using a force field defined with
         FF
 
         :Parameter:
 
-            - FF :    [string] name of the force field to be used in the parameter search
+            - FF      :    [string] name of the force field to be used in the parameter search
+            - verbose :    [integer, optional] print info on assignement process to logger
         """
-        def get_equivalences():
-            ### check for equivalences
-            for aidx in r:
-                aft = self.aftypes[aidx]
-                if ((str(aft) == par[1][0]) and (aidx not in curr_equi_par)):
-                    curr_equi_par[aidx] = par[1][1]
-            return
-
         self.FF = FF
         # as a first step we need to generate the fragment graph
         self.timer.start("fragment graph")
@@ -388,58 +381,34 @@ class ff:
                     "vdw" : self.ref_params[ref]["onebody"]["vdw"]
                     }
                 curr_equi_par = {}
-                print (curr_par["oop"])
-                print (type(curr_par["oop"]))
                 for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+                    if verbose>0: logger.info(" ### Params for %s ###" % ic)
                     for i, r in enumerate(self.ric_type[ic]):
                         if self.parind[ic][i] == None:
-                            if ((self.atoms_in_subsys(r, curr_fraglist)) and
-                                    (self.atoms_in_active(r, curr_atomlist))):
+                            if ((self.atoms_in_subsys(r, curr_fraglist)) and (self.atoms_in_active(r, curr_atomlist))):
                                 # no params yet and in current refsystem => check for params
-                                params = []
-                                ptypes = []
                                 full_parname_list = []
-                                # check unsorted list first
-                                parname = self.get_parname(r)
-                                if ic == "oop":
-                                    print (r)
-                                    print (parname)
-                                    print (parname in curr_par[ic])
-                                if parname in curr_par[ic]:
-                                    for par in curr_par[ic][parname]:
-                                        ptypes.append(par[0])
+                                aft_list = map(lambda a: self.aftypes[a], r)
+                                 # generate list of permuted tuples according to ic and look up params
+                                parname, par_list = self.pick_params(aft_list, ic, curr_par[ic])
+                                if par_list != None:
+                                    if verbose>1 : logger.info(" found parameter for atoms %20s (types %s) -> %s" % (str(r), aft_list, parname))
+                                    for par in par_list:
                                         ### check for equivalences
                                         if par[0] == "equiv":
-                                            get_equivalences()
-                                            continue
-#                                            ### loop over aftypes of ic
-#                                            for aidx in r:
-#                                                aft = self.aftypes[aidx]
-#                                                if aft == par[1][0]:
-#                                                    equivs[aidx] = par[1][1]
-                                        ### proceed with standard assignment
-                                        full_parname = par[0] + "->" + str(parname) + "|" + ref
-                                        full_parname_list.append(full_parname)
-                                        if not full_parname in self.par[ic]:
-                                            self.par[ic][full_parname] = par
-                                # now check sorted list (if already in ptype skip), only for manybody ics
-                                if ic not in ["cha", "vdw"]:
-                                    parname = self.get_parname_sort(r, ic)
-                                    if ic == "oop":
-                                        print (r)
-                                        print (parname)
-                                        print (parname in curr_par[ic])
-                                    if parname in curr_par[ic]:
-                                        for par in curr_par[ic][parname]:
-                                            if not par[0] in ptypes:
-                                                ptypes.append(par[0])
-                                                if par[0] == "equiv":
-                                                    get_equivalences()
-                                                    continue
-                                                full_parname = par[0] + "->" + str(parname) + "|" + ref
-                                                full_parname_list.append(full_parname)
-                                                if not full_parname in self.par[ic]:
-                                                    self.par[ic][full_parname] = par
+                                            for j, aft in enumerate(aft_list):
+                                                aidx = r[j]
+                                                if ((str(aft) == par[1][0]) and (aidx not in curr_equi_par)):
+                                                    curr_equi_par[aidx] = par[1][1]
+                                                    if verbose>1: logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
+                                        else:
+                                            full_parname = par[0] + "->" + str(parname) + "|" + ref
+                                            full_parname_list.append(full_parname)
+                                            if not full_parname in self.par[ic]:
+                                                if verbose>0: logger.info("  added parameter to table: %s" % full_parname)
+                                                self.par[ic][full_parname] = par
+                                else:
+                                    if verbose>1 : logger.info(" NO parameter for atoms %20s (types %s) " % (str(r), aft_list))
                                 if full_parname_list != []:
                                     counter += 1
                                     self.parind[ic][i] = full_parname_list
@@ -756,6 +725,30 @@ class ff:
         """
         l = map(lambda a: self.aftypes[a], alist)
         return tuple(aftype_sort(l,ic))
+        
+    def pick_params(self, aft_list, ic, pardir):
+        """
+        new helper function to pick params from the dictionary pardir using permutations for the given ic
+        if len of aft_list == 1 (ic = vdw or cha) no permutations necessary
+        """
+        ic_perm = {"bnd": ((0,1), (1,0)),
+                   "ang": ((0,1,2), (2,1,0)),
+                   "dih": ((0,1,2,3),(3,2,1,0)),
+                   "oop": ((0,1,2,3),(0,1,3,2),(0,2,1,3),(0,2,3,1),(0,3,1,2),(0,3,2,1))}
+        if len(aft_list) == 1:
+            parname = tuple(aft_list)
+            if parname in pardir:
+                return parname, pardir[parname]
+            else:
+                return (), None
+        else:
+            perm = ic_perm[ic]
+            for p in perm:
+                parname = tuple(map(aft_list.__getitem__, p))
+                if parname in pardir:
+                    return parname, pardir[parname]
+            # if we get to this point all permutations gave no result
+            return (), None
 
     def report_params(self):
         """
