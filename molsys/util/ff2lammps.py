@@ -199,6 +199,57 @@ class ff2lammps(object):
                 else:
                     raise ValueError, "unknown bond potential"
                 f.write("bond_coeff %5d %s    # %s\n" % (bt_number, pstring, ibt))
+        # angle style
+        f.write("\nangle_style hybrid class2/mofff cosine/mofff\n\n")
+        for at in self.par_types["ang"].keys():
+            at_number = self.par_types["ang"][at]
+            for iat in at:
+                pot_type, params = self.par["ang"][iat]
+                if pot_type == "mm3":
+                    th0 = params[1]
+                    K2  = params[0]*mdyn2kcal/2.0 
+                    K3 = K2*(-0.14)
+                    K4 = K2*5.6e-5
+                    K5 = K2*-7.0e-7
+                    K6 = K2*2.2e-8
+                    pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
+                    f.write("angle_coeff %5d class2/mofff    %s    # %s\n" % (at_number, pstring, iat))
+                elif pot_type == "strbnd":
+                    ksb1, ksb2, kss = params[:3]
+                    r01, r02        = params[3:5]
+                    th0             = params[5]
+                    f.write("angle_coeff %5d class2/mofff bb %12.6f %12.6f %12.6f\n" % (at_number, kss*mdyn2kcal, r01, r02))
+                    f.write("angle_coeff %5d class2/mofff ba %12.6f %12.6f %12.6f %12.6f\n" % (at_number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
+                else:
+                    raise ValueError, "unknown angle potential"
+        # dihedral style
+        f.write("\ndihedral_style opls\n\n")
+        for dt in self.par_types["dih"].keys():
+            dt_number = self.par_types["dih"][dt]
+            for idt in dt:
+                pot_type, params = self.par["dih"][idt]
+                if pot_type == "cos3":
+                    v1, v2, v3 = params[:3]
+                    pstring = "%12.6f %12.6f %12.6f %12.6f" % (v1, v2, v3, 0.0)
+                elif pot_type == "cos4":
+                    v1, v2, v3, v4 = params[:4]
+                    pstring = "%12.6f %12.6f %12.6f %12.6f" % (v1, v2, v3, v4)
+                else:
+                    raise ValueError, "unknown dihedral potential"
+                f.write("dihedral_coeff %5d %s    # %s\n" % (dt_number, pstring, idt))
+        # improper/oop style
+        f.write("\nimproper_style inversion/harmonic\n\n")
+        for it in self.par_types["oop"].keys():
+            it_number = self.par_types["oop"][it]
+            for iit in it:
+                pot_type, params = self.par["oop"][iit]
+                if pot_type == "harm":
+                    pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])
+                else:
+                    raise ValueError, "unknown improper/oop potential"
+                f.write("improper_coeff %5d %s    # %s\n" % (it_number, pstring, iit))
+        f.write("\nspecial_bonds lj 0.0 0.0 1.0 coul 1.0 1.0 1.0\n\n")
+        f.write("# ------------------------ MOF-FF FORCE FIELD END --------------------------\n")
         # write footer
         if footer:
             ff = open(footer, "r")
