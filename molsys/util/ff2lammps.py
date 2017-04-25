@@ -100,7 +100,24 @@ class ff2lammps(object):
                 pair_data = copy.copy(vdwpairdata[1])
                 pair_data.append(1.0/sigma_ij)
                 self.plmps_pair_data[(i+1,j+1)] = pair_data
+        # general settings                
+        self._settings = {}
+        # set defaults
+        self._settings["cutoff"] = 12.0
+        self._settings["parformat"] = "%15.8f"
+        self._settings["vdw_a"] = 1.84e5
+        self._settings["vdw_b"] = 12.0
+        self._settings["vdw_c"] = 2.25
+        self._settings["vdw_dampfact"] = 0.25
         return
+
+    def setting(self, s, val):
+        if not s in self._settings:
+            print("This settings %s is not allowed" % s)
+            return
+        else:
+            self._settings[s] = val
+            return
         
     def write_data(self, filename="tmp.data"):
         self.data_filename = filename
@@ -186,6 +203,10 @@ class ff2lammps(object):
         f.close()
         return
 
+    def parf(self, n):
+        pf = self._settings["parformat"]+" "
+        return n*pf
+
     def write_input(self, filename = "lmp.input", header=None, footer=None):
         """
         NOTE: add read data ... fix header with periodic info
@@ -200,7 +221,8 @@ class ff2lammps(object):
         else:
             f.write("boundary p p p\n")
         f.write("atom_style full\n")
-        f.write("read_data %s\n\n\n" % self.data_filename)
+        f.write("read_data %s\n\n" % self.data_filename)
+        f.write("neighbor 2.0 bin\n\n")
         # extra header
         if header:
             hf = open(header, "r")
@@ -208,11 +230,15 @@ class ff2lammps(object):
             hf.close()
         f.write("\n# ------------------------ MOF-FF FORCE FIELD ------------------------------\n")
         # pair style
-        f.write("\npair_style buck6d/coul/dsf %10.4f %10.4f\n\n" % (0.05, 12))
+        f.write("\npair_style buck6d/coul/dsf %10.4f\n\n" % (self._settings["cutoff"]))
         for i, ati in enumerate(self.plmps_atypes):
             for j, atj in enumerate(self.plmps_atypes[i:],i):
                 r0, eps, alpha_ij = self.plmps_pair_data[(i+1,j+1)]
-                f.write("pair_coeff %5d %5d %12.6f %12.6f %12.6f   # %s <--> %s\n" % (i+1,j+1, eps, r0, alpha_ij, ati, atj))            
+                A = self._settings["vdw_a"]*eps
+                B = self._settings["vdw_b"]/r0
+                C = eps*self._settings["vdw_c"]*r0**6
+                D = 6.0*(self._settings["vdw_dampfact"]*r0)**14
+                f.write(("pair_coeff %5d %5d " + self.parf(5) + "   # %s <--> %s\n") % (i+1,j+1, A, B, C, D, alpha_ij, ati, atj))            
         # bond style
         f.write("\nbond_style hybrid class2 morse\n\n")
         for bt in self.par_types["bnd"].keys():
@@ -235,7 +261,7 @@ class ff2lammps(object):
                     raise ValueError, "unknown bond potential"
                 f.write("bond_coeff %5d %s    # %s\n" % (bt_number, pstring, ibt))
         # angle style
-        f.write("\nangle_style hybrid class2/mofff cosine/mofff\n\n")                
+        f.write("\nangle_style hybrid class2/p6 cosine/fourier\n\n")                
         # f.write("\nangle_style class2/mofff\n\n")
         for at in self.par_types["ang"].keys():
             at_number = self.par_types["ang"][at]
@@ -250,14 +276,18 @@ class ff2lammps(object):
                     K6 = K2*2.2e-8
                     # pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
                     pstring = "%12.6f %12.6f" % (th0, K2)
-                    f.write("angle_coeff %5d class2/mofff    %s    # %s\n" % (at_number, pstring, iat))
+                    f.write("angle_coeff %5d class2/p6    %s    # %s\n" % (at_number, pstring, iat))
                     # f.write("angle_coeff %5d    %s    # %s\n" % (at_number, pstring, iat))
+                    # HACk to catch angles witout strbnd
+                    if len(at) == 1:
+                        f.write("angle_coeff %5d class2/p6 bb 0.0 1.0 1.0\n" % (at_number))
+                        f.write("angle_coeff %5d class2/p6 ba 0.0 0.0 1.0 1.0\n" % (at_number))
                 elif pot_type == "strbnd":
                     ksb1, ksb2, kss = params[:3]
                     r01, r02        = params[3:5]
                     th0             = params[5]
-                    f.write("angle_coeff %5d class2/mofff bb %12.6f %12.6f %12.6f\n" % (at_number, kss*mdyn2kcal, r01, r02))
-                    f.write("angle_coeff %5d class2/mofff ba %12.6f %12.6f %12.6f %12.6f\n" % (at_number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
+                    f.write("angle_coeff %5d class2/p6 bb %12.6f %12.6f %12.6f\n" % (at_number, kss*mdyn2kcal, r01, r02))
+                    f.write("angle_coeff %5d class2/p6 ba %12.6f %12.6f %12.6f %12.6f\n" % (at_number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
                     # f.write("angle_coeff %5d bb %12.6f %12.6f %12.6f\n" % (at_number, kss*mdyn2kcal, r01, r02))
                     # f.write("angle_coeff %5d ba %12.6f %12.6f %12.6f %12.6f\n" % (at_number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
                 elif pot_type == "fourier":
@@ -265,7 +295,7 @@ class ff2lammps(object):
                     fold = params[2]
                     k = 0.5*params[0]*mdyn2kcal/2.0*rad2deg*rad2deg/fold
                     pstring = "%12.6f %5d %12.6f" % (k, fold, a0)
-                    f.write("angle_coeff %5d cosine/mofff   %s    # %s\n" % (at_number, pstring, iat))
+                    f.write("angle_coeff %5d cosine/fourier   %s    # %s\n" % (at_number, pstring, iat))
                 else:
                     raise ValueError, "unknown angle potential"
         # dihedral style
