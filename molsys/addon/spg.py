@@ -103,7 +103,7 @@ class spg:
         except:
             self.generate_spgcell()
         #print self.spgcell
-        result = spglib.get_spacegroup(self.spgcell, symprec=0.0001)
+        result = spglib.get_spacegroup(self.spgcell, symprec=self.symprec)
         result = result.split()
         symbol = result[0]
         number = int(result[1][1:-1])
