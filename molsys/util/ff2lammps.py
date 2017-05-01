@@ -20,6 +20,7 @@ import copy
 
 
 mdyn2kcal = 143.88
+angleunit = 0.02191418
 rad2deg = 180.0/np.pi 
 
 class ff2lammps(object):
@@ -230,7 +231,7 @@ class ff2lammps(object):
             hf.close()
         f.write("\n# ------------------------ MOF-FF FORCE FIELD ------------------------------\n")
         # pair style
-        f.write("\npair_style buck6d/coul/dsf %10.4f\n\n" % (self._settings["cutoff"]))
+        f.write("\npair_style buck6d/coul/gauss/dsf %10.4f\n\n" % (self._settings["cutoff"]))
         for i, ati in enumerate(self.plmps_atypes):
             for j, atj in enumerate(self.plmps_atypes[i:],i):
                 r0, eps, alpha_ij = self.plmps_pair_data[(i+1,j+1)]
@@ -254,14 +255,14 @@ class ff2lammps(object):
                 elif pot_type == "morse":
                     r0 = params[1]
                     E0 = params[2]
-                    k  = params[0]*mdyn2kcal
+                    k  = params[0]*mdyn2kcal/2.0
                     alpha = np.sqrt(k/E0)
                     pstring = "morse %12.6f%12.6f %12.6f" % (E0, alpha, r0)
                 else:
                     raise ValueError, "unknown bond potential"
                 f.write("bond_coeff %5d %s    # %s\n" % (bt_number, pstring, ibt))
         # angle style
-        f.write("\nangle_style hybrid class2/p6 cosine/fourier\n\n")                
+        f.write("\nangle_style hybrid class2/p6 cosine/vdwl13\n\n")                
         # f.write("\nangle_style class2/mofff\n\n")
         for at in self.par_types["ang"].keys():
             at_number = self.par_types["ang"][at]
@@ -293,9 +294,9 @@ class ff2lammps(object):
                 elif pot_type == "fourier":
                     a0 = params[1]
                     fold = params[2]
-                    k = 0.5*params[0]*mdyn2kcal/2.0*rad2deg*rad2deg/fold
+                    k = 0.5*params[0]*angleunit*rad2deg*rad2deg/fold
                     pstring = "%12.6f %5d %12.6f" % (k, fold, a0)
-                    f.write("angle_coeff %5d cosine/fourier   %s    # %s\n" % (at_number, pstring, iat))
+                    f.write("angle_coeff %5d cosine/vdwl13   %s    # %s\n" % (at_number, pstring, iat))
                 else:
                     raise ValueError, "unknown angle potential"
         # dihedral style
