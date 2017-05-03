@@ -3,7 +3,7 @@ import numpy as np
 from util import unit_cell
 from util import elems as elements
 from util import rotations
-from io import formats
+from fileIO import formats
 from mol import mol
 from topo import topo
 
