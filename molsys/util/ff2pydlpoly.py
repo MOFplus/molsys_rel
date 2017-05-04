@@ -247,12 +247,12 @@ class wrapper(object):
             vdw14=settings["vdw-14-scale"]
         else:
             vdw14=1.0
-        if atoms.smallring == 4:
+        if atoms.ring == 4:
             cou14 = 1.0
             vdw14 = 0.0
             if settings.has_key("chg-12-scale"): cou14 = settings["chg-12-scale"]
             if settings.has_key("vdw-12-scale"): cou14 = settings["vdw-12-scale"]
-        elif atoms.smallring == 5:
+        elif atoms.ring == 5:
             cou14 = 1.0
             vdw14 = 0.0
             if settings.has_key("chg-13-scale"): cou14 = settings["chg-13-scale"]

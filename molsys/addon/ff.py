@@ -52,10 +52,38 @@ class ic(list):
         return
         
     def __getattr__(self, name):
+        """
+        if name is not an attribute return None instead of raising an error
+        """
         if not name in self.__dict__:
             return None
         else:
             return self.__dict__[name]
+            
+    def to_string(self, width=None, filt=None, inc=0):
+        """
+        generate a string represantion of the ic
+        
+        :Parameters:
+            - width : None or an integer - width of the field
+            - filt  : None -> no attributes, "all" -> all attributes, list of attributes -> only those in list are printed
+            - inc   : set inc to 1 if you want to add 1 to all values 
+        """
+        form = "%d "
+        if width: form = "%%%dd " % width
+        attrstring = ""
+        if filt:
+            for k in self.__dict__:
+                if filt == "all" or k in filt:
+                    if self.__dict__[k] != None:
+                        attrstring += " %s=%s" % (k, self.__dict__[k])
+        if inc!=0:
+            values = tuple(np.array(list(self))+inc)
+        else:
+            values = tuple(self)
+        return ((len(self)*form) % values) + attrstring
+                    
+                    
 
 
 class ric:
@@ -183,17 +211,17 @@ class ric:
                     for a1 in endatom1:
                         con1 = list(self.conn[a1])
                         for a4 in endatom4:
-                            smallring = 0
+                            ring = None
                             if a1 == a4: continue
                             if con1.count(a4):
-                                smallring = 4
+                                ring = 4
                             else:
                                 con4 = list(self.conn[a4])
                                 for c1 in con1:
                                     if con4.count(c1):
-                                        smallring = 5
+                                        ring = 5
                                         break
-                            d = ic([a1,a2,a3,a4], smallring = smallring)
+                            d = ic([a1,a2,a3,a4], ring = ring)
                             if lin:
                                 ### in case of a dihedral due to dihedral shifts,
                                 ### it has to be checked if we have this dihedral already
@@ -336,8 +364,8 @@ class ff:
         # make data structures . call after ric has been filled with data either in assign or after read
         # these are the relevant datastructures that need to be filled by one or the other way.
         self.ric_type = {
-                "cha": [[i] for i in range(self._mol.natoms)],
-                "vdw": [[i] for i in range(self._mol.natoms)], 
+                "cha": [ic([i]) for i in range(self._mol.natoms)],
+                "vdw": [ic([i]) for i in range(self._mol.natoms)], 
                 "bnd": self.ric.bnd, 
                 "ang": self.ric.ang, 
                 "dih": self.ric.dih, 
@@ -361,17 +389,19 @@ class ff:
         return
                 
     @timer("assign parameter")
-    def assign_params(self, FF, verbose=0):
+    def assign_params(self, FF, verbose=0, refsysname=None):
         """
         method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
 
         :Parameter:
 
-            - FF      :    [string] name of the force field to be used in the parameter search
-            - verbose :    [integer, optional] print info on assignement process to logger
+            - FF        :    [string] name of the force field to be used in the parameter search
+            - verbose   :    [integer, optional] print info on assignement process to logger
+            - refsysname :    [string, optional] if set this is a refsystem leading to special treatment of nonidentified params 
         """
         self.FF = FF
+        self.refsysname = refsysname
         with self.timer("connect to DB"):
             ### init api
             if self._mol.mpi_rank == 0:
@@ -459,7 +489,10 @@ class ff:
                     if i in curr_equi_par.keys():
                         at, ft = curr_equi_par[i].split("@")
                         self.aftypes[i] = aftype(at,ft)
-        self.check_consistency()
+        if refsysname:
+            self.fixup_refsysparams()
+        else:
+            self.check_consistency()
         self.timer.write_logger(logger.info)
         return
 
@@ -483,91 +516,121 @@ class ff:
             logger.info("Parameter assignment successfull")
         return
 
-    def write_params_to_key(self, fname = "new"):
-        self.ric.compute_rics()
-        from ff_gen import tools
-        kc = tools.keycreator()
-        vdw = tools.vdwp()
-        buffer = ""
-        ### gather types to make key file more readable
-        buffer += "### type lookup table ###\n"
-        typemapper =  {}
-        for i, aft in enumerate(self.aftypes):
-            if str(aft) not in typemapper.keys():
-                typemapper[str(aft)] = str(len(typemapper.keys()))
-                buffer += "# %-20s %-5s\n" % (str(aft), typemapper[str(aft)])
-        buffer += "\n"
-        ### gather nonbonded params
-        saftypes = map(str, self.aftypes)
-        for aft in typemapper.keys():
-            idx = saftypes.index(aft)
-            buffer += kc.formatter("atom", [typemapper[aft]], params = [elems.mass[self._mol.elems[idx]]])
-            pcha = []
-            vdw(string.split(aft, "@")[0].split("_")[0])
-            pvdw = vdw.set
-            for i, aft2 in enumerate(self.aftypes):
-                if str(aft2) == aft:
-                    if self.parind["cha"][i] != None:
-                        pcha = self.par["cha"][self.parind["cha"][i][0]][1]
-                        pvdw = self.par["vdw"][self.parind["vdw"][i][0]][1]
-                    break
-            buffer += kc.formatter("vdw", [typemapper[aft]], params = pvdw)
-            buffer += kc.formatter("charge", [typemapper[aft]], params = pcha)
-            buffer += "\n"
-        ### gather bonded params
-        icmapper = {"bnd": "bond", "ang": "angle", "dih": "torsion", 
-                "oop": "opbend", "cha":"charge", "vdw":"vdw", "strbnd":"strbnd"}
-        ics = [ "bnd", "ang", "dih", "oop"]#, "cha", "vdw"]
-        data = {"bnd": {}, "ang": {}, "dih": {}, "strbnd": {}, "oop":{}} #, "oop": {}}#, "cha": {}, "vdw": {}}
-        for ic in ics:
-            for i,p in enumerate(self.ric_type[ic]):
-                parname = string.join(map(lambda a: typemapper[a],map(str,self.get_parname_sort(p,ic))), ":")
-                if not parname in data[ic]:
-                    if self.parind[ic][i] != None:
-                        for j in self.parind[ic][i]:
-                            if self.par[ic][j][0] == "strbnd":
-                                data["strbnd"][parname] = [self.par[ic][j],[[p.value],[],[]]]
-                            else:
-                                data[ic][parname] = [self.par[ic][j],[[p.value],[],[]]]
+    def fixup_refsysparams(self):
+        self.active_zone = []
+        defaults = {
+            "bnd" : ("mm3", 2),
+            "ang" : ("mm3", 2),
+            "dih" : ("cos3", 3),
+            "oop" : ("harm", 2),
+            "cha" : ("gaussian", 2),
+            "vdw" : ("buck6d", 2)}
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            ric = self.ric_type[ic]
+            par = self.par[ic]
+            parind = self.parind[ic]
+            for i, p in enumerate(ric):
+                if parind[i] == None:
+                    if ic == "cha" and i not in self.active_zone:
+                        self.active_zone.append(i)
+                    # not sure if we should sort here or not ... maybe not?
+                    # HACK : sort all but angles because here we need strbnd 
+                    if ic == "ang":
+                        parname = self.get_parname(p)
                     else:
-                        data[ic][parname] = [[],[[p.value],[],[]]]
-                else:
-                    data[ic][parname][1][0].append(p.value)
-        ### write to key
-        defaults = {"bnd": 2.0, "ang": 1.0, "dih": 1.0, "oop": 0.1}
-        for i in ["bnd", "ang", "strbnd", "dih", "oop",]:
-            for ic, p in data[i].items():
-                lic = string.split(ic,":")
-                if p[0] != []:
-                    if i == "strbnd":
-                        buffer+= kc.formatter(icmapper[i], lic, params = p[0][1][0:3])
-                    else:
-                        buffer+= kc.formatter(icmapper[i], lic, params = p[0][1])
-                else:
-                    if i == "dih":
-                        m = int(np.round(np.mean(np.array(p[1][0])[:,1])))
-                        vals = np.array(p[1][0])[:,0]
-                        gp =  self.get_torsion(vals, m, thresshold = 10)
-                        ### tbi
-                        buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
-                    else:
-                        gp = [defaults[i], np.mean(p[1][0])]
-                        if i == "strbnd":
-                            buffer+= kc.formatter(icmapper[i], lic, params = gp[0:3], var = True)
-                        else:
-                            buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
-            buffer += "\n"
-        ### buffer to key
-        with open(fname+".key", "w") as fkey:
-            fkey.write(kc.head)
-            fkey.write(buffer)
-        ### write txyz file with substituded atomtypes --> numbers
-        numbers = map(lambda a: typemapper[a], saftypes)
-        otypes  = copy.copy(self._mol.atypes)
-        self._mol.atypes = numbers
-        self._mol.write(fname +".txyz", ftype = "txyz")
-        self._mol.atypes = otypes
-        return data
+                        parname = self.get_parname_sort(p, ic)
+                    fullparname = defaults[ic][0] + "->" + str(parname) + "|" + self.refsysname
+                    if not fullparname in par:
+                        par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
+                    parind[i] = [fullparname]
+        return
+        
+
+#    def write_params_to_key(self, fname = "new"):
+#        self.ric.compute_rics()
+#        from ff_gen import tools
+#        kc = tools.keycreator()
+#        vdw = tools.vdwp()
+#        buffer = ""
+#        ### gather types to make key file more readable
+#        buffer += "### type lookup table ###\n"
+#        typemapper =  {}
+#        for i, aft in enumerate(self.aftypes):
+#            if str(aft) not in typemapper.keys():
+#                typemapper[str(aft)] = str(len(typemapper.keys()))
+#                buffer += "# %-20s %-5s\n" % (str(aft), typemapper[str(aft)])
+#        buffer += "\n"
+#        ### gather nonbonded params
+#        saftypes = map(str, self.aftypes)
+#        for aft in typemapper.keys():
+#            idx = saftypes.index(aft)
+#            buffer += kc.formatter("atom", [typemapper[aft]], params = [elems.mass[self._mol.elems[idx]]])
+#            pcha = []
+#            vdw(string.split(aft, "@")[0].split("_")[0])
+#            pvdw = vdw.set
+#            for i, aft2 in enumerate(self.aftypes):
+#                if str(aft2) == aft:
+#                    if self.parind["cha"][i] != None:
+#                        pcha = self.par["cha"][self.parind["cha"][i][0]][1]
+#                        pvdw = self.par["vdw"][self.parind["vdw"][i][0]][1]
+#                    break
+#            buffer += kc.formatter("vdw", [typemapper[aft]], params = pvdw)
+#            buffer += kc.formatter("charge", [typemapper[aft]], params = pcha)
+#            buffer += "\n"
+#        ### gather bonded params
+#        icmapper = {"bnd": "bond", "ang": "angle", "dih": "torsion", 
+#                "oop": "opbend", "cha":"charge", "vdw":"vdw", "strbnd":"strbnd"}
+#        ics = [ "bnd", "ang", "dih", "oop"]#, "cha", "vdw"]
+#        data = {"bnd": {}, "ang": {}, "dih": {}, "strbnd": {}, "oop":{}} #, "oop": {}}#, "cha": {}, "vdw": {}}
+#        for ic in ics:
+#            for i,p in enumerate(self.ric_type[ic]):
+#                parname = string.join(map(lambda a: typemapper[a],map(str,self.get_parname_sort(p,ic))), ":")
+#                if not parname in data[ic]:
+#                    if self.parind[ic][i] != None:
+#                        for j in self.parind[ic][i]:
+#                            if self.par[ic][j][0] == "strbnd":
+#                                data["strbnd"][parname] = [self.par[ic][j],[[p.value],[],[]]]
+#                            else:
+#                                data[ic][parname] = [self.par[ic][j],[[p.value],[],[]]]
+#                    else:
+#                        data[ic][parname] = [[],[[p.value],[],[]]]
+#                else:
+#                    data[ic][parname][1][0].append(p.value)
+#        ### write to key
+#        defaults = {"bnd": 2.0, "ang": 1.0, "dih": 1.0, "oop": 0.1}
+#        for i in ["bnd", "ang", "strbnd", "dih", "oop",]:
+#            for ic, p in data[i].items():
+#                lic = string.split(ic,":")
+#                if p[0] != []:
+#                    if i == "strbnd":
+#                        buffer+= kc.formatter(icmapper[i], lic, params = p[0][1][0:3])
+#                    else:
+#                        buffer+= kc.formatter(icmapper[i], lic, params = p[0][1])
+#                else:
+#                    if i == "dih":
+#                        m = int(np.round(np.mean(np.array(p[1][0])[:,1])))
+#                        vals = np.array(p[1][0])[:,0]
+#                        gp =  self.get_torsion(vals, m, thresshold = 10)
+#                        ### tbi
+#                        buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
+#                    else:
+#                        gp = [defaults[i], np.mean(p[1][0])]
+#                        if i == "strbnd":
+#                            buffer+= kc.formatter(icmapper[i], lic, params = gp[0:3], var = True)
+#                        else:
+#                            buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
+#            buffer += "\n"
+#        ### buffer to key
+#        with open(fname+".key", "w") as fkey:
+#            fkey.write(kc.head)
+#            fkey.write(buffer)
+#        ### write txyz file with substituded atomtypes --> numbers
+#        numbers = map(lambda a: typemapper[a], saftypes)
+#        otypes  = copy.copy(self._mol.atypes)
+#        self._mol.atypes = numbers
+#        self._mol.write(fname +".txyz", ftype = "txyz")
+#        self._mol.atypes = otypes
+#        return data
 
 
     def setup_pair_potentials(self):
@@ -792,6 +855,71 @@ class ff:
                 print (s)
             print ("\n")
         return
+
+    ################# IO methods #################################################
+
+    def write_par_files(self, fname):
+        """
+        write the rics including the referencing types to an ascii file
+        called <fname>.ric and the parameters to <fname>.par
+        """
+        if mpi_rank > 0:
+            return
+        # dummy dicts to assign a number to the type
+        par_types = {}
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            ptyp = {}
+            i = 1
+            for ind in self.par[ic]:
+                # cut off the potential type --- if the rest is the same we use the same number
+                rind = ind.split("->")[1]
+                if not rind in ptyp: 
+                    ptyp[rind] = i
+                    i += 1
+            par_types[ic] = ptyp
+        # write the RICs first
+        f = open(fname+".ric", "w")
+        # should we add a name here in the file? the FF goes to par. keep it simple ...
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            filt = None
+            if ic == "dih":
+                filt = ["ring"]
+            ric = self.ric_type[ic]
+            parind = self.parind[ic]
+            ptyp = par_types[ic]
+            f.write("%s %d\n" % (ic, len(ric)))
+            for i,r in enumerate(ric):
+                # we take only the first index and remove the ptype to lookup in ptyp dictionary
+                pi = parind[i][0]
+                ipi = ptyp[pi.split("->")[1]]
+                f.write("%d %d %s\n" % (i+1, ipi, r.to_string(filt=filt, inc=1)))
+            f.write("\n")
+        f.close()
+        # write the par file
+        if self.refsysname:
+            # this is a fixed up refsystem for fitting
+            f = open(fname+".fpar", "w") 
+        else:
+            f = open(fname+".par", "w")             
+        f.write("FF %s\n\n" % self.FF)
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            ptyp = par_types[ic]
+            par = self.par[ic]
+            f.write("%3s_type %d\n" % (ic, len(par)))
+            ind = par.keys()
+            ind.sort(key=lambda k: ptyp[k.split("->")[1]])
+            for i in ind:
+                ipi = ptyp[i.split("->")[1]]
+                ptype, values = par[i]
+                sval = (len(values)*"%15.8f ") % tuple(values)
+                f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
+            f.write("\n")
+        if self.refsysname:
+            f.write("azone %s\n" % str(self.active_zone))
+        f.close()
+        return
+
+
 
     def get_torsion(self, values, m, thresshold=5):
         '''
