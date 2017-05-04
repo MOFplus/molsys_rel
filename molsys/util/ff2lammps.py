@@ -42,6 +42,7 @@ class ff2lammps(object):
         # generate the force field
         self.mol.addon("ff")
         self.mol.ff.assign_params("MOF-FF")
+        self.mol.ff.setup_pair_potentials()
         # set up the molecules
         self.mol.addon("molecules")
         self.mol.molecules()

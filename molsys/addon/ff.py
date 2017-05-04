@@ -8,6 +8,9 @@ Created on Thu Mar 23 11:25:43 2017
 
 
         addon module FF to implement force field infrastructure to the molsys
+        
+        contains class ric
+        contains class ff
 
 """
 
@@ -37,12 +40,22 @@ import pdb
 logger = logging.getLogger("molsys.ff")
 
 class ic(list):
+    """
+    list that accepts attributes
+    non-existing attributes return None instead of raising an error
+    """
 
     def __init__(self, *args, **kwargs):
         list.__init__(self,*args)
         for k,v in kwargs.items():
             setattr(self, k, v)
         return
+        
+    def __getattr__(self, name):
+        if not name in self.__dict__:
+            return None
+        else:
+            return self.__dict__[name]
 
 
 class ric:
@@ -51,13 +64,11 @@ class ric:
     """
 
 
-    def __init__(self, mol, specials = {"linear": []}):
-        """
-        find all bonds, angles, oops and dihedrals in the molsys mol object
+    def __init__(self, mol):
         """
 
-        self.timer = Timer()
-        
+        """
+        self.timer = Timer()        
         self._mol      = mol
         self.conn      = mol.get_conn()
         self.natoms    = mol.get_natoms()
@@ -65,7 +76,10 @@ class ric:
         self.aftypes   = []
         for i, a in enumerate(mol.get_atypes()):
             self.aftypes.append(aftype(a, mol.fragtypes[i]))
+        return
+        
 
+    def find_rics(self, specials={"linear": []}):        
         self.bnd    = self.find_bonds()
         self.ang    = self.find_angles()
         self.oop    = self.find_oops()
@@ -74,6 +88,21 @@ class ric:
         self.timer.write_logger(logger.info)
         return
 
+
+    def set_rics(self, bnd, ang, oop, dih, sanity_test=True):
+        """
+        the paramters must be properly sorted lists of ic as if they are supplied by find_rics
+        """
+        self.bnd = bnd
+        self.ang = ang
+        self.oop = oop
+        self.dih = dih
+        if sanity_test:
+            # find bonds and check if they are equal ... this should be a sufficent test that the rest is the same, too
+            mol_bnd = self.find_bonds()
+            if mol_bnd != bnd:
+                raise ValueError, "The rics provided do not match the mol object!"
+        return
 
     # the follwoing code is adapted from pydlpoly/py/assign_FF.py
     # instead of bond objects we use simpler lists of lists with indices
@@ -280,45 +309,62 @@ class ric:
 
 class ff:
 
-    def __init__(self, mol,source = "mofp"):
+    def __init__(self, mol):
         """
         instantiate a ff object which will be attached to the parent mol
 
         :Parameter:
 
              - mol : a mol type object (can be a derived type like bb or topo as well)
-             - source: [string, default=mofp] where to get the data from
+             - mode: [string] default=assign, other options file or pdlp 
         """
 
         self.timer = Timer()
         self._mol = mol
-        ### init api
-        self.timer.start("connect to DB")
-        self.source = source
-        if self.source == "mofp":
-            if self._mol.mpi_rank == 0:
-                from mofplus import FF_api
-                self.api = FF_api()
-                self.special_atypes = self.api.list_special_atypes()
-            else:
-                self.api = None
-                self.special_atypes = None
-            if self._mol.mpi_size > 1:
-                self.special_atypes = self._mol.mpi_comm.bcast(self.special_atypes, root = 0)
-        elif self.source == "file":
-            raise ValueError, "to be implemented"
-        else:
-            raise ValueError, "unknown source for assigning parameters"
-        self.timer.stop()
-        self.ric = ric(mol, specials = self.special_atypes)
+        self.ric = ric(mol)
+        # defaults
+        self.settings =  {
+            "radfact" : 1.0,
+            "radrule" : "arithmetic", 
+            "epsrule" : "geometric",            
+            }
+        self.pair_potentials_initalized = False
         logger.debug("generated the ff addon")
         return
 
+    def _init_data(self):
+        # make data structures . call after ric has been filled with data either in assign or after read
+        # these are the relevant datastructures that need to be filled by one or the other way.
+        self.ric_type = {
+                "cha": [[i] for i in range(self._mol.natoms)],
+                "vdw": [[i] for i in range(self._mol.natoms)], 
+                "bnd": self.ric.bnd, 
+                "ang": self.ric.ang, 
+                "dih": self.ric.dih, 
+                "oop": self.ric.oop}
+        self.parind = {
+                "cha": [None]*self._mol.natoms,
+                "vdw": [None]*self._mol.natoms,
+                "bnd": [None]*len(self.ric.bnd),
+                "ang": [None]*len(self.ric.ang),
+                "dih": [None]*len(self.ric.dih),
+                "oop": [None]*len(self.ric.oop),
+                }
+        self.par = {
+                "cha": {},
+                "vdw": {},
+                "bnd": {},
+                "ang": {},
+                "dih": {},
+                "oop": {},
+                }
+        return
+                
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0):
         """
         method to orchestrate the parameter assignment for this system using a force field defined with
-        FF
+        FF getting data from the webAPI
 
         :Parameter:
 
@@ -326,6 +372,20 @@ class ff:
             - verbose :    [integer, optional] print info on assignement process to logger
         """
         self.FF = FF
+        with self.timer("connect to DB"):
+            ### init api
+            if self._mol.mpi_rank == 0:
+                from mofplus import FF_api
+                self.api = FF_api()
+                special_atypes = self.api.list_special_atypes()
+            else:
+                self.api = None
+                special_atypes = None
+            if self._mol.mpi_size > 1:
+                special_atypes = self._mol.mpi_comm.bcast(special_atypes, root = 0)
+        with self.timer("find rics"):
+            self.ric.find_rics(specials = special_atypes)
+            self._init_data()
         # as a first step we need to generate the fragment graph
         self.timer.start("fragment graph")
         self._mol.addon("fragments")
@@ -342,30 +402,6 @@ class ff:
         self.timer.stop()
         # detect refsystems
         self.find_refsystems()
-        # make data structures
-        with self.timer("make data structures"):
-            self.ric_type = {"cha":[[i] for i in range(self._mol.natoms)],
-                    "vdw":[[i] for i in range(self._mol.natoms)], 
-                    "bnd":self.ric.bnd, 
-                    "ang":self.ric.ang, 
-                    "dih":self.ric.dih, 
-                    "oop":self.ric.oop}
-            self.parind = {
-                "bnd": [None]*len(self.ric.bnd),
-                "ang": [None]*len(self.ric.ang),
-                "dih": [None]*len(self.ric.dih),
-                "oop": [None]*len(self.ric.oop),
-                "cha": [None]*self._mol.natoms,
-                "vdw": [None]*self._mol.natoms,
-                }
-            self.par = {
-                "bnd": {},
-                "ang": {},
-                "dih": {},
-                "oop": {},
-                "vdw": {},
-                "cha": {},
-                }
         with self.timer("parameter assignement loop"):
             for ref in self.scan_ref:
                 counter = 0
@@ -424,7 +460,6 @@ class ff:
                         at, ft = curr_equi_par[i].split("@")
                         self.aftypes[i] = aftype(at,ft)
         self.check_consistency()
-        self.setup_pair_potentials()
         self.timer.write_logger(logger.info)
         return
 
@@ -446,8 +481,6 @@ class ff:
             raise IOError("Assignend parameter set incomplete!")
         else:
             logger.info("Parameter assignment successfull")
-        self.setup_pair_potentials()
-        self.timer.write_logger(logger.info)
         return
 
     def write_params_to_key(self, fname = "new"):
@@ -537,7 +570,7 @@ class ff:
         return data
 
 
-    def setup_pair_potentials(self, radfact = 1.0, radrule="arithmetic", epsrule="geometric"):
+    def setup_pair_potentials(self):
         """
         Method to setup the pair potentials based on the per atom type assigned parameters
         :Parameters:
@@ -563,22 +596,23 @@ class ff:
                     pot = pot_i
                 else:
                     raise IOError("Can not combine %s and %s" % (pot_i, pot_j))
-                if radrule == "arithmetic":
-                    rad = radfact*(par_i[0]+par_j[0])
-                elif radrule == "geometric":
-                    rad = 2.0*radfact*np.sqrt(par_i[0]*par_j[0])
+                if self.settings["radrule"] == "arithmetic":
+                    rad = self.settings["radfact"]*(par_i[0]+par_j[0])
+                elif self.settings["radrule"] == "geometric":
+                    rad = 2.0*self.settings["radfact"]*np.sqrt(par_i[0]*par_j[0])
                 else:
-                    raise IOError("Unknown radius rule %s specified" % radrule)
-                if epsrule == "arithmetic":
+                    raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
+                if self.settings["epsrule"] == "arithmetic":
                     eps = 0.5 * (par_i[1]+par_j[1])
-                elif epsrule == "geometric":
+                elif self.settings["epsrule"] == "geometric":
                     eps = np.sqrt(par_i[1]*par_j[1])
                 else:
-                    raise IOError("Unknown radius rule %s specified" % radrule)
+                    raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
                 par_ij = (pot,[rad,eps])
                 # all combinations are symmetric .. store pairs bith ways
                 self.vdwdata[types[i]+":"+types[j]] = par_ij
-                self.vdwdata[types[j]+":"+types[i]] = par_ij                
+                self.vdwdata[types[j]+":"+types[i]] = par_ij   
+        self.pair_potentials_initalized = True
         return
 
 
@@ -591,109 +625,104 @@ class ff:
             - self.ref_fraglist  : list of fragment indices belonging to this refsystem
             - self.ref_params    : paramtere dictionaries per refsystem (n-body/type)
         """
-        if self.source == "mofp":
-            self.timer.start("get reference systems")
-            scan_ref  = []
-            scan_prio = []
-            if self._mol.mpi_rank == 0:
-                ref_dic = self.api.list_FFrefs(self.FF)
-            else:
-                ref_dic = []
-            if self._mol.mpi_size > 1:
-                ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
-            for refname in ref_dic.keys():
-                prio, reffrags, active, upgrades = ref_dic[refname]
-                if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
-                    scan_ref.append(refname)
-                    scan_prio.append(prio)
-                # check for upgrades
-                elif upgrades and len(reffrags) > 0:
-                    oreffrags = copy.deepcopy(reffrags)
-                    for d,u in upgrades.items():
-                        reffrags = [i.replace(d,u) for i in reffrags]
-                        if all(f in self.fragments.get_fragnames() for f in reffrags):
-                            scan_ref.append(refname)
-                            scan_prio.append(prio)
-            # sort to be scanned referecnce systems by their prio
-            self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
-            self.scan_ref.reverse()
-            self.timer.stop()
-            # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
-            self.timer.start("make ref frag graphs")
-            self.ref_systems = {}
-            for ref in self.scan_ref:
-                if self._mol.mpi_rank == 0:
-                    ref_mol = self.api.get_FFref_graph(ref, mol=True)
-                else:
-                    ref_mol = None
-                if self._mol.mpi_size > 1:
-                    ref_mol = self._mol.mpi_comm.bcast(ref_mol, root=0)
-                ref_mol.addon("fragments")
-                ref_mol.fragments.make_frag_graph()
-                # if active space is defined create atomistic graph of active zone
-                active = ref_dic[ref][2]
-                if active: ref_mol.graph.make_graph(active)
-                self.ref_systems[ref] = ref_mol
-            self.timer.stop()
-            # now search in the fraggraph for the reference systems
-            self.timer.start("scan for ref systems")
-            logger.info("Searching for reference systems:")
-            self.ref_fraglists = {}
-            self.ref_atomlists = {}
-            for ref in copy.copy(self.scan_ref):
-                # TODO: if a ref system has only one fragment we do not need to do a substructure search but
-                #       could pick it from self.fragemnts.fraglist
-                subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
-                # in the case that an upgrade for a reference system is available, it has also to be searched
-                # for the upgraded reference systems
-                upgrades = ref_dic[ref][3]
-                if upgrades:
-                    # if upgrades should be applied, also an active zone has to be present
-                    assert ref_dic[ref][2] != None
-                    for s,r in upgrades.items():
-                        self.ref_systems[ref].fragments.upgrade(s, r)
-                        subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
-                logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
-                if len(subs) == 0:
-                    # this ref system does not appear => discard
-                    self.scan_ref.remove(ref)
-                    del(self.ref_systems[ref])
-                else:
-                    # join all fragments
-                    subs_flat = list(set(itertools.chain.from_iterable(subs)))
-                    self.ref_fraglists[ref] = subs_flat
-                    # now we have to search for the active space
-                    # first construct the atomistic graph for the sub in the real system if 
-                    # an active zone is defined
-                    if ref_dic[ref][2] != None:
-                        idx = self.fragments.frags2atoms(subs_flat)
-                        self._mol.graph.filter_graph(idx)
-                        asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
-                        self._mol.graph.molg.clear_filters()
-                        asubs_flat = itertools.chain.from_iterable(asubs)
-                        self.ref_atomlists[ref] = list(set(asubs_flat))
-                    else:
-                        self.ref_atomlists[ref] = None
-            self.timer.stop()
-            # get the parameters
-            self.timer.start("get ref parmeter sets")
-            self.ref_params = {}
-            for ref in self.scan_ref:
-                logger.info("Getting params for %s" % ref)
-                if self._mol.mpi_rank == 0:
-                    ref_par = self.api.get_params_from_ref(self.FF, ref)
-                else:
-                    ref_par = None
-                if self._mol.mpi_size > 1:
-                    ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
-                self.ref_params[ref] = ref_par
-                #print ("DEBUG DEBUG Ref system %s" % ref)
-                #print (self.ref_params[ref])
-            self.timer.stop()
-        elif source == "file":
-            raise ValueError, "assigning reference systems from file needs to be implemeted"
+        self.timer.start("get reference systems")
+        scan_ref  = []
+        scan_prio = []
+        if self._mol.mpi_rank == 0:
+            ref_dic = self.api.list_FFrefs(self.FF)
         else:
-            raise ValueError, "unknown source %s" % source
+            ref_dic = []
+        if self._mol.mpi_size > 1:
+            ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
+        for refname in ref_dic.keys():
+            prio, reffrags, active, upgrades = ref_dic[refname]
+            if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
+                scan_ref.append(refname)
+                scan_prio.append(prio)
+            # check for upgrades
+            elif upgrades and len(reffrags) > 0:
+                oreffrags = copy.deepcopy(reffrags)
+                for d,u in upgrades.items():
+                    reffrags = [i.replace(d,u) for i in reffrags]
+                    if all(f in self.fragments.get_fragnames() for f in reffrags):
+                        scan_ref.append(refname)
+                        scan_prio.append(prio)
+        # sort to be scanned referecnce systems by their prio
+        self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
+        self.scan_ref.reverse()
+        self.timer.stop()
+        # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
+        self.timer.start("make ref frag graphs")
+        self.ref_systems = {}
+        for ref in self.scan_ref:
+            if self._mol.mpi_rank == 0:
+                ref_mol = self.api.get_FFref_graph(ref, mol=True)
+            else:
+                ref_mol = None
+            if self._mol.mpi_size > 1:
+                ref_mol = self._mol.mpi_comm.bcast(ref_mol, root=0)
+            ref_mol.addon("fragments")
+            ref_mol.fragments.make_frag_graph()
+            # if active space is defined create atomistic graph of active zone
+            active = ref_dic[ref][2]
+            if active: ref_mol.graph.make_graph(active)
+            self.ref_systems[ref] = ref_mol
+        self.timer.stop()
+        # now search in the fraggraph for the reference systems
+        self.timer.start("scan for ref systems")
+        logger.info("Searching for reference systems:")
+        self.ref_fraglists = {}
+        self.ref_atomlists = {}
+        for ref in copy.copy(self.scan_ref):
+            # TODO: if a ref system has only one fragment we do not need to do a substructure search but
+            #       could pick it from self.fragemnts.fraglist
+            subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+            # in the case that an upgrade for a reference system is available, it has also to be searched
+            # for the upgraded reference systems
+            upgrades = ref_dic[ref][3]
+            if upgrades:
+                # if upgrades should be applied, also an active zone has to be present
+                assert ref_dic[ref][2] != None
+                for s,r in upgrades.items():
+                    self.ref_systems[ref].fragments.upgrade(s, r)
+                    subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+            logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
+            if len(subs) == 0:
+                # this ref system does not appear => discard
+                self.scan_ref.remove(ref)
+                del(self.ref_systems[ref])
+            else:
+                # join all fragments
+                subs_flat = list(set(itertools.chain.from_iterable(subs)))
+                self.ref_fraglists[ref] = subs_flat
+                # now we have to search for the active space
+                # first construct the atomistic graph for the sub in the real system if 
+                # an active zone is defined
+                if ref_dic[ref][2] != None:
+                    idx = self.fragments.frags2atoms(subs_flat)
+                    self._mol.graph.filter_graph(idx)
+                    asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
+                    self._mol.graph.molg.clear_filters()
+                    asubs_flat = itertools.chain.from_iterable(asubs)
+                    self.ref_atomlists[ref] = list(set(asubs_flat))
+                else:
+                    self.ref_atomlists[ref] = None
+        self.timer.stop()
+        # get the parameters
+        self.timer.start("get ref parmeter sets")
+        self.ref_params = {}
+        for ref in self.scan_ref:
+            logger.info("Getting params for %s" % ref)
+            if self._mol.mpi_rank == 0:
+                ref_par = self.api.get_params_from_ref(self.FF, ref)
+            else:
+                ref_par = None
+            if self._mol.mpi_size > 1:
+                ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
+            self.ref_params[ref] = ref_par
+            #print ("DEBUG DEBUG Ref system %s" % ref)
+            #print (self.ref_params[ref])
+        self.timer.stop()
         return
 
 

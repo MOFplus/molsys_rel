@@ -42,6 +42,7 @@ class wrapper(object):
         self.m.read(fname, ftype = "mfpx")
         self.m.addon("ff")
         self.m.ff.assign_params("MOF-FF")
+        self.m.ff.setup_pair_potentials()
         self.m.addon("molecules")
         self.m.molecules()
         self.nmols = self.m.molecules.nmols
