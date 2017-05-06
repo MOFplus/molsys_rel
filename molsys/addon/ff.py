@@ -128,6 +128,7 @@ class ric:
         self.dih = dih
         if sanity_test:
             # find bonds and check if they are equal ... this should be a sufficent test that the rest is the same, too
+            
             mol_bnd = self.find_bonds()
             if mol_bnd != bnd:
                 raise ValueError, "The rics provided do not match the mol object!"
@@ -358,6 +359,7 @@ class ff:
             "epsrule" : "geometric",            
             }
         self.pair_potentials_initalized = False
+        self.refsysname = None
         logger.debug("generated the ff addon")
         return
 
@@ -473,7 +475,8 @@ class ff:
                                                     curr_equi_par[aidx] = par[1][1]
                                                     if verbose>1: logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
                                         else:
-                                            full_parname = par[0] + "->" + str(parname) + "|" + ref
+                                            sparname = map(str, parname)
+                                            full_parname = par[0]+"->("+string.join(sparname,",")+")|"+ref
                                             full_parname_list.append(full_parname)
                                             if not full_parname in self.par[ic]:
                                                 if verbose>0: logger.info("  added parameter to table: %s" % full_parname)
@@ -544,7 +547,8 @@ class ff:
                         parname = self.get_parname(p)
                     else:
                         parname = self.get_parname_sort(p, ic)
-                    fullparname = defaults[ic][0] + "->" + str(parname) + "|" + self.refsysname
+                    sparname = map(str, parname)
+                    fullparname = defaults[ic][0]+"->("+string.join(aparname,",")+")|"+self.refsysname
                     if not fullparname in par:
                         par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
                     parind[i] = [fullparname]
@@ -929,9 +933,9 @@ class ff:
         read the ric/par files instead of assigning params
         """
         fric = open(fname+".ric", "r")
-        fpar = open(fname+".par", "r")
-        rics    = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
-        ric_len = [2    , 3    , 4    , 4    , 1    , 1    ]
+        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
+        ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
+        ric      = {}
         # read in ric first, store the type as an attribute in the first place
         stop = False
         assigned = []
@@ -941,16 +945,64 @@ class ff:
                 # end of ric file
                 stop = True
             sline = line.split()
-            if sline[0] in rics:
-                curric = sline[0]
-                assigned.append(curric)
-                nric = int(sline[1])
-                # for 
-        
-        
-        
-        
+            if len(sline)> 0:
+                if sline[0] in ric_type:
+                    curric = sline[0]
+                    curric_len = ric_len[ric_type.index(curric)]
+                    assigned.append(curric)
+                    nric = int(sline[1])
+                    rlist = []
+                    for i in xrange(nric):
+                        sline = fric.readline().split()
+                        rtype = int(sline[1])
+                        aind  = map(int, sline[2:curric_len+2])
+                        aind  = np.array(aind)-1
+                        icl = ic(aind, type=rtype)
+                        for attr in sline[curric_len+2:]:
+                            atn,atv = attr.split("=")
+                            icl.__setattr__(atn, atv)
+                        rlist.append(icl)
+                    ric[curric] = rlist    
         fric.close()
+        # now add data to ric object .. it gets only bnd, angl, oop, dih
+        self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
+        # time to init the data structures .. supply vdw and cha here
+        self._init_data(cha=ric["cha"], vdw=ric["vdw"])
+        # now open and read in the par file
+        fpar = open(fname+".par", "r")
+        stop = False
+        while not stop:
+            line = fpar.readline()
+            if len(line) == 0:
+                stop = True
+            sline = line.split()
+            if len(sline)>0:
+                curric = sline[0].split("_")[0]
+                if sline[0]=="FF":
+                    self.FF = sline[1]
+                elif curric in ric_type:
+                    par = self.par[curric]
+                    t2ident = {} # maps integer type to identifier
+                    ntypes = int(sline[1])
+                    for i in xrange(ntypes):
+                        sline = fpar.readline().split()
+                        # now parse the line 
+                        itype = int(sline[0])
+                        ptype = sline[1]
+                        ident = sline[-1]
+                        param = sline[2:-2]
+                        param = map(float, param)
+                        if ident in par:
+                            raise ValueError, "Idetifier %s appears twice" % ident
+                        par[ident] = (ptype, param)
+                        if itype in t2ident:
+                            t2ident[itype].append(ident)
+                        else:
+                            t2ident[itype] = [ident]
+                    # now all types are read in: set up the parind datastructure of the ric
+                    parind = self.parind[curric]
+                    for i,r in enumerate(self.ric_type[curric]):
+                        parind[i] = t2ident[r.type]
         fpar.close()
         return
         
