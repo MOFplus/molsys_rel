@@ -82,6 +82,7 @@ class ic(list):
         else:
             values = tuple(self)
         return ((len(self)*form) % values) + attrstring
+        
                     
                     
 
@@ -360,12 +361,16 @@ class ff:
         logger.debug("generated the ff addon")
         return
 
-    def _init_data(self):
+    def _init_data(self, cha=None, vdw=None):
         # make data structures . call after ric has been filled with data either in assign or after read
         # these are the relevant datastructures that need to be filled by one or the other way.
+        if cha == None:
+            cha = [ic([i]) for i in range(self._mol.natoms)]
+        if vdw == None:
+            vdw = [ic([i]) for i in range(self._mol.natoms)]
         self.ric_type = {
-                "cha": [ic([i]) for i in range(self._mol.natoms)],
-                "vdw": [ic([i]) for i in range(self._mol.natoms)], 
+                "cha": cha,
+                "vdw": vdw, 
                 "bnd": self.ric.bnd, 
                 "ang": self.ric.ang, 
                 "dih": self.ric.dih, 
@@ -919,7 +924,36 @@ class ff:
         f.close()
         return
 
-
+    def read_par_files(self, fname):
+        """
+        read the ric/par files instead of assigning params
+        """
+        fric = open(fname+".ric", "r")
+        fpar = open(fname+".par", "r")
+        rics    = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
+        ric_len = [2    , 3    , 4    , 4    , 1    , 1    ]
+        # read in ric first, store the type as an attribute in the first place
+        stop = False
+        assigned = []
+        while not stop:
+            line = fric.readline()
+            if len(line)==0:
+                # end of ric file
+                stop = True
+            sline = line.split()
+            if sline[0] in rics:
+                curric = sline[0]
+                assigned.append(curric)
+                nric = int(sline[1])
+                # for 
+        
+        
+        
+        
+        fric.close()
+        fpar.close()
+        return
+        
 
     def get_torsion(self, values, m, thresshold=5):
         '''
