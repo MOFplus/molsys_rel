@@ -360,6 +360,7 @@ class ff:
             }
         self.pair_potentials_initalized = False
         self.refsysname = None
+        self.fit = False
         logger.debug("generated the ff addon")
         return
 
@@ -548,7 +549,7 @@ class ff:
                     else:
                         parname = self.get_parname_sort(p, ic)
                     sparname = map(str, parname)
-                    fullparname = defaults[ic][0]+"->("+string.join(aparname,",")+")|"+self.refsysname
+                    fullparname = defaults[ic][0]+"->("+string.join(sparname,",")+")|"+self.refsysname
                     if not fullparname in par:
                         par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
                     parind[i] = [fullparname]
@@ -924,11 +925,12 @@ class ff:
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
             f.write("\n")
         if self.refsysname:
-            f.write("azone %s\n" % str(self.active_zone))
+            active_zone = np.array(self.active_zone)+1
+            f.write(("azone "+len(active_zone)*" %d"+"\n") % tuple(active_zone))
         f.close()
         return
 
-    def read_par_files(self, fname):
+    def read_par_files(self, fname, fit=False):
         """
         read the ric/par files instead of assigning params
         """
@@ -969,7 +971,29 @@ class ff:
         # time to init the data structures .. supply vdw and cha here
         self._init_data(cha=ric["cha"], vdw=ric["vdw"])
         # now open and read in the par file
-        fpar = open(fname+".par", "r")
+        if fit:
+            self.fit=True
+            fpar = open(fname+".fpar", "r")
+            # in the fit case we first screen for the variables block and read it in
+            self.variables = {}
+            line = fpar.readline()
+            stop = False
+            while not stop:
+                sline = line.split()
+                if len(sline)>0:
+                    if sline[0] == "variables":
+                        nvar = int(sline[1])
+                        for i in xrange(nvar):
+                            sline = fpar.readline().split()
+                            self.variables[sline[0]]= sline[1:]
+                        fpar.seek(0)
+                        stop = True
+                        break
+                line = fpar.readline()
+                if len(line) == 0:
+                    raise IOError, "Variables block in fpar is missing!"
+        else:
+            fpar = open(fname+"par", "r")
         stop = False
         while not stop:
             line = fpar.readline()
@@ -991,7 +1015,20 @@ class ff:
                         ptype = sline[1]
                         ident = sline[-1]
                         param = sline[2:-2]
-                        param = map(float, param)
+                        if self.fit:
+                            # if we read a fpar file we need to test if there are variables
+                            new_param = []
+                            for p in param:
+                                print(p)
+                                if p[0] == "$":
+                                    if not p in self.variables:
+                                        raise IOError, "Varible $s undefiend in variable block" % p
+                                    new_param.append(float(self.variables[p][0]))
+                                else:
+                                    new_param.append(float(p))
+                            param = new_param
+                        else:
+                            param = map(float, param)
                         if ident in par:
                             raise ValueError, "Idetifier %s appears twice" % ident
                         par[ident] = (ptype, param)
