@@ -991,7 +991,7 @@ class ff:
                 if len(line) == 0:
                     raise IOError, "Variables block in fpar is missing!"
         else:
-            fpar = open(fname+"par", "r")
+            fpar = open(fname+".par", "r")
         stop = False
         while not stop:
             line = fpar.readline()
