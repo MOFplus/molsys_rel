@@ -50,6 +50,7 @@ class ic(list):
         list.__init__(self,*args)
         for k,v in kwargs.items():
             setattr(self, k, v)
+        self.used = False
         return
         
     def __getattr__(self, name):
@@ -110,7 +111,7 @@ class varpar(object):
 
     @val.setter
     def val(self,val):
-        assert (type(val) == float) or (val[0] == "$")
+        assert (type(val) == float) or (type(val) == np.float64) or (val[0] == "$") 
         self._val = val
         return
 
@@ -125,7 +126,7 @@ class varpars(dict):
         ranges = []
         for k,v in self.items():
             ranges.append(v.range)
-        return ranges
+        return np.array(ranges)
 
     @ranges.setter
     def ranges(self, ranges):
@@ -140,8 +141,27 @@ class varpars(dict):
             vals.append(v.val)
         return vals
 
+    def cleanup(self):
+        rem = []
+        for k,v in self.items():
+            if len(v.pos) == 0:
+                logger.warning("varpar %s is not used --> will be deleted!" % k)
+                rem.append(k)
+        for k in rem: del[self[k]]
+        return
+
+    @property
+    def varpots(self):
+        varpots = []
+        for k,v in self.items():
+            for i in range(len(v.pos)):
+                varpot = (v.pos[i][0], v.pos[i][1])
+                if varpot not in varpots: varpots.append(varpot)
+        return varpots
+
+
     def __call__(self, vals = None):
-        if vals == None: vals = len(self)*[None]
+        if type(vals) == type(None): vals = len(self)*[None]
         assert len(vals) == len(self)
         for i,v in enumerate(self.values()): v(vals[i])
         return
@@ -381,10 +401,10 @@ class ric:
         Computes the values of the rics and attaches 
         them to the corresponding ic
         """
-        for b in self.bnd: b.value = self.get_distance(b)
-        for a in self.ang: a.value = self.get_angle(a)
-        for d in self.dih: d.value = self.get_dihedral(d)
-        for o in self.oop: o.value = self.get_oop(o)
+        for b in self.bnd: b.value = self.get_distance(list(b))
+        for a in self.ang: a.value = self.get_angle(list(a))
+        for d in self.dih: d.value = self.get_dihedral(list(d))
+        for o in self.oop: o.value = self.get_oop(list(o))
         return
 
     def report(self):
@@ -586,15 +606,16 @@ class ff:
         return
 
     def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"]):
+        self.ric.compute_rics()
         self.variables = varpars()
         self.active_zone = []
         defaults = {
-            "bnd" : ("mm3", 2, "b"),
-            "ang" : ("mm3", 2, "a"),
-            "dih" : ("cos3", 3, "d"),
-            "oop" : ("harm", 2, "o"),
-            "cha" : ("gaussian", 2, "c"),
-            "vdw" : ("buck6d", 2, "v")}
+            "bnd" : ("mm3", 2, "b", ["d","r"]),
+            "ang" : ("mm3", 2, "a", ["d","r"]),
+            "dih" : ("cos3", 3, "d", ["d","d","d"]),
+            "oop" : ("harm", 2, "o", ["d",0.0]),
+            "cha" : ("gaussian", 2, "c", ["d","d"]),
+            "vdw" : ("buck6d", 2, "v", ["d","d"])}
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             count  = 0
             ric = self.ric_type[ic]
@@ -616,11 +637,17 @@ class ff:
                     if not fullparname in par:
                         if ic in var_ics:
                             count+=1
-                            vnames = map(lambda a: "$%s%i_%i" % (defaults[ic][2],count , a), range(defaults[ic][1]))
+                            vnames = map(lambda a: "$%s%i_%i" % (defaults[ic][2],count,a) 
+                                if type(defaults[ic][3][a]) == str else defaults[ic][3][a], range(defaults[ic][1]))
                             par[fullparname] = (defaults[ic][0], vnames)
-                            for idx,vn in enumerate(vnames): 
-                                self.variables[vn]=varpar(ff=self,name = vn)
-                                self.variables[vn].pos.append((ic, fullparname, idx))
+                            for idx,vn in enumerate(vnames):
+                                if type(vn) == str:
+                                    if defaults[ic][3][idx] == "r":
+                                        self.variables[vn]=varpar(ff=self,name = vn, 
+                                                val = p.value, range = [0.9*p.value, 1.1*p.value])
+                                    else:
+                                        self.variables[vn]=varpar(ff=self,name = vn)
+                                    self.variables[vn].pos.append((ic, fullparname, idx))
                         else:
                             par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
                     parind[i] = [fullparname]
@@ -914,7 +941,7 @@ class ff:
             for i in ind:
                 ipi = ptyp[i.split("->")[1]]
                 ptype, values = par[i]
-                formatstr = string.join(map(lambda a: "%15.8f" if type(a) == float else "%+15s", values))
+                formatstr = string.join(map(lambda a: "%15.8f" if type(a) != str else "%+15s", values))
                 sval = formatstr % tuple(values)
                 #sval = (len(values)*"%15.8f ") % tuple(values)
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
@@ -1014,12 +1041,17 @@ class ff:
                         ident = sline[-1]
                         param = sline[2:-2]
                         if self.fit:
+                            newparam = []
                             # if we read a fpar file we need to test if there are variables
                             for paridx,p in enumerate(param):
                                 if p[0] == "$":
                                     if not p in self.variables:
                                         raise IOError, "Varible $s undefiend in variable block" % p
                                     self.variables[p].pos.append((curric,ident,paridx))
+                                    newparam.append(p)
+                                else:
+                                    newparam.append(float(p))
+                            param = newparam
                         else:
                             param = map(float, param)
                         if ident in par:
@@ -1035,7 +1067,9 @@ class ff:
                         parind[i] = t2ident[r.type]
         fpar.close()
         ### replace variable names by the current value
-        if self.fit: self.variables()
+        if self.fit: 
+            self.variables.cleanup()
+            self.variables()
         return
         
 
