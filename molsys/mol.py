@@ -15,7 +15,7 @@ from util import unit_cell
 from util import elems as elements
 from util import rotations
 from util import images
-from io import formats
+from fileIO import formats
 
 import addon
 

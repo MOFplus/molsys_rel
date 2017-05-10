@@ -15,9 +15,9 @@ attr_mappings = {
 rad2deg = 180.0/numpy.pi 
 class wrapper(object):
 
-    def __init__(self,is_master):
+    def __init__(self,mol,is_master = True):
         self.is_master = is_master
-        self.m = molsys.mol()
+        self.m = mol
         #
         self.virtual_atoms = []
         self.virtual_bonds = []
@@ -39,9 +39,10 @@ class wrapper(object):
 
     def read_tinker_xyz(self,fname):
         self.xyz_filename = fname
-        self.m.read(fname, ftype = "mfpx")
-        self.m.addon("ff")
-        self.m.ff.assign_params("MOF-FF")
+#        self.m.read(fname, ftype = "mfpx")
+#        self.m.addon("ff")
+#        self.m.ff.assign_params("MOF-FF")
+        self.m.ff.setup_pair_potentials()
         self.m.addon("molecules")
         self.m.molecules()
         self.nmols = self.m.molecules.nmols
@@ -90,6 +91,37 @@ class wrapper(object):
     def report_molecules(self,*args, **kwargs):
         return
 
+    def write2internal(self,pd):
+        ric_type = {
+                "bnd": self.m.ff.ric.bnd,
+                "ang": self.m.ff.ric.ang,
+                "dih": self.m.ff.ric.dih,
+                "oop": self.m.ff.ric.oop}
+        formatter = {"bnd": self.bondterm_formatter,
+                "ang": self.angleterm_formatter,
+                "dih": self.dihedralterm_formatter,
+                "oop": self.oopterm_formatter}
+        dest = {"bnd": pd.dlp_bnd.prmbnd,
+                "ang": pd.dlp_ang.prmang,
+                "dih": pd.dlp_dih.prmdih,
+                "oop": pd.dlp_inv.prminv}
+        ### bonded potentials ###
+        for ict in ["bnd", "ang", "dih", "oop"]:
+            counter = 0
+            allprm = numpy.zeros(dest[ict].shape)
+            for i, ic in enumerate(ric_type[ict]):
+                ps = self.m.ff.parind[ict][i]
+                for p in ps:
+                    potential, params = self.m.ff.par[ict][p]
+                    prm = formatter[ict](ic,potential,params,internal = True)
+                    if type(prm) != type(None):
+                        allprm[counter] = prm
+                        counter += 1
+            dest[ict] = allprm
+            pd.set_atoms_moved()
+        return
+        
+
     def write_FIELD(self):
         ric_type = {
                 "bnd": self.m.ff.ric.bnd,
@@ -125,7 +157,7 @@ class wrapper(object):
             if potential != "gaussian": 
                 raise ValueError("Chargetype %s not implemented" % potential)
             chargesum += params[0]
-            f.write("   %8s  %10.4f %10.4f %10.4f 1 %1d\n" % 
+            f.write("   %8s  %10.4f %10.4f %12.6f 1 %1d\n" % 
                     (atype, self.get_mass()[i], params[0], params[1], 0))
         print "Net charge of the system: %10.5f" % chargesum
         ### bonded potentials ###
@@ -147,49 +179,60 @@ class wrapper(object):
         ### pair potentials ###
         buffer_out = ""
         count = 0
+        # RS: vdwdata contains the full matrix (both ways A:B and B:A) to work with codes
+        #     that want them the other way around .. here we need to skip those which are done already
+        done_pairs = []
         for pair in self.m.ff.vdwdata.keys():
-            potential, params = self.m.ff.vdwdata[pair]
-            vdw_out = self.vdwterm_formatter(pair, potential, params)
-            if vdw_out:
-                buffer_out += vdw_out
-                count += 1
+            rev_pair = pair.split(":")
+            rev_pair.reverse()
+            if not rev_pair in done_pairs:
+                potential, params = self.m.ff.vdwdata[pair]
+                vdw_out = self.vdwterm_formatter(pair, potential, params)
+                if vdw_out:
+                    buffer_out += vdw_out
+                    count += 1
+                done_pairs.append(pair.split(":"))
         f.write("VDW %d\n" % count)
         f.write(buffer_out)
         f.write("CLOSE\n")
         f.close()
         return
 
-    def bondterm_formatter(self, atoms, potential, params, unit = 71.94):
+    def bondterm_formatter(self, atoms, potential, params, unit = 71.94, iunit = 418.4, internal = False):
         assert len(atoms) == 2
         assert type(potential) == str
         assert type(params) == list
         if potential == "mm3":
             k  = 2.0*params[0]*unit
             r0 = params[1]
+            if internal: return numpy.array([k*iunit, r0, 0.0, 0.0])
             return "   mm3b %5d %5d  %10.5f %10.5f\n" % (atoms[0]+1, atoms[1]+1, k, r0)
         elif potential == "morse":
             E0   = params[2]
             r0   = params[1]
             k    = params[0]
             alph = numpy.sqrt(unit*k/E0)
+            if internal: return numpy.array([E0*iunit, r0, alph, 0.0])
             return "   mors %5d %5d  %10.5f %10.5f %10.5f\n" % (atoms[0]+1, atoms[1]+1, E0, r0, alph)
         elif potential == "quartic":
             k  = 2.0*params[0]*unit
             k2 = params[2]
             k3 = params[3]
             r0 = params[1]
+            if internal: return numpy.array([k*iunit, r0, k2, k3])
             return "   aqua %5d %5d  %10.5f %10.5f %10.5f %10.5\n" % (atoms[0]+1, atoms[1]+1, k, r, k2, k3)
         else:
             raise IOError("Unknown bond potential %s" % potential)
 
     def angleterm_formatter(self, atoms, potential, params, unit = 0.02191418, 
-            bunit = 71.94, strunit=2.51118):
+            bunit = 71.94, strunit=2.51118, iunit = 418.4, internal = False):
         assert len(atoms) == 3
         assert type(potential) == str
         assert type(params) == list
         if potential == "mm3":
             k  = 2.0*params[0]*unit*rad2deg*rad2deg
             a0 = params[1]
+            if internal: return numpy.array([iunit*k, a0*(1.0/rad2deg),0.0,0.0,0.0,0.0,0.0])
             return "   mm3a  %5d %5d %5d  %10.5f %10.5f\n" % (atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, k, a0)
         elif potential == "quartic":
@@ -197,6 +240,7 @@ class wrapper(object):
             a0 = params[1]
             k2 = params[2]
             k3 = params[3]
+            if internal: return numpy.array([iunit*k, a0*(1.0/rad2deg),k2,k3,0.0,0.0,0.0])
             return "   aqua  %5d %5d %5d  %10.5f %10.5f %10.5f %10.5f\n" % (atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, k, a0, k2, k3)
         elif potential == "fourier":
@@ -208,6 +252,7 @@ class wrapper(object):
             chg13s = params[4]
             assert vdw13s == chg13s
             if vdw13s == 1.0: flag13 = "-"
+            if internal: return numpy.array([k*iunit, a0*(1.0/rad2deg), fold, 0.0,0.0,0.0,0.0])
             return "  %1scos   %5d %5d %5d  %10.5f %10.5f %5d\n" % (flag13,atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, k, a0, fold)
         elif potential == "strbnd":
@@ -217,12 +262,13 @@ class wrapper(object):
             r1 = params[3]
             r2 = params[4]
             t  = params[5]
+            if internal: return numpy.array([a*iunit, b*iunit, c*iunit, t*(1.0/rad2deg),r1,r2,0.0])
             return "   cmps  %5d %5d %5d  %10.5f %10.5f %10.5f % 10.5f %10.5f %10.5f\n" % (atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, a,b,c,t,r1,r2)
         else:
             raise IOError("Unknown angle potential %s" % potential)
 
-    def dihedralterm_formatter(self, atoms,potential, params, unit = 0.5, 
+    def dihedralterm_formatter(self, atoms,potential, params, unit = 0.5, iunit =418.4,internal = False,
             settings = {"chg-14-scale":1.0, 
                 "vdw-14-scale":1.0,
                 "chg-13-scale": 1.0,
@@ -239,12 +285,12 @@ class wrapper(object):
             vdw14=settings["vdw-14-scale"]
         else:
             vdw14=1.0
-        if atoms.smallring == 4:
+        if atoms.ring == 4:
             cou14 = 1.0
             vdw14 = 0.0
             if settings.has_key("chg-12-scale"): cou14 = settings["chg-12-scale"]
             if settings.has_key("vdw-12-scale"): cou14 = settings["vdw-12-scale"]
-        elif atoms.smallring == 5:
+        elif atoms.ring == 5:
             cou14 = 1.0
             vdw14 = 0.0
             if settings.has_key("chg-13-scale"): cou14 = settings["chg-13-scale"]
@@ -257,6 +303,7 @@ class wrapper(object):
             if ((V1==V2==V3==0.0) and (cou14==vdw14==1.0)):
                 return None
             else:
+                if internal: return numpy.array([V1*iunit, V2*iunit, V3*iunit,0.0,cou14,vdw14])
                 return "   cos3  %5d %5d %5d %5d  %10.5f %10.5f %10.5f %10.5f  %10.5f  %10.5f\n" % \
                 (atoms[0]+1, atoms[1]+1, atoms[2]+1, atoms[3]+1, V1, V2, V3, 0.0, cou14, vdw14)
         elif potential == "cos4":
@@ -268,15 +315,17 @@ class wrapper(object):
             if V1==V2==V3==V4==0.0:
                 if cou14==vdw14==1.0: return None
             else:
+                if internal: return numpy.array([V1*iunit, V2*iunit, V3*iunit,V4*iunit,cou14,vdw14])
                 return "   cos4  %5d %5d %5d %5d  %10.5f %10.5f %10.5f %10.5f  %10.5f  %10.5f\n" % \
                 (atoms[0]+1, atoms[1]+1, atoms[2]+1, atoms[3]+1, V1, V2, V3, V4, cou14, vdw14)
         else:
             raise IOError("Unknown dihedral potential %s" % potential)
 
-    def oopterm_formatter(self, atoms, potential, params, unit=0.02191418):
+    def oopterm_formatter(self, atoms, potential, params, unit=0.02191418,iunit=418.4, internal=False):
         if potential == "harm":
             k = 2.0*params[0]*3.0*unit*rad2deg*rad2deg
             a0 = params[1]*(1/rad2deg)
+            if internal: return numpy.array([k*418.4, a0, 0.0, 0.0])
             return "   harm  %5d %5d %5d %5d   %10.5f  %10.5f\n" % \
                    (atoms[0]+1, atoms[1]+1, atoms[2]+1, atoms[3]+1, k, a0)
         else:

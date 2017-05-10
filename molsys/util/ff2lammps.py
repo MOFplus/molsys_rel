@@ -16,9 +16,12 @@ import numpy as np
 import string
 import molsys
 import molsys.util.elems as elements
+import copy
 
 
 mdyn2kcal = 143.88
+angleunit = 0.02191418
+rad2deg = 180.0/np.pi 
 
 class ff2lammps(object):
     
@@ -39,6 +42,7 @@ class ff2lammps(object):
         # generate the force field
         self.mol.addon("ff")
         self.mol.ff.assign_params("MOF-FF")
+        self.mol.ff.setup_pair_potentials()
         # set up the molecules
         self.mol.addon("molecules")
         self.mol.molecules()
@@ -66,14 +70,56 @@ class ff2lammps(object):
             self.par_types[r] = par_types
             self.npar[r] = i-1
         # we need to verify that the vdw types and the charge types match because the sigma needs to be in the pair_coeff for lammps
+        # thus we build our own atomtypes list combining vdw and cha and use the mol.ff.vdwdata as a source for the combined vdw params
+        # but add the combined 1.0/sigma_ij here
+        self.plmps_atypes = []
+        self.plmps_pair_data = {}
+        self.plmps_mass = {} # mass from the element .. even if the vdw and cha type differ it is still the same atom
         for i in xrange(self.mol.get_natoms()):
             vdwt = self.parind["vdw"][i][0]
             chrt = self.parind["cha"][i][0]
-            vdwt_root = vdwt.split("->")[1]
-            chrt_root = chrt.split("->")[1]
-            if vdwt_root != chrt_root:
-                raise ValueError, "The vdw and charge types of an atom do not match: %s %s" % (vdwt, chrt)
+            at = vdwt+"/"+chrt
+            if not at in self.plmps_atypes:
+                #print("new atomtype %s" % at)
+                self.plmps_atypes.append(at)
+                # extract the mass ...
+                etup = vdwt.split("->")[1].split("|")[0]
+                etup = etup[1:-2]
+                e = etup.split("_")[0]
+                e = filter(lambda x: x.isalpha(), e)
+                self.plmps_mass[at] = elements.mass[e]
+                #print "with mass %12.6f" % elements.mass[e]
+        for i, ati in enumerate(self.plmps_atypes):
+            for j, atj in enumerate(self.plmps_atypes[i:],i):
+                vdwi, chai = ati.split("/")
+                vdwj, chaj = atj.split("/")
+                vdwpairdata = self.mol.ff.vdwdata[vdwi+":"+vdwj]
+                sigma_i = self.par["cha"][chai][1][1]
+                sigma_j = self.par["cha"][chaj][1][1]
+                # compute sigma_ij
+                sigma_ij = np.sqrt(sigma_i*sigma_i+sigma_j*sigma_j)
+                # vdwpairdata is (pot, [rad, eps])
+                pair_data = copy.copy(vdwpairdata[1])
+                pair_data.append(1.0/sigma_ij)
+                self.plmps_pair_data[(i+1,j+1)] = pair_data
+        # general settings                
+        self._settings = {}
+        # set defaults
+        self._settings["cutoff"] = 12.0
+        self._settings["parformat"] = "%15.8f"
+        self._settings["vdw_a"] = 1.84e5
+        self._settings["vdw_b"] = 12.0
+        self._settings["vdw_c"] = 2.25
+        self._settings["vdw_dampfact"] = 0.25
         return
+
+    def setting(self, s, val):
+        if not s in self._settings:
+            print("This settings %s is not allowed" % s)
+            return
+        else:
+            self._settings[s] = val
+            return
         
     def write_data(self, filename="tmp.data"):
         self.data_filename = filename
@@ -86,42 +132,45 @@ class ff2lammps(object):
         header += "%10d dihedrals\n"  % len(self.rics["dih"])
         header += "%10d impropers\n"  % len(self.rics["oop"])
         # types are different paramtere types 
-        header += "%10d atom types\n"       % len(self.par_types["vdw"])
+        header += "%10d atom types\n"       % len(self.plmps_atypes)
         header += "%10d bond types\n"       % len(self.par_types["bnd"]) 
         header += "%10d angle types\n"      % len(self.par_types["ang"])
         header += "%10d dihedral types\n"   % len(self.par_types["dih"])
         header += "%10d improper types\n\n" % len(self.par_types["oop"])
         # currently we support onyl orthorhombic cells
-        cell = self.mol.get_cell()
-        header += '0.0 %12.6f  xlo xhi\n' % cell[0,0]
-        header += '0.0 %12.6f  ylo yhi\n' % cell[1,1]
-        header += '0.0 %12.6f  zlo zhi\n' % cell[2,2]
+        if self.mol.bcond == 0:
+            # in the nonperiodic case center the molecule in the origin
+            self.mol.translate(-self.mol.get_com())
+            xyz = self.mol.get_xyz()
+            cmax = xyz.max(axis=0)+10.0
+            cmin = -xyz.min(axis=0)-10.0
+        else:
+            cell = self.mol.get_cell()
+            cmin = np.zeros([3])
+            cmax = cell.diagonal()
+            xyz = self.mol.get_xyz()            
+        header += '%12.6f %12.6f  xlo xhi\n' % (cmin[0], cmax[0])
+        header += '%12.6f %12.6f  ylo yhi\n' % (cmin[1], cmax[1])
+        header += '%12.6f %12.6f  zlo zhi\n' % (cmin[2], cmax[2])
         header += '0.0 0.0 0.0  xy xz yz\n'        
         # NOTE in lammps masses are mapped on atomtypes which indicate vdw interactions (pair potentials)
         #   => we do NOT use the masses set up in the mol object because of this mapping
-        #   so we need to extract the element from the vdw paramter name which is a bit clumsy
+        #   so we need to extract the element from the vdw paramter name which is a bit clumsy (DONE IN INIT NOW)
         header += "\nMasses\n\n"        
-        self.masses = {}
-        # this is a wild hack: we want to get the sorted list of the values of the dict, sorted by the entries (numbers)
-        vdw_keys = [None]*self.npar["vdw"]
-        for vdwk in self.par_types["vdw"]:
-            vdw_keys[self.par_types["vdw"][vdwk]-1] = vdwk
-        for vdwt in vdw_keys:
-            etup = vdwt[0].split("->")[1].split("|")[0]
-            etup = etup[1:-2]
-            e = etup.split("_")[0]
-            e = filter(lambda x: x.isalpha(), e)
-            header += "%5d %10.4f # %s\n" % (self.par_types["vdw"][vdwt], elements.mass[e], vdwt)
+        for i in xrange(len(self.plmps_atypes)):
+            at = self.plmps_atypes[i]
+            header += "%5d %10.4f # %s\n" % (i+1, self.plmps_mass[at], at)
         f.write(header)
         # write Atoms
         # NOTE ... this is MOF-FF and we silently assume that all charge params are Gaussians!!
         f.write("\nAtoms\n\n")
-        xyz = self.mol.get_xyz()
         for i in xrange(self.mol.get_natoms()):
-            vdwt  = self.parind["vdw"][i]
-            atype = self.par_types["vdw"][tuple(vdwt)]
+            vdwt  = self.parind["vdw"][i][0]
+            chat  = self.parind["cha"][i][0]
+            at = vdwt+"/"+chat
+            atype = self.plmps_atypes.index(at)+1
             molnumb = self.mol.molecules.whichmol[i]+1
-            chrgpar    = self.par["cha"][self.parind["cha"][i][0]]
+            chrgpar    = self.par["cha"][chat]
             assert chrgpar[0] == "gaussian", "Only Gaussian type charges supported"
             chrg = chrgpar[1][0]
             x,y,z = xyz[i]
@@ -147,41 +196,51 @@ class ff2lammps(object):
             f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["dih"][diht], a+1, b+1, c+1, d+1, diht))
         # write impropers/oops
         f.write("\nImpropers\n\n")
-        for i in xrange(len(self.rics["oop"])):
-            oopt = tuple(self.parind["oop"][i])
-            a,b,c,d  = self.rics["oop"][i]
-            f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][oopt], a+1, b+1, c+1, d+1, oopt))
+        for i in xrange(len(self.rics["oop"])):            
+            oopt = self.parind["oop"][i]
+            if oopt:
+                a,b,c,d  = self.rics["oop"][i]
+                f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, b+1, c+1, d+1, oopt))
+        f.write("\n")
         f.close()
         return
 
+    def parf(self, n):
+        pf = self._settings["parformat"]+" "
+        return n*pf
+
     def write_input(self, filename = "lmp.input", header=None, footer=None):
         """
-        
-        
         NOTE: add read data ... fix header with periodic info
         """
         self.input_filename = filename
         f = open(filename, "w")
+        # write standard header        
+        f.write("clear\n")
+        f.write("units real\n")
+        if self.mol.bcond == 0:
+            f.write("boundary f f f\n")
+        else:
+            f.write("boundary p p p\n")
+        f.write("atom_style full\n")
+        f.write("read_data %s\n\n" % self.data_filename)
+        f.write("neighbor 2.0 bin\n\n")
+        # extra header
         if header:
             hf = open(header, "r")
             f.write(hf.readlines())
             hf.close()
         f.write("\n# ------------------------ MOF-FF FORCE FIELD ------------------------------\n")
         # pair style
-        f.write("\npair_style buck6d/coul/dsf %10.4f %10.4f\n\n" % (0.05, 12))
-        for vdwpair in self.mol.ff.vdwdata:
-            vdwi, vdwj = vdwpair.split(":")
-            i = self.par_types["vdw"][(vdwi,)]
-            j = self.par_types["vdw"][(vdwj,)]
-            # in order to get the corresponding combined sigma values we need to do a bit of hacking here
-            # in the init it was tested that the vdw and charge type names match, so we can use the root part for a lookup.
-            chai = "gaussian->" + vdwi.split("->")[1]
-            chaj = "gaussian->" + vdwj.split("->")[1]
-            sigma_i = self.par["cha"][chai][1][1]
-            sigma_j = self.par["cha"][chaj][1][1]
-            sigma_ij = np.sqrt(sigma_i*sigma_i+sigma_j*sigma_j)
-            r0, eps = self.mol.ff.vdwdata[vdwpair][1]
-            f.write("pair_coeff %5d %5d %12.6f %12.6f %12.6f   # %s\n" % (i,j, eps, r0, 1.0/sigma_ij, vdwpair))            
+        f.write("\npair_style buck6d/coul/gauss/dsf %10.4f\n\n" % (self._settings["cutoff"]))
+        for i, ati in enumerate(self.plmps_atypes):
+            for j, atj in enumerate(self.plmps_atypes[i:],i):
+                r0, eps, alpha_ij = self.plmps_pair_data[(i+1,j+1)]
+                A = self._settings["vdw_a"]*eps
+                B = self._settings["vdw_b"]/r0
+                C = eps*self._settings["vdw_c"]*r0**6
+                D = 6.0*(self._settings["vdw_dampfact"]*r0)**14
+                f.write(("pair_coeff %5d %5d " + self.parf(5) + "   # %s <--> %s\n") % (i+1,j+1, A, B, C, D, alpha_ij, ati, atj))            
         # bond style
         f.write("\nbond_style hybrid class2 morse\n\n")
         for bt in self.par_types["bnd"].keys():
@@ -195,12 +254,17 @@ class ff2lammps(object):
                     K4 = K2*(2.55**2.)*(7.0/12.0)
                     pstring = "class2 %12.6f %12.6f %12.6f %12.6f" % (r0, K2, K3, K4)
                 elif pot_type == "morse":
-                    raise ValueError, "not implemented"
+                    r0 = params[1]
+                    E0 = params[2]
+                    k  = params[0]*mdyn2kcal/2.0
+                    alpha = np.sqrt(k/E0)
+                    pstring = "morse %12.6f%12.6f %12.6f" % (E0, alpha, r0)
                 else:
                     raise ValueError, "unknown bond potential"
                 f.write("bond_coeff %5d %s    # %s\n" % (bt_number, pstring, ibt))
         # angle style
-        f.write("\nangle_style hybrid class2/mofff cosine/mofff\n\n")
+        f.write("\nangle_style hybrid class2/p6 cosine/vdwl13\n\n")                
+        # f.write("\nangle_style class2/mofff\n\n")
         for at in self.par_types["ang"].keys():
             at_number = self.par_types["ang"][at]
             for iat in at:
@@ -208,18 +272,32 @@ class ff2lammps(object):
                 if pot_type == "mm3":
                     th0 = params[1]
                     K2  = params[0]*mdyn2kcal/2.0 
-                    K3 = K2*(-0.14)
+                    K3 = K2*(-0.014)
                     K4 = K2*5.6e-5
                     K5 = K2*-7.0e-7
                     K6 = K2*2.2e-8
-                    pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
-                    f.write("angle_coeff %5d class2/mofff    %s    # %s\n" % (at_number, pstring, iat))
+                    # pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
+                    pstring = "%12.6f %12.6f" % (th0, K2)
+                    f.write("angle_coeff %5d class2/p6    %s    # %s\n" % (at_number, pstring, iat))
+                    # f.write("angle_coeff %5d    %s    # %s\n" % (at_number, pstring, iat))
+                    # HACk to catch angles witout strbnd
+                    if len(at) == 1:
+                        f.write("angle_coeff %5d class2/p6 bb 0.0 1.0 1.0\n" % (at_number))
+                        f.write("angle_coeff %5d class2/p6 ba 0.0 0.0 1.0 1.0\n" % (at_number))
                 elif pot_type == "strbnd":
                     ksb1, ksb2, kss = params[:3]
                     r01, r02        = params[3:5]
                     th0             = params[5]
-                    f.write("angle_coeff %5d class2/mofff bb %12.6f %12.6f %12.6f\n" % (at_number, kss*mdyn2kcal, r01, r02))
-                    f.write("angle_coeff %5d class2/mofff ba %12.6f %12.6f %12.6f %12.6f\n" % (at_number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
+                    f.write("angle_coeff %5d class2/p6 bb %12.6f %12.6f %12.6f\n" % (at_number, kss*mdyn2kcal, r01, r02))
+                    f.write("angle_coeff %5d class2/p6 ba %12.6f %12.6f %12.6f %12.6f\n" % (at_number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
+                    # f.write("angle_coeff %5d bb %12.6f %12.6f %12.6f\n" % (at_number, kss*mdyn2kcal, r01, r02))
+                    # f.write("angle_coeff %5d ba %12.6f %12.6f %12.6f %12.6f\n" % (at_number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
+                elif pot_type == "fourier":
+                    a0 = params[1]
+                    fold = params[2]
+                    k = 0.5*params[0]*angleunit*rad2deg*rad2deg/fold
+                    pstring = "%12.6f %5d %12.6f" % (k, fold, a0)
+                    f.write("angle_coeff %5d cosine/vdwl13   %s    # %s\n" % (at_number, pstring, iat))
                 else:
                     raise ValueError, "unknown angle potential"
         # dihedral style
