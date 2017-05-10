@@ -466,7 +466,7 @@ class mol:
         if self.natoms==0:
             self.xyz = other_xyz
         else:
-            self.xyz = np.array(self.xyz.tolist()+other_xyz.tolist(),"d")
+            self.xyz = np.concatenate((self.xyz, other_xyz))
         self.elems += other.elems
         self.atypes+= other.atypes
         for c in other.conn:
@@ -484,6 +484,27 @@ class mol:
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
     ###  molecular manipulations #######################################
+
+    def delete_atoms(self,bads):
+        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        if hasattr(bads, '__iter__'):
+            if len(bads) > 2:
+                self.bads = bads
+                self.bads.sort()
+                self.goods = [i for i in xrange(self.natoms) if i not in self.bads]
+                self.offset = np.zeros(self.natoms, 'int')
+                for i in xrange(self.natoms):
+                    if i in self.bads:
+                        self.offset[i:] += 1
+                self.atypes = np.take(self.atypes,self.goods)
+                self.elems  = np.take(self.elems, self.goods)
+                self.conn   = np.take(self.conn,  self.goods)
+                self.natoms = len(self.elems)
+                self.conn =[ [j-self.offset[j] for j in self.conn[i] if j not in bads] for i in xrange(self.natoms) ]
+                self.xyz    = self.xyz[self.goods]
+                return
+        else:
+            self.delete_atom(bads)
 
     def delete_atom(self,bad):
         ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
@@ -524,7 +545,8 @@ class mol:
             if labels.count(e) != 0:
                 badlist.append(i)
         logger.info('removing '+ str(badlist[::-1]))
-        for i in badlist[::-1]: self.delete_atom(i)
+        self.delete_atoms(badlist)
+        #for i in badlist[::-1]: self.delete_atom(i)
         return
 
     def translate(self, vec):
