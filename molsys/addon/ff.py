@@ -666,6 +666,37 @@ class ff:
                         else:
                             par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
                     parind[i] = [fullparname]
+        self.set_def_sig(self.active_zone)
+        self.set_def_vdw(self.active_zone)
+        return
+
+    def set_def_vdw(self,ind):
+        elements = self._mol.get_elems()
+        atypes   = self._mol.get_atypes()
+        truncs   = [i.split("_")[0] for i in atypes]
+        for i in ind:
+            elem  = elements[i]
+            at    = atypes[i]
+            trunc = truncs[i]
+            try:
+                prm = elems.vdw_prm[at]
+            except:
+                try:
+                    prm = elems.vdw_prm[trunc]
+                except:
+                    prm = elems.vdw_prm[elem]
+            self.par["vdw"][self.parind["vdw"][i][0]][1] = prm
+        return
+
+    def set_def_sig(self,ind):
+        elements = self._mol.get_elems()
+        for i in ind:
+            elem = elements[i]
+            try:
+                sig = elems.sigmas[elem]
+            except:
+                sig = 0.0
+            self.par["cha"][self.parind["cha"][i][0]][1][1] = sig
         return
 
     def varnames2par(self):
@@ -943,7 +974,9 @@ class ff:
         # write the par file
         if self.refsysname:
             # this is a fixed up refsystem for fitting
-            f = open(fname+".fpar", "w") 
+            f = open(fname+".fpar", "w")
+            vals = self.variables.vals
+            self.varnames2par()
         else:
             f = open(fname+".par", "w")             
         f.write("FF %s\n\n" % self.FF)
@@ -962,8 +995,10 @@ class ff:
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
             f.write("\n")
         if self.refsysname:
+            self.variables(vals)
             active_zone = np.array(self.active_zone)+1
             f.write(("azone "+len(active_zone)*" %d"+"\n\n") % tuple(active_zone))
+            f.write("refsysname %s\n\n" % self.refsysname)
             f.write("variables %d\n" % len(self.variables))
             for k,v in self.variables.items():
                 f.write("%10s %15.8f %15.8f %15.8f\n" % (v.name, v.val, v.range[0], v.range[1]))
@@ -1018,20 +1053,31 @@ class ff:
             self.variables = varpars()
             line = fpar.readline()
             stop = False
+            azone = False
+            vars  = False
+            refsysname = False
             while not stop:
                 sline = line.split()
                 if len(sline)>0:
-                    if sline[0] == "variables":
+                    if sline[0] == "azone":
+                        self.active_zone = map(int, sline[1:])
+                        azone = True
+                    elif sline[0] == "variables":
                         nvar = int(sline[1])
                         for i in xrange(nvar):
                             sline = fpar.readline().split()
                             self.variables[sline[0]] = varpar(self, sline[0], val = float(sline[1]), range = [float(sline[2]), float(sline[3])])
+                        vars = True
+                    elif sline[0] == "refsysname":
+                        self.refsysname = sline[1]
+                        refsysname = True
+                    if azone == vars == refsysname == True:
                         fpar.seek(0)
                         stop = True
                         break
                 line = fpar.readline()
                 if len(line) == 0:
-                    raise IOError, "Variables block in fpar is missing!"
+                    raise IOError, "Variables block and/or azone in fpar is missing!"
         else:
             fpar = open(fname+".par", "r")
         stop = False
