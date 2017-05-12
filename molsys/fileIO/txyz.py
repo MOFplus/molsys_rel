@@ -155,7 +155,7 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
     xyz         = mol.xyz
     cnct        = mol.conn
     natoms      = mol.natoms
-    if moldenr:
+    if moldenr: ###TO BE DEBUGGED
         moltypes = {}
         moldentypes = []
         for i in xrange(mol.natoms):
