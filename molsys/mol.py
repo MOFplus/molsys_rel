@@ -214,6 +214,11 @@ class mol:
             else:
                 logger.error("spglib is not available! THis addon can not be used")
                 return
+        if addmod == "ric":
+            if addon.ric != None:
+                self.ric = addon.ric(self)
+            else:
+                logger.error("ric is not available! This addon can not be used")
         elif addmod == "ff":
             self.ff = addon.ff(self)
         elif addmod == "molecules":

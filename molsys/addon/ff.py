@@ -159,6 +159,21 @@ class varpars(dict):
                 if varpot not in varpots: varpots.append(varpot)
         return varpots
 
+    @property
+    def varpotnums(self):
+        ff = self.values()[0]._ff
+        varpots = self.varpots
+        varpotnums = {}
+        for i in varpots: varpotnums[i] = 0
+        ics = ["bnd", "ang", "dih", "oop"]
+        for ic in ics:
+            for pi in ff.parind[ic]:
+                for p in pi:
+                    if (ic,p) in varpots: varpotnums[(ic,p)]+=1
+        return varpotnums
+
+
+
 
     def __call__(self, vals = None):
         if type(vals) == type(None): vals = len(self)*[None]
