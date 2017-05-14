@@ -250,7 +250,10 @@ class ric:
                 aa1 = apex_atoms[ia]
                 other_apex_atoms = apex_atoms[ia+1:]
                 for aa2 in other_apex_atoms:
-                    angles.append(ic([aa1, ca, aa2]))
+                    if str(self.aftypes[aa1]) <= str(self.aftypes[aa2]):
+                        angles.append(ic([aa1, ca, aa2]))
+                    else:
+                        angles.append(ic([aa2, ca, aa1]))
         return angles
 
     @timer("find oops")
