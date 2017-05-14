@@ -623,7 +623,7 @@ class ff:
             logger.info("Parameter assignment successfull")
         return
 
-    def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"]):
+    def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"], strbnd = True):
         self.ric.compute_rics()
         self.variables = varpars()
         self.active_zone = []
@@ -666,12 +666,60 @@ class ff:
                                     else:
                                         self.variables[vn]=varpar(ff=self,name = vn)
                                     self.variables[vn].pos.append((ic, fullparname, idx))
+                            # hack for strbnd
+                            if ic == "ang" and strbnd == True:
+                                fullparname2 = "strbnd->("+string.join(sparname,",")+")|"+self.refsysname
+                                count+=1
+                                vnames = map(lambda a: "$a%i_%i" % (count, a), range(6))
+                                par[fullparname2] = ("strbnd", vnames)
+                                for idx,vn in enumerate(vnames):
+                                    self.variables[vn] = varpar(ff=self, name = vn)
+                                    self.variables[vn].pos.append((ic,fullparname2,idx))
                         else:
                             par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
-                    parind[i] = [fullparname]
+                    if ic == "ang" and strbnd == True:
+                        parind[i] = [fullparname, fullparname2]
+                    else:
+                        parind[i] = [fullparname]
         self.set_def_sig(self.active_zone)
         self.set_def_vdw(self.active_zone)
+        self.fix_strbnd()
         return
+
+    def fix_strbnd(self):
+        ### get potentials to fix
+        pots = self.variables.varpots
+        dels = []
+        for p in pots:
+            pot, ref, aftypes = self.split_parname(p[1])
+            if pot == "strbnd":
+                # first check if apex atypes are the same
+                if aftypes[0] == aftypes[2]:
+                    dels.append(self.par["ang"][p[1]][1][1])
+                    self.par["ang"][p[1]][1][1] = self.par["ang"][p[1]][1][0]
+                # now distribute ref values
+                apot  = "mm3->"+p[1].split("->")[-1] 
+                spot1 = self.build_parname("bnd", "mm3", self.refsysname, aftypes[:2])
+                spot2 = self.build_parname("bnd", "mm3", self.refsysname, aftypes[1:])
+                s1 = self.par["bnd"][spot1][1][1]
+                s2 = self.par["bnd"][spot2][1][1]
+                a  = self.par["ang"][apot][1][1]
+                # del variables
+                dels.append(self.par["ang"][p[1]][1][3])
+                dels.append(self.par["ang"][p[1]][1][4])
+                dels.append(self.par["ang"][p[1]][1][5])
+                # rename variables
+                self.par["ang"][p[1]][1][3] = s1
+                self.par["ang"][p[1]][1][4] = s2
+                self.par["ang"][p[1]][1][5] = a
+                # redistribute pots to self.variables dictionary
+                self.variables[s1].pos.append(("ang", p[1],3))
+                self.variables[s2].pos.append(("ang", p[1],4))
+                self.variables[a].pos.append(("ang", p[1],5))
+        for i in dels: del(self.variables[i])
+
+
+
 
     def set_def_vdw(self,ind):
         elements = self._mol.get_elems()
@@ -890,6 +938,16 @@ class ff:
         """
         l = map(lambda a: self.aftypes[a], alist)
         return tuple(aftype_sort(l,ic))
+
+    def split_parname(self,name):
+        pot = name.split("-")[0]
+        ref = name.split("|")[-1]
+        aftypes = name.split("(")[1].split(")")[0].split(",")
+        return pot, ref, aftypes
+
+    def build_parname(self, ic, pot, ref, aftypes):
+        sorted = aftype_sort(aftypes, ic)
+        return pot + "->("+string.join(sorted, ",")+")|"+ref
         
     def pick_params(self, aft_list, ic, pardir):
         """
