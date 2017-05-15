@@ -138,7 +138,7 @@ def read_body(f, natoms, frags = True, topo = False):
         return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers
 
 
-def write_body(f, mol, frags=True, topo=False):
+def write_body(f, mol, frags=True, topo=False, moldenr=False):
     """
     Routine, which writes the body of a txyz or a mfpx file
     :Parameters:
@@ -147,16 +147,29 @@ def write_body(f, mol, frags=True, topo=False):
         -frags  (bool) : flag to specify if fragment info should be in body or not
         -topo   (bool) : flag to specigy if pconn info should be in body or not
     """
-    elems       = mol.elems
-    atypes      = mol.atypes
-    xyz         = mol.xyz
-    cnct        = mol.conn
-    natoms      = mol.natoms
     if topo: frags = False   #from now on this is convention!
+    if topo: pconn = mol.pconn
     if frags == True:
         fragtypes   = mol.fragtypes
         fragnumbers = mol.fragnumbers
-    if topo: pconn = mol.pconn
+    elems       = mol.elems
+    xyz         = mol.xyz
+    cnct        = mol.conn
+    natoms      = mol.natoms
+    if moldenr: ###TO BE DEBUGGED
+        moltypes = {}
+        moldentypes = []
+        for i in xrange(mol.natoms):
+            #if frags: item = '__'.join([mol.atypes[i], mol.fragtypes[i], str(mol.fragnumbers[i])]) 
+            if frags: item = '__'.join([mol.atypes[i], mol.fragtypes[i]]) 
+            else: item = mol.atypes[i]
+            if not item in moltypes:
+                moltypes[item]=(len(moltypes)+1, mol.elems[i])
+            moldentypes.append( moltypes[item][0] )
+        atypes = moldentypes
+        frags=False ### => only one column all together
+    else:
+        atypes      = mol.atypes
     for i in xrange(mol.natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
@@ -178,10 +191,14 @@ def write_body(f, mol, frags=True, topo=False):
             else:
                 line += (len(conn)*"%7d") % tuple(conn)
         f.write("%s \n" % line)
+    if moldenr:
+        f.write("#atomtypes \n")
+        for i in moltypes:
+            f.write("%s %s %s \n" % (moltypes[i][0], i, moltypes[i][1]))
     return
 
 
-def write(mol, fname, topo = False, frags = False):
+def write(mol, fname, topo = False, frags = False, moldenr=False):
     """
     Routine, which writes an txyz file
     :Parameters:
@@ -195,6 +212,6 @@ def write(mol, fname, topo = False, frags = False):
         f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)
-    write_body(f, mol, topo=topo, frags = frags)
+    write_body(f, mol, topo=topo, frags = frags, moldenr=moldenr)
     f.close()
     return

@@ -7,7 +7,7 @@ from graph_tool import Graph
 from graph_tool.topology import *
 import numpy
 import copy
-from weaver import user_api
+from mofplus import user_api
 from string import ascii_lowercase
 
 class conngraph:

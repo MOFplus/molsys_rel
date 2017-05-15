@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# RS .. to overload print in parallel case (needs to be the first line)
+from __future__ import print_function
 import string as st
 import numpy as np
 import types
@@ -7,12 +9,13 @@ import string
 import os
 import subprocess
 from cStringIO import StringIO
+from mpi4py import MPI
 
 from util import unit_cell
 from util import elems as elements
 from util import rotations
 from util import images
-from io import formats
+from fileIO import formats
 
 import addon
 
@@ -23,18 +26,35 @@ import addon
 # NOTE: this needs to be done once only here for the root logger molsys
 # any other module can use either this logger or a child logger
 # no need to redo this config in the other modules!
+# NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the 
+#        master node writes INFO to stdout
 import logging
+mpi_rank = MPI.COMM_WORLD.Get_rank()
+mpi_size = MPI.COMM_WORLD.Get_size()
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
-fhandler  = logging.FileHandler("molsys.log")
+if mpi_size > 1:
+    logger_file_name = "molsys.%d.log" % mpi_rank
+else:
+    logger_file_name = "molsys.log"
+fhandler  = logging.FileHandler(logger_file_name)
 fhandler.setLevel(logging.DEBUG)
-shandler  = logging.StreamHandler()
-shandler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
-shandler.setFormatter(formatter)
 logger.addHandler(fhandler)
-logger.addHandler(shandler)
+if mpi_rank == 0:
+    shandler  = logging.StreamHandler()
+    shandler.setLevel(logging.INFO)
+    shandler.setFormatter(formatter)
+    logger.addHandler(shandler)
+    
+# overload print function in parallel case
+import __builtin__
+def print(*args, **kwargs):
+    if mpi_rank == 0:
+        return __builtin__.print(*args, **kwargs)
+    else:
+        return
 
 
 
@@ -44,7 +64,13 @@ SMALL_DIST = 1.0e-3
 
 class mol:
 
-    def __init__(self):
+    def __init__(self, mpi_comm=None):
+        if mpi_comm:
+            self.mpi_comm = mpi_comm
+        else:
+            self.mpi_comm = MPI.COMM_WORLD
+        self.mpi_rank = self.mpi_comm.Get_rank()
+        self.mpi_size = self.mpi_comm.Get_size()
         self.natoms=0
         self.cell=None
         self.cellparams=None
@@ -57,10 +83,11 @@ class mol:
         self.fragtypes=[]
         self.fragnumbers=[]
         self.nfrags = 0
-        self.periodic= None
+        self.periodic=False
         self.is_bb=False
         self.weight=1
         self.loaded_addons =  []
+        self.set_logger_level()
         return
 
     #####  I/O stuff ############################
@@ -76,17 +103,26 @@ class mol:
             logger.setLevel(logging.DEBUG)
         return
 
-    def read(self,fname,ftype='mfpx',**kwargs):
+    def read(self,fname,ftype=None,**kwargs):
         ''' generic reader for the mol class
         :Parameters:
             - fname        : the filename to be read
             - ftype="mfpx" : the parser type that is used to read the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
-
-        logger.info("reading file "+str(fname)+' as .'+str(ftype)+' file')
+        if ftype is None:
+            fsplit = fname.rsplit('.',1)[-1]
+            if fsplit != fname: #there is an extension
+                ftype = fsplit #ftype is inferred from extension
+            else: #there is no extension
+                ftype = 'mfpx' #default
+        logger.info("reading file "+str(fname)+' in '+str(ftype)+' format')
         f = open(fname, "r")
-        formats.read[ftype](self,f,**kwargs)
+        if ftype in formats.read:
+            formats.read[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
         return
 
     def fromString(self, istring, ftype='mfpx', **kwargs):
@@ -98,33 +134,49 @@ class mol:
                              see molsys.io.* for detailed info'''
         logger.info("reading string as %s" % str(ftype))
         f = StringIO(istring)
-        formats.read[ftype](self,f,**kwargs)
+        if ftype in formats.read:
+            formats.read[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
         return
 
-    def write(self,fname,ftype='mfpx',**kwargs):
+    def write(self,fname,ftype=None,**kwargs):
         ''' generic writer for the mol class
         :Parameters:
             - fname        : the filename to be written
             - ftype="mfpx" : the parser type that is used to writen the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
-        logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-        formats.write[ftype](self,fname,**kwargs)
+        if self.mpi_rank == 0:
+            if ftype is None:
+                fsplit = fname.rsplit('.',1)[-1]
+                if fsplit != fname: #there is an extension
+                    ftype = fsplit #ftype is inferred from extension
+                else: #there is no extension
+                    ftype = 'mfpx' #default
+            logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
+            if ftype in formats.read:
+                formats.write[ftype](self,fname,**kwargs)
+            else:
+                logger.error("unsupported format: %s" % ftype)
+                raise IOError("Unsupported format")
         return
 
     def view(self, **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
-        logger.info("invoking moldenx as visualisation tool")
-        _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
-        self.write(_tmpfname)
-        try:
-            ret = subprocess.call(["moldenx", _tmpfname])
-        except KeyboardInterrupt:
-            pass
-        finally:
-            os.remove(_tmpfname)
-            logger.info("temporary file "+_tmpfname+" removed")
+        if self.mpi_rank == 0:
+            logger.info("invoking moldenx as visualisation tool")
+            _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
+            self.write(_tmpfname)
+            try:
+                ret = subprocess.call(["moldenx", _tmpfname])
+            except KeyboardInterrupt:
+                pass
+            finally:
+                os.remove(_tmpfname)
+                logger.info("temporary file "+_tmpfname+" removed")
         return
 
     ##### addons ##################################
@@ -162,6 +214,11 @@ class mol:
             else:
                 logger.error("spglib is not available! THis addon can not be used")
                 return
+        if addmod == "ric":
+            if addon.ric != None:
+                self.ric = addon.ric(self)
+            else:
+                logger.error("ric is not available! This addon can not be used")
         elif addmod == "ff":
             self.ff = addon.ff(self)
         elif addmod == "molecules":
@@ -233,10 +290,10 @@ class mol:
         logger.info("reporting connectivity ... ")
         for i in xrange(self.natoms):
             conn = self.conn[i]
-            print "atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn))
+            print ("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
             for j in xrange(len(conn)):
                 d = self.get_neighb_dist(i,j)
-                print "   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d)
+                print ("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
 
     ###  periodic systems .. cell manipulation ############
@@ -280,8 +337,8 @@ class mol:
                         for c in range(len(conn[i][cc])):
                             pc = self.get_distvec(cc,conn[i][cc][c])[2]
                             if len(pc) != 1:
-                                print self.get_distvec(cc,conn[i][cc][c])
-                                print c,conn[i][cc][c]
+                                print (self.get_distvec(cc,conn[i][cc][c]))
+                                print (c,conn[i][cc][c])
                                 raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
                             pc = pc[0]
                             if pc == 13:
@@ -395,7 +452,7 @@ class mol:
                 - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
-                print "can not add periodic systems with unequal cells!!"
+                raise ValueError, "can not add periodic systems with unequal cells!!"
                 return
         other_xyz = other.xyz.copy()
         # NOTE: it is important ot keep the order of operations
@@ -414,7 +471,7 @@ class mol:
         if self.natoms==0:
             self.xyz = other_xyz
         else:
-            self.xyz = np.array(self.xyz.tolist()+other_xyz.tolist(),"d")
+            self.xyz = np.concatenate((self.xyz, other_xyz))
         self.elems += other.elems
         self.atypes+= other.atypes
         for c in other.conn:
@@ -432,6 +489,27 @@ class mol:
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
     ###  molecular manipulations #######################################
+
+    def delete_atoms(self,bads):
+        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        if hasattr(bads, '__iter__'):
+            if len(bads) > 2:
+                self.bads = bads
+                self.bads.sort()
+                self.goods = [i for i in xrange(self.natoms) if i not in self.bads]
+                self.offset = np.zeros(self.natoms, 'int')
+                for i in xrange(self.natoms):
+                    if i in self.bads:
+                        self.offset[i:] += 1
+                self.atypes = np.take(self.atypes,self.goods)
+                self.elems  = np.take(self.elems, self.goods)
+                self.conn   = np.take(self.conn,  self.goods)
+                self.natoms = len(self.elems)
+                self.conn =[ [j-self.offset[j] for j in self.conn[i] if j not in bads] for i in xrange(self.natoms) ]
+                self.xyz    = self.xyz[self.goods]
+                return
+        else:
+            self.delete_atom(bads)
 
     def delete_atom(self,bad):
         ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
@@ -472,7 +550,8 @@ class mol:
             if labels.count(e) != 0:
                 badlist.append(i)
         logger.info('removing '+ str(badlist[::-1]))
-        for i in badlist[::-1]: self.delete_atom(i)
+        self.delete_atoms(badlist)
+        #for i in badlist[::-1]: self.delete_atom(i)
         return
 
     def translate(self, vec):
@@ -506,8 +585,8 @@ class mol:
             - idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
         if hasattr(self,'masstype') == False: self.set_real_mass()
-        if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
-        if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
+        #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
+        #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
         if idx == None:
             if self.periodic: return None
             xyz = self.get_xyz()
@@ -518,7 +597,7 @@ class mol:
         if self.periodic:
             fix = xyz[0,:]
             a = xyz[1:,:] - fix
-            if self.bcond == 2:
+            if self.bcond <= 2:
                 cell_abc = self.cellparams[:3]
                 xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
             elif self.bcond == 3:
@@ -526,6 +605,19 @@ class mol:
                 xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
+
+    def map2image(self,xyz):
+        if self.periodic == False: return xyz
+        fix = xyz[0]
+        a = xyz[1:,:] - fix
+        if self.bcond <= 2:
+            cell_abc = self.cellparams[:3]
+            xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
+        elif self.bcond == 3:
+            frac = np.dot(a, self.inv_cell)
+            xyz[1:,:] -= np.dot(np.around(frac),self.cell)
+        return xyz
+
 
     def new_mol_by_index(self, idx):
         """
@@ -559,6 +651,7 @@ class mol:
         if type(self.cell) != type(None):
             m.set_cell(self.cell)
             m.periodic = True
+            """ ###SOURCE OF BUG, YET NOT STUDIED
             stop = False
             while not stop:
                 stop = True
@@ -570,6 +663,15 @@ class mol:
                             for ik, k in enumerate(self.cell):
                                 m.xyz[j] += k * images[imgi][0][ik]
                             break
+            """
+            ### it SEEMS to work now without the while loop, NO WARRANTY (RA+MD)
+            for i, conns in enumerate(m.conn):
+                for j in conns:
+                    d, r, imgi = m.get_distvec(i, j)
+                    if imgi != [13]:
+                        for ik, k in enumerate(self.cell):
+                            m.xyz[j] += k * images[imgi][0][ik]
+                        break
             m.cell = None
             m.periodic = False
         return m

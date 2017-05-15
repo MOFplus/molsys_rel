@@ -5,6 +5,7 @@ import types
 import copy
 import string
 import logging
+from collections import Counter
 
 import util.elems as elements
 import util.unit_cell as unit_cell
@@ -210,7 +211,10 @@ class topo(mol.mol):
 
     def detect_conn(self, fixed_cutoff=None, pconn=False, exclude_pairs=None, cov_rad_buffer=0.1):
         self.conn = []
-        if pconn: self.use_pconn=True
+        if pconn:
+            self.use_pconn=True
+        else:
+            self.use_pconn=False
         for i in xrange(self.natoms):
             self.conn.append([])
             if self.use_pconn: self.pconn.append([])
@@ -470,16 +474,17 @@ class topo(mol.mol):
 
 # ########## additional stuff for edge coloring ############################################
 
-    def color_edges(self, proportions, maxiter=100, maxstep=100000, penref=0.3):
+    def color_edges(self, proportions, maxiter=100, maxstep=100000, nprint=1000, penref=0.3, MC=True):
         """
         wrapper to search for a zero penalty solution of edge coloring. An initial coloring is generated
         randomly and a flipMC run is started ... if no zero penalty is found after maxsteps it is repeated ...
         """
+        self.MC = MC
         converged = False
         niter = 0
         while not (converged and (niter<maxiter)):
-            self.init_color_edges(proportions)
-            result = self.run_flip(maxstep, penref=penref)
+            self.init_color_edges(proportions, MC=True)
+            result = self.run_flip(maxstep, nprint=nprint, penref=penref)
             if result[0] : converged=True
             niter += 1
         print "**********************************************************************"
@@ -488,7 +493,7 @@ class topo(mol.mol):
         return
 
 
-    def init_color_edges(self, proportions):
+    def init_color_edges(self, proportions=[], colors=[], MC=False):
         """
         generate datastructures for edge coloring and set up random
         the proportions are a list or tuple of integer.
@@ -498,27 +503,28 @@ class topo(mol.mol):
         with 2 red and 1 blue ... this means the total number of edges inthe periodic net must
         be a multiple of 3
         """
-        self.prop = proportions
-        self.ncolors = len(proportions)
-        self.nprop = np.array(proportions).sum()
+        self.MC = MC
+        assert bool(proportions) ^ bool(list(colors)), "either proportions or colors must be non-empty"
         # generate the list of bonds only "upwards" bonds (i1<i2) are stored
-        blist = []
-        for i, ci in enumerate(self.conn):
-            for j in ci:
-                if i<j:
-                    blist.append([i,j])
+        blist = [ [i,j] for i,ci in enumerate(self.conn) for j in ci if i<j ]
         # convert blist into numpy array
         self.blist = np.array(blist)
         self.nbonds = len(self.blist)
-        assert self.nbonds%self.nprop==0,  "these proportions do not work"
-        colors = []
-        nc = self.nbonds/self.nprop
-        for c, p in enumerate(self.prop):
-            col = []
-            for i in xrange(p*nc): col.append(c)
-            colors += col
+        if list(colors):
+            #set colors by argument, get proportions via color
+            assert self.nbonds == len(colors), "number of colors is different than number of bonds"
+            self.prop, self.nprop = zip( *Counter(colors).most_common() ) ###already sorted
+            assert self.prop[-1] == 1, "proportions must be multiple of 1, these colors do not work"
+        else:
+            #get colors via proportions, set proportions by argument
+            self.prop = proportions
+            self.nprop = np.array(proportions).sum()
+            assert self.nbonds%self.nprop==0,  "these proportions do not work"
+            nc = self.nbonds/self.nprop
+            colors = [c for c,p in enumerate(self.prop) for i in xrange(p*nc)]
+        random.shuffle(colors)
         self.colors = np.array(colors)
-        numrand.shuffle(self.colors)
+        self.ncolors = len(self.prop)
         # generate the bcolors table (same as self.conn but with colors)
         self.bcolors = copy.deepcopy(self.conn)
         for i in xrange(self.nbonds):
@@ -652,27 +658,32 @@ class topo(mol.mol):
         """
         i, j = self.blist[bond]
         c = self.colors[bond]
-        #print "bond from %3d to %3d : color %3d" % (i, j, c)
-        #print "i_conn:  ", self.conn[i]
-        #print "j_conn:  ", self.conn[j]
+        #logger.debug("bond from %3d to %3d : color %3d" % (i, j, c) )
+        #logger.debug("i_conn: %s" % repr(self.conn[i]) )
+        #logger.debug("j_conn: %s" % repr(self.conn[j]) )
         ### set for i
+        ### BUG FOR 2x2x2 pcu: a vertex connects twice to the same vertex!!!
+        ### TBI: add pconn for topos
         j_ind = self.conn[i].index(j)
         i_ind = self.conn[j].index(i)
-        #print "i_ind ", i_ind
-        #print "j_ind ", j_ind
+        #logger.debug("i_ind %6d" % i_ind)
+        #logger.debug("j_ind %6d" % j_ind)
         self.bcolors[i][j_ind] = c
         self.bcolors[j][i_ind] = c
         return
 
     def calc_colpen(self, vert):
         # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(self.bcolors[vert]))
-        pen_sum = self.calc_colpen_sum(vert)
-        if pen_sum == 0.0:
-            # this vertex has the correct number of colors on the edges
-            # now compute in addition the penalty on the orientation
-            return self.calc_colpen_orient(vert)
+        if self.MC:
+            pen_sum = self.calc_colpen_sum(vert)
+            if pen_sum == 0.0:
+                # this vertex has the correct number of colors on the edges
+                # now compute in addition the penalty on the orientation
+                return self.calc_colpen_orient(vert)
+            else:
+                return pen_sum
         else:
-            return pen_sum
+            return self.calc_colpen_sum(vert) + self.calc_colpen_orient(vert)
 
     def calc_colpen_sum(self, vert):
         """ compute the color penalty for vertex vert
@@ -702,7 +713,8 @@ class topo(mol.mol):
             v = []
             for ji in xrange(len(self.conn[i])):
                 v.append(self.get_neighb_coords(i, ji)-self.xyz[i])
-            vn = vector.normalize(np.array(v))
+            v = np.array(v)
+            vn = v / np.linalg.norm(v, axis=-1)[:, np.newaxis]
             mat = np.sum(vn[:,np.newaxis,:]*vn[np.newaxis,:,:], axis=2)
             self.scalmat.append(mat)
         #self.scalmat = np.array(self.scalmat)
@@ -716,9 +728,13 @@ class topo(mol.mol):
             col0_edges = []
             for i,c in enumerate(self.bcolors[vert]):
                 if c == 0: col0_edges.append(i)
-            scal = self.scalmat[vert][col0_edges[0], col0_edges[1]]
-            # print "check orient for vert %d  : %s %103f" % (vert, str(col0_edges), scal)
-            return self.colpen_orient_fact*(scal+self.colpen_orientrule[vert])
+            #print col0_edges
+            try:
+                scal = self.scalmat[vert][col0_edges[0], col0_edges[1]]
+                # print "check orient for vert %d  : %s %103f" % (vert, str(col0_edges), scal)
+                return self.colpen_orient_fact*abs(scal+self.colpen_orientrule[vert])
+            except IndexError:
+                return 999.
         else:
             return 0.0
 
@@ -739,5 +755,13 @@ class topo(mol.mol):
             self.colpen_orientrule.append(vert_dict[self.elems[i]])
         return
 
+##### ADDRA ###################################################################
 
-
+	def GCD(num):
+		"""compute greatest common divisor for a list. fractions.gcd works only for two numbers"""
+		from fractions import gcd
+		if len(num) > 2:
+			return reduce(lambda x,y:gcd(x,y),num)
+		else:
+			return gcd(*num)
+##### DDARA ###################################################################
