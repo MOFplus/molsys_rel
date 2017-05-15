@@ -106,11 +106,13 @@ class ff2lammps(object):
         self._settings = {}
         # set defaults
         self._settings["cutoff"] = 12.0
-        self._settings["parformat"] = "%15.8f"
+        self._settings["parformat"] = "%15.8g"
         self._settings["vdw_a"] = 1.84e5
         self._settings["vdw_b"] = 12.0
         self._settings["vdw_c"] = 2.25
         self._settings["vdw_dampfact"] = 0.25
+        self._settings["vdw_smooth"] = 0.9
+        self._settings["use_angle_cosine_buck6d"] = False
         return
 
     def setting(self, s, val):
@@ -232,7 +234,7 @@ class ff2lammps(object):
             hf.close()
         f.write("\n# ------------------------ MOF-FF FORCE FIELD ------------------------------\n")
         # pair style
-        f.write("\npair_style buck6d/coul/gauss/dsf %10.4f\n\n" % (self._settings["cutoff"]))
+        f.write("\npair_style buck6d/coul/gauss/dsf %10.4f %10.4f\n\n" % (self._settings["vdw_smooth"], self._settings["cutoff"]))
         for i, ati in enumerate(self.plmps_atypes):
             for j, atj in enumerate(self.plmps_atypes[i:],i):
                 r0, eps, alpha_ij = self.plmps_pair_data[(i+1,j+1)]
@@ -263,7 +265,10 @@ class ff2lammps(object):
                     raise ValueError, "unknown bond potential"
                 f.write("bond_coeff %5d %s    # %s\n" % (bt_number, pstring, ibt))
         # angle style
-        f.write("\nangle_style hybrid class2/p6 cosine/vdwl13\n\n")                
+        if self._settings["use_angle_cosine_buck6d"]:
+            f.write("\nangle_style hybrid class2/p6 cosine/buck6d\n\n")                                        
+        else:
+            f.write("\nangle_style hybrid class2/p6 cosine/vdwl13\n\n")                
         # f.write("\nangle_style class2/mofff\n\n")
         for at in self.par_types["ang"].keys():
             at_number = self.par_types["ang"][at]
@@ -272,12 +277,12 @@ class ff2lammps(object):
                 if pot_type == "mm3":
                     th0 = params[1]
                     K2  = params[0]*mdyn2kcal/2.0 
-                    K3 = K2*(-0.014)
-                    K4 = K2*5.6e-5
-                    K5 = K2*-7.0e-7
-                    K6 = K2*2.2e-8
-                    # pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
-                    pstring = "%12.6f %12.6f" % (th0, K2)
+                    K3 = K2*(-0.014)*rad2deg
+                    K4 = K2*5.6e-5*rad2deg**2
+                    K5 = K2*-7.0e-7*rad2deg**3
+                    K6 = K2*2.2e-8*rad2deg**4
+                    pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
+                    # pstring = "%12.6f %12.6f" % (th0, K2)
                     f.write("angle_coeff %5d class2/p6    %s    # %s\n" % (at_number, pstring, iat))
                     # f.write("angle_coeff %5d    %s    # %s\n" % (at_number, pstring, iat))
                     # HACk to catch angles witout strbnd
@@ -297,7 +302,10 @@ class ff2lammps(object):
                     fold = params[2]
                     k = 0.5*params[0]*angleunit*rad2deg*rad2deg/fold
                     pstring = "%12.6f %5d %12.6f" % (k, fold, a0)
-                    f.write("angle_coeff %5d cosine/vdwl13   %s    # %s\n" % (at_number, pstring, iat))
+                    if self._settings["use_angle_cosine_buck6d"]:
+                        f.write("angle_coeff %5d cosine/buck6d   %s    # %s\n" % (at_number, pstring, iat))                        
+                    else:
+                        f.write("angle_coeff %5d cosine/vdwl13   %s 1.0   # %s\n" % (at_number, pstring, iat))
                 else:
                     raise ValueError, "unknown angle potential"
         # dihedral style
