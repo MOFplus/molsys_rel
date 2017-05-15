@@ -88,12 +88,13 @@ class ic(list):
 
 class varpar(object):
 
-    def __init__(self, ff, name, val = 1.0, range = [0.0,2.0]):
+    def __init__(self, ff, name, val = 1.0, range = [0.0,2.0], bound = "w"):
         self._ff     = ff
         self.name    = name
         self.val     = val
         self.range   = range
         self.pos     = []
+        self.bound   = bound
 
     def __repr__(self):
         return self.name
@@ -104,6 +105,15 @@ class varpar(object):
             ic, pottype, parindex  = p
             self._ff.par[ic][pottype][1][parindex] = self.val
         return
+
+    @property
+    def bound(self):
+        return self._bound
+
+    @bound.setter
+    def bound(self,val):
+        assert val == "w" or val == "h"
+        self._bound = val
 
     @property
     def val(self):
@@ -623,7 +633,7 @@ class ff:
             logger.info("Parameter assignment successfull")
         return
 
-    def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"], strbnd = True):
+    def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"], strbnd = False):
         self.ric.compute_rics()
         self.variables = varpars()
         self.active_zone = []
@@ -673,7 +683,7 @@ class ff:
                                 vnames = map(lambda a: "$a%i_%i" % (count, a), range(6))
                                 par[fullparname2] = ("strbnd", vnames)
                                 for idx,vn in enumerate(vnames):
-                                    self.variables[vn] = varpar(ff=self, name = vn)
+                                    self.variables[vn] = varpar(ff=self, name = vn, bound = "h")
                                     self.variables[vn].pos.append((ic,fullparname2,idx))
                         else:
                             par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
@@ -1062,7 +1072,7 @@ class ff:
             f.write("refsysname %s\n\n" % self.refsysname)
             f.write("variables %d\n" % len(self.variables))
             for k,v in self.variables.items():
-                f.write("%10s %15.8f %15.8f %15.8f\n" % (v.name, v.val, v.range[0], v.range[1]))
+                f.write("%10s %15.8f %15.8f %15.8f %3s\n" % (v.name, v.val, v.range[0], v.range[1], v.bound))
         f.close()
         return
 
@@ -1127,7 +1137,7 @@ class ff:
                         nvar = int(sline[1])
                         for i in xrange(nvar):
                             sline = fpar.readline().split()
-                            self.variables[sline[0]] = varpar(self, sline[0], val = float(sline[1]), range = [float(sline[2]), float(sline[3])])
+                            self.variables[sline[0]] = varpar(self, sline[0], val = float(sline[1]), range = [float(sline[2]), float(sline[3])], bound = sline[-1])
                         vars = True
                     elif sline[0] == "refsysname":
                         self.refsysname = sline[1]
