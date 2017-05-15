@@ -34,6 +34,7 @@ import itertools
 import copy
 import string
 import json
+import collections
 
 import logging
 import pdb
@@ -49,6 +50,7 @@ class ic(list):
         list.__init__(self,*args)
         for k,v in kwargs.items():
             setattr(self, k, v)
+        self.used = False
         return
         
     def __getattr__(self, name):
@@ -82,8 +84,112 @@ class ic(list):
         else:
             values = tuple(self)
         return ((len(self)*form) % values) + attrstring
-                    
-                    
+        
+
+class varpar(object):
+
+    def __init__(self, ff, name, val = 1.0, range = [0.0,2.0], bound = "w"):
+        self._ff     = ff
+        self.name    = name
+        self.val     = val
+        self.range   = range
+        self.pos     = []
+        self.bound   = bound
+
+    def __repr__(self):
+        return self.name
+
+    def __call__(self, val = None):
+        if val != None: self.val = val
+        for i,p in enumerate(self.pos):
+            ic, pottype, parindex  = p
+            self._ff.par[ic][pottype][1][parindex] = self.val
+        return
+
+    @property
+    def bound(self):
+        return self._bound
+
+    @bound.setter
+    def bound(self,val):
+        assert val == "w" or val == "h"
+        self._bound = val
+
+    @property
+    def val(self):
+        return self._val
+
+    @val.setter
+    def val(self,val):
+        assert (type(val) == float) or (type(val) == np.float64) or (val[0] == "$") 
+        self._val = val
+        return
+
+class varpars(dict):
+
+    def __init__(self, *args, **kwargs):
+        self.update(*args, **kwargs)
+        return
+
+    @property
+    def ranges(self):
+        ranges = []
+        for k,v in self.items():
+            ranges.append(v.range)
+        return np.array(ranges)
+
+    @ranges.setter
+    def ranges(self, ranges):
+        assert len(ranges) == len(self.keys())
+        for i,v in enumerate(self.values()):
+            v.range = ranges[i]
+
+    @property
+    def vals(self):
+        vals   = []
+        for k,v in self.items():
+            vals.append(v.val)
+        return vals
+
+    def cleanup(self):
+        rem = []
+        for k,v in self.items():
+            if len(v.pos) == 0:
+                logger.warning("varpar %s is not used --> will be deleted!" % k)
+                rem.append(k)
+        for k in rem: del[self[k]]
+        return
+
+    @property
+    def varpots(self):
+        varpots = []
+        for k,v in self.items():
+            for i in range(len(v.pos)):
+                varpot = (v.pos[i][0], v.pos[i][1])
+                if varpot not in varpots: varpots.append(varpot)
+        return varpots
+
+    @property
+    def varpotnums(self):
+        ff = self.values()[0]._ff
+        varpots = self.varpots
+        varpotnums = {}
+        for i in varpots: varpotnums[i] = 0
+        ics = ["bnd", "ang", "dih", "oop"]
+        for ic in ics:
+            for pi in ff.parind[ic]:
+                for p in pi:
+                    if (ic,p) in varpots: varpotnums[(ic,p)]+=1
+        return varpotnums
+
+
+
+
+    def __call__(self, vals = None):
+        if type(vals) == type(None): vals = len(self)*[None]
+        assert len(vals) == len(self)
+        for i,v in enumerate(self.values()): v(vals[i])
+        return
 
 
 class ric:
@@ -127,6 +233,7 @@ class ric:
         self.dih = dih
         if sanity_test:
             # find bonds and check if they are equal ... this should be a sufficent test that the rest is the same, too
+            
             mol_bnd = self.find_bonds()
             if mol_bnd != bnd:
                 raise ValueError, "The rics provided do not match the mol object!"
@@ -153,7 +260,10 @@ class ric:
                 aa1 = apex_atoms[ia]
                 other_apex_atoms = apex_atoms[ia+1:]
                 for aa2 in other_apex_atoms:
-                    angles.append(ic([aa1, ca, aa2]))
+                    if str(self.aftypes[aa1]) <= str(self.aftypes[aa2]):
+                        angles.append(ic([aa1, ca, aa2]))
+                    else:
+                        angles.append(ic([aa2, ca, aa1]))
         return angles
 
     @timer("find oops")
@@ -319,10 +429,10 @@ class ric:
         Computes the values of the rics and attaches 
         them to the corresponding ic
         """
-        for b in self.bnd: b.value = self.get_distance(b)
-        for a in self.ang: a.value = self.get_angle(a)
-        for d in self.dih: d.value = self.get_dihedral(d)
-        for o in self.oop: o.value = self.get_oop(o)
+        for b in self.bnd: b.value = self.get_distance(list(b))
+        for a in self.ang: a.value = self.get_angle(list(a))
+        for d in self.dih: d.value = self.get_dihedral(list(d))
+        for o in self.oop: o.value = self.get_oop(list(o))
         return
 
     def report(self):
@@ -357,15 +467,21 @@ class ff:
             "epsrule" : "geometric",            
             }
         self.pair_potentials_initalized = False
+        self.refsysname = None
+        self.fit = False
         logger.debug("generated the ff addon")
         return
 
-    def _init_data(self):
+    def _init_data(self, cha=None, vdw=None):
         # make data structures . call after ric has been filled with data either in assign or after read
         # these are the relevant datastructures that need to be filled by one or the other way.
+        if cha == None:
+            cha = [ic([i]) for i in range(self._mol.natoms)]
+        if vdw == None:
+            vdw = [ic([i]) for i in range(self._mol.natoms)]
         self.ric_type = {
-                "cha": [ic([i]) for i in range(self._mol.natoms)],
-                "vdw": [ic([i]) for i in range(self._mol.natoms)], 
+                "cha": cha,
+                "vdw": vdw, 
                 "bnd": self.ric.bnd, 
                 "ang": self.ric.ang, 
                 "dih": self.ric.dih, 
@@ -468,7 +584,8 @@ class ff:
                                                     curr_equi_par[aidx] = par[1][1]
                                                     if verbose>1: logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
                                         else:
-                                            full_parname = par[0] + "->" + str(parname) + "|" + ref
+                                            sparname = map(str, parname)
+                                            full_parname = par[0]+"->("+string.join(sparname,",")+")|"+ref
                                             full_parname_list.append(full_parname)
                                             if not full_parname in self.par[ic]:
                                                 if verbose>0: logger.info("  added parameter to table: %s" % full_parname)
@@ -516,16 +633,19 @@ class ff:
             logger.info("Parameter assignment successfull")
         return
 
-    def fixup_refsysparams(self):
+    def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"], strbnd = False):
+        self.ric.compute_rics()
+        self.variables = varpars()
         self.active_zone = []
         defaults = {
-            "bnd" : ("mm3", 2),
-            "ang" : ("mm3", 2),
-            "dih" : ("cos3", 3),
-            "oop" : ("harm", 2),
-            "cha" : ("gaussian", 2),
-            "vdw" : ("buck6d", 2)}
+            "bnd" : ("mm3", 2, "b", ["d","r"]),
+            "ang" : ("mm3", 2, "a", ["d","r"]),
+            "dih" : ("cos3", 3, "d", ["d","d","d"]),
+            "oop" : ("harm", 2, "o", ["d",0.0]),
+            "cha" : ("gaussian", 2, "c", ["d","d"]),
+            "vdw" : ("buck6d", 2, "v", ["d","d"])}
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            count  = 0
             ric = self.ric_type[ic]
             par = self.par[ic]
             parind = self.parind[ic]
@@ -539,98 +659,109 @@ class ff:
                         parname = self.get_parname(p)
                     else:
                         parname = self.get_parname_sort(p, ic)
-                    fullparname = defaults[ic][0] + "->" + str(parname) + "|" + self.refsysname
+                    sparname = map(str, parname)
+                    fullparname = defaults[ic][0]+"->("+string.join(sparname,",")+")|"+self.refsysname
+                    ### we have to set the variables here now
                     if not fullparname in par:
-                        par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
-                    parind[i] = [fullparname]
+                        if ic in var_ics:
+                            count+=1
+                            vnames = map(lambda a: "$%s%i_%i" % (defaults[ic][2],count,a) 
+                                if type(defaults[ic][3][a]) == str else defaults[ic][3][a], range(defaults[ic][1]))
+                            par[fullparname] = (defaults[ic][0], vnames)
+                            for idx,vn in enumerate(vnames):
+                                if type(vn) == str:
+                                    if defaults[ic][3][idx] == "r":
+                                        self.variables[vn]=varpar(ff=self,name = vn, 
+                                                val = p.value, range = [0.9*p.value, 1.1*p.value])
+                                    else:
+                                        self.variables[vn]=varpar(ff=self,name = vn)
+                                    self.variables[vn].pos.append((ic, fullparname, idx))
+                            # hack for strbnd
+                            if ic == "ang" and strbnd == True:
+                                fullparname2 = "strbnd->("+string.join(sparname,",")+")|"+self.refsysname
+                                count+=1
+                                vnames = map(lambda a: "$a%i_%i" % (count, a), range(6))
+                                par[fullparname2] = ("strbnd", vnames)
+                                for idx,vn in enumerate(vnames):
+                                    self.variables[vn] = varpar(ff=self, name = vn, bound = "h")
+                                    self.variables[vn].pos.append((ic,fullparname2,idx))
+                        else:
+                            par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
+                    if ic == "ang" and strbnd == True:
+                        parind[i] = [fullparname, fullparname2]
+                    else:
+                        parind[i] = [fullparname]
+        self.set_def_sig(self.active_zone)
+        self.set_def_vdw(self.active_zone)
+        self.fix_strbnd()
         return
-        
 
-#    def write_params_to_key(self, fname = "new"):
-#        self.ric.compute_rics()
-#        from ff_gen import tools
-#        kc = tools.keycreator()
-#        vdw = tools.vdwp()
-#        buffer = ""
-#        ### gather types to make key file more readable
-#        buffer += "### type lookup table ###\n"
-#        typemapper =  {}
-#        for i, aft in enumerate(self.aftypes):
-#            if str(aft) not in typemapper.keys():
-#                typemapper[str(aft)] = str(len(typemapper.keys()))
-#                buffer += "# %-20s %-5s\n" % (str(aft), typemapper[str(aft)])
-#        buffer += "\n"
-#        ### gather nonbonded params
-#        saftypes = map(str, self.aftypes)
-#        for aft in typemapper.keys():
-#            idx = saftypes.index(aft)
-#            buffer += kc.formatter("atom", [typemapper[aft]], params = [elems.mass[self._mol.elems[idx]]])
-#            pcha = []
-#            vdw(string.split(aft, "@")[0].split("_")[0])
-#            pvdw = vdw.set
-#            for i, aft2 in enumerate(self.aftypes):
-#                if str(aft2) == aft:
-#                    if self.parind["cha"][i] != None:
-#                        pcha = self.par["cha"][self.parind["cha"][i][0]][1]
-#                        pvdw = self.par["vdw"][self.parind["vdw"][i][0]][1]
-#                    break
-#            buffer += kc.formatter("vdw", [typemapper[aft]], params = pvdw)
-#            buffer += kc.formatter("charge", [typemapper[aft]], params = pcha)
-#            buffer += "\n"
-#        ### gather bonded params
-#        icmapper = {"bnd": "bond", "ang": "angle", "dih": "torsion", 
-#                "oop": "opbend", "cha":"charge", "vdw":"vdw", "strbnd":"strbnd"}
-#        ics = [ "bnd", "ang", "dih", "oop"]#, "cha", "vdw"]
-#        data = {"bnd": {}, "ang": {}, "dih": {}, "strbnd": {}, "oop":{}} #, "oop": {}}#, "cha": {}, "vdw": {}}
-#        for ic in ics:
-#            for i,p in enumerate(self.ric_type[ic]):
-#                parname = string.join(map(lambda a: typemapper[a],map(str,self.get_parname_sort(p,ic))), ":")
-#                if not parname in data[ic]:
-#                    if self.parind[ic][i] != None:
-#                        for j in self.parind[ic][i]:
-#                            if self.par[ic][j][0] == "strbnd":
-#                                data["strbnd"][parname] = [self.par[ic][j],[[p.value],[],[]]]
-#                            else:
-#                                data[ic][parname] = [self.par[ic][j],[[p.value],[],[]]]
-#                    else:
-#                        data[ic][parname] = [[],[[p.value],[],[]]]
-#                else:
-#                    data[ic][parname][1][0].append(p.value)
-#        ### write to key
-#        defaults = {"bnd": 2.0, "ang": 1.0, "dih": 1.0, "oop": 0.1}
-#        for i in ["bnd", "ang", "strbnd", "dih", "oop",]:
-#            for ic, p in data[i].items():
-#                lic = string.split(ic,":")
-#                if p[0] != []:
-#                    if i == "strbnd":
-#                        buffer+= kc.formatter(icmapper[i], lic, params = p[0][1][0:3])
-#                    else:
-#                        buffer+= kc.formatter(icmapper[i], lic, params = p[0][1])
-#                else:
-#                    if i == "dih":
-#                        m = int(np.round(np.mean(np.array(p[1][0])[:,1])))
-#                        vals = np.array(p[1][0])[:,0]
-#                        gp =  self.get_torsion(vals, m, thresshold = 10)
-#                        ### tbi
-#                        buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
-#                    else:
-#                        gp = [defaults[i], np.mean(p[1][0])]
-#                        if i == "strbnd":
-#                            buffer+= kc.formatter(icmapper[i], lic, params = gp[0:3], var = True)
-#                        else:
-#                            buffer+= kc.formatter(icmapper[i], lic, params = gp, var = True)
-#            buffer += "\n"
-#        ### buffer to key
-#        with open(fname+".key", "w") as fkey:
-#            fkey.write(kc.head)
-#            fkey.write(buffer)
-#        ### write txyz file with substituded atomtypes --> numbers
-#        numbers = map(lambda a: typemapper[a], saftypes)
-#        otypes  = copy.copy(self._mol.atypes)
-#        self._mol.atypes = numbers
-#        self._mol.write(fname +".txyz", ftype = "txyz")
-#        self._mol.atypes = otypes
-#        return data
+    def fix_strbnd(self):
+        ### get potentials to fix
+        pots = self.variables.varpots
+        dels = []
+        for p in pots:
+            pot, ref, aftypes = self.split_parname(p[1])
+            if pot == "strbnd":
+                # first check if apex atypes are the same
+                if aftypes[0] == aftypes[2]:
+                    dels.append(self.par["ang"][p[1]][1][1])
+                    self.par["ang"][p[1]][1][1] = self.par["ang"][p[1]][1][0]
+                # now distribute ref values
+                apot  = "mm3->"+p[1].split("->")[-1] 
+                spot1 = self.build_parname("bnd", "mm3", self.refsysname, aftypes[:2])
+                spot2 = self.build_parname("bnd", "mm3", self.refsysname, aftypes[1:])
+                s1 = self.par["bnd"][spot1][1][1]
+                s2 = self.par["bnd"][spot2][1][1]
+                a  = self.par["ang"][apot][1][1]
+                # del variables
+                dels.append(self.par["ang"][p[1]][1][3])
+                dels.append(self.par["ang"][p[1]][1][4])
+                dels.append(self.par["ang"][p[1]][1][5])
+                # rename variables
+                self.par["ang"][p[1]][1][3] = s1
+                self.par["ang"][p[1]][1][4] = s2
+                self.par["ang"][p[1]][1][5] = a
+                # redistribute pots to self.variables dictionary
+                self.variables[s1].pos.append(("ang", p[1],3))
+                self.variables[s2].pos.append(("ang", p[1],4))
+                self.variables[a].pos.append(("ang", p[1],5))
+        for i in dels: del(self.variables[i])
+
+
+
+
+    def set_def_vdw(self,ind):
+        elements = self._mol.get_elems()
+        atypes   = self._mol.get_atypes()
+        truncs   = [i.split("_")[0] for i in atypes]
+        for i in ind:
+            elem  = elements[i]
+            at    = atypes[i]
+            trunc = truncs[i]
+            try:
+                prm = elems.vdw_prm[at]
+            except:
+                try:
+                    prm = elems.vdw_prm[trunc]
+                except:
+                    prm = elems.vdw_prm[elem]
+            self.par["vdw"][self.parind["vdw"][i][0]][1] = prm
+        return
+
+    def set_def_sig(self,ind):
+        elements = self._mol.get_elems()
+        for i in ind:
+            elem = elements[i]
+            try:
+                sig = elems.sigmas[elem]
+            except:
+                sig = 0.0
+            self.par["cha"][self.parind["cha"][i][0]][1][1] = sig
+        return
+
+    def varnames2par(self):
+        self.variables(self.variables.keys())
 
 
     def setup_pair_potentials(self):
@@ -817,6 +948,16 @@ class ff:
         """
         l = map(lambda a: self.aftypes[a], alist)
         return tuple(aftype_sort(l,ic))
+
+    def split_parname(self,name):
+        pot = name.split("-")[0]
+        ref = name.split("|")[-1]
+        aftypes = name.split("(")[1].split(")")[0].split(",")
+        return pot, ref, aftypes
+
+    def build_parname(self, ic, pot, ref, aftypes):
+        sorted = aftype_sort(aftypes, ic)
+        return pot + "->("+string.join(sorted, ",")+")|"+ref
         
     def pick_params(self, aft_list, ic, pardir):
         """
@@ -855,16 +996,8 @@ class ff:
                 print (s)
             print ("\n")
         return
-
-    ################# IO methods #################################################
-
-    def write_par_files(self, fname):
-        """
-        write the rics including the referencing types to an ascii file
-        called <fname>.ric and the parameters to <fname>.par
-        """
-        if mpi_rank > 0:
-            return
+    
+    def enumerate_types(self):
         # dummy dicts to assign a number to the type
         par_types = {}
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
@@ -877,6 +1010,20 @@ class ff:
                     ptyp[rind] = i
                     i += 1
             par_types[ic] = ptyp
+        return par_types
+ 
+
+    ################# IO methods #################################################
+
+    def write(self, fname):
+        """
+        write the rics including the referencing types to an ascii file
+        called <fname>.ric and the parameters to <fname>.par
+        """
+        if mpi_rank > 0:
+            return
+        # dummy dicts to assign a number to the type
+        par_types = self.enumerate_types()
         # write the RICs first
         f = open(fname+".ric", "w")
         # should we add a name here in the file? the FF goes to par. keep it simple ...
@@ -898,7 +1045,9 @@ class ff:
         # write the par file
         if self.refsysname:
             # this is a fixed up refsystem for fitting
-            f = open(fname+".fpar", "w") 
+            f = open(fname+".fpar", "w")
+            vals = self.variables.vals
+            self.varnames2par()
         else:
             f = open(fname+".par", "w")             
         f.write("FF %s\n\n" % self.FF)
@@ -911,15 +1060,150 @@ class ff:
             for i in ind:
                 ipi = ptyp[i.split("->")[1]]
                 ptype, values = par[i]
-                sval = (len(values)*"%15.8f ") % tuple(values)
+                formatstr = string.join(map(lambda a: "%15.8f" if type(a) != str else "%+15s", values))
+                sval = formatstr % tuple(values)
+                #sval = (len(values)*"%15.8f ") % tuple(values)
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
             f.write("\n")
         if self.refsysname:
-            f.write("azone %s\n" % str(self.active_zone))
+            self.variables(vals)
+            active_zone = np.array(self.active_zone)+1
+            f.write(("azone "+len(active_zone)*" %d"+"\n\n") % tuple(active_zone))
+            f.write("refsysname %s\n\n" % self.refsysname)
+            f.write("variables %d\n" % len(self.variables))
+            for k,v in self.variables.items():
+                f.write("%10s %15.8f %15.8f %15.8f %3s\n" % (v.name, v.val, v.range[0], v.range[1], v.bound))
         f.close()
         return
 
-
+    def read(self, fname, fit=False):
+        """
+        read the ric/par files instead of assigning params
+        """
+        fric = open(fname+".ric", "r")
+        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
+        ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
+        ric      = {}
+        # read in ric first, store the type as an attribute in the first place
+        stop = False
+        assigned = []
+        while not stop:
+            line = fric.readline()
+            if len(line)==0:
+                # end of ric file
+                stop = True
+            sline = line.split()
+            if len(sline)> 0:
+                if sline[0] in ric_type:
+                    curric = sline[0]
+                    curric_len = ric_len[ric_type.index(curric)]
+                    assigned.append(curric)
+                    nric = int(sline[1])
+                    rlist = []
+                    for i in xrange(nric):
+                        sline = fric.readline().split()
+                        rtype = int(sline[1])
+                        aind  = map(int, sline[2:curric_len+2])
+                        aind  = np.array(aind)-1
+                        icl = ic(aind, type=rtype)
+                        for attr in sline[curric_len+2:]:
+                            atn,atv = attr.split("=")
+                            icl.__setattr__(atn, atv)
+                        rlist.append(icl)
+                    ric[curric] = rlist    
+        fric.close()
+        # now add data to ric object .. it gets only bnd, angl, oop, dih
+        self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
+        # time to init the data structures .. supply vdw and cha here
+        self._init_data(cha=ric["cha"], vdw=ric["vdw"])
+        # now open and read in the par file
+        if fit:
+            self.fit=True
+            fpar = open(fname+".fpar", "r")
+            # in the fit case we first screen for the variables block and read it in
+            self.variables = varpars()
+            line = fpar.readline()
+            stop = False
+            azone = False
+            vars  = False
+            refsysname = False
+            while not stop:
+                sline = line.split()
+                if len(sline)>0:
+                    if sline[0] == "azone":
+                        self.active_zone = map(int, sline[1:])
+                        azone = True
+                    elif sline[0] == "variables":
+                        nvar = int(sline[1])
+                        for i in xrange(nvar):
+                            sline = fpar.readline().split()
+                            self.variables[sline[0]] = varpar(self, sline[0], val = float(sline[1]), range = [float(sline[2]), float(sline[3])], bound = sline[-1])
+                        vars = True
+                    elif sline[0] == "refsysname":
+                        self.refsysname = sline[1]
+                        refsysname = True
+                    if azone == vars == refsysname == True:
+                        fpar.seek(0)
+                        stop = True
+                        break
+                line = fpar.readline()
+                if len(line) == 0:
+                    raise IOError, "Variables block and/or azone in fpar is missing!"
+        else:
+            fpar = open(fname+".par", "r")
+        stop = False
+        while not stop:
+            line = fpar.readline()
+            if len(line) == 0:
+                stop = True
+            sline = line.split()
+            if len(sline)>0:
+                curric = sline[0].split("_")[0]
+                if sline[0]=="FF":
+                    self.FF = sline[1]
+                elif curric in ric_type:
+                    par = self.par[curric]
+                    t2ident = {} # maps integer type to identifier
+                    ntypes = int(sline[1])
+                    for i in xrange(ntypes):
+                        sline = fpar.readline().split()
+                        # now parse the line 
+                        itype = int(sline[0])
+                        ptype = sline[1]
+                        ident = sline[-1]
+                        param = sline[2:-2]
+                        if self.fit:
+                            newparam = []
+                            # if we read a fpar file we need to test if there are variables
+                            for paridx,p in enumerate(param):
+                                if p[0] == "$":
+                                    if not p in self.variables:
+                                        raise IOError, "Varible $s undefiend in variable block" % p
+                                    self.variables[p].pos.append((curric,ident,paridx))
+                                    newparam.append(p)
+                                else:
+                                    newparam.append(float(p))
+                            param = newparam
+                        else:
+                            param = map(float, param)
+                        if ident in par:
+                            raise ValueError, "Identifier %s appears twice" % ident
+                        par[ident] = (ptype, param)
+                        if itype in t2ident:
+                            t2ident[itype].append(ident)
+                        else:
+                            t2ident[itype] = [ident]
+                    # now all types are read in: set up the parind datastructure of the ric
+                    parind = self.parind[curric]
+                    for i,r in enumerate(self.ric_type[curric]):
+                        parind[i] = t2ident[r.type]
+        fpar.close()
+        ### replace variable names by the current value
+        if self.fit: 
+            self.variables.cleanup()
+            self.variables()
+        return
+        
 
     def get_torsion(self, values, m, thresshold=5):
         '''

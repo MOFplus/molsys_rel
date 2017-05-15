@@ -243,12 +243,20 @@ fi
 
 ### MOLDEN SPECIFIC OPTIONS ###############################
 
-if [ ${REAL_FILE: -5} == ".mfpx" ]; then
+if [ "${REAL_FILE: -5}" == ".mfpx" ]; then
+    ### opens mfpx files
     ### if the extension is ".mfpx":
     ###     remove the comments, "erase" 6th and 7th columns
     ###     and redirect to temporary file
     ###     if everything is fine: molden the temporary file
     grep -v \# $REAL_FILE | awk '{$6="5"; $7=""; $8=""; print}' > $TEMP_FILE && $COMMAND $TEMP_FILE ${@//$REAL_FILE/}
+elif [ "${REAL_FILE: -4}" == ".xyz" ] || [ "${REAL_FILE: -4}" == ".txyz" ] ; then
+    ### opens xyz or txyz file, even with strings as atomtypes
+    ### if the extension is ".xyz" or ".txyz":
+    ###     remove the comments, fill 6th column with 0's
+    ###     and redirect to temporary file
+    ###     if everything is fine: molden the temporary file
+    grep -v \# $REAL_FILE | awk '{$6=($6~/^[0-9]+$/?$6:0); print}' > $TEMP_FILE && $COMMAND $TEMP_FILE ${@//$REAL_FILE/}
 else
     ### standard molden
     $COMMAND $@

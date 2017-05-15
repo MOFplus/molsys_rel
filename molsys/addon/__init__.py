@@ -22,12 +22,20 @@ except:
 else:
     from spg import spg
 
+try:
+    import ff_gen.ric
+except:
+    ric = None
+else:
+    from ric import ric
+
+
 from fragments import fragments
 from bb import bb
 from ff import ff
 from molecules import molecules
 
-__all__=["graph", "fragments", "bb", "zmat", "spg", "ff", "molecules"]
+__all__=["graph", "fragments", "bb", "zmat", "spg", "ff", "molecules", "ric"]
 
 
 
