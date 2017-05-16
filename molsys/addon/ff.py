@@ -1220,8 +1220,39 @@ class ff:
             self.variables.cleanup()
             self.variables()
         return
+    
+    def upload_params(self, refname):
+        """
+        Method to upload interactively the parameters to the already connected db.
         
-
+        :PARAMETER:
+            - refname  (str): name of the refsystem for which params should be uploaded
+        """
+        assert type(refname) == str
+        uploads = {
+                "cha": {},
+                "vdw": {}, 
+                "bnd": {}, 
+                "ang": {}, 
+                "dih": {}, 
+                "oop": {}}
+        for ic,v in self.parind.items():
+            for pl in v:
+                for pn in pl: 
+                    par = self.par[ic][pn]
+                    pot, ref, aftypes = self.split_parname(pn)
+                    if ref == refname:
+                        if (tuple(aftypes), pot) not in uploads[ic].keys():
+                            uploads[ic][(tuple(aftypes), pot)] = par[1]
+        for ptype, upls in uploads.items():
+            for desc, params in upls.items():
+                # TODO: remove inconsitenz in db conserning charge and cha
+                if ptype == "cha":
+                    self.api.set_params_interactive(self.FF, desc[0], "charge", desc[1], refname, params)
+                else:
+                    self.api.set_params_interactive(self.FF, desc[0], ptype, desc[1], refname, params)
+        return
+    
     def get_torsion(self, values, m, thresshold=5):
         '''
             Get a rest value of 0.0, 360/(2*m) or None depending on the given
