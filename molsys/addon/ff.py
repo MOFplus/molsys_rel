@@ -505,7 +505,7 @@ class ff:
         return
                 
     @timer("assign parameter")
-    def assign_params(self, FF, verbose=0, refsysname=None):
+    def assign_params(self, FF, verbose=0, refsysname=None, equivs = None):
         """
         method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -518,6 +518,10 @@ class ff:
         """
         self.FF = FF
         self.refsysname = refsysname
+        if type(equivs) != type(None):
+            assert type(equivs) == dict
+            assert type(refsysname) == str
+        self.equivs = equivs
         with self.timer("connect to DB"):
             ### init api
             if self._mol.mpi_rank == 0:
@@ -570,7 +574,8 @@ class ff:
                             if ((self.atoms_in_subsys(r, curr_fraglist)) and (self.atoms_in_active(r, curr_atomlist))):
                                 # no params yet and in current refsystem => check for params
                                 full_parname_list = []
-                                aft_list = map(lambda a: self.aftypes[a], r)
+                                aft_list = self.get_parname_equiv(r,ic,ref)
+                                #aft_list = map(lambda a: self.aftypes[a], r)
                                  # generate list of permuted tuples according to ic and look up params
                                 parname, par_list = self.pick_params(aft_list, ic, curr_par[ic])
                                 if par_list != None:
@@ -941,6 +946,16 @@ class ff:
         """
         l = map(lambda a: self.aftypes[a], alist)
         return tuple(l)
+
+    def get_parname_equiv(self,alist, ic, refsys):
+        assert type(ic) == type(refsys) == str
+        try:
+            # check for equivs
+            equivs = self.equivs[refsys][ic]
+            # ok, got some --> try to apply
+            return map(lambda a: self.aftypes[a] if a not in equivs.keys() else equivs[a], alist)
+        except:
+            return map(lambda a: self.aftypes[a], alist)
 
     def get_parname_sort(self, alist, ic):
         """
