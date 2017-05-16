@@ -1158,6 +1158,7 @@ class ff:
                 stop = True
             sline = line.split()
             if len(sline)>0:
+                if sline[0][0] == "#": continue 
                 curric = sline[0].split("_")[0]
                 if sline[0]=="FF":
                     self.FF = sline[1]
@@ -1167,6 +1168,7 @@ class ff:
                     ntypes = int(sline[1])
                     for i in xrange(ntypes):
                         sline = fpar.readline().split()
+                        if sline[0][0] == "#": continue 
                         # now parse the line 
                         itype = int(sline[0])
                         ptype = sline[1]
