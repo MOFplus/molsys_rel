@@ -28,13 +28,11 @@ def print(*args, **kwargs):
 import numpy as np
 from molsys.util.timing import timer, Timer
 from molsys.util import elems
-from molsys.util.aftypes import aftype, aftype_sort,afdict
+from molsys.util.aftypes import aftype, aftype_sort
 
 import itertools
 import copy
 import string
-import json
-import collections
 
 import logging
 import pdb
@@ -505,7 +503,7 @@ class ff:
         return
                 
     @timer("assign parameter")
-    def assign_params(self, FF, verbose=0, refsysname=None, equivs = None):
+    def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = []):
         """
         method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -516,12 +514,16 @@ class ff:
             - verbose   :    [integer, optional] print info on assignement process to logger
             - refsysname :    [string, optional] if set this is a refsystem leading to special treatment of nonidentified params 
         """
+        assert type(equivs) == dict
+        assert type(azone) == list
         self.FF = FF
         self.refsysname = refsysname
-        if type(equivs) != type(None):
-            assert type(equivs) == dict
-            assert type(refsysname) == str
         self.equivs = equivs
+        self.active_zone = azone
+        if self.refsysname == None and len(self.equivs.keys()) > 0:
+            raise IOError("Equiv feature can only used together with a defined refsysname")
+        if self.refsysname == None and len(self.active_zone) > 0:
+            raise IOError("Azone feature can only used together with a defined refsysname")
         with self.timer("connect to DB"):
             ### init api
             if self._mol.mpi_rank == 0:
@@ -620,12 +622,10 @@ class ff:
 
     def check_consistency(self):
         complete = True
-        active_zone = []
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             unknown_par = []
             for i, p in enumerate(self.ric_type[ic]):
                 if self.parind[ic][i] == None:
-                    if ic == "cha" and i not in active_zone: active_zone.append(i)
                     parname = self.get_parname(p)
                     if not parname in unknown_par:
                         unknown_par.append(parname)
@@ -641,7 +641,8 @@ class ff:
     def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"], strbnd = False):
         self.ric.compute_rics()
         self.variables = varpars()
-        self.active_zone = []
+        if hasattr(self, "active_zone") == False:
+            self.active_zone = []
         defaults = {
             "bnd" : ("mm3", 2, "b", ["d","r"]),
             "ang" : ("mm3", 2, "a", ["d","r"]),
@@ -949,12 +950,21 @@ class ff:
 
     def get_parname_equiv(self,alist, ic, refsys):
         assert type(ic) == type(refsys) == str
+        ### first check if an atom in r is in the predifined active zone
+        insides = []
+        for i in alist:
+            if self.active_zone.count(i) > 0: insides.append(i)
+        ### now perform the actual lookup
         try:
             # check for equivs
             equivs = self.equivs[refsys][ic]
             # ok, got some --> try to apply
+            # first check if for all insides an equiv is available
+            for i in insides: 
+                if i not in equivs.keys(): return None
             return map(lambda a: self.aftypes[a] if a not in equivs.keys() else equivs[a], alist)
         except:
+            if len(insides) > 0: return None
             return map(lambda a: self.aftypes[a], alist)
 
     def get_parname_sort(self, alist, ic):
@@ -974,11 +984,12 @@ class ff:
         sorted = aftype_sort(aftypes, ic)
         return pot + "->("+string.join(sorted, ",")+")|"+ref
         
-    def pick_params(self, aft_list, ic, pardir):
+    def pick_params(self,aft_list,ic, pardir):
         """
         new helper function to pick params from the dictionary pardir using permutations for the given ic
         if len of aft_list == 1 (ic = vdw or cha) no permutations necessary
         """
+        if aft_list == None: return (), None
         ic_perm = {"bnd": ((0,1), (1,0)),
                    "ang": ((0,1,2), (2,1,0)),
                    "dih": ((0,1,2,3),(3,2,1,0)),
