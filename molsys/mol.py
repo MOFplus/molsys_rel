@@ -103,7 +103,7 @@ class mol:
             logger.setLevel(logging.DEBUG)
         return
 
-    def read(self,fname,ftype=None,**kwargs):
+    def read(self, fname, ftype=None, **kwargs):
         ''' generic reader for the mol class
         :Parameters:
             - fname        : the filename to be read
@@ -124,22 +124,30 @@ class mol:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return
-
-    def fromString(self, istring, ftype='mfpx', **kwargs):
+    
+    @classmethod
+    def fromFile(cls, fname, ftype=None, **kwargs):
+        m = cls()
+        m.read(fname, ftype,**kwargs)
+        return m
+    
+    @classmethod
+    def fromString(cls, istring, ftype='mfpx', **kwargs):
         ''' generic reader for the mol class, reading from a string
         :Parameters:
             - string       : the string to be read
             - ftype="mfpx" : the parser type that is used to read the file
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
+        m = cls()
         logger.info("reading string as %s" % str(ftype))
         f = StringIO(istring)
         if ftype in formats.read:
-            formats.read[ftype](self,f,**kwargs)
+            formats.read[ftype](m,f,**kwargs)
         else:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
-        return
+        return m
 
     def write(self,fname,ftype=None,**kwargs):
         ''' generic writer for the mol class
@@ -206,13 +214,19 @@ class mol:
             if addon.zmat != None:
                 self.zmat = addon.zmat(self)
             else:
-                logger.error("pandas/chemcoord is not available! THis addon can not be used")
+                logger.error("pandas/chemcoord is not available! This addon can not be used")
                 return
         elif addmod  == "spg":
             if addon.spg != None:
                 self.spg = addon.spg(self)
             else:
-                logger.error("spglib is not available! THis addon can not be used")
+                logger.error("spglib is not available! This addon can not be used")
+                return
+        elif addmod == "ric":
+            if addon.ric != None:
+                self.ric = addon.ric(self)
+            else:
+                logger.error("ric is not available! This addon can not be used")
                 return
         elif addmod == "ff":
             self.ff = addon.ff(self)

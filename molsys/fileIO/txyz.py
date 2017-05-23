@@ -16,6 +16,7 @@ def read(mol, f, topo = False):
     """
     lbuffer = string.split(f.readline())
     mol.natoms = string.atoi(lbuffer[0])
+    if len(lbuffer) >1 and lbuffer[1] == "molden": lbuffer = [lbuffer[0]]
     if len(lbuffer) > 1 and lbuffer[1] not in ['special','coc','com']:
         boundarycond = 3
         if lbuffer[1] == "#":

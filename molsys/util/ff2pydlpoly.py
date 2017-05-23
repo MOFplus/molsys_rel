@@ -5,6 +5,7 @@ import sys
 import numpy
 import molsys
 import string
+import pdb
 
 attr_mappings = {
         "cnct": "conn",
@@ -101,10 +102,10 @@ class wrapper(object):
                 "ang": self.angleterm_formatter,
                 "dih": self.dihedralterm_formatter,
                 "oop": self.oopterm_formatter}
-        dest = {"bnd": pd.dlp_bnd.prmbnd,
-                "ang": pd.dlp_ang.prmang,
-                "dih": pd.dlp_dih.prmdih,
-                "oop": pd.dlp_inv.prminv}
+        dest = {"bnd": pd.dlp_bnd.prmbnd[:],
+                "ang": pd.dlp_ang.prmang[:],
+                "dih": pd.dlp_dih.prmdih[:,:4],
+                "oop": pd.dlp_inv.prminv[:]}
         ### bonded potentials ###
         for ict in ["bnd", "ang", "dih", "oop"]:
             counter = 0
@@ -117,7 +118,7 @@ class wrapper(object):
                     if type(prm) != type(None):
                         allprm[counter] = prm
                         counter += 1
-            dest[ict] = allprm
+            dest[ict][:] = allprm
             pd.set_atoms_moved()
         return
         
@@ -170,6 +171,7 @@ class wrapper(object):
                     potential, params = self.m.ff.par[ict][p]
                     term = formatter[ict](ic,potential,params)
                     if term:
+                        ic.used = True
                         buffer_out += term
                         count += 1
             f.write("%s %d\n" % (header[ict], count))
@@ -303,7 +305,7 @@ class wrapper(object):
             if ((V1==V2==V3==0.0) and (cou14==vdw14==1.0)):
                 return None
             else:
-                if internal: return numpy.array([V1*iunit, V2*iunit, V3*iunit,0.0,cou14,vdw14])
+                if internal: return numpy.array([V1*iunit, V2*iunit, V3*iunit,0.0])
                 return "   cos3  %5d %5d %5d %5d  %10.5f %10.5f %10.5f %10.5f  %10.5f  %10.5f\n" % \
                 (atoms[0]+1, atoms[1]+1, atoms[2]+1, atoms[3]+1, V1, V2, V3, 0.0, cou14, vdw14)
         elif potential == "cos4":
@@ -315,7 +317,7 @@ class wrapper(object):
             if V1==V2==V3==V4==0.0:
                 if cou14==vdw14==1.0: return None
             else:
-                if internal: return numpy.array([V1*iunit, V2*iunit, V3*iunit,V4*iunit,cou14,vdw14])
+                if internal: return numpy.array([V1*iunit, V2*iunit, V3*iunit,V4*iunit])
                 return "   cos4  %5d %5d %5d %5d  %10.5f %10.5f %10.5f %10.5f  %10.5f  %10.5f\n" % \
                 (atoms[0]+1, atoms[1]+1, atoms[2]+1, atoms[3]+1, V1, V2, V3, V4, cou14, vdw14)
         else:
