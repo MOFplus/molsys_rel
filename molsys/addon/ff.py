@@ -28,6 +28,7 @@ def print(*args, **kwargs):
 import numpy as np
 from molsys.util.timing import timer, Timer
 from molsys.util import elems
+from molsys.util.ff_descriptors import desc as ff_desc
 from molsys.util.aftypes import aftype, aftype_sort
 
 import itertools
@@ -1080,6 +1081,8 @@ class ff:
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             ptyp = par_types[ic]
             par = self.par[ic]
+            f.write(ff_desc[ic])
+            f.write("\n")
             f.write("%3s_type %d\n" % (ic, len(par)))
             ind = par.keys()
             ind.sort(key=lambda k: ptyp[k.split("->")[1]])
