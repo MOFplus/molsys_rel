@@ -176,7 +176,6 @@ class spg:
         except:
             import sys
             logger.error('could not get equivalent sites, '+str(sys.exc_info()[1]))
-            #import pdb; pdb.set_trace()
             return False
         #now do the new elems and stuff:
         for i,k in enumerate(kinds):
@@ -218,4 +217,19 @@ class spg:
         new_mol.set_nofrags()
         return new_mol
 
-
+    def get_symmetry(self):
+        """
+        returns lists of rotations, translations and equivalent atoms according to the spgcell
+        n.b.: spgcell must be generated with generate_spgcell
+        example:
+        >>> import molsys
+        >>> import numpy as np
+        >>> m = molsys.mol(); m.read(filename); m.addon("spg")
+        >>> m.spg.generate_spgcell()
+        >>> sym = m.spg.get_symmetry()
+        >>> n=0 #the symmetry index to be used
+        >>> rota, tran = sym['rotations'][n], sym['translations'][n]
+        >>> new_vector = rota*old_vector[:,np.newaxis] + tran
+        """
+        sym = spglib.get_symmetry(self.spgcell)
+        return sym['rotations'], sym['translations'], sym['equivalent_atoms']
