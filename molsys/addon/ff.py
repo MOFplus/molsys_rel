@@ -87,13 +87,15 @@ class ic(list):
 
 class varpar(object):
 
-    def __init__(self, ff, name, val = 1.0, range = [0.0,2.0], bound = "w"):
+    def __init__(self, ff, name, val = 1.0, range = [0.0,2.0], bounds = ["h","i"]):
+        assert len(bounds) == 2
+        assert bounds[0] in ["h", "i"] and bounds[1] in ["h", "i"]
         self._ff     = ff
         self.name    = name
         self.val     = val
         self.range   = range
         self.pos     = []
-        self.bound   = bound
+        self.bounds   = bounds
 
     def __repr__(self):
         return self.name
@@ -690,7 +692,7 @@ class ff:
                                 vnames = map(lambda a: "$a%i_%i" % (count, a), range(6))
                                 par[fullparname2] = ("strbnd", vnames)
                                 for idx,vn in enumerate(vnames):
-                                    self.variables[vn] = varpar(ff=self, name = vn, bound = "h")
+                                    self.variables[vn] = varpar(ff=self, name = vn)
                                     self.variables[vn].pos.append((ic,fullparname2,idx))
                         else:
                             par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
@@ -1101,7 +1103,7 @@ class ff:
             f.write("refsysname %s\n\n" % self.refsysname)
             f.write("variables %d\n" % len(self.variables))
             for k,v in self.variables.items():
-                f.write("%10s %15.8f %15.8f %15.8f %3s\n" % (v.name, v.val, v.range[0], v.range[1], v.bound))
+                f.write("%10s %15.8f %15.8f %15.8f %3s %3s\n" % (v.name, v.val, v.range[0], v.range[1], v.bounds[0], v.bounds[1]))
         f.close()
         return
 
@@ -1166,7 +1168,10 @@ class ff:
                         nvar = int(sline[1])
                         for i in xrange(nvar):
                             sline = fpar.readline().split()
-                            self.variables[sline[0]] = varpar(self, sline[0], val = float(sline[1]), range = [float(sline[2]), float(sline[3])], bound = sline[-1])
+                            self.variables[sline[0]] = varpar(self, sline[0], 
+                                          val = float(sline[1]), 
+                                          range = [float(sline[2]), float(sline[3])], 
+                                          bounds = [sline[4], sline[5]])
                         vars = True
                     elif sline[0] == "refsysname":
                         self.refsysname = sline[1]
