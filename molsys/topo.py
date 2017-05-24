@@ -514,7 +514,7 @@ class topo(mol.mol):
             #set colors by argument, get proportions via color
             assert self.nbonds == len(colors), "number of colors is different than number of bonds"
             self.prop, self.nprop = zip( *Counter(colors).most_common() ) ###already sorted
-            assert self.prop[-1] == 1, "proportions must be multiple of 1, these colors do not work"
+            #assert self.prop[-1] == 1, "proportions must be multiple of 1, these colors do not work"
         else:
             #get colors via proportions, set proportions by argument
             self.prop = proportions
@@ -522,7 +522,7 @@ class topo(mol.mol):
             assert self.nbonds%self.nprop==0,  "these proportions do not work"
             nc = self.nbonds/self.nprop
             colors = [c for c,p in enumerate(self.prop) for i in xrange(p*nc)]
-        random.shuffle(colors)
+            random.shuffle(colors)
         self.colors = np.array(colors)
         self.ncolors = len(self.prop)
         # generate the bcolors table (same as self.conn but with colors)
@@ -674,16 +674,13 @@ class topo(mol.mol):
 
     def calc_colpen(self, vert):
         # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(self.bcolors[vert]))
-        if self.MC:
-            pen_sum = self.calc_colpen_sum(vert)
-            if pen_sum == 0.0:
-                # this vertex has the correct number of colors on the edges
-                # now compute in addition the penalty on the orientation
-                return self.calc_colpen_orient(vert)
-            else:
-                return pen_sum
+        pen_sum = self.calc_colpen_sum(vert)
+        if pen_sum == 0.0:
+            # this vertex has the correct number of colors on the edges
+            # now compute in addition the penalty on the orientation
+            return self.calc_colpen_orient(vert)
         else:
-            return self.calc_colpen_sum(vert) + self.calc_colpen_orient(vert)
+            return pen_sum
 
     def calc_colpen_sum(self, vert):
         """ compute the color penalty for vertex vert
@@ -728,13 +725,8 @@ class topo(mol.mol):
             col0_edges = []
             for i,c in enumerate(self.bcolors[vert]):
                 if c == 0: col0_edges.append(i)
-            #print col0_edges
-            try:
-                scal = self.scalmat[vert][col0_edges[0], col0_edges[1]]
-                # print "check orient for vert %d  : %s %103f" % (vert, str(col0_edges), scal)
-                return self.colpen_orient_fact*abs(scal+self.colpen_orientrule[vert])
-            except IndexError:
-                return 999.
+            scal = self.scalmat[vert][col0_edges[0], col0_edges[1]]
+            return self.colpen_orient_fact*abs(scal+self.colpen_orientrule[vert])
         else:
             return 0.0
 
@@ -754,14 +746,15 @@ class topo(mol.mol):
         for i in xrange(self.natoms):
             self.colpen_orientrule.append(vert_dict[self.elems[i]])
         return
-
 ##### ADDRA ###################################################################
-
-	def GCD(num):
-		"""compute greatest common divisor for a list. fractions.gcd works only for two numbers"""
-		from fractions import gcd
-		if len(num) > 2:
-			return reduce(lambda x,y:gcd(x,y),num)
-		else:
-			return gcd(*num)
+def GCD(num):
+    """compute greatest common divisor for a list. fractions.gcd works only for two numbers"""
+    from fractions import gcd
+    try:
+        if len(num) > 2:
+            return reduce(lambda x,y:gcd(x,y),num)
+        else:
+            return gcd(*num)
+    except TypeError:
+        return num
 ##### DDARA ###################################################################
