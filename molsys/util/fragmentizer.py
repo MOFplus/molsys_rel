@@ -19,6 +19,7 @@ import glob
 import molsys
 import csv
 from mpi4py import MPI
+import atomtyper as atomtyper
 
 mpi_comm = MPI.COMM_WORLD
 mpi_rank = MPI.COMM_WORLD.Get_rank()
@@ -131,7 +132,7 @@ class fragmentizer:
         self.fragments[fname] = m
         return
 
-    def __call__(self, mol):
+    def __call__(self, mol, man = False):
         """
         tries to assign all fragmnets in the catalog to the mol object
 
@@ -185,4 +186,57 @@ class fragmentizer:
                         mol.fragnumbers[i] = fi
                         # print "atom %s set to fragment %s" % (atypes[i], fname)
                     fi += 1
+        ### patch for working with pyr/dabco ligands concerning 
+        if self.pure_check(mol):
+            logger.info("Fragmentation was successful")
+            if man == True:
+                atyper = atomtyper.atomtyper(mol)
+                atyper()
+        else:
+            if man == True:
+                logger.error("Fragmentation failed!!!")
+            else:
+                logger.error("Fragmentation failed --> manipulate atypes")
+                ### manipulate atypes
+                manipulated = False
+                for i,at in enumerate(atypes):
+                    if at == "n2_c2" and mol.fragtypes[i] == "-1": 
+                        manipulated = True
+                        mol.atypes[i] = "n3_m"
+                    elif at == "n3_c3" and mol.fragtypes[i] == "-1": 
+                        manipulated = True
+                        mol.atypes[i] = "n4_m"
+                if manipulated: self.__call__(mol, man = manipulated)
         return
+
+    @staticmethod
+    def pure_check(mol):
+        """
+        check if all atoms are in a fragment and all is consistent
+        """
+        fragnames = []        # this a list of all existing fragment names
+        frag_atoms = []       # a list of the fragments with their atoms
+        nfrags =  max(mol.fragnumbers)+1
+        fraglist  = [None]*(nfrags) # additional list to hold the fragments with their name
+        for i in xrange(nfrags):
+            frag_atoms.append([])
+        for i in xrange(mol.natoms):
+            ft = mol.fragtypes[i]
+            fn = mol.fragnumbers[i]
+            if ft == "0":
+                return False
+            else:
+                if fraglist[fn] == None:
+                    # set name of fragment
+                    fraglist[fn] = ft
+                else:
+                    # check if this is the same name
+                    if fraglist[fn] != ft: return False
+                if ft not in fragnames:
+                    fragnames.append(ft)
+                frag_atoms[mol.fragnumbers[i]].append(i)
+        # in the end make sure that all fragments have been named
+        if None in fraglist: return False
+        return True
+
+
