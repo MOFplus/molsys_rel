@@ -10,6 +10,7 @@
 
 from graph_tool import Graph
 from graph_tool.topology import *
+import copy
 
 import logging
 logger = logging.getLogger("molsys.graph")
@@ -102,10 +103,14 @@ class graph:
         """
         maps = subgraph_isomorphism(subg, graph, vertex_label=(subg.vp.type, graph.vp.type))
         subs = []
+        subs_check = []
         for m in maps:
             sl = list(m)
-            sl.sort()
-            if sl not in subs: subs.append(sl)
+            sl_check = copy.deepcopy(sl)
+            sl_check.sort()
+            if sl_check not in subs_check: 
+                subs.append(sl)
+                subs_check.append(sl_check)
         return subs
 
 
