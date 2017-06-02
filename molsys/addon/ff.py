@@ -34,6 +34,7 @@ from molsys.util.aftypes import aftype, aftype_sort
 import itertools
 import copy
 import string
+import cPickle as Pickle
 
 import logging
 import pdb
@@ -758,15 +759,35 @@ class ff:
             self.par["vdw"][self.parind["vdw"][i][0]][1] = prm
         return
 
+
     def set_def_sig(self,ind):
+        parind = self.parind["cha"]
+        fitdat = {"fixed":{}, "equivs": {}, "parnames": []}
+        ### first gather already assigned charges and dump them to fitdat["fixed"]
+        for i,p in enumerate(parind):
+            fitdat["parnames"].append(p[0])
+            if i not in ind:
+                fitdat["fixed"][i] = self.par["cha"][p[0]][1][0]
         elements = self._mol.get_elems()
+        parnames = {}
         for i in ind:
             elem = elements[i]
+            parname = parind[i][0]
+            if parname in parnames.keys():
+                parnames[parname].append(i)
+            else:
+                parnames[parname]=[i]
             try:
                 sig = elems.sigmas[elem]
             except:
-                sig = 0.0
+                sig = 0.0            
             self.par["cha"][self.parind["cha"][i][0]][1][1] = sig
+        ### move stuff from parnames to fitdat["equivs"]
+        for k,v in parnames.items():
+            for i in v[1:]:
+                fitdat["equivs"][i] = v[0]
+        ### dump fitdat to json file
+        with open("espfit.pickle", "wb") as f: Pickle.dump(fitdat, f)
         return
 
     def varnames2par(self):
