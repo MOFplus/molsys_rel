@@ -859,7 +859,7 @@ class ff:
         if self._mol.mpi_size > 1:
             ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
         for refname in ref_dic.keys():
-            prio, reffrags, active, upgrades = ref_dic[refname]
+            prio, reffrags, active, upgrades, atfix = ref_dic[refname]
             if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
                 scan_ref.append(refname)
                 scan_prio.append(prio)
@@ -926,6 +926,14 @@ class ff:
                     idx = self.fragments.frags2atoms(subs_flat)
                     self._mol.graph.filter_graph(idx)
                     asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
+                    ### check for atfixes and change atype accordingly
+                    if ref_dic[ref][4] != None:
+                        atfix = ref_dic[ref][4]
+#                        print (atfix)
+#                        pdb.set_trace()
+                        for s in asubs:
+                            for idx, at in atfix.items():
+                                self.aftypes[s[int(idx)]].atype = at
                     self._mol.graph.molg.clear_filters()
                     asubs_flat = itertools.chain.from_iterable(asubs)
                     self.ref_atomlists[ref] = list(set(asubs_flat))
