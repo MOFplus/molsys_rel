@@ -240,6 +240,20 @@ class mol:
 
     ##### connectivity ########################
 
+    @staticmethod
+    def check_conn(conn):
+        """
+        checks if connectivity is not broken
+
+        :Parameters:
+            - conn (list): list of lists holding the connectivity
+        """
+        natoms = len(conn)
+        for i, c in enumerate(conn):
+            for j in c:
+                if i not in conn[j]: return False
+        return True
+                
     def detect_conn(self, tresh = 0.1,remove_duplicates = False):
         """
         detects the connectivity of the system, based on covalent radii.
