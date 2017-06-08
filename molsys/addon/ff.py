@@ -1269,7 +1269,7 @@ class ff:
             self.variables()
         return
     
-    def upload_params(self, refname):
+    def upload_params(self, FF, refname):
         """
         Method to upload interactively the parameters to the already connected db.
         
@@ -1296,9 +1296,9 @@ class ff:
             for desc, params in upls.items():
                 # TODO: remove inconsitenz in db conserning charge and cha
                 if ptype == "cha":
-                    self.api.set_params_interactive(self.FF, desc[0], "charge", desc[1], refname, params)
+                    self.api.set_params_interactive(FF, desc[0], "charge", desc[1], refname, params)
                 else:
-                    self.api.set_params_interactive(self.FF, desc[0], ptype, desc[1], refname, params)
+                    self.api.set_params_interactive(FF, desc[0], ptype, desc[1], refname, params)
         return
     
     def get_torsion(self, values, m, thresshold=5):
