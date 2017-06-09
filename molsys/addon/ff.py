@@ -381,6 +381,8 @@ class ric:
         """
         assert type(n1) == type(n2) == int
         if   set([n1,n2])==set([5,5]): return 4
+        elif set([n1,n2])==set([6,6]): return 4
+        elif set([n1,n2])==set([3,6]): return 4 
         elif set([n1,n2])==set([4,4]): return 3
         elif set([n1,n2])==set([2,4]): return 3
         elif set([n1,n2])==set([3,4]): return 3

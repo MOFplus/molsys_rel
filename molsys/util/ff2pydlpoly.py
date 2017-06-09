@@ -204,6 +204,7 @@ class wrapper(object):
         assert len(atoms) == 2
         assert type(potential) == str
         assert type(params) == list
+        if numpy.count_nonzero(params) == 0: return None
         if potential == "mm3":
             k  = 2.0*params[0]*unit
             r0 = params[1]
@@ -231,9 +232,11 @@ class wrapper(object):
         assert len(atoms) == 3
         assert type(potential) == str
         assert type(params) == list
+        if numpy.count_nonzero(params) == 0: return None
         if potential == "mm3":
             k  = 2.0*params[0]*unit*rad2deg*rad2deg
             a0 = params[1]
+            if k == a0 == 0.0: return None
             if internal: return numpy.array([iunit*k, a0*(1.0/rad2deg),0.0,0.0,0.0,0.0,0.0])
             return "   mm3a  %5d %5d %5d  %10.5f %10.5f\n" % (atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, k, a0)
@@ -324,6 +327,7 @@ class wrapper(object):
             raise IOError("Unknown dihedral potential %s" % potential)
 
     def oopterm_formatter(self, atoms, potential, params, unit=0.02191418,iunit=418.4, internal=False):
+        if numpy.count_nonzero(params) == 0: return None
         if potential == "harm":
             k = 2.0*params[0]*3.0*unit*rad2deg*rad2deg
             a0 = params[1]*(1/rad2deg)
