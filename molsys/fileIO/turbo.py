@@ -28,7 +28,7 @@ def read(mol, f):
             elems.append(sline[3])
     f.close()
     mol.natoms = len(elems)
-    mol.xyz = numpy.array(xyz)*angstrom
+    mol.xyz = numpy.array(xyz)/angstrom
     mol.elems = elems
     mol.atypes = elems
     mol.set_empty_conn()
@@ -39,7 +39,7 @@ def read(mol, f):
 def write(mol, fname):
     f = open(fname, "w")
     f.write("$coord\n")
-    c = mol.xyz/angstrom
+    c = mol.xyz*angstrom
     for i in xrange(mol.natoms):
         f.write("  %19.14f %19.14f %19.14f   %-2s\n" % 
                 (c[i,0],c[i,1], c[i,2], mol.elems[i]))
