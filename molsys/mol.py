@@ -815,7 +815,6 @@ class mol:
         xyz.shape = (1,3)
         self.xyz = np.concatenate((self.xyz, xyz))
         self.conn.append([])
-        self.pconn.append([])
         return self.natoms -1
 
     def get_natoms(self):
