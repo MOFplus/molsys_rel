@@ -818,6 +818,14 @@ class mol:
         self.pconn.append([])
         return self.natoms -1
 
+    def add_conn(self, anum1, anum2):
+        ''' add a bond between two atoms
+            BEWARE, does not do any checks '''
+
+        self.conn[anum1].append(anum2)
+        self.conn[anum2].append(anum1)
+    	return
+
     def get_natoms(self):
         ''' returns the number of Atoms '''
         return self.natoms
