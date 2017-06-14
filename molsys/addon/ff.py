@@ -1245,7 +1245,7 @@ class ff:
                             for paridx,p in enumerate(param):
                                 if p[0] == "$":
                                     if not p in self.variables:
-                                        raise IOError, "Varible $s undefiend in variable block" % p
+                                        raise IOError, "Varible %s undefiend in variable block" % p
                                     self.variables[p].pos.append((curric,ident,paridx))
                                     newparam.append(p)
                                 else:
