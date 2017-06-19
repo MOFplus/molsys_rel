@@ -532,7 +532,8 @@ class mol:
                 self.xyz    = self.xyz[self.goods]
                 return
             else:
-                self.delete_atom(bads[0])
+                if len(bads) != 0:
+                    self.delete_atom(bads[0])
         else:
             self.delete_atom(bads)
 
