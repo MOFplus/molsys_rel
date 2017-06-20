@@ -1170,7 +1170,7 @@ class ff:
                         icl = ic(aind, type=rtype)
                         for attr in sline[curric_len+2:]:
                             atn,atv = attr.split("=")
-                            icl.__setattr__(atn, atv)
+                            icl.__setattr__(atn, int(atv))
                         rlist.append(icl)
                     ric[curric] = rlist    
         fric.close()
@@ -1193,7 +1193,7 @@ class ff:
                 sline = line.split()
                 if len(sline)>0:
                     if sline[0] == "azone":
-                        self.active_zone = map(int, sline[1:])
+                        self.active_zone = (np.array(map(int, sline[1:]))-1).tolist()
                         azone = True
                     elif sline[0] == "variables":
                         nvar = int(sline[1])
@@ -1271,7 +1271,7 @@ class ff:
             self.variables()
         return
     
-    def upload_params(self, FF, refname):
+    def upload_params(self, FF, refname, dbrefname = None, azone = True):
         """
         Method to upload interactively the parameters to the already connected db.
         
@@ -1279,6 +1279,12 @@ class ff:
             - refname  (str): name of the refsystem for which params should be uploaded
         """
         assert type(refname) == str
+        assert type(FF)      == str
+        if dbrefname == None: dbrefname = refname
+        if azone:
+            self.api.create_fit(FF, dbrefname, azone = self.active_zone)
+        else:
+            self.api.create_fit(FF, dbrefname)
         uploads = {
                 "cha": {},
                 "vdw": {}, 
@@ -1298,9 +1304,9 @@ class ff:
             for desc, params in upls.items():
                 # TODO: remove inconsitenz in db conserning charge and cha
                 if ptype == "cha":
-                    self.api.set_params_interactive(FF, desc[0], "charge", desc[1], refname, params)
+                    self.api.set_params_interactive(FF, desc[0], "charge", desc[1], dbrefname, params)
                 else:
-                    self.api.set_params_interactive(FF, desc[0], ptype, desc[1], refname, params)
+                    self.api.set_params_interactive(FF, desc[0], ptype, desc[1], dbrefname, params)
         return
     
     def get_torsion(self, values, m, thresshold=5):
