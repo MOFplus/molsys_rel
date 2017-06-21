@@ -369,7 +369,15 @@ class wrapper(object):
 
 
     def write_system_to_pdlp(self, pdlp):
+        # first convert cnct info into a table
+        ctab = []
+        for i, ci in enumerate(self.cnct):
+            for j in ci:
+                if j > i : ctab.append([i,j])
+        pdlp.set_system(self.elems, self.types, ctab, self.boundarycond)
+        pdlp.set_molecules(self.whichmol, self.moltypes, self.molnames)
         return
+        
 
     def write_CONFIG(self,bcond=None, vel=False):
         f = open("CONFIG","w")
