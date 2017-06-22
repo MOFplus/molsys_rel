@@ -996,6 +996,7 @@ class ff:
             # first check if for all insides an equiv is available
             for i in insides: 
                 if i not in equivs.keys(): return None
+            if len(insides) > 1: return None
             return map(lambda a: self.aftypes[a] if a not in equivs.keys() else equivs[a], alist)
         except:
             if len(insides) > 0: return None
