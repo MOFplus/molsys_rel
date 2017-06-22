@@ -8,9 +8,11 @@ Created on Fri Jun  9 18:17:13 2017
 
 import numpy
 import string
-from molsys.util.units import angstrom
+from molsys.util.units import angstrom, kcalmol
 
-def read(mol, f):
+def read(mol, f, gradient = False, cycle = -1):
+    if gradient:
+        return read_gradfile(mol,f,cycle)
     coord = False
     xyz = []
     elems = []
@@ -33,6 +35,45 @@ def read(mol, f):
     mol.atypes = elems
     mol.set_empty_conn()
     mol.set_nofrags()
+    return
+
+def read_gradfile(mol, f, cycle):
+    elems    = []
+    xyz      = []
+    grad     = []
+    ncycle   = 0
+    found    = False
+    ### get how many cylces are in the file
+    for line in f:
+        sline = string.split(line)
+        if sline[0] == "cycle": ncycle += 1
+    f.seek(0)
+    scycle = range(ncycle)[cycle]
+    for line in f:
+        sline = string.split(line)
+        if sline[0] == "cycle" and int(sline[2])+1 == scycle:
+            ### found read in 
+            energy = float(sline[6])
+            found  = True
+        elif sline[0] == "cycle" and int(sline[2])+1 != scycle:
+            found = False
+        if found:
+            if len(sline) == 4:
+                ### coord info
+                xyz.append(map(float,sline[:3]))
+                elems.append(sline[3])
+            elif len(sline) == 3:
+                ### grad info
+                grad.append(map(lambda a: float(a.replace("D","E")), sline[:3]))
+    f.close()
+    mol.natoms = len(elems)
+    mol.xyz = numpy.array(xyz)/angstrom
+    mol.elems = elems
+    mol.atypes = elems
+    mol.set_empty_conn()
+    mol.set_nofrags()
+    mol.gradient = numpy.array(grad)*(angstrom/kcalmol)
+    mol.energy = energy/kcalmol
     return
 
 
