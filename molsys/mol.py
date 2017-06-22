@@ -516,7 +516,7 @@ class mol:
     def delete_atoms(self,bads):
         ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
         if hasattr(bads, '__iter__'):
-            if len(bads) > 2:
+            if len(bads) >= 2:
                 self.bads = bads
                 self.bads.sort()
                 self.goods = [i for i in xrange(self.natoms) if i not in self.bads]
@@ -531,6 +531,9 @@ class mol:
                 self.conn =[ [j-self.offset[j] for j in self.conn[i] if j not in bads] for i in xrange(self.natoms) ]
                 self.xyz    = self.xyz[self.goods]
                 return
+            else:
+                if len(bads) != 0:
+                    self.delete_atom(bads[0])
         else:
             self.delete_atom(bads)
 
@@ -813,8 +816,15 @@ class mol:
         xyz.shape = (1,3)
         self.xyz = np.concatenate((self.xyz, xyz))
         self.conn.append([])
-        self.pconn.append([])
         return self.natoms -1
+
+    def add_conn(self, anum1, anum2):
+        ''' add a bond between two atoms
+            BEWARE, does not do any checks '''
+
+        self.conn[anum1].append(anum2)
+        self.conn[anum2].append(anum1)
+    	return
 
     def get_natoms(self):
         ''' returns the number of Atoms '''
