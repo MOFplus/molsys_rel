@@ -487,9 +487,9 @@ class mol:
             other_xyz *= np.array(scale)
         if roteuler != None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
-        if type(rotate)   !=None:
+        if rotate   !=None:
             other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
-        if type(translate)!=None:
+        if translate!=None:
             other_xyz += translate
         if self.natoms==0:
             self.xyz = other_xyz
@@ -501,6 +501,7 @@ class mol:
             cn = (np.array(c)+self.natoms).tolist()
             self.conn.append(cn)
         self.natoms += other.natoms
+        if len(other.fragtypes) == 0: other.set_nofrags()
         self.add_fragtypes(other.fragtypes)
         self.add_fragnumbers(other.fragnumbers)
         #self.fragtypes += other.fragtypes
