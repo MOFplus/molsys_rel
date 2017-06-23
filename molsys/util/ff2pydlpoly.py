@@ -171,7 +171,7 @@ class wrapper(object):
                     potential, params = self.m.ff.par[ict][p]
                     term = formatter[ict](ic,potential,params)
                     if term:
-                        ic.used = True
+                        #ic.used = True
                         buffer_out += term
                         count += 1
             f.write("%s %d\n" % (header[ict], count))
@@ -204,10 +204,12 @@ class wrapper(object):
         assert len(atoms) == 2
         assert type(potential) == str
         assert type(params) == list
+        if numpy.count_nonzero(params) == 0: return None
         if potential == "mm3":
             k  = 2.0*params[0]*unit
             r0 = params[1]
             if internal: return numpy.array([k*iunit, r0, 0.0, 0.0])
+            atoms.used = True
             return "   mm3b %5d %5d  %10.5f %10.5f\n" % (atoms[0]+1, atoms[1]+1, k, r0)
         elif potential == "morse":
             E0   = params[2]
@@ -215,6 +217,7 @@ class wrapper(object):
             k    = params[0]
             alph = numpy.sqrt(unit*k/E0)
             if internal: return numpy.array([E0*iunit, r0, alph, 0.0])
+            atoms.used = True
             return "   mors %5d %5d  %10.5f %10.5f %10.5f\n" % (atoms[0]+1, atoms[1]+1, E0, r0, alph)
         elif potential == "quartic":
             k  = 2.0*params[0]*unit
@@ -222,6 +225,7 @@ class wrapper(object):
             k3 = params[3]
             r0 = params[1]
             if internal: return numpy.array([k*iunit, r0, k2, k3])
+            atoms.used = True
             return "   aqua %5d %5d  %10.5f %10.5f %10.5f %10.5\n" % (atoms[0]+1, atoms[1]+1, k, r, k2, k3)
         else:
             raise IOError("Unknown bond potential %s" % potential)
@@ -231,10 +235,13 @@ class wrapper(object):
         assert len(atoms) == 3
         assert type(potential) == str
         assert type(params) == list
+        if numpy.count_nonzero(params) == 0: return None
         if potential == "mm3":
             k  = 2.0*params[0]*unit*rad2deg*rad2deg
             a0 = params[1]
+            if k == a0 == 0.0: return None
             if internal: return numpy.array([iunit*k, a0*(1.0/rad2deg),0.0,0.0,0.0,0.0,0.0])
+            atoms.used = True
             return "   mm3a  %5d %5d %5d  %10.5f %10.5f\n" % (atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, k, a0)
         elif potential == "quartic":
@@ -243,6 +250,7 @@ class wrapper(object):
             k2 = params[2]
             k3 = params[3]
             if internal: return numpy.array([iunit*k, a0*(1.0/rad2deg),k2,k3,0.0,0.0,0.0])
+            atoms.used = True
             return "   aqua  %5d %5d %5d  %10.5f %10.5f %10.5f %10.5f\n" % (atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, k, a0, k2, k3)
         elif potential == "fourier":
@@ -255,6 +263,7 @@ class wrapper(object):
             assert vdw13s == chg13s
             if vdw13s == 1.0: flag13 = "-"
             if internal: return numpy.array([k*iunit, a0*(1.0/rad2deg), fold, 0.0,0.0,0.0,0.0])
+            atoms.used = True
             return "  %1scos   %5d %5d %5d  %10.5f %10.5f %5d\n" % (flag13,atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, k, a0, fold)
         elif potential == "strbnd":
@@ -265,6 +274,7 @@ class wrapper(object):
             r2 = params[4]
             t  = params[5]
             if internal: return numpy.array([a*iunit, b*iunit, c*iunit, t*(1.0/rad2deg),r1,r2,0.0])
+            atoms.used = True
             return "   cmps  %5d %5d %5d  %10.5f %10.5f %10.5f % 10.5f %10.5f %10.5f\n" % (atoms[0]+1,
                     atoms[1]+1, atoms[2]+1, a,b,c,t,r1,r2)
         else:
@@ -306,6 +316,7 @@ class wrapper(object):
                 return None
             else:
                 if internal: return numpy.array([V1*iunit, V2*iunit, V3*iunit,0.0])
+                atoms.used = False if V1==V2==V3==0.0 else True
                 return "   cos3  %5d %5d %5d %5d  %10.5f %10.5f %10.5f %10.5f  %10.5f  %10.5f\n" % \
                 (atoms[0]+1, atoms[1]+1, atoms[2]+1, atoms[3]+1, V1, V2, V3, 0.0, cou14, vdw14)
         elif potential == "cos4":
@@ -314,20 +325,23 @@ class wrapper(object):
             V2 = params[1]*scale
             V3 = params[2]*scale
             V4 = params[3]*scale
-            if V1==V2==V3==V4==0.0:
-                if cou14==vdw14==1.0: return None
+            if ((V1==V2==V3==V4==0.0) and (cou14==vdw14==1.0)):
+                return None
             else:
                 if internal: return numpy.array([V1*iunit, V2*iunit, V3*iunit,V4*iunit])
+                atoms.used = False if V1==V2==V3==V4==0.0 else True
                 return "   cos4  %5d %5d %5d %5d  %10.5f %10.5f %10.5f %10.5f  %10.5f  %10.5f\n" % \
                 (atoms[0]+1, atoms[1]+1, atoms[2]+1, atoms[3]+1, V1, V2, V3, V4, cou14, vdw14)
         else:
             raise IOError("Unknown dihedral potential %s" % potential)
 
     def oopterm_formatter(self, atoms, potential, params, unit=0.02191418,iunit=418.4, internal=False):
+        if numpy.count_nonzero(params) == 0: return None, False
         if potential == "harm":
             k = 2.0*params[0]*3.0*unit*rad2deg*rad2deg
             a0 = params[1]*(1/rad2deg)
             if internal: return numpy.array([k*418.4, a0, 0.0, 0.0])
+            atoms.used = True
             return "   harm  %5d %5d %5d %5d   %10.5f  %10.5f\n" % \
                    (atoms[0]+1, atoms[1]+1, atoms[2]+1, atoms[3]+1, k, a0)
         else:
@@ -355,7 +369,15 @@ class wrapper(object):
 
 
     def write_system_to_pdlp(self, pdlp):
+        # first convert cnct info into a table
+        ctab = []
+        for i, ci in enumerate(self.cnct):
+            for j in ci:
+                if j > i : ctab.append([i,j])
+        pdlp.set_system(self.elems, self.types, ctab, self.boundarycond)
+        pdlp.set_molecules(self.whichmol, self.moltypes, self.molnames)
         return
+        
 
     def write_CONFIG(self,bcond=None, vel=False):
         f = open("CONFIG","w")

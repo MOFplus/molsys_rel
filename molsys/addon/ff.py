@@ -34,6 +34,7 @@ from molsys.util.aftypes import aftype, aftype_sort
 import itertools
 import copy
 import string
+import cPickle as Pickle
 
 import logging
 import pdb
@@ -380,6 +381,8 @@ class ric:
         """
         assert type(n1) == type(n2) == int
         if   set([n1,n2])==set([5,5]): return 4
+        elif set([n1,n2])==set([6,6]): return 4
+        elif set([n1,n2])==set([3,6]): return 4 
         elif set([n1,n2])==set([4,4]): return 3
         elif set([n1,n2])==set([2,4]): return 3
         elif set([n1,n2])==set([3,4]): return 3
@@ -758,15 +761,35 @@ class ff:
             self.par["vdw"][self.parind["vdw"][i][0]][1] = prm
         return
 
+
     def set_def_sig(self,ind):
+        parind = self.parind["cha"]
+        fitdat = {"fixed":{}, "equivs": {}, "parnames": []}
+        ### first gather already assigned charges and dump them to fitdat["fixed"]
+        for i,p in enumerate(parind):
+            fitdat["parnames"].append(p[0])
+            if i not in ind:
+                fitdat["fixed"][i] = self.par["cha"][p[0]][1][0]
         elements = self._mol.get_elems()
+        parnames = {}
         for i in ind:
             elem = elements[i]
+            parname = parind[i][0]
+            if parname in parnames.keys():
+                parnames[parname].append(i)
+            else:
+                parnames[parname]=[i]
             try:
                 sig = elems.sigmas[elem]
             except:
-                sig = 0.0
+                sig = 0.0            
             self.par["cha"][self.parind["cha"][i][0]][1][1] = sig
+        ### move stuff from parnames to fitdat["equivs"]
+        for k,v in parnames.items():
+            for i in v[1:]:
+                fitdat["equivs"][i] = v[0]
+        ### dump fitdat to json file
+        with open("espfit.pickle", "wb") as f: Pickle.dump(fitdat, f)
         return
 
     def varnames2par(self):
@@ -838,7 +861,7 @@ class ff:
         if self._mol.mpi_size > 1:
             ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
         for refname in ref_dic.keys():
-            prio, reffrags, active, upgrades = ref_dic[refname]
+            prio, reffrags, active, upgrades, atfix = ref_dic[refname]
             if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
                 scan_ref.append(refname)
                 scan_prio.append(prio)
@@ -905,6 +928,14 @@ class ff:
                     idx = self.fragments.frags2atoms(subs_flat)
                     self._mol.graph.filter_graph(idx)
                     asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
+                    ### check for atfixes and change atype accordingly
+                    if ref_dic[ref][4] != None:
+                        atfix = ref_dic[ref][4]
+#                        print (atfix)
+#                        pdb.set_trace()
+                        for s in asubs:
+                            for idx, at in atfix.items():
+                                self.aftypes[s[int(idx)]].atype = at
                     self._mol.graph.molg.clear_filters()
                     asubs_flat = itertools.chain.from_iterable(asubs)
                     self.ref_atomlists[ref] = list(set(asubs_flat))
@@ -965,6 +996,7 @@ class ff:
             # first check if for all insides an equiv is available
             for i in insides: 
                 if i not in equivs.keys(): return None
+            if len(insides) > 1: return None
             return map(lambda a: self.aftypes[a] if a not in equivs.keys() else equivs[a], alist)
         except:
             if len(insides) > 0: return None
@@ -1139,7 +1171,7 @@ class ff:
                         icl = ic(aind, type=rtype)
                         for attr in sline[curric_len+2:]:
                             atn,atv = attr.split("=")
-                            icl.__setattr__(atn, atv)
+                            icl.__setattr__(atn, int(atv))
                         rlist.append(icl)
                     ric[curric] = rlist    
         fric.close()
@@ -1162,7 +1194,7 @@ class ff:
                 sline = line.split()
                 if len(sline)>0:
                     if sline[0] == "azone":
-                        self.active_zone = map(int, sline[1:])
+                        self.active_zone = (np.array(map(int, sline[1:]))-1).tolist()
                         azone = True
                     elif sline[0] == "variables":
                         nvar = int(sline[1])
@@ -1214,7 +1246,7 @@ class ff:
                             for paridx,p in enumerate(param):
                                 if p[0] == "$":
                                     if not p in self.variables:
-                                        raise IOError, "Varible $s undefiend in variable block" % p
+                                        raise IOError, "Varible %s undefiend in variable block" % p
                                     self.variables[p].pos.append((curric,ident,paridx))
                                     newparam.append(p)
                                 else:
@@ -1240,7 +1272,7 @@ class ff:
             self.variables()
         return
     
-    def upload_params(self, refname):
+    def upload_params(self, FF, refname, dbrefname = None, azone = True, interactive = True):
         """
         Method to upload interactively the parameters to the already connected db.
         
@@ -1248,6 +1280,12 @@ class ff:
             - refname  (str): name of the refsystem for which params should be uploaded
         """
         assert type(refname) == str
+        assert type(FF)      == str
+        if dbrefname == None: dbrefname = refname
+        if azone:
+            self.api.create_fit(FF, dbrefname, azone = self.active_zone)
+        else:
+            self.api.create_fit(FF, dbrefname)
         uploads = {
                 "cha": {},
                 "vdw": {}, 
@@ -1267,54 +1305,14 @@ class ff:
             for desc, params in upls.items():
                 # TODO: remove inconsitenz in db conserning charge and cha
                 if ptype == "cha":
-                    self.api.set_params_interactive(self.FF, desc[0], "charge", desc[1], refname, params)
+                    if interactive:
+                        self.api.set_params_interactive(FF, desc[0], "charge", desc[1], dbrefname, params)
+                    else:
+                        self.api.set_params(FF, desc[0], "charge", desc[1], dbrefname, params)
                 else:
-                    self.api.set_params_interactive(self.FF, desc[0], ptype, desc[1], refname, params)
+                    if interactive:
+                        self.api.set_params_interactive(FF, desc[0], ptype, desc[1], dbrefname, params)
+                    else:
+                        self.api.set_params(FF, desc[0], ptype, desc[1], dbrefname, params)
         return
-    
-    def get_torsion(self, values, m, thresshold=5):
-        '''
-            Get a rest value of 0.0, 360/(2*m) or None depending on the given
-            equilbrium values
-            (stolen from QuickFF)
-        '''
-        multidict = {
-                1: [180.0],
-                2: [0.0, 180.0],
-                3: [60.0, 180.0, 240.0],
-                4: [0.0, 90.0, 180.0, 270.0],
-                }
-        tor = [0.0, 0.0, 0.0]
-        if m == 4: tor = [0.0,0.0,0.0,0.0]
-        if m == None:
-            return tor
-        rv = None
-        per = 360/m
-        for value in values:
-            x = value % per
-            if abs(x)<=thresshold or abs(per-x)<thresshold:
-                if rv is not None and rv!=0.0:
-                    #tor[m-1] = 1.0
-                    return tor
-                    #return [None, None, None, None]
-                elif rv is None:
-                    rv = 0.0
-            elif abs(x-per/2.0)<thresshold:
-                if rv is not None and rv!=per/2.0:
-                    #tor[m-1] = 1.0
-                    return tor
-                    #return [None, None, None, None]
-                elif rv is None:
-                    rv = per/2.0
-            else:
-                #tor[m-1] = 1.0
-                return tor
-                #return [None, None, None, None]
-        if rv in multidict[m]:
-            tor[m-1] = 1.0
-            return tor
-        else:
-            tor[m-1] = -1.0
-            return tor
-
 

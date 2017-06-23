@@ -3,11 +3,37 @@ from mpl_toolkits.mplot3d import axes3d, Axes3D #<-- Note the capitalization!
 #fig = plt.figure()
 import numpy
 
+def plot_cell(cell,show=True):
+    fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
+    #ax = fig.add_subplot(111, projection='3d')
+    ax = Axes3D(fig)
+    #ax = self.add_cell(ax)
+    def axplt(ax,xx,yy):
+        ax.plot([xx[0],yy[0]],[xx[1],yy[1]],[xx[2],yy[2]],color='black',linewidth=3)
+    x,y,z=cell[:,0],cell[:,1],cell[:,2]
+    zero = numpy.zeros(3)
+    axplt(ax,zero,x)
+    axplt(ax,zero,y)
+    axplt(ax,zero,z)
+    #axplt(ax,,)
+    axplt(ax,x,x+y)
+    axplt(ax,y,x+y)
+    axplt(ax,z+x,x+y+z)
+    axplt(ax,x+y,x+y+z)
+    axplt(ax,z+y,x+y+z)
+    axplt(ax,z,z+x)
+    axplt(ax,z,z+y)
+    axplt(ax,x,x+z)
+    axplt(ax,y,y+z)     
+    if show: plt.show()
+    return
 
 class plotter(object):
     
     def __init__(self,mol):
         self.mol = mol
+        
+        
         
     def add_cell(self,ax):
         mol = self.mol
@@ -15,8 +41,8 @@ class plotter(object):
             ax.plot([xx[0],yy[0]],[xx[1],yy[1]],[xx[2],yy[2]],color='black',linewidth=3)
             
         cell = mol.get_cell()
-        zero = numpy.zeros(3)
         x,y,z=cell[:,0],cell[:,1],cell[:,2]
+        zero = numpy.zeros(3)
         axplt(ax,zero,x)
         axplt(ax,zero,y)
         axplt(ax,zero,z)
@@ -34,7 +60,7 @@ class plotter(object):
         
         return ax
         
-    def plot(self,scell=False,bonds=False,labels=False):
+    def plot(self,scell=False,bonds=False,labels=False,skip=False):
         mol = self.mol
         col = ['r','g','b','m','c','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k']+['k']*200
         fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
@@ -49,11 +75,15 @@ class plotter(object):
             for i in range(mol.natoms):
                 conn = mol.conn[i]
                 for j in range(len(conn)):
+                    try: 
+                        mol.pconn
+                    except:
+                        mol.pconn = False
                     if mol.pconn:
                         if numpy.sum(numpy.abs(mol.pconn[i][j])) == 0:
                             ax.plot([mol.xyz[i][0],mol.xyz[conn[j]][0]],[mol.xyz[i][1],mol.xyz[conn[j]][1]],[mol.xyz[i][2],mol.xyz[conn[j]][2]],color='black')
                         else:
-                            xyznew = mol.get_image(mol.xyz[conn[j]],mol.pconn[i][j])
+                            xyznew = mol.get_image(mol.xyz[conn[j]],mol.get_distvec([i][j])[2])
                             ax.scatter(xyznew[0],xyznew[1],xyznew[2],color='orange')
                             ax.plot([mol.xyz[i][0],xyznew[0]],[mol.xyz[i][1],xyznew[1]],[mol.xyz[i][2],xyznew[2]],color='green')
                     else:
@@ -69,12 +99,14 @@ class plotter(object):
             ax.scatter(xyz3[:,0],xyz3[:,1],xyz3[:,2],color='r',alpha=0.5)
         xyz=numpy.array(mol.xyz)
         for i,xx in enumerate(xyz):
-
-            ax.scatter(xx[0],xx[1],xx[2],color=atd[mol.atypes[i]])
+            if skip:
+                if i % skip != 0:
+                    continue
+            ax.scatter(xx[0],xx[1],xx[2],marker='.',color=atd[mol.atypes[i]])
         minbound = numpy.min([numpy.min(xyz[:,0]),numpy.min(xyz[:,1]),numpy.min(xyz[:,2])])
         maxbound = numpy.max([numpy.max(xyz[:,0]),numpy.max(xyz[:,1]),numpy.max(xyz[:,2])])
         ax.auto_scale_xyz([0.0, maxbound], [0.0, maxbound], [0.0, maxbound])
         #ax.scatter(xyz1[:,0],xyz1[:,1],xyz1[:,2],color='k')
         plt.xlabel('x')
         plt.ylabel('y')
-        plt.show()
+        #plt.show()
