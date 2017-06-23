@@ -10,9 +10,9 @@ def read(mol, f, topo = False):
     """
     Routine, which reads an txyz file
     :Parameters:
-        -fname  (str) : name of the txyz file
-        -mol    (obj) : instance of a molclass
-        -topo   (bool): flag for reading topo information
+        -f    (obj) : txyz file object
+        -mol  (obj) : instance of a molclass
+        -topo (bool): flag for reading topo information
     """
     lbuffer = string.split(f.readline())
     mol.natoms = string.atoi(lbuffer[0])

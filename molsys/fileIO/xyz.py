@@ -5,8 +5,8 @@ def read(mol, f):
     """
     Routine, which reads an xyz file
     :Parameters:
-        -fname  (str): name of the xyz file
-        -mol    (obj): instance of a molclass
+        -f   (obj): xyz file object
+        -mol (obj): instance of a molclass
     """
     fline = string.split(f.readline())
     natoms = string.atoi(fline[0])
