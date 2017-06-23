@@ -148,6 +148,19 @@ class mol:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return m
+    
+    @classmethod
+    def fromArray(cls, arr, **kwargs):
+        ''' generic reader for the mol class, reading from a Nx3 array
+        :Parameters:
+            - arr         : the array to be read
+            - **kwargs    : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        m = cls()
+        logger.info("reading array")
+        assert arr.shape[1] == 3, "Wrong array dimension (second must be 3): %s" % (a.shape,)
+        formats.read['array'](m,arr,**kwargs)
+        return m
 
     def write(self,fname,ftype=None,**kwargs):
         ''' generic writer for the mol class
