@@ -1,0 +1,51 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Jun 25 13:48:20 2017
+
+@author: rochus
+
+        assign_FF
+        
+        reads mfpx file and assigns params from MOF+, writing the corresponding
+        ric/par file with the same rootname as the mfpx file
+            
+        The second parameter is the name of the force field    
+"""
+
+import sys
+import os
+import string
+
+if len(sys.argv) < 2:
+    print """
+      assign_FF <mfpx-file> <FF name>
+             
+      mfpx-file : file to be read
+      FF name   : name of the force field on MOF+
+      
+      Reads your mfpx file as a mol object and assigns parameters
+      from MOF+ using the given force field name.
+      It writes the params as ric/par fiels with the same root filename
+      as the mfpx file."""
+    exit()
+    
+      
+fname = sys.argv[1]
+
+froot = string.join(fname.split(".")[:-1])
+
+if len(sys.argv) < 3:
+    print "Please specify a FF name"
+    exit()
+ff = sys.argv[2]
+
+import molsys
+
+m = molsys.mol()
+m.read(fname)
+m.addon("ff")
+m.ff.assign_params(ff)
+m.ff.write(froot)
+
+
