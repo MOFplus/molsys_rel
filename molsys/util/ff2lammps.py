@@ -7,8 +7,8 @@ Created on Wed Apr 19 09:37:25 2017
 
               ff2lammps
               
-class to be instantiated either with a mfpx file name or a mol object
-it will setup the force field params from MOF+ and then write a data and a lamps input file              
+class to be instantiated with an exisiting mol object and paramters already assinged
+it will write a data and a lamps input file              
 
 """
 
@@ -31,17 +31,11 @@ class ff2lammps(object):
         
         :Parameters:
         
-            - mol: either a string (mfpx file) or a mol object
+            - mol: mol object with ff addon and params assigned
         """
         
-        if type(mol)==type(""):
-            self.mol = molsys.mol()
-            self.mol.read(mol)
-        else:
-            self.mol = mol
+        self.mol = mol
         # generate the force field
-        self.mol.addon("ff")
-        self.mol.ff.assign_params("MOF-FF")
         self.mol.ff.setup_pair_potentials()
         # set up the molecules
         self.mol.addon("molecules")
