@@ -113,6 +113,8 @@ class ff2lammps(object):
         self._settings["vdw_dampfact"] = 0.25
         self._settings["vdw_smooth"] = 0.9
         self._settings["use_angle_cosine_buck6d"] = False
+        self._settings["kspace_method"] = "ewald"
+        self._settings["kspace_prec"] = 1.0e-6
         return
 
     def setting(self, s, val):
@@ -211,7 +213,7 @@ class ff2lammps(object):
         pf = self._settings["parformat"]+" "
         return n*pf
 
-    def write_input(self, filename = "lmp.input", header=None, footer=None):
+    def write_input(self, filename = "lmp.input", header=None, footer=None, kspace=False):
         """
         NOTE: add read data ... fix header with periodic info
         """
@@ -234,7 +236,13 @@ class ff2lammps(object):
             hf.close()
         f.write("\n# ------------------------ MOF-FF FORCE FIELD ------------------------------\n")
         # pair style
-        f.write("\npair_style buck6d/coul/gauss/dsf %10.4f %10.4f\n\n" % (self._settings["vdw_smooth"], self._settings["cutoff"]))
+        if kspace:
+            # use kspace for the long range electrostatics and the corresponding long for the real space pair
+            f.write("\nkspace_style %s %10.4g\n" % (self._settings["kspace_method"], self._settings["kspace_prec"]))
+            f.write("pair_style buck6d/coul/gauss/long %10.4f %10.4f\n\n" % (self._settings["vdw_smooth"], self._settings["cutoff"]))
+        else:
+            # use shift damping (dsf)
+            f.write("\npair_style buck6d/coul/gauss/dsf %10.4f %10.4f\n\n" % (self._settings["vdw_smooth"], self._settings["cutoff"]))
         for i, ati in enumerate(self.plmps_atypes):
             for j, atj in enumerate(self.plmps_atypes[i:],i):
                 r0, eps, alpha_ij = self.plmps_pair_data[(i+1,j+1)]
