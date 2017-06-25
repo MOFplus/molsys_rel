@@ -1087,6 +1087,7 @@ class ff:
         par_types = self.enumerate_types()
         # write the RICs first
         f = open(fname+".ric", "w")
+        logger.info("Writing RIC to file %s.ric" % fname)
         # should we add a name here in the file? the FF goes to par. keep it simple ...
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             filt = None
@@ -1111,6 +1112,7 @@ class ff:
             self.varnames2par()
         else:
             f = open(fname+".par", "w")             
+            logger.info("Writing parameter to file %s.par" % fname)
         f.write("FF %s\n\n" % self.FF)
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             ptyp = par_types[ic]
@@ -1175,6 +1177,7 @@ class ff:
                         rlist.append(icl)
                     ric[curric] = rlist    
         fric.close()
+        logger.info("read RIC from file %s.ric" % fname)
         # now add data to ric object .. it gets only bnd, angl, oop, dih
         self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
         # time to init the data structures .. supply vdw and cha here
@@ -1266,6 +1269,7 @@ class ff:
                     for i,r in enumerate(self.ric_type[curric]):
                         parind[i] = t2ident[r.type]
         fpar.close()
+        logger.info("read parameter from file %s.par" % fname)
         ### replace variable names by the current value
         if self.fit: 
             self.variables.cleanup()
