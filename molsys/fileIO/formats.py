@@ -1,21 +1,22 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import xyz, txyz, mfpx, cif, turbo
+import xyz, txyz, mfpx, cif, plain, array
 
 read = {
         'xyz':xyz.read,
         'txyz':txyz.read,
         'mfpx':mfpx.read,
         'cif':cif.read,
-        'turbo':turbo.read}
+        'plain':plain.read,
+        'array':array.read}
 
 write = {
         'xyz':xyz.write,
         'txyz':txyz.write,
         'mfpx':mfpx.write,
         'cif':cif.write,
-        'turbo': turbo.write} 
+        'plain':plain.read}
 
 #def read(mol, filename, fmt, **kwargs):
     #reads[fmt](mol,filename, **kwargs)

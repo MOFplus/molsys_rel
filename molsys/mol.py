@@ -148,6 +148,19 @@ class mol:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return m
+    
+    @classmethod
+    def fromArray(cls, arr, **kwargs):
+        ''' generic reader for the mol class, reading from a Nx3 array
+        :Parameters:
+            - arr         : the array to be read
+            - **kwargs    : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        m = cls()
+        logger.info("reading array")
+        assert arr.shape[1] == 3, "Wrong array dimension (second must be 3): %s" % (a.shape,)
+        formats.read['array'](m,arr,**kwargs)
+        return m
 
     def write(self,fname,ftype=None,**kwargs):
         ''' generic writer for the mol class
@@ -487,9 +500,9 @@ class mol:
             other_xyz *= np.array(scale)
         if roteuler != None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
-        if type(rotate)   !=None:
+        if rotate   !=None:
             other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
-        if type(translate)!=None:
+        if translate!=None:
             other_xyz += translate
         if self.natoms==0:
             self.xyz = other_xyz
@@ -501,6 +514,7 @@ class mol:
             cn = (np.array(c)+self.natoms).tolist()
             self.conn.append(cn)
         self.natoms += other.natoms
+        if len(other.fragtypes) == 0: other.set_nofrags()
         self.add_fragtypes(other.fragtypes)
         self.add_fragnumbers(other.fragnumbers)
         #self.fragtypes += other.fragtypes
@@ -532,7 +546,8 @@ class mol:
                 self.xyz    = self.xyz[self.goods]
                 return
             else:
-                self.delete_atom(bads[0])
+                if len(bads) != 0:
+                    self.delete_atom(bads[0])
         else:
             self.delete_atom(bads)
 
