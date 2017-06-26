@@ -10,9 +10,9 @@ def read(mol, f, topo = False):
     """
     Routine, which reads an txyz file
     :Parameters:
-        -fname  (str) : name of the txyz file
-        -mol    (obj) : instance of a molclass
-        -topo   (bool): flag for reading topo information
+        -f    (obj) : txyz file object
+        -mol  (obj) : instance of a molclass
+        -topo (bool): flag for reading topo information
     """
     lbuffer = string.split(f.readline())
     mol.natoms = string.atoi(lbuffer[0])
@@ -173,7 +173,7 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
     for i in xrange(mol.natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
-        if frags == True: line += ("%-16s %5d") % tuple([fragtypes[i]]+[fragnumbers[i]])
+        if frags == True: line += ("%-16s %5d ") % tuple([fragtypes[i]]+[fragnumbers[i]])
         conn = (numpy.array(cnct[i])+1).tolist()
         if len(conn) != 0:
             if topo:
@@ -185,11 +185,11 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
                             break
                 for cc,pp in zip(conn,pimg):
                     if pp < 10:
-                        line +="%8d/%1d" % (cc,pp)
+                        line +="%8d/%1d " % (cc,pp)
                     else:
-                        line += "%7d/%2d" % (cc,pp)
+                        line += "%7d/%2d " % (cc,pp)
             else:
-                line += (len(conn)*"%7d") % tuple(conn)
+                line += (len(conn)*"%7d ") % tuple(conn)
         f.write("%s \n" % line)
     if moldenr:
         f.write("#atomtypes \n")

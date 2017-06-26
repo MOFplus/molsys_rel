@@ -10,8 +10,8 @@ def read(mol, f):
     """
     Routine, which reads an mfpx file
     :Parameters:
-        -fname  (str): name of the txyz file
-        -mol    (obj): instance of a molclass
+        -f   (obj): mfpx file object
+        -mol (obj): instance of a molclass
     """
     ### read header ###
     ftype = 'xyz'
