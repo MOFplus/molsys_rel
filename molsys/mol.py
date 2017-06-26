@@ -496,13 +496,13 @@ class mol:
         #       2) rotate by euler angles
         #       3) rotate by orientation triple
         #       4) translate
-        if scale    !=None:
+        if scale    is not None:
             other_xyz *= np.array(scale)
-        if roteuler != None:
+        if roteuler is not None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
-        if rotate   !=None:
+        if rotate is not None:
             other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
-        if translate!=None:
+        if translate is not None:
             other_xyz += translate
         if self.natoms==0:
             self.xyz = other_xyz
