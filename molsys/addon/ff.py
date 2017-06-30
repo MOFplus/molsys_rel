@@ -928,14 +928,13 @@ class ff:
                     idx = self.fragments.frags2atoms(subs_flat)
                     self._mol.graph.filter_graph(idx)
                     asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
-                    ### check for atfixes and change atype accordingly
+                    ### check for atfixes and change atype accordingly, the atfix number has to be referred to its index in the azone
                     if ref_dic[ref][4] != None:
                         atfix = ref_dic[ref][4]
-#                        print (atfix)
-#                        pdb.set_trace()
                         for s in asubs:
                             for idx, at in atfix.items():
-                                self.aftypes[s[int(idx)]].atype = at
+                                azone = ref_dic[ref][2]
+                                self.aftypes[s[azone.index(int(idx))]].atype = at
                     self._mol.graph.molg.clear_filters()
                     asubs_flat = itertools.chain.from_iterable(asubs)
                     self.ref_atomlists[ref] = list(set(asubs_flat))
@@ -1276,7 +1275,7 @@ class ff:
             self.variables()
         return
     
-    def upload_params(self, FF, refname, dbrefname = None, azone = True, interactive = True):
+    def upload_params(self, FF, refname, dbrefname = None, azone = True, atfix = None, interactive = True):
         """
         Method to upload interactively the parameters to the already connected db.
         
@@ -1286,8 +1285,15 @@ class ff:
         assert type(refname) == str
         assert type(FF)      == str
         if dbrefname == None: dbrefname = refname
+        if atfix is not None:
+            fixes = {}
+            for i, at in enumerate(self._mol.atypes):
+                if i in self.active_zone:
+                    if at in atfix: fixes[str(i)]=at
+        else: 
+            fixes = None
         if azone:
-            self.api.create_fit(FF, dbrefname, azone = self.active_zone)
+            self.api.create_fit(FF, dbrefname, azone = self.active_zone, atfix = fixes)
         else:
             self.api.create_fit(FF, dbrefname)
         uploads = {
