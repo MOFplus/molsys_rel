@@ -24,7 +24,7 @@ class ric(RedIntCoords):
     reference.
     """
     
-    def __init__(self, mol):
+    def __init__(self, mol, lindict = {}):
         self._mol = mol
         ### check if ff is already initialized, else do
         if hasattr(self._mol,"ff") == False:
@@ -41,10 +41,11 @@ class ric(RedIntCoords):
                 "tor": self.get_val_torsions,
                 "eck": self.get_val_eckarts,
                 "hes": self.get_ric_hessian}
+        self.lindict = lindict
         return
 
     def setup_rics(self, full = True):
-        # TODO Used feature
+        self._mol.ff.ric.compute_rics()
         ### bonds
         for i,r in enumerate(self._mol.ff.ric.bnd):
             if full:
@@ -54,10 +55,20 @@ class ric(RedIntCoords):
         ### angles
         # TODO implement linear angles
         for i,r in enumerate(self._mol.ff.ric.ang):
+            if abs(r.value-180.0) < 2.0:
+                r.lin = True                
+            else:
+                r.lin = False
             if full:
-                self.add_in_bend(np.array(list(r))+1)
+                if r.lin:
+                    self.add_lin_bend_mod(r)
+                else:
+                    self.add_in_bend(np.array(list(r))+1)
             elif r.used:
-                self.add_in_bend(np.array(list(r))+1)
+                if r.lin:
+                    self.add_lin_bend_mod(r)
+                else:
+                    self.add_in_bend(np.array(list(r))+1)
         ### oop
         for i, r in enumerate(self._mol.ff.ric.oop):
             a,b,c,d = r
@@ -81,6 +92,22 @@ class ric(RedIntCoords):
         self.setup(masses = np.array(self._mol.get_mass()))
         self.report_rics("rics.dat")
         return
+    
+    def add_lin_bend_mod(self, indices):
+        if indices in self.lindict.keys():
+            self.add_lin_bend(np.array(list(indices))+1, ref = self.lindict[indices]+1)
+        else:
+            if len(self._mol.conn[indices[0]])>1:
+                lref = copy.copy(self._mol.conn[indices[0]])
+                lref.pop(lref.index(indices[1]))
+                self.add_lin_bend(np.array(list(indices))+1, ref = lref[0])
+            elif len(self._mol.conn[indices[2]])>1:
+                lref = copy.copy(self._mol.conn[indices[2]])
+                lref.pop(lref.index(indices[1]))
+                self.add_lin_bend(np.array(list(indices))+1, ref = lref[0])
+            else:
+                raise ValueError("No reference atom found for linear bend %s" % indices)
+        
 
     @property
     def first_str(self):
