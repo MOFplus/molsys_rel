@@ -40,6 +40,17 @@ import logging
 import pdb
 logger = logging.getLogger("molsys.ff")
 
+class AssignmentError(Exception):
+
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self,*args,**kwargs)
+
+    def to_dict(self):
+        rv = {}
+        rv["error"]="AssignmentError"
+        rv["message"]="Set of parameters is incomplete"
+        return rv
+
 class ic(list):
     """
     list that accepts attributes
@@ -639,7 +650,7 @@ class ff:
                 complete = False
                 for p in unknown_par: logger.error("No params for %3s %s" % (ic, p))
         if complete == False:
-            raise IOError("Assignend parameter set incomplete!")
+            raise AssignmentError("Assignend parameter set incomplete!")
         else:
             logger.info("Parameter assignment successfull")
         return
