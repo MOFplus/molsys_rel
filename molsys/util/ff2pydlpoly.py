@@ -160,7 +160,7 @@ class wrapper(object):
             chargesum += params[0]
             f.write("   %8s  %10.4f %10.4f %12.6f 1 %1d\n" % 
                     (atype, self.get_mass()[i], params[0], params[1], 0))
-        print "Net charge of the system: %10.5f" % chargesum
+        print "Net charge of the system: %13.7f" % chargesum
         ### bonded potentials ###
         for ict in ["bnd", "ang", "dih", "oop"]:
             buffer_out = ""

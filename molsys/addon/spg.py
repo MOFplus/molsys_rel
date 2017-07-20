@@ -25,6 +25,7 @@ from molsys.util import elems
 from molsys.util import spacegroups
 import molsys
 import sys
+import numpy as np
 
 import logging
 logger = logging.getLogger("molsys.spg")
@@ -224,12 +225,137 @@ class spg:
         example:
         >>> import molsys
         >>> import numpy as np
-        >>> m = molsys.mol(); m.read(filename); m.addon("spg")
+        >>> m = molsys.mol()
+        >>> m.read(filename)
+        >>> m.addon("spg")
         >>> m.spg.generate_spgcell()
         >>> sym = m.spg.get_symmetry()
         >>> n=0 #the symmetry index to be used
         >>> rota, tran = sym['rotations'][n], sym['translations'][n]
         >>> new_vector = rota*old_vector[:,np.newaxis] + tran
         """
+        logger.info("Get symmetries")
         sym = spglib.get_symmetry(self.spgcell)
+        logger.info("Found %s symmetry/ies and %s equivalent atom/s" % \
+            (len(sym['rotations']), len(sym['equivalent_atoms'])))
         return sym['rotations'], sym['translations'], sym['equivalent_atoms']
+
+    #def generate_symlist(self):###TBI automatic scaling
+    def generate_symmetries(self, scale=[1,1,1]):
+        """
+        Generate list of coordinates by symmetries
+        scale (same scale as per supercell) ###TBI, automatic primitive
+        """
+        logger.info("Generating symmetries")
+        self.generate_spgcell()
+        lrot, ltra, leqa = self.get_symmetry() ###TBI equivalent atoms
+        nsym = len(lrot)
+        cell = np.array(scale, dtype='float')
+        inv = 1./cell
+        self.mol.scale_cell(inv)
+        xyzsymlist = []
+        fracsymlist = []
+        for i in xrange(nsym):
+            frac = np.tensordot(self.mol.xyz, lrot[i], axes=1)+ltra[i]
+            frac[np.isclose(frac,0)]=0. ###avoid negative zeros for floor
+            frac[np.isclose(frac,1)]=0. ###ones are zeros
+            frac[np.isclose(frac,-1)]=0. ###minus ones are zeros
+            ### TBI: TO BE TRIED, WORKS FOR ANY INTEGER
+            ### fround = np.rint(frac)
+            ### intindex = np.isclose(frac,fround)
+            ### frac[intindex]=fround[intindex]
+            frac -= np.floor(frac)
+            fracsymlist.append(frac)
+            xyzsym = frac*cell
+            xyzsymlist.append(xyzsym)
+        self.mol.scale_cell(cell)
+        self.syms = xyzsymlist
+        self.fracsyms = fracsymlist
+
+    def generate_symperms(self):
+        """
+        Each symmetry permutation stores the indices that would sort an array
+        according to each symmetry operation in the symmetry space group.
+
+        """
+        logger.info("Generating symmetry permutations")
+        symperms = []
+        for i,isym in enumerate(self.syms):
+            symperm = [int(np.where(np.isclose(self.mol.xyz, c).all(axis=1))[0])  for c in isym]
+            assert np.isclose(self.mol.xyz[symperm], isym).all(), "SYMPERM FAIL"
+            self.syms[i] = self.mol.xyz[symperm] ###ensures equality, overcomes "float" uncertainty
+            symperms.append(symperm)
+        self.symperms = symperms
+
+    def generate_symperms_from_frac(self):
+        """
+        Each symmetry permutation stores the indices that would sort an array
+        according to each symmetry operation in the symmetry space group.
+
+        """
+        logger.info("Generating symmetry permutations")
+        xyzfrac = self.mol.get_frac_xyz()
+        symperms = []
+        for i,isym in enumerate(self.fracsyms):
+            symperm = []
+            for c in isym:
+                #if i == 432: import pdb; pdb.set_trace()
+                frac = xyzfrac-c
+                frac[np.isclose(frac,0)]=0. ###avoid negative zeros for floor
+                frac[np.isclose(frac,1)]=0. ###ones are zeros
+                frac[np.isclose(frac,-1)]=0. ###ones are zeros
+                frac -= np.floor(frac)
+                sype = np.where((frac < 1.5e-7).all(axis=1))[0]
+                symperm.append(sype[0])
+            self.syms[i] = frac[symperm] ###ensures equality, overcomes "float" uncertainty
+            symperms.append(symperm)
+        self.symperms = symperms
+
+    def find_symmetry(self, xyzref):
+        """
+        If a match is found, return True. Else, return False.
+        """
+        logger.info("Seeking symmetry match")
+        match = False
+        for i,isp in enumerate(self.symperms):
+            if np.isclose(self.mol.xyz[isp], xyzref).all():
+                match = True
+                logger.info("Find symmetry!\nIndex: %d\nPermutation: %s" % (i,isp))
+                return i, isp
+        if match == False:
+            logger.info("No symmetry found")
+            raise ValueError("No symmetry found")
+
+    def find_symmetry_from_frac(self, fracref):
+        """
+        If a match is found, return True. Else, return False.
+        """
+        logger.info("Seeking symmetry match")
+        match = False
+        frac = self.mol.get_frac_xyz()
+        for i,isp in enumerate(self.symperms):
+            if np.isclose(frac[isp], fracref).all():
+                match = True
+                logger.info("Find symmetry!\nIndex: %d\nPermutation: %s" % (i,isp))
+                return i, isp
+        if match == False:
+            logger.info("No symmetry found")
+            raise ValueError("No symmetry found")
+
+    def find_symmetry_from_colors(self, colref=None, symperms = None):
+        """
+        If a match is found, return True. Else, return False.
+        """
+        if symperms is None: symperms = self.symperms
+        if colref is None: colref = self.colors
+        logger.info("Seeking symmetry match")
+        match = False
+        col = self.mol.colors ###???
+        for i,isp in enumerate(symperms): ###???
+            if np.isclose(col[isp], colref).all():
+                match = True
+                logger.info("Find symmetry!\nIndex: %d\nPermutation: %s" % (i,isp))
+                return i, isp
+        if match == False:
+            logger.info("No symmetry found")
+            raise ValueError("No symmetry found")
