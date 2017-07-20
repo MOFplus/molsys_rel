@@ -40,6 +40,17 @@ import logging
 import pdb
 logger = logging.getLogger("molsys.ff")
 
+class AssignmentError(Exception):
+
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self,*args,**kwargs)
+
+    def to_dict(self):
+        rv = {}
+        rv["error"]="AssignmentError"
+        rv["message"]="Set of parameters is incomplete"
+        return rv
+
 class ic(list):
     """
     list that accepts attributes
@@ -639,7 +650,7 @@ class ff:
                 complete = False
                 for p in unknown_par: logger.error("No params for %3s %s" % (ic, p))
         if complete == False:
-            raise IOError("Assignend parameter set incomplete!")
+            raise AssignmentError("Assignend parameter set incomplete!")
         else:
             logger.info("Parameter assignment successfull")
         return
@@ -928,14 +939,13 @@ class ff:
                     idx = self.fragments.frags2atoms(subs_flat)
                     self._mol.graph.filter_graph(idx)
                     asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
-                    ### check for atfixes and change atype accordingly
+                    ### check for atfixes and change atype accordingly, the atfix number has to be referred to its index in the azone
                     if ref_dic[ref][4] != None:
                         atfix = ref_dic[ref][4]
-#                        print (atfix)
-#                        pdb.set_trace()
                         for s in asubs:
                             for idx, at in atfix.items():
-                                self.aftypes[s[int(idx)]].atype = at
+                                azone = ref_dic[ref][2]
+                                self.aftypes[s[azone.index(int(idx))]].atype = at
                     self._mol.graph.molg.clear_filters()
                     asubs_flat = itertools.chain.from_iterable(asubs)
                     self.ref_atomlists[ref] = list(set(asubs_flat))
@@ -1087,6 +1097,7 @@ class ff:
         par_types = self.enumerate_types()
         # write the RICs first
         f = open(fname+".ric", "w")
+        logger.info("Writing RIC to file %s.ric" % fname)
         # should we add a name here in the file? the FF goes to par. keep it simple ...
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             filt = None
@@ -1111,6 +1122,7 @@ class ff:
             self.varnames2par()
         else:
             f = open(fname+".par", "w")             
+            logger.info("Writing parameter to file %s.par" % fname)
         f.write("FF %s\n\n" % self.FF)
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             ptyp = par_types[ic]
@@ -1175,6 +1187,7 @@ class ff:
                         rlist.append(icl)
                     ric[curric] = rlist    
         fric.close()
+        logger.info("read RIC from file %s.ric" % fname)
         # now add data to ric object .. it gets only bnd, angl, oop, dih
         self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
         # time to init the data structures .. supply vdw and cha here
@@ -1266,13 +1279,14 @@ class ff:
                     for i,r in enumerate(self.ric_type[curric]):
                         parind[i] = t2ident[r.type]
         fpar.close()
+        logger.info("read parameter from file %s.par" % fname)
         ### replace variable names by the current value
         if self.fit: 
             self.variables.cleanup()
             self.variables()
         return
     
-    def upload_params(self, FF, refname, dbrefname = None, azone = True, interactive = True):
+    def upload_params(self, FF, refname, dbrefname = None, azone = True, atfix = None, interactive = True):
         """
         Method to upload interactively the parameters to the already connected db.
         
@@ -1282,8 +1296,15 @@ class ff:
         assert type(refname) == str
         assert type(FF)      == str
         if dbrefname == None: dbrefname = refname
+        if atfix is not None:
+            fixes = {}
+            for i, at in enumerate(self._mol.atypes):
+                if i in self.active_zone:
+                    if at in atfix: fixes[str(i)]=at
+        else: 
+            fixes = None
         if azone:
-            self.api.create_fit(FF, dbrefname, azone = self.active_zone)
+            self.api.create_fit(FF, dbrefname, azone = self.active_zone, atfix = fixes)
         else:
             self.api.create_fit(FF, dbrefname)
         uploads = {
