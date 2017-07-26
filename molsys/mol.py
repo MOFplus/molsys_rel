@@ -148,6 +148,19 @@ class mol:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return m
+    
+    @classmethod
+    def fromArray(cls, arr, **kwargs):
+        ''' generic reader for the mol class, reading from a Nx3 array
+        :Parameters:
+            - arr         : the array to be read
+            - **kwargs    : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        m = cls()
+        logger.info("reading array")
+        assert arr.shape[1] == 3, "Wrong array dimension (second must be 3): %s" % (a.shape,)
+        formats.read['array'](m,arr,**kwargs)
+        return m
 
     def write(self,fname,ftype=None,**kwargs):
         ''' generic writer for the mol class
@@ -171,15 +184,16 @@ class mol:
                 raise IOError("Unsupported format")
         return
 
-    def view(self, **kwargs):
+    def view(self, program='moldenx', fmt='mfpx', **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
         if self.mpi_rank == 0:
-            logger.info("invoking moldenx as visualisation tool")
-            _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
+            logger.info("invoking %s as visualisation tool" % (program,))
+            pid = str(os.getpid())
+            _tmpfname = "_tmpfname_%s.%s" % (pid, fmt)
             self.write(_tmpfname)
             try:
-                ret = subprocess.call(["moldenx", _tmpfname])
+                ret = subprocess.call([program, _tmpfname])
             except KeyboardInterrupt:
                 pass
             finally:
@@ -307,7 +321,7 @@ class mol:
         return
 
     def report_conn(self):
-        ''' Print infomration on current connectivity, coordination number
+        ''' Print information on current connectivity, coordination number
             and the respective atomic distances '''
 
         logger.info("reporting connectivity ... ")
@@ -380,6 +394,7 @@ class mol:
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
         cell = self.cell * np.array(supercell)[:,np.newaxis]
         self.set_cell(cell)
+        self.inv_cell = np.linalg.inv(self.cell)
         self.elems *= ntot
         self.atypes*=ntot
         self.fragtypes*=ntot
@@ -450,13 +465,14 @@ class mol:
         ''' scales the cell by a given fraction (0.1 ^= 10%)
         :Parameters:
             - scale: either single float or list (3,) of floats for x,y,z'''
-        if not type(scale) == types.ListType:
+        if not hasattr(scale, '__iter__'):
             scale = 3*[scale]
-        self.cellparams *= np.array(scale+[1,1,1])
+        self.cellparams *= np.hstack([scale,[1,1,1]])
         frac_xyz = self.get_frac_xyz()
         self.cell *= np.array(scale)[:,np.newaxis]
         self.images_cellvec = np.dot(images, self.cell)
         self.set_xyz_from_frac(frac_xyz)
+        self.inv_cell = np.linalg.inv(self.cell)
         return
 
     ###  system manipulations ##########################################
@@ -483,13 +499,13 @@ class mol:
         #       2) rotate by euler angles
         #       3) rotate by orientation triple
         #       4) translate
-        if scale    !=None:
+        if scale    is not None:
             other_xyz *= np.array(scale)
-        if roteuler != None:
+        if roteuler is not None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
-        if type(rotate)   !=None:
+        if rotate is not None:
             other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
-        if type(translate)!=None:
+        if translate is not None:
             other_xyz += translate
         if self.natoms==0:
             self.xyz = other_xyz
@@ -501,6 +517,7 @@ class mol:
             cn = (np.array(c)+self.natoms).tolist()
             self.conn.append(cn)
         self.natoms += other.natoms
+        if len(other.fragtypes) == 0: other.set_nofrags()
         self.add_fragtypes(other.fragtypes)
         self.add_fragnumbers(other.fragnumbers)
         #self.fragtypes += other.fragtypes
@@ -532,7 +549,8 @@ class mol:
                 self.xyz    = self.xyz[self.goods]
                 return
             else:
-                self.delete_atom(bads[0])
+                if len(bads) != 0:
+                    self.delete_atom(bads[0])
         else:
             self.delete_atom(bads)
 
@@ -643,6 +661,12 @@ class mol:
             xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         return xyz
 
+    def pbc(self):
+        """
+        Compute periodic boundary conditions in an arbitrary (triclinic) cell
+        """
+        ###TBI
+        pass
 
     def new_mol_by_index(self, idx):
         """

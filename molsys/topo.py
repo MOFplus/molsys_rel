@@ -201,10 +201,10 @@ class topo(mol.mol):
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
         self.cellparams[0:3] *= np.array(supercell)
         self.cell *= np.array(supercell)[:,np.newaxis]
+        self.inv_cell = np.linalg.inv(self.cell)
         self.elems *= ntot
         self.atypes*=ntot
         self.images_cellvec = np.dot(images, self.cell)
-        #print xyz
         return xyz,conn,pconn
 
     ######### connectivity things #################################
@@ -474,17 +474,18 @@ class topo(mol.mol):
 
 # ########## additional stuff for edge coloring ############################################
 
-    def color_edges(self, proportions, maxiter=100, maxstep=100000, nprint=1000, penref=0.3, MC=True):
+    def color_edges(self, proportions, maxiter=100, maxstep=100000, nprint=1000, penref=0.3, thresh=1.0e-3, MC=True):
         """
         wrapper to search for a zero penalty solution of edge coloring. An initial coloring is generated
         randomly and a flipMC run is started ... if no zero penalty is found after maxsteps it is repeated ...
         """
+        self.thresh = thresh
         self.MC = MC
         converged = False
         niter = 0
         while not (converged and (niter<maxiter)):
             self.init_color_edges(proportions, MC=True)
-            result = self.run_flip(maxstep, nprint=nprint, penref=penref)
+            result = self.run_flip(maxstep, nprint=nprint, penref=penref, thresh=thresh)
             if result[0] : converged=True
             niter += 1
         print "**********************************************************************"
@@ -493,7 +494,7 @@ class topo(mol.mol):
         return
 
 
-    def init_color_edges(self, proportions=[], colors=[], MC=False):
+    def init_color_edges(self, proportions=[], colors=[], thresh=1.0e-3, MC=False):
         """
         generate datastructures for edge coloring and set up random
         the proportions are a list or tuple of integer.
@@ -503,6 +504,7 @@ class topo(mol.mol):
         with 2 red and 1 blue ... this means the total number of edges inthe periodic net must
         be a multiple of 3
         """
+        self.thresh = thresh
         self.MC = MC
         assert bool(proportions) ^ bool(list(colors)), "either proportions or colors must be non-empty"
         # generate the list of bonds only "upwards" bonds (i1<i2) are stored
@@ -608,7 +610,7 @@ class topo(mol.mol):
             - penref  : reference penalty for the MC aceptance criterion exp(-pen/penref) [0.2]
             - thresh  : threshold under which convergence is assumed (zero penalty is not always reached for orientation penalty) [1.0e-3]
         """
-
+        self.thresh = thresh
         step = 0
         while (step < maxstep) and (self.totpen>thresh):
             dpen = self.flip_color()
@@ -646,6 +648,49 @@ class topo(mol.mol):
                 xyz = (self.xyz[i]+xyz_j)/2.0
                 self.insert_atom(lelem, laty, xyz, i, j)
         return
+
+    def col2vex(self, sele=None, lelem=None, laty=None):
+        if sele is None:
+            ncol = self.ncolors
+            col = self.colors.astype(np.int)
+            nbonds = self.nbonds
+            ba = self.blist[:,0]
+            bb = self.blist[:,1]
+        else:
+            try:
+                indexcol = np.where(sum([self.colors == i for i in sele]))[0] ###since bool arrays, here "sum" means "or"
+            except ValueError:
+                indexcol = []
+            col = self.colors[indexcol]
+            ncol = len(sele)
+            nbonds = len(col)
+            ba = self.blist[:,0][indexcol]
+            bb = self.blist[:,1][indexcol]
+        xyz_a = self.xyz[ba]
+        xyz_c = []
+        for i in xrange(nbonds):
+            bci = self.conn[ba[i]].index(bb[i])
+            xyz_ic = self.get_neighb_coords(ba[i], bci)
+            xyz_c.append(xyz_ic)
+        xyz_c = np.array(xyz_c) + xyz_a
+        xyz_c *= .5
+        m = mol.mol.fromArray(xyz_c)
+        ### DEFAULT ASSIGNMENT
+        if lelem is None and laty is None:
+            laty = xrange(ncol)
+            lowercase = list('kbabcdefghijklmnopqrstuvwxyz')
+            lelem = [lowercase[i] for i in laty]
+            laty = map(str,laty)
+        elif lelem is None or laty is None:
+            raise TypeError("lelem and laty must be both either None or ndarrays")
+        elif len(lelem) != ncol or len(laty) != ncol:
+            raise ValueError("len of sele, lelem and laty must be the same!sele:\t%s\nlelem:\t%s\nlaty:\t%s" % (sele, lelem, laty))
+        lelem = np.array(lelem)
+        laty = np.array(laty)
+        m.set_elems(lelem[col])
+        m.set_atypes(laty[col])
+        m.colors = self.colors
+        return m
 
     # utility functions
     def set_bcol(self, bond):
