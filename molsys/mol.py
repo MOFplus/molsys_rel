@@ -813,9 +813,11 @@ class mol:
         self.elems.append(elem)
         self.atypes.append(atype)
         xyz.shape = (1,3)
-        self.xyz = np.concatenate((self.xyz, xyz))
+        if isinstance(self.xyz, np.ndarray):
+            self.xyz = np.concatenate((self.xyz, xyz))
+        else:
+            self.xyz = xyz
         self.conn.append([])
-        self.pconn.append([])
         return self.natoms -1
 
     def add_conn(self, anum1, anum2):
