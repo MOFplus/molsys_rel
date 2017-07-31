@@ -42,7 +42,6 @@ class spg:
         """
         self.mol = mol
         self.spgcell = None # tuple of (lattice, position, numbers) as used in spglib
-        #
         self.spg_version = spglib.get_version()
         self.symprec = 1.0e-2
         logger.info("Addon spg loaded (version %d.%d.%d)" % self.spg_version)
@@ -241,7 +240,7 @@ class spg:
         return sym['rotations'], sym['translations'], sym['equivalent_atoms']
 
     #def generate_symlist(self):###TBI automatic scaling
-    def generate_symmetries(self, scale=[1,1,1]):
+    def generate_symmetries(self):
         """
         Generate list of coordinates by symmetries
         scale (same scale as per supercell) ###TBI, automatic primitive
@@ -250,9 +249,9 @@ class spg:
         self.generate_spgcell()
         lrot, ltra, leqa = self.get_symmetry() ###TBI equivalent atoms
         nsym = len(lrot)
-        cell = np.array(scale, dtype='float')
-        inv = 1./cell
-        self.mol.scale_cell(inv)
+        supercell = np.diagonal(self.spgcell[0])
+        superinv = 1./supercell
+        self.mol.scale_cell(superinv)
         xyzsymlist = []
         fracsymlist = []
         for i in xrange(nsym):
@@ -266,9 +265,9 @@ class spg:
             ### frac[intindex]=fround[intindex]
             frac -= np.floor(frac)
             fracsymlist.append(frac)
-            xyzsym = frac*cell
+            xyzsym = frac*supercell
             xyzsymlist.append(xyzsym)
-        self.mol.scale_cell(cell)
+        self.mol.scale_cell(supercell)
         self.syms = xyzsymlist
         self.fracsyms = fracsymlist
 
@@ -292,6 +291,10 @@ class spg:
         Each symmetry permutation stores the indices that would sort an array
         according to each symmetry operation in the symmetry space group.
 
+        >>> m.addon('spg')
+        >>> m.spg.generate_spgcell()
+        >>> m.spg.generate_symmetries()
+        >>> m.spg.generate_symperms_from_frac()
         """
         logger.info("Generating symmetry permutations")
         xyzfrac = self.mol.get_frac_xyz()
@@ -299,7 +302,6 @@ class spg:
         for i,isym in enumerate(self.fracsyms):
             symperm = []
             for c in isym:
-                #if i == 432: import pdb; pdb.set_trace()
                 frac = xyzfrac-c
                 frac[np.isclose(frac,0)]=0. ###avoid negative zeros for floor
                 frac[np.isclose(frac,1)]=0. ###ones are zeros

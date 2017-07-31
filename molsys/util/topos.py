@@ -913,7 +913,7 @@ class topotyper(object):
 
     def get_net(self):
         """ Connects to mofplus API to compare the cs and vs value to the database, and return the topology. """
-        self.api = user_api(experimental=False)
+        self.api = user_api()#experimental=False)
         self.nets = self.api.search_cs(self.cs, self.vs)
         return self.nets
 

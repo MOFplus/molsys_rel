@@ -340,11 +340,12 @@ class mol:
             supercell upon preserving the connectivity of the initial system
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
-        logging.info('Generating %ix%ix%i supercell' % tuple(supercell))
+        self.supercell = supercell
+        logging.info('Generating %ix%ix%i supercell' % tuple(self.supercell))
         img = [np.array(i) for i in images.tolist()]
-        ntot = np.prod(supercell)
+        ntot = np.prod(self.supercell)
         nat = copy.deepcopy(self.natoms)
-        nx,ny,nz = supercell[0],supercell[1],supercell[2]
+        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
         #pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
         conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
@@ -392,7 +393,7 @@ class mol:
                 self.conn.append(c)
         self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
-        cell = self.cell * np.array(supercell)[:,np.newaxis]
+        cell = self.cell * np.array(self.supercell)[:,np.newaxis]
         self.set_cell(cell)
         self.inv_cell = np.linalg.inv(self.cell)
         self.elems *= ntot
@@ -979,6 +980,7 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
+        if not hasattr(self, "supercell"): self.supercell = [1,1,1]
 
     def set_cellparams(self,cellparams, cell_only = True):
         ''' set unit cell using cell parameters and assign cell vectors

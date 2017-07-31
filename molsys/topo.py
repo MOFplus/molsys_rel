@@ -139,11 +139,12 @@ class topo(mol.mol):
     ######## manipulations in particular for blueprints
 
     def make_supercell(self,supercell):
-        logger.info('Generating %i x %i x %i supercell' % tuple(supercell))
+        self.supercell = supercell
+        logger.info('Generating %i x %i x %i supercell' % tuple(self.supercell))
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
         nat = copy.deepcopy(self.natoms)
-        nx,ny,nz = supercell[0],supercell[1],supercell[2]
+        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
         pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
         conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
@@ -199,8 +200,8 @@ class topo(mol.mol):
                 self.pconn.append(p)
         self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
-        self.cellparams[0:3] *= np.array(supercell)
-        self.cell *= np.array(supercell)[:,np.newaxis]
+        self.cellparams[0:3] *= np.array(self.supercell)
+        self.cell *= np.array(self.supercell)[:,np.newaxis]
         self.inv_cell = np.linalg.inv(self.cell)
         self.elems *= ntot
         self.atypes*=ntot
@@ -484,7 +485,7 @@ class topo(mol.mol):
         converged = False
         niter = 0
         while not (converged and (niter<maxiter)):
-            self.init_color_edges(proportions, MC=True)
+            self.init_color_edges(proportions, MC=self.MC)
             result = self.run_flip(maxstep, nprint=nprint, penref=penref, thresh=thresh)
             if result[0] : converged=True
             niter += 1
@@ -524,7 +525,7 @@ class topo(mol.mol):
             assert self.nbonds%self.nprop==0,  "these proportions do not work"
             nc = self.nbonds/self.nprop
             colors = [c for c,p in enumerate(self.prop) for i in xrange(p*nc)]
-            random.shuffle(colors)
+            if self.MC: random.shuffle(colors)
         self.colors = np.array(colors)
         self.ncolors = len(self.prop)
         # generate the bcolors table (same as self.conn but with colors)
@@ -650,6 +651,9 @@ class topo(mol.mol):
         return
 
     def col2vex(self, sele=None, lelem=None, laty=None):
+        """from colors to vertices, returns molsys.mol instance
+        original vertices are kept the same
+        edges are condensed in the baricenter"""
         if sele is None:
             ncol = self.ncolors
             col = self.colors.astype(np.int)
@@ -689,7 +693,29 @@ class topo(mol.mol):
         laty = np.array(laty)
         m.set_elems(lelem[col])
         m.set_atypes(laty[col])
+        if hasattr(self,'cell'): m.set_cell(self.cell)
+        if hasattr(self,'supercell'): m.supercell = self.supercell[:]
         m.colors = self.colors
+        return m
+
+    def dummy_col2vex(self, lelem=['c'], laty=['0'], addon=None):
+        """returns uncolored graph as molsys.mol instance
+        if addon='spg': generate symmetry perks"""
+        etypes = set(self.elems)
+        lenetypes = len(etypes)
+        lones = [1]*lenetypes
+        lnones = [None]*lenetypes
+        dumpensum = dict(zip(etypes, lones))
+        dumpenori = dict(zip(etypes, lnones))
+        self.set_colpen_sumrule(dumpensum)
+        self.set_colpen_orientrule(dumpenori)
+        self.init_color_edges([1])
+        m = self.col2vex(lelem=lelem, laty=laty)
+        if addon=='spg':
+            m.addon('spg')
+            m.spg.generate_spgcell()
+            m.spg.generate_symmetries()
+            m.spg.generate_symperms_from_frac()
         return m
 
     # utility functions
@@ -791,15 +817,14 @@ class topo(mol.mol):
         for i in xrange(self.natoms):
             self.colpen_orientrule.append(vert_dict[self.elems[i]])
         return
-##### ADDRA ###################################################################
-def GCD(num):
-    """compute greatest common divisor for a list. fractions.gcd works only for two numbers"""
-    from fractions import gcd
-    try:
+
+    @classmethod
+    def GCD(cls,*num):
+        """compute greatest common divisor for a list.
+        rationale: fractions.gcd works only for two numbers"""
+        from fractions import gcd
+        if hasattr(num[0],'__iter__'): return cls.GCD(*num[0])
         if len(num) > 2:
             return reduce(lambda x,y:gcd(x,y),num)
         else:
             return gcd(*num)
-    except TypeError:
-        return num
-##### DDARA ###################################################################
