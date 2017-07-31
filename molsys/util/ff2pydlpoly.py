@@ -51,6 +51,10 @@ class wrapper(object):
         self.mols = self.m.molecules.mols
         self.moltypes = self.m.molecules.moltypes
         self.whichmol = self.m.molecules.whichmol
+        # pass on mol properties
+        self.elems = self.m.get_elems()
+        self.cnct  = self.m.get_conn()
+        self.types = self.m.get_atypes()                
         return
 
     def empty_box(self,box):
@@ -402,7 +406,15 @@ class wrapper(object):
         f.close()
         return
         
- 
+    def write_mfpx(self, fname, xyz, cell):
+        """
+        helper function to allow writing the mfpx file. essentially we have to transfer cell and xyz back to 
+        the molsys mol object used for the setup in the first place
+        """
+        self.m.set_xyz(xyz)
+        self.m.set_cell(cell)
+        self.m.write(fname, ftype="mfpx")
+        return
 
 
 
