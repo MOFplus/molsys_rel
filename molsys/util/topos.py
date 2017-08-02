@@ -11,6 +11,9 @@ from mofplus import user_api
 from string import ascii_lowercase
 import itertools
 
+import logging
+logger = logging.getLogger("molsys.topos")
+
 class conngraph:
     """ This is the "conngraph" class
     It is the basis of the molgraph and topograph classes, which use graph theory for the deconstruction of
@@ -418,6 +421,7 @@ class molgraph(conngraph):
         Groups all organic clusters, which are connected with each other, into a single cluster.
         Like self.get_bbs, this method will OVERWRITE self.clusters.
         """
+        logger.info('Collapse clusters in grouped superclusters')
         try:
             assert self.cluster_organicity
         except:
@@ -562,6 +566,7 @@ class topograph(conngraph):
         - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once. 
                       (do NOT use this for topographs deconstructed from a molgraph !!!)
         """
+        logger.info('Compute all coordination sequences')
         if use_atypes:
             vertexlist = []
             found_atypes = []
@@ -644,6 +649,7 @@ class topograph(conngraph):
         - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
         - wells: If True, the Wells and the long symbols will be returned. If False, only the long symbols are used
         """
+        logger.info('Compute all vertex symbols')
         if use_atypes:
             vertexlist = []
             found_atypes = []
@@ -898,6 +904,7 @@ class topotyper(object):
  
     def deconstruct(self, split_by_org=True):
         """ perform deconstruction """
+        logger.info('Perform topological deconstruction')
         self.mg.handle_islands(silent=True)
         self.mg.determine_Nk()
         self.mg.find_cluster_threshold()

@@ -341,7 +341,7 @@ class mol:
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
         self.supercell = supercell
-        logging.info('Generating %ix%ix%i supercell' % tuple(self.supercell))
+        logger.info('Generating %i x %i x %i supercell' % tuple(self.supercell))
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(self.supercell)
         nat = copy.deepcopy(self.natoms)
