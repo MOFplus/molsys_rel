@@ -184,15 +184,16 @@ class mol:
                 raise IOError("Unsupported format")
         return
 
-    def view(self, **kwargs):
+    def view(self, program='moldenx', fmt='mfpx', **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
         if self.mpi_rank == 0:
-            logger.info("invoking moldenx as visualisation tool")
-            _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
+            logger.info("invoking %s as visualisation tool" % (program,))
+            pid = str(os.getpid())
+            _tmpfname = "_tmpfname_%s.%s" % (pid, fmt)
             self.write(_tmpfname)
             try:
-                ret = subprocess.call(["moldenx", _tmpfname])
+                ret = subprocess.call([program, _tmpfname])
             except KeyboardInterrupt:
                 pass
             finally:
@@ -320,7 +321,7 @@ class mol:
         return
 
     def report_conn(self):
-        ''' Print infomration on current connectivity, coordination number
+        ''' Print information on current connectivity, coordination number
             and the respective atomic distances '''
 
         logger.info("reporting connectivity ... ")
@@ -339,11 +340,12 @@ class mol:
             supercell upon preserving the connectivity of the initial system
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
-        logging.info('Generating %ix%ix%i supercell' % tuple(supercell))
+        self.supercell = supercell
+        logger.info('Generating %i x %i x %i supercell' % tuple(self.supercell))
         img = [np.array(i) for i in images.tolist()]
-        ntot = np.prod(supercell)
+        ntot = np.prod(self.supercell)
         nat = copy.deepcopy(self.natoms)
-        nx,ny,nz = supercell[0],supercell[1],supercell[2]
+        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
         #pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
         conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
@@ -391,8 +393,9 @@ class mol:
                 self.conn.append(c)
         self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
-        cell = self.cell * np.array(supercell)[:,np.newaxis]
+        cell = self.cell * np.array(self.supercell)[:,np.newaxis]
         self.set_cell(cell)
+        self.inv_cell = np.linalg.inv(self.cell)
         self.elems *= ntot
         self.atypes*=ntot
         self.fragtypes*=ntot
@@ -463,13 +466,14 @@ class mol:
         ''' scales the cell by a given fraction (0.1 ^= 10%)
         :Parameters:
             - scale: either single float or list (3,) of floats for x,y,z'''
-        if not type(scale) == types.ListType:
+        if not hasattr(scale, '__iter__'):
             scale = 3*[scale]
-        self.cellparams *= np.array(scale+[1,1,1])
+        self.cellparams *= np.hstack([scale,[1,1,1]])
         frac_xyz = self.get_frac_xyz()
         self.cell *= np.array(scale)[:,np.newaxis]
         self.images_cellvec = np.dot(images, self.cell)
         self.set_xyz_from_frac(frac_xyz)
+        self.inv_cell = np.linalg.inv(self.cell)
         return
 
     ###  system manipulations ##########################################
@@ -658,6 +662,12 @@ class mol:
             xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         return xyz
 
+    def pbc(self):
+        """
+        Compute periodic boundary conditions in an arbitrary (triclinic) cell
+        """
+        ###TBI
+        pass
 
     def new_mol_by_index(self, idx):
         """
@@ -828,7 +838,10 @@ class mol:
         self.elems.append(elem)
         self.atypes.append(atype)
         xyz.shape = (1,3)
-        self.xyz = np.concatenate((self.xyz, xyz))
+        if isinstance(self.xyz, np.ndarray):
+            self.xyz = np.concatenate((self.xyz, xyz))
+        else:
+            self.xyz = xyz
         self.conn.append([])
         return self.natoms -1
 
@@ -970,6 +983,7 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
+        if not hasattr(self, "supercell"): self.supercell = [1,1,1]
 
     def set_cellparams(self,cellparams, cell_only = True):
         ''' set unit cell using cell parameters and assign cell vectors
