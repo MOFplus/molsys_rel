@@ -9,6 +9,7 @@ import numpy
 import copy
 from mofplus import user_api
 from string import ascii_lowercase
+import itertools
 
 class conngraph:
     """ This is the "conngraph" class

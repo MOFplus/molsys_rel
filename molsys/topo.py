@@ -715,7 +715,7 @@ class topo(mol.mol):
             m.addon('spg')
             m.spg.generate_spgcell()
             m.spg.generate_symmetries()
-            m.spg.generate_symperms_from_frac()
+            m.spg.generate_symperms()
         return m
 
     # utility functions

@@ -229,7 +229,7 @@ class spg:
         >>> m.addon("spg")
         >>> m.spg.generate_spgcell()
         >>> sym = m.spg.get_symmetry()
-        >>> n=0 #the symmetry index to be used
+        >>> n=0 #just an example, n could be any btw. 0 and len(sym)-1
         >>> rota, tran = sym['rotations'][n], sym['translations'][n]
         >>> new_vector = rota*old_vector[:,np.newaxis] + tran
         """
@@ -239,11 +239,10 @@ class spg:
             (len(sym['rotations']), len(sym['equivalent_atoms'])))
         return sym['rotations'], sym['translations'], sym['equivalent_atoms']
 
-    #def generate_symlist(self):###TBI automatic scaling
     def generate_symmetries(self):
         """
         Generate list of coordinates by symmetries
-        scale (same scale as per supercell) ###TBI, automatic primitive
+        scale (same scale as per supercell) ###TBI: non-orthorombic cells
         """
         logger.info("Generating symmetries")
         self.generate_spgcell()
@@ -276,25 +275,10 @@ class spg:
         Each symmetry permutation stores the indices that would sort an array
         according to each symmetry operation in the symmetry space group.
 
-        """
-        logger.info("Generating symmetry permutations")
-        symperms = []
-        for i,isym in enumerate(self.syms):
-            symperm = [int(np.where(np.isclose(self.mol.xyz, c).all(axis=1))[0])  for c in isym]
-            assert np.isclose(self.mol.xyz[symperm], isym).all(), "SYMPERM FAIL"
-            self.syms[i] = self.mol.xyz[symperm] ###ensures equality, overcomes "float" uncertainty
-            symperms.append(symperm)
-        self.symperms = symperms
-
-    def generate_symperms_from_frac(self):
-        """
-        Each symmetry permutation stores the indices that would sort an array
-        according to each symmetry operation in the symmetry space group.
-
         >>> m.addon('spg')
         >>> m.spg.generate_spgcell()
         >>> m.spg.generate_symmetries()
-        >>> m.spg.generate_symperms_from_frac()
+        >>> m.spg.generate_symperms()
         """
         logger.info("Generating symmetry permutations")
         xyzfrac = self.mol.get_frac_xyz()

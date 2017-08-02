@@ -47,8 +47,8 @@ def write(mol,fname, name=''):
 def read(mol,fname,make_P1=True,detect_conn=True):
     try: 
         import CifFile
-    except:
-        print 'ERROR, pycifrw not installed, install via pip!'
+    except ImportError:
+        raise ImportError('pycifrw not installed, install via pip!')
     cf = CifFile.ReadCif(fname)
     if len(cf.keys()) != 1:
         for key in cf.keys(): print key
