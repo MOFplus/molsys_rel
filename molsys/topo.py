@@ -138,9 +138,9 @@ class topo(mol.mol):
 
     ######## manipulations in particular for blueprints
 
-    def make_supercell(self,supercell):
-        self.supercell = supercell
-        logger.info('Generating %i x %i x %i supercell' % tuple(self.supercell))
+    def make_supercell(self, supercell):
+        self.supercell = tuple(supercell)
+        logger.info('Generating %i x %i x %i supercell' % self.supercell)
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
         nat = copy.deepcopy(self.natoms)

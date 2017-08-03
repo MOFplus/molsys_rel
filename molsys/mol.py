@@ -340,12 +340,12 @@ class mol:
             supercell upon preserving the connectivity of the initial system
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
-        self.supercell = supercell
-        logger.info('Generating %i x %i x %i supercell' % tuple(self.supercell))
+        self.supercell = tuple(supercell)
+        logger.info('Generating %i x %i x %i supercell' % self.supercell)
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(self.supercell)
         nat = copy.deepcopy(self.natoms)
-        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
+        nx, ny, nz = self.supercell
         #pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
         conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]

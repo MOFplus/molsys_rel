@@ -641,13 +641,15 @@ class topograph(conngraph):
             visited.append([current_vertex, current_cell])
         return visited
 
-    def get_all_vs(self, use_atypes=False, wells = False):
+    def get_all_vs(self, use_atypes=False, wells = False, max_supercell_size=5):
         """
         Calculates all vertex symbols of the graph.
         
         :Parameters:
-        - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
-        - wells: If True, the Wells and the long symbols will be returned. If False, only the long symbols are used
+        - use_atypes (bool): if this is True, then every vertex with the same atomtype will only be calculated once.
+        - wells (bool): If True, the Wells and the long symbols will be returned. If False, only the long symbols are used
+        - max_supercell_size (int): throws OverflowError if supercell_size > max_supercell_size
+            (same error as if max_supercell_size is infinite and get_all_vs fails)
         """
         logger.info('Compute all vertex symbols')
         if use_atypes:
@@ -666,6 +668,9 @@ class topograph(conngraph):
             success = False
             supercell_size = 2
             while not success:
+                if supercell_size > max_supercell_size:
+                    logger.error("Maximum cell size reached!")
+                    raise OverflowError
                 if supercell_size > len(supercells)-1:
                     self.mol = copy.deepcopy(keep)
                     self.mol.make_supercell([supercell_size]*3)
@@ -677,8 +682,8 @@ class topograph(conngraph):
                 try:
                     ws, ls = self.get_vertex_symbol(i)
                 except ValueError:
-                    supercell_size += 1
                     success = False
+                    supercell_size += 1
             self.mol = keep
             self.make_graph()
             if wells: 
@@ -765,6 +770,7 @@ class topograph(conngraph):
           topograph (i.e. the "vertex types"), according to the different vertex 
           descriptors.
         """
+        logger.info('Get unique vertex descriptors')
         assert type(cs) == list
         assert type(vs) == list
         assert len(vs) == len(cs)
@@ -891,19 +897,45 @@ class topograph(conngraph):
 class topotyper(object):
     """ Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures. """
   
-    def __init__(self, mol, split_by_org=True):
+    def __init__(self, mol, split_by_org=True, depth=10, isum=3, trip=None):
         """
         :Parameters:
-        - mol: molsys.mol object which should be deconstructed
-        - split_by_org: if True, organicity is used for defining building blocks.
+        - mol (obj): molsys.mol object which should be deconstructed
+        - split_by_org (bool): if True, organicity is used for defining building blocks
+        - depth (int): maximum level of coordination sequences 
+        - isum (int*): summation of indices
+        - trip (nested tuples*): resizing list for make_supercell if vertex symbols method overflows
+        * recursive purpose, DO NOT CHANGE
         """
-        self.mg = molgraph(mol)
         self.api = None
-        self.deconstruct(split_by_org)
+        molcopy = copy.deepcopy(mol) #prevents mol pollution if restart
+        self.goodinit = False
+        self.mg = molgraph(molcopy)
+        while not self.goodinit:
+            if trip is None:
+                trinat = self.triplenats_on_sphere(isum)
+            else:
+                trinat = trip
+            try:
+                itri = trinat.pop()
+                logger.info("Triplet is: "+str(itri))
+                if isum > 3: mol.make_supercell(itri)
+                self.deconstruct(split_by_org, depth=depth)
+            except OverflowError: ###specific for supercells
+                logger.error("Deconstruction failed!")
+                logger.info("Resize original cell")
+                self.__init__(mol,split_by_org,depth=depth,isum=isum,trip=trinat)
+            except IndexError:
+                isum += 1
+                logger.error("Resizing list is empty!")
+                logger.info("Increase index summation to %i and create new resizing list" % (isum,))
+                self.__init__(mol,split_by_org,depth=depth,isum=isum)
+            else:
+                self.goodinit = True
         return
  
-    def deconstruct(self, split_by_org=True):
-        """ perform deconstruction """
+    def deconstruct(self, split_by_org=True, depth=10):
+        """ Perform deconstruction """
         logger.info('Perform topological deconstruction')
         self.mg.handle_islands(silent=True)
         self.mg.determine_Nk()
@@ -914,7 +946,7 @@ class topotyper(object):
         else:
             self.mg.get_bbs()
         self.tg = self.mg.make_topograph(False)
-        cs = self.tg.get_all_cs()
+        cs = self.tg.get_all_cs(depth=depth)
         vs = self.tg.get_all_vs()
         self.cs, self.vs = self.tg.get_unique_vd(cs, vs)
         return
@@ -1066,5 +1098,13 @@ class topotyper(object):
             m = bbs[i[0]]
             m.write(foldername+"/"+cluster_names[n]+organicity[i[0]]+".mfpx", "mfpx")
         return
-
-
+        
+    def triplenats_on_sphere(cls,trisum, trimin=1):
+        """returns triplets of natural numbers on a sphere
+        trisum(int) : the summation of the triples must be equal to trisum
+        trimin(int) : minimum allowed natural per triplet element (default: 1)"""
+        trinat = []
+        for itri in itertools.product(xrange(trimin, trisum), repeat=3):
+            if sum(itri) == trisum:
+                trinat.append(itri)
+        return trinat
