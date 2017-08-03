@@ -520,7 +520,7 @@ class ff:
         return
                 
     @timer("assign parameter")
-    def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = []):
+    def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], plot=False):
         """
         method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -560,6 +560,8 @@ class ff:
         self._mol.addon("fragments")
         self.fragments = self._mol.fragments
         self.fragments.make_frag_graph()
+        if plot:
+            self.fragments.plot_frag_graph(plot, ptype="png", vsize=20, fsize=20, size=1200)
         # create full atomistic graph
         self._mol.graph.make_graph()
         self.timer.stop()
@@ -570,7 +572,7 @@ class ff:
             self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
         self.timer.stop()
         # detect refsystems
-        self.find_refsystems()
+        self.find_refsystems(plot=plot)
         with self.timer("parameter assignement loop"):
             for ref in self.scan_ref:
                 counter = 0
@@ -854,7 +856,7 @@ class ff:
 
 
     @timer("find reference systems")
-    def find_refsystems(self):
+    def find_refsystems(self, plot=None):
         """
         function to detect the reference systems:
             - self.scan_ref      : list of ref names in the order to be searched
@@ -900,6 +902,8 @@ class ff:
                 ref_mol = self._mol.mpi_comm.bcast(ref_mol, root=0)
             ref_mol.addon("fragments")
             ref_mol.fragments.make_frag_graph()
+            if plot:
+                ref_mol.fragments.plot_frag_graph(ref, ptype="png", size=600, vsize=20, fsize=20)
             # if active space is defined create atomistic graph of active zone
             active = ref_dic[ref][2]
             if active: ref_mol.graph.make_graph(active)

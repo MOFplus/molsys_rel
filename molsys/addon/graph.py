@@ -69,7 +69,7 @@ class graph:
                         #self.molg.add_edge( self.molg.vertex(self.vert2atom.index(ja)),self.molg.vertex(i))
         return
 
-    def plot_graph(self, fname, g = None, size=800, fsize=10):
+    def plot_graph(self, fname, g = None, size=800, fsize=10, vsize=5, ptype = "pdf"):
         """
         plot the grap (needs more tuning options
 
@@ -84,8 +84,8 @@ class graph:
         else:
             draw_g = self.molg
         from graph_tool.draw import graph_draw
-        graph_draw(draw_g, vertex_text=draw_g.vp.type, vertex_font_size=10,  \
-            output_size=(size, size), output=fname+".pdf")
+        graph_draw(draw_g, vertex_text=draw_g.vp.type, vertex_font_size=fsize, vertex_size=vsize, \
+            output_size=(size, size), output=fname+"."+ptype, bg_color=[1,1,1,1])
         return
 
     def find_subgraph(self, graph, subg):

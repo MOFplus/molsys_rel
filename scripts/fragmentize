@@ -16,8 +16,7 @@ at()
 #m.write(name)
 
 frag = molsys.util.fragmentizer()
-#frag.frag_path='/home/julian/sandbox/fragments'
-#frag.read_frags()
+#frag(m, plot=name.split(".")[0])
 frag(m)
 m.write(name)
 
