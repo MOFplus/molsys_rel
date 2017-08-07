@@ -28,6 +28,7 @@ import addon
 # no need to redo this config in the other modules!
 # NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the 
 #        master node writes INFO to stdout
+# TBI: colored logging https://stackoverflow.com/a/384125
 import logging
 mpi_rank = MPI.COMM_WORLD.Get_rank()
 mpi_size = MPI.COMM_WORLD.Get_size()
@@ -200,6 +201,11 @@ class mol:
                 os.remove(_tmpfname)
                 logger.info("temporary file "+_tmpfname+" removed")
         return
+    
+    def molden(self, **kwargs):
+        self.view(program='moldenx', fmt='mfpx', **kwargs)
+    def pymol(self, **kwargs):
+        self.view(program='pymol', fmt='mfpx', **kwargs)
 
     ##### addons ##################################
 
@@ -341,14 +347,17 @@ class mol:
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
         self.supercell = tuple(supercell)
+        ntot = np.prod(self.supercell)
+        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
+        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
+        if sum(self.supercell) == 3:
+            logger.warning('Generating %i x %i x %i supercell? No need to do that!' % self.supercell)
+            return xyz,conn
         logger.info('Generating %i x %i x %i supercell' % self.supercell)
         img = [np.array(i) for i in images.tolist()]
-        ntot = np.prod(self.supercell)
         nat = copy.deepcopy(self.natoms)
         nx, ny, nz = self.supercell
         #pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
-        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
-        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
         elems = copy.deepcopy(self.elems)
         left,right,front,back,bot,top =  [],[],[],[],[],[]
         neighs = [[] for i in range(6)]

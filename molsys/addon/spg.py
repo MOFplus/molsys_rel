@@ -120,6 +120,9 @@ class spg:
         :Parameters:
 
             - spgnum : integer space group number
+
+        :KNOWN BUGS:
+            - scaled_positions could be equivalent from a cif file, so it fails to make_P1
         """
         # how to convert international spgnum to hall number
         # apply operations to self.mol and generate a new mol object

@@ -19,7 +19,7 @@ tempname = "temp.xyz"
     
 
 try:
-    subprocess.call(["obabel", '-icif', name, '-oxyz', '-O'+tempname])
+    subprocess.call(["obabel", '-icif', name, '-oxyz', '-O'+tempname, '-UCfill', 'keepconnect'])
 except OSError:
     raise OSError("install openbabel - Chemical toolbox utilities (cli)")
 
