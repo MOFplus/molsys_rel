@@ -473,7 +473,7 @@ class topo(mol.mol):
         plt.ylabel('y')
         plt.show()
 
-# ########## additional stuff for edge coloring ############################################
+########## additional stuff for edge coloring ############################################
 
     def color_edges(self, proportions, maxiter=100, maxstep=100000, nprint=1000, penref=0.3, thresh=1.0e-3, MC=True):
         """

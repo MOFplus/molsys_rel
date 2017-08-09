@@ -998,7 +998,7 @@ class topotyper(object):
                 self.tg.mol.atypes[i] += ascii_lowercase[n-1]
         return
     
-    def get_all_atomseq(self, depth=10):
+    def get_all_atomseq(self, depth=10, clusters = None):
         """
         Calculates all atomseq (atom sequences) of the molecule according to their elements..
         This function just loops over all vertices and calls get_atomseq for each one
@@ -1007,17 +1007,18 @@ class topotyper(object):
         - depth: maximum level
         """
         logger.info('Compute all atom sequences')
-        import pdb; pdb.set_trace()
-        clusterlist = range(len(self.bbs))
-        atomseq_list = []
-        elemseq_list = []
-        for i in clusterlist:
-            atomseq, elemseq = self.get_atomseq(depth, i)
-            atomseq_list.append(atomseq)
-            elemseq_list.append(elemseq)
-        return atomseq_list, elemseq_list
+        if clusters is None:
+            clusters = xrange(self.nbbs)
+        atomseqs = []
+        for i in clusters:
+            atomseq = self.get_atomseq(depth, i)
+            atomseqs.append(atomseq)
+        self.atomseqs = atomseqs
+        return atomseqs
 
     def get_atomseq(self, depth, start_cluster=0, start_cell=(0,0,0)):
+        ###TBI: implement start_cell!
+        ###start_cell IS NEEDED for images
         """
         Calculates the as (atom sequence) of the vertex specified in start_vertex and start_cell.
         
@@ -1026,23 +1027,56 @@ class topotyper(object):
         - start_vertex: ID of vertex, of which the cs value should be calculated
         - start_cell: starting cell of the function
         """
-        atomseq = depth*[0]
-        elemseq = depth*[0]
-        atomlever = self.mg.clusters[start_cluster]
-        ignore = atomlever[:]
+        def connected(ia, ignore, return_set=True):
+            conn = set(self.mg.mol.conn[ia])
+            ignore = set(ignore)
+            conn -= ignore
+            if return_set:
+                return conn
+            else:
+                return int(*conn)
+        atomconn = self.bb2conn[start_cluster]
+        nconn = len(atomconn)
+        ignore = self.mg.clusters[start_cluster]
         ignore = set(ignore)
-        for level in xrange(depth):
-            visall = [] #visited atoms per depth, all atoms
-            for n in atomlever:
-                visone = self.mg.mol.conn[n]
-                visall += visone
-            visall = set(visall) - ignore
-            atomseq[level] = visall
-            elemseq[level] = [self.mg.mol.elems[vis] for vis in visall]
-            elemseq[level].sort() #for future comparison
-            atomlever = visall
-            ignore |= visall
-        return atomseq, elemseq
+        atomseq = [[] for i in xrange(nconn)]
+        for ic,iconn in enumerate(atomconn):
+            lever = [iconn] #for depth == 0
+            for level in xrange(depth):
+                levseq = []
+                leverneigh = set([])
+                for cc in lever:
+                        neigh = connected(cc,ignore)
+                        leverneigh |= neigh
+                if neigh:
+                    leverneigh -= ignore
+                    ignore |= leverneigh
+                    levseq.append(tuple(neigh))
+                    lever = leverneigh
+                else:
+                    break
+                atomseq[ic] += levseq
+            atomseq[ic] = tuple(atomseq[ic]) ###
+        return set(atomseq)
+
+    def atomseq2elemseq(self):
+        elems = self.mg.mol.elems
+        atomseq = self.atomseq
+        #elemseq = [[] for i in xrange(len(atomseq))]
+        for i in atomseq:
+            for j in i:
+                print j
+                for k in j:
+                    print elems[k],
+                print
+        #for i,ai in enumerate(atomseq):
+        #    print i
+        #    for j in ai:
+        #        for k in j:
+        #            print elems[k],
+        #        print
+        #    #print i, ai
+        return
 
     def compute_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
         """
@@ -1198,12 +1232,14 @@ class topotyper(object):
 #    def assign_colors(self):
 #        """assign colors wrt. atom sequence"""
     def detect_all_connectors(self):
-        self.bb2conn = []
         self.bconn = set(())
+        self.bb2conn = []
+        self.bb2adj = []
         for ibb in xrange(self.nbbs):
-            ibconn, ilconn = self.detect_connectors(ibb, return_dict=False)
-            self.bb2conn.append(ilconn)
+            ibconn, ilconn, idconn = self.detect_connectors(ibb, return_dict=True)
             self.bconn |= ibconn
+            self.bb2conn.append(ilconn)
+            self.bb2adj.append(idconn)
         self.nbconn = len(self.bconn)
         return
 
@@ -1217,7 +1253,7 @@ class topotyper(object):
             ic -= batoms #set difference
             if ic:
                 ic = int(*ic) #safety: if more than 1, raise error
-                dconn[ia] = ic
+                dconn[ia] = ic #computed anyway
                 lconn.append(ia)
                 bconn.append((ibb, self.abb[ic])) #needs tuple
         bconn = set(bconn) #set of tuples, not lists
@@ -1226,27 +1262,107 @@ class topotyper(object):
         return bconn, lconn
 
     def set_atom2bb(self):
+        """from atom index to building block the atom belongs to"""
         self.abb = [None]*self.mg.mol.natoms
         for ibb, bb in enumerate(self.mg.clusters):
             for ia in bb:
                 self.abb[ia] = ibb
+        return
+
+    def set_conn2adjbb(self):
+        """from connector atom to building block the atom connects"""
+        self.conn2bb = [None]*self.mg.mol.natoms
+        for bba in self.bb2adj:
+            for c,ca in bba.items():
+                self.conn2bb[c] = self.abb[ca]
+        return
+
+    def determine_all_color(self, vtype=0, depth=10):
+        edges = self.bconn
+        edcol = []
+        elemseqs = []
+        for e in edges:
+            elemseq = self.determine_elemseq(e, vtype, depth=depth)
+            elemseqs.append(elemseq)
+        unique_elemseqs = []
+        for es in elemseqs:
+            if es in unique_elemseqs:
+                edcol.append(unique_elemseqs.index(es)) ###SLOW
+            else:
+                unique_elemseqs.append(es)
+        self.edcol = edcol
+        self.unique_elemseqs = unique_elemseqs
+        return
+
+    def set_bb2uniquebb(self):
+        self.bb2ubb = [None]*self.nbbs
+        for iu,ubb in enumerate(self.unique_bbs):
+            for jbb in ubb:
+                self.bb2ubb[jbb] = iu
+        return
+    
+    def determine_elemseq(self, edge, vtype=0, depth=10):
+        """N.B.: works only with 2 (0/1) colors
+        TBI: any number of colors"""
+        elems = self.mg.mol.elems
+        if self.bb2ubb[edge[0]] == vtype:
+            ba,bb = edge
+        else: ###AKA### elif self.bb2ubb[edge[1]] == vtype:
+            bb,ba = edge
+        for atomseq in self.atomseqs[ba]:
+            atomseq = list(atomseq)
+            if self.abb[atomseq[0][0]] == bb:
+                break
+        elemseq = []
+        for level in xrange(depth):
+            laseq = atomseq[level]
+            leseq = []
+            for a in laseq:
+                leseq.append(elems[a])
+            leseq.sort()
+            elemseq.append(leseq)
+        return elemseq
+
+    def edges2vconn(self):
+        vconn = [[] for i in xrange(self.nbbs)]
+        for a,b in self.bconn:
+            vconn[a].append(b)
+            vconn[b].append(a)
+        vconn = [list(set(ivconn)) for ivconn in vconn]
+        self.vconn = vconn
+        return
 
     def set_vbb(self):
         """vertices in the baricenter of bbs"""
         nv = self.nbbs
-        xyz_v = np.zeros((nv,3))
+        xyz_v = [None]*nv
+        celldim = np.array(self.mg.mol.cellparams[:3])
+        invdim1 = 1/celldim
+        invdim2 = 2*invdim1
         for ibb, bb in enumerate(self.bbs):
-            iatoms = self.mg.clusters[ibb]
-            xyz_bb = self.mg.mol.xyz[iatoms]
+            xyz_bb = bb.xyz
+            print ibb
+            print np.floor(xyz_bb*invdim2)
+            xyz_bb += celldim*np.floor(xyz_bb*invdim2) #AKA if x<l/2: x+=l
             xyz_v[ibb] = xyz_bb.mean(axis=0)
+        xyz_v = np.array(xyz_v)
+        xyz_v -= celldim*np.floor(xyz_v*invdim1) #AKA x-=x*(x%l)
         self.xyz_v = xyz_v
         self.nv = nv
+
     def set_ebb(self):
         """edges in the baricenter of pairs of vertices"""
+        ###BUG: it does not work due to periodic boundary conditions
         ne = self.nbconn
         xyz_e = np.zeros((ne,3))
         for ibc, bc in enumerate(self.bconn):
             a1, a2 = bc
-            xyz_e[ibc] = ( self.xyz_v[a1] + self.xyz_v[a2] ) / 2
+            xyz_e[ibc] = .5*(self.xyz_v[a1]+self.xyz_v[a2])
         self.xyz_e = xyz_e
         self.ne = ne
+
+    def get_vbb(self):
+        return self.tg.mol.xyz
+    
+    def get_vconn(self):
+        return self.tg.mol.conn
