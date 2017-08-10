@@ -929,10 +929,6 @@ class mol:
         self.elems = map(elements.number.keys().__getitem__, elems_number)
         return
 
-    def convert_elems(self,elemsdict):
-####ADDRA###
-        self.elems = self
-
     def get_atypes(self):
         ''' return the list of atom types '''
         return self.atypes
