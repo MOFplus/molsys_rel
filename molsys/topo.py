@@ -54,6 +54,21 @@ class topo(mol.mol):
             self.nonhydrogen = False  # use only non-hydrogen atoms if True in symmetry detection or any operation
         return
 
+    @classmethod
+    def fromMol(cls, m):
+        """set self from mol instance"""
+        t = cls()
+        ### MINIMUM ATTRIBUTE SETUP ###
+        ###TBI: all relevant non-method attributes retrieved ###
+        t.set_natoms(m.natoms)
+        t.set_xyz(m.xyz)
+        t.set_conn(m.conn)
+        t.set_elems(m.elems)
+        t.set_atypes(m.atypes)
+        t.set_cell(m.cell)
+        t.add_pconn()
+        return t
+
     ###### helper functions #######################
 
     def get_distvec2(self, i, j,exclude_self=True):
@@ -639,10 +654,16 @@ class topo(mol.mol):
             converged = False
         return (converged, step, self.totpen)
 
-    def add_vertex_on_color(self, col, lelem, laty):
+    def add_vertex_on_color(self, col, lelem=None, laty=None):
+        if lelem is None and laty is None:
+            errmsg = "add_vertex_on_color expects a triplet or \
+                alist of nested triplets"
+            assert hasattr(col,'__iter__'), errmsg
+            for c in col:
+                assert len(c) != 3, errmsg
+                self.add_vertex_on_color(*c)
         for i,b in enumerate(self.blist):
             if self.colors[i] == col:
-                # yes .. add a vertex here
                 i,j = b
                 ci = self.conn[i].index(j)
                 xyz_j = self.get_neighb_coords(b[0], ci)
@@ -762,6 +783,11 @@ class topo(mol.mol):
         nc = self.bcolors[vert].count(0)
         pen = abs(nc-nc0)*self.colpen_sum_fact
         return pen*pen
+
+    def set_colpen_rule(self,svert_dict, overt_dict):
+        self.set_colpen_sumrule(svert_dict)
+        self.set_colpen_orientrule(overt_dict)
+        return
 
     def set_colpen_sumrule(self, vert_dict):
         """

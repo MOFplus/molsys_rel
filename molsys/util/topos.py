@@ -422,9 +422,7 @@ class molgraph(conngraph):
         Like self.get_bbs, this method will OVERWRITE self.clusters.
         """
         logger.info('Collapse clusters in grouped superclusters')
-        try:
-            assert self.cluster_organicity
-        except:
+        if not hasattr(self,'cluster_organicity'):
             self.detect_organicity()
         stop = False
         while not stop:
@@ -506,6 +504,7 @@ class molgraph(conngraph):
         tm.set_elems(elems)
         tm.set_atypes(tm.natoms*['0'])
         tm.set_cell(self.mol.get_cell())
+        tm.ctab = tm.get_conn_as_tab()
         tm.add_pconn()
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
@@ -1168,6 +1167,10 @@ class topotyper(object):
         self.unique_bbs = unique_bbs
         self.cluster_names = cluster_names
         self.organicity = organicity
+        self.set_atom2bb()
+        self.detect_all_connectors()
+        self.set_conn2bb()
+        self.set_bb2ubb()
         return
 
     def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
@@ -1199,47 +1202,17 @@ class topotyper(object):
             if sum(itri) == trisum:
                 trinat.append(itri)
         return trinat
-### TBI FUNCTIONS ##############################################################
-#    def color_graph(self):
-#        """color the underneath 3d graph according to atom sequence between each
-#        pair of framework building blocks"""
-#        self.compute_blueprint()
-#        self.assign_colors()
-#    def compute_graph(self):
-#        """compute the underneath 3d graph according to framework building
-#        blocks
-#        """
-#        self.compute_bbs()
-#        self.connect_bbs()
-#    def compute_bbs(self):
-#        """compute building blocks which the framework is built of"""
-#        ### SEE write_bbs!!!
-#    def connect_bbs(self):
-#        """connect building blocks which the framework is built of"""
-#        self.collapse_bbs()
-#        self.???.detect_conn() #some distance thresh
-#    def collapse_bbs():
-#        """collapse building blocks which the framework is built of into a
-#        vertex per building block. Those vertices make the underneath graph."""
-#        ###just take the baricenter of vertices per each building block
-#    def detect_colors(self):
-#        """detect different colors according to atom sequence"""
-#        for iseq in lseq:
-#            if iseq in DICT: ###sottinteso DICT.keys()
-#                DICT[iseq].append(bbi)
-#            else:
-#                DICT[iseq] = [bbi]
-#    def assign_colors(self):
-#        """assign colors wrt. atom sequence"""
+
     def detect_all_connectors(self):
         self.bconn = set(())
         self.bb2conn = []
         self.bb2adj = []
         for ibb in xrange(self.nbbs):
             ibconn, ilconn, idconn = self.detect_connectors(ibb, return_dict=True)
-            self.bconn |= ibconn
+            self.bconn |= set(ibconn)
             self.bb2conn.append(ilconn)
             self.bb2adj.append(idconn)
+        self.bconn = list(self.bconn)
         self.nbconn = len(self.bconn)
         return
 
@@ -1255,8 +1228,9 @@ class topotyper(object):
                 ic = int(*ic) #safety: if more than 1, raise error
                 dconn[ia] = ic #computed anyway
                 lconn.append(ia)
-                bconn.append((ibb, self.abb[ic])) #needs tuple
-        bconn = set(bconn) #set of tuples, not lists
+                ibconn = [ibb, self.abb[ic]]
+                ibconn.sort()
+                bconn.append(tuple(ibconn)) #needs tuple
         if return_dict:
             return bconn, lconn, dconn
         return bconn, lconn
@@ -1269,8 +1243,8 @@ class topotyper(object):
                 self.abb[ia] = ibb
         return
 
-    def set_conn2adjbb(self):
-        """from connector atom to building block the atom connects"""
+    def set_conn2bb(self):
+        """from connector index to building block the atom connects"""
         self.conn2bb = [None]*self.mg.mol.natoms
         for bba in self.bb2adj:
             for c,ca in bba.items():
@@ -1286,15 +1260,15 @@ class topotyper(object):
             elemseqs.append(elemseq)
         unique_elemseqs = []
         for es in elemseqs:
-            if es in unique_elemseqs:
-                edcol.append(unique_elemseqs.index(es)) ###SLOW
-            else:
+            if es not in unique_elemseqs:
                 unique_elemseqs.append(es)
+            edcol.append(unique_elemseqs.index(es)) ###SLOW
         self.edcol = edcol
         self.unique_elemseqs = unique_elemseqs
         return
 
-    def set_bb2uniquebb(self):
+    def set_bb2ubb(self):
+        """from building block index to unique building block"""
         self.bb2ubb = [None]*self.nbbs
         for iu,ubb in enumerate(self.unique_bbs):
             for jbb in ubb:
@@ -1333,6 +1307,7 @@ class topotyper(object):
         return
 
     def set_vbb(self):
+        ###BUGFIX: vbb needs to be checked
         """vertices in the baricenter of bbs"""
         nv = self.nbbs
         xyz_v = [None]*nv
@@ -1341,8 +1316,6 @@ class topotyper(object):
         invdim2 = 2*invdim1
         for ibb, bb in enumerate(self.bbs):
             xyz_bb = bb.xyz
-            print ibb
-            print np.floor(xyz_bb*invdim2)
             xyz_bb += celldim*np.floor(xyz_bb*invdim2) #AKA if x<l/2: x+=l
             xyz_v[ibb] = xyz_bb.mean(axis=0)
         xyz_v = np.array(xyz_v)

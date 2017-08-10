@@ -81,6 +81,7 @@ class mol:
         self.elems=[]
         self.atypes=[]
         self.conn=[]
+        self.ctab=[]
         self.fragtypes=[]
         self.fragnumbers=[]
         self.nfrags = 0
@@ -928,6 +929,10 @@ class mol:
         self.elems = map(elements.number.keys().__getitem__, elems_number)
         return
 
+    def convert_elems(self,elemsdict):
+####ADDRA###
+        self.elems = self
+
     def get_atypes(self):
         ''' return the list of atom types '''
         return self.atypes
@@ -1077,6 +1082,14 @@ class mol:
         :Parameters:
             - conn    : List of lists describing the connectivity'''
         self.conn = conn
+        self.ctab = self.get_conn_as_tab()
+
+    def get_ctab(self):
+        ''' returns the connectivity table (nbonds, 2)'''
+    def set_ctab(self,ctab):
+        ''' updates the connectivity table
+        :Parameters:
+            - ctab  : List of couples describing the connectivity'''
 
     def set_empty_conn(self):
         """
