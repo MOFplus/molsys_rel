@@ -660,7 +660,7 @@ class topo(mol.mol):
                 alist of nested triplets"
             assert hasattr(col,'__iter__'), errmsg
             for c in col:
-                assert len(c) != 3, errmsg
+                assert len(c) == 3, errmsg
                 self.add_vertex_on_color(*c)
         for i,b in enumerate(self.blist):
             if self.colors[i] == col:
