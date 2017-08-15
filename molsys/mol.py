@@ -617,7 +617,7 @@ class mol:
         self.translate(-center)
         return
 
-    def get_com(self, idx = None):
+    def get_com(self, idx = None, fix = None):
         """
         returns the center of mass of the mol object.
 
@@ -635,7 +635,8 @@ class mol:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
         if self.periodic:
-            fix = xyz[0,:]
+            if fix is None:
+                fix = xyz[0,:]
             a = xyz[1:,:] - fix
             if self.bcond <= 2:
                 cell_abc = self.cellparams[:3]
@@ -828,7 +829,10 @@ class mol:
         self.elems.append(elem)
         self.atypes.append(atype)
         xyz.shape = (1,3)
-        self.xyz = np.concatenate((self.xyz, xyz))
+        if self.xyz is None:
+            self.xyz = xyz
+        else:
+            self.xyz = np.concatenate((self.xyz, xyz))
         self.conn.append([])
         return self.natoms -1
 
