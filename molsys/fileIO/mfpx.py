@@ -42,6 +42,9 @@ def read(mol, f):
             elif keyword == 'bbconn':
                 mol.is_bb = True
                 con_info = lbuffer[2:]
+            elif keyword == 'orient':
+                orient = map(string.atoi,lbuffer[2:])
+                mol.orientation = orient
             lbuffer = string.split(f.readline())
     ### read body
     if ftype == 'xyz':
@@ -103,6 +106,9 @@ def write(mol, fname):
                 connstrings = connstrings + str(j+1) +','
             connstrings = connstrings[0:-1] + '*' + str(mol.connectors[i]+1)+' '
         f.write('# bbconn %s\n' % connstrings)
+    if hasattr(mol, "orientation"):
+        o = len(mol.orientation) * "%3d" % tuple(mol.orientation)
+        f.write('# orient '+o+"\n")
     f.write('%i\n' % mol.natoms)
     if ftype == 'xyz':
         txyz.write_body(f,mol)
