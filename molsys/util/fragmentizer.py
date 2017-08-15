@@ -132,7 +132,7 @@ class fragmentizer:
         self.fragments[fname] = m
         return
 
-    def __call__(self, mol, man = False):
+    def __call__(self, mol, man = False, plot=False):
         """
         tries to assign all fragmnets in the catalog to the mol object
 
@@ -146,6 +146,8 @@ class fragmentizer:
         #
         mol.addon("graph")
         mol.graph.make_graph()
+        if plot:
+            mol.graph.plot_graph(plot, ptype="png", vsize=20, fsize=20)
         mol.set_nofrags()
         # get list of atypes
         atypes = mol.get_atypelist()
@@ -181,6 +183,8 @@ class fragmentizer:
                 # if any of the atoms in alist is already in a fragment we can skip
                 assigned_already = any(mol.fragnumbers[i] >= 0 for i in alist)
                 if not assigned_already:
+                    if plot:
+                        self.fragments[fname].graph.plot_graph(fname, ptype="png", vsize=20, fsize=20, size=400)
                     for i in alist:
                         mol.fragtypes[i]   = fname
                         mol.fragnumbers[i] = fi

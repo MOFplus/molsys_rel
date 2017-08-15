@@ -28,6 +28,7 @@ import addon
 # no need to redo this config in the other modules!
 # NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the 
 #        master node writes INFO to stdout
+# TBI: colored logging https://stackoverflow.com/a/384125
 import logging
 mpi_rank = MPI.COMM_WORLD.Get_rank()
 mpi_size = MPI.COMM_WORLD.Get_size()
@@ -184,21 +185,27 @@ class mol:
                 raise IOError("Unsupported format")
         return
 
-    def view(self, **kwargs):
+    def view(self, program='moldenx', fmt='mfpx', **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
         if self.mpi_rank == 0:
-            logger.info("invoking moldenx as visualisation tool")
-            _tmpfname = "_tmpfname_" + str(os.getpid()) + '.mfpx'
+            logger.info("invoking %s as visualisation tool" % (program,))
+            pid = str(os.getpid())
+            _tmpfname = "_tmpfname_%s.%s" % (pid, fmt)
             self.write(_tmpfname)
             try:
-                ret = subprocess.call(["moldenx", _tmpfname])
+                ret = subprocess.call([program, _tmpfname])
             except KeyboardInterrupt:
                 pass
             finally:
                 os.remove(_tmpfname)
                 logger.info("temporary file "+_tmpfname+" removed")
         return
+    
+    def molden(self, **kwargs):
+        self.view(program='moldenx', fmt='mfpx', **kwargs)
+    def pymol(self, **kwargs):
+        self.view(program='pymol', fmt='mfpx', **kwargs)
 
     ##### addons ##################################
 
@@ -320,7 +327,7 @@ class mol:
         return
 
     def report_conn(self):
-        ''' Print infomration on current connectivity, coordination number
+        ''' Print information on current connectivity, coordination number
             and the respective atomic distances '''
 
         logger.info("reporting connectivity ... ")
@@ -339,7 +346,8 @@ class mol:
             supercell upon preserving the connectivity of the initial system
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
-        logging.info('Generating %ix%ix%i supercell' % tuple(supercell))
+        self.supercell = tuple(supercell)
+        logging.info('Generating %i x %i x %i supercell' % tuple(supercell))
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
         nat = copy.deepcopy(self.natoms)
@@ -463,13 +471,14 @@ class mol:
         ''' scales the cell by a given fraction (0.1 ^= 10%)
         :Parameters:
             - scale: either single float or list (3,) of floats for x,y,z'''
-        if not type(scale) == types.ListType:
+        if not hasattr(scale, '__iter__'):
             scale = 3*[scale]
-        self.cellparams *= np.array(scale+[1,1,1])
+        self.cellparams *= np.hstack([scale,[1,1,1]])
         frac_xyz = self.get_frac_xyz()
         self.cell *= np.array(scale)[:,np.newaxis]
         self.images_cellvec = np.dot(images, self.cell)
         self.set_xyz_from_frac(frac_xyz)
+        self.inv_cell = np.linalg.inv(self.cell)
         return
 
     ###  system manipulations ##########################################
@@ -617,7 +626,7 @@ class mol:
         self.translate(-center)
         return
 
-    def get_com(self, idx = None, fix = None):
+    def get_com(self, idx = None):
         """
         returns the center of mass of the mol object.
 
@@ -635,8 +644,7 @@ class mol:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
         if self.periodic:
-            if fix is None:
-                fix = xyz[0,:]
+            fix = xyz[0,:]
             a = xyz[1:,:] - fix
             if self.bcond <= 2:
                 cell_abc = self.cellparams[:3]
@@ -659,6 +667,12 @@ class mol:
             xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         return xyz
 
+    def pbc(self):
+        """
+        Compute periodic boundary conditions in an arbitrary (triclinic) cell
+        """
+        ###TBI
+        pass
 
     def new_mol_by_index(self, idx):
         """
@@ -829,10 +843,10 @@ class mol:
         self.elems.append(elem)
         self.atypes.append(atype)
         xyz.shape = (1,3)
-        if self.xyz is None:
-            self.xyz = xyz
-        else:
+        if isinstance(self.xyz, np.ndarray):
             self.xyz = np.concatenate((self.xyz, xyz))
+        else:
+            self.xyz = xyz
         self.conn.append([])
         return self.natoms -1
 
@@ -974,6 +988,7 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
+        if not hasattr(self, "supercell"): self.supercell = (1,1,1)
 
     def set_cellparams(self,cellparams, cell_only = True):
         ''' set unit cell using cell parameters and assign cell vectors
@@ -991,6 +1006,7 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
+        if not hasattr(self, "supercell"): self.supercell = (1,1,1)
 
     def get_fragtypes(self):
         ''' return all fragment types '''
@@ -1058,6 +1074,7 @@ class mol:
         :Parameters:
             - conn    : List of lists describing the connectivity'''
         self.conn = conn
+        self.ctab = self.get_conn_as_tab()
 
     def set_empty_conn(self):
         """
@@ -1081,7 +1098,7 @@ class mol:
         
     def set_conn_from_tab(self, ctab):
         """
-        sets the connectivity froma table of bonds
+        sets the connectivity from a table of bonds
         :Parameters:
             - ctab   : list of bonds (nbonds, 2)
         """

@@ -54,6 +54,21 @@ class topo(mol.mol):
             self.nonhydrogen = False  # use only non-hydrogen atoms if True in symmetry detection or any operation
         return
 
+    @classmethod
+    def fromMol(cls, m):
+        """set self from mol instance"""
+        t = cls()
+        ### MINIMUM ATTRIBUTE SETUP ###
+        ###TBI: all relevant non-method attributes retrieved ###
+        t.set_natoms(m.natoms)
+        t.set_xyz(m.xyz)
+        t.set_conn(m.conn)
+        t.set_elems(m.elems)
+        t.set_atypes(m.atypes)
+        t.set_cell(m.cell)
+        t.add_pconn()
+        return t
+
     ###### helper functions #######################
 
     def get_distvec2(self, i, j,exclude_self=True):
@@ -138,12 +153,13 @@ class topo(mol.mol):
 
     ######## manipulations in particular for blueprints
 
-    def make_supercell(self,supercell):
-        logger.info('Generating %i x %i x %i supercell' % tuple(supercell))
+    def make_supercell(self, supercell):
+        self.supercell = tuple(supercell)
+        logger.info('Generating %i x %i x %i supercell' % self.supercell)
         img = [np.array(i) for i in images.tolist()]
         ntot = np.prod(supercell)
         nat = copy.deepcopy(self.natoms)
-        nx,ny,nz = supercell[0],supercell[1],supercell[2]
+        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
         pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
         conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
@@ -199,12 +215,12 @@ class topo(mol.mol):
                 self.pconn.append(p)
         self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
-        self.cellparams[0:3] *= np.array(supercell)
-        self.cell *= np.array(supercell)[:,np.newaxis]
+        self.cellparams[0:3] *= np.array(self.supercell)
+        self.cell *= np.array(self.supercell)[:,np.newaxis]
+        self.inv_cell = np.linalg.inv(self.cell)
         self.elems *= ntot
         self.atypes*=ntot
         self.images_cellvec = np.dot(images, self.cell)
-        #print xyz
         return xyz,conn,pconn
 
     ######### connectivity things #################################
@@ -472,19 +488,20 @@ class topo(mol.mol):
         plt.ylabel('y')
         plt.show()
 
-# ########## additional stuff for edge coloring ############################################
+########## additional stuff for edge coloring ############################################
 
-    def color_edges(self, proportions, maxiter=100, maxstep=100000, nprint=1000, penref=0.3, MC=True):
+    def color_edges(self, proportions, maxiter=100, maxstep=100000, nprint=1000, penref=0.3, thresh=1.0e-3, MC=True):
         """
         wrapper to search for a zero penalty solution of edge coloring. An initial coloring is generated
         randomly and a flipMC run is started ... if no zero penalty is found after maxsteps it is repeated ...
         """
+        self.thresh = thresh
         self.MC = MC
         converged = False
         niter = 0
         while not (converged and (niter<maxiter)):
-            self.init_color_edges(proportions, MC=True)
-            result = self.run_flip(maxstep, nprint=nprint, penref=penref)
+            self.init_color_edges(proportions, MC=self.MC)
+            result = self.run_flip(maxstep, nprint=nprint, penref=penref, thresh=thresh)
             if result[0] : converged=True
             niter += 1
         print "**********************************************************************"
@@ -493,7 +510,7 @@ class topo(mol.mol):
         return
 
 
-    def init_color_edges(self, proportions=[], colors=[], MC=False):
+    def init_color_edges(self, proportions=[], colors=[], thresh=1.0e-3, MC=False):
         """
         generate datastructures for edge coloring and set up random
         the proportions are a list or tuple of integer.
@@ -503,6 +520,7 @@ class topo(mol.mol):
         with 2 red and 1 blue ... this means the total number of edges inthe periodic net must
         be a multiple of 3
         """
+        self.thresh = thresh
         self.MC = MC
         assert bool(proportions) ^ bool(list(colors)), "either proportions or colors must be non-empty"
         # generate the list of bonds only "upwards" bonds (i1<i2) are stored
@@ -522,7 +540,7 @@ class topo(mol.mol):
             assert self.nbonds%self.nprop==0,  "these proportions do not work"
             nc = self.nbonds/self.nprop
             colors = [c for c,p in enumerate(self.prop) for i in xrange(p*nc)]
-            random.shuffle(colors)
+            if self.MC: random.shuffle(colors)
         self.colors = np.array(colors)
         self.ncolors = len(self.prop)
         # generate the bcolors table (same as self.conn but with colors)
@@ -608,7 +626,7 @@ class topo(mol.mol):
             - penref  : reference penalty for the MC aceptance criterion exp(-pen/penref) [0.2]
             - thresh  : threshold under which convergence is assumed (zero penalty is not always reached for orientation penalty) [1.0e-3]
         """
-
+        self.thresh = thresh
         step = 0
         while (step < maxstep) and (self.totpen>thresh):
             dpen = self.flip_color()
@@ -636,16 +654,90 @@ class topo(mol.mol):
             converged = False
         return (converged, step, self.totpen)
 
-    def add_vertex_on_color(self, col, lelem, laty):
+    def add_vertex_on_color(self, col, lelem=None, laty=None):
+        if lelem is None and laty is None:
+            errmsg = "add_vertex_on_color expects a triplet or \
+                alist of nested triplets"
+            assert hasattr(col,'__iter__'), errmsg
+            for c in col:
+                assert len(c) == 3, errmsg
+                self.add_vertex_on_color(*c)
         for i,b in enumerate(self.blist):
             if self.colors[i] == col:
-                # yes .. add a vertex here
                 i,j = b
                 ci = self.conn[i].index(j)
                 xyz_j = self.get_neighb_coords(b[0], ci)
                 xyz = (self.xyz[i]+xyz_j)/2.0
                 self.insert_atom(lelem, laty, xyz, i, j)
         return
+
+    def col2vex(self, sele=None, lelem=None, laty=None):
+        """from colors to vertices, returns molsys.mol instance
+        original vertices are kept the same
+        edges are condensed in the baricenter"""
+        if sele is None:
+            ncol = self.ncolors
+            col = self.colors.astype(np.int)
+            nbonds = self.nbonds
+            ba = self.blist[:,0]
+            bb = self.blist[:,1]
+        else:
+            try:
+                indexcol = np.where(sum([self.colors == i for i in sele]))[0] ###since bool arrays, here "sum" means "or"
+            except ValueError:
+                indexcol = []
+            col = self.colors[indexcol]
+            ncol = len(sele)
+            nbonds = len(col)
+            ba = self.blist[:,0][indexcol]
+            bb = self.blist[:,1][indexcol]
+        xyz_a = self.xyz[ba]
+        xyz_c = []
+        for i in xrange(nbonds):
+            bci = self.conn[ba[i]].index(bb[i])
+            xyz_ic = self.get_neighb_coords(ba[i], bci)
+            xyz_c.append(xyz_ic)
+        xyz_c = np.array(xyz_c) + xyz_a
+        xyz_c *= .5
+        m = mol.mol.fromArray(xyz_c)
+        ### DEFAULT ASSIGNMENT
+        if lelem is None and laty is None:
+            laty = xrange(ncol)
+            lowercase = list('kbabcdefghijklmnopqrstuvwxyz')
+            lelem = [lowercase[i] for i in laty]
+            laty = map(str,laty)
+        elif lelem is None or laty is None:
+            raise TypeError("lelem and laty must be both either None or ndarrays")
+        elif len(lelem) != ncol or len(laty) != ncol:
+            raise ValueError("len of sele, lelem and laty must be the same!sele:\t%s\nlelem:\t%s\nlaty:\t%s" % (sele, lelem, laty))
+        lelem = np.array(lelem)
+        laty = np.array(laty)
+        m.set_elems(lelem[col])
+        m.set_atypes(laty[col])
+        if hasattr(self,'cell'): m.set_cell(self.cell)
+        if hasattr(self,'supercell'): m.supercell = self.supercell[:]
+        m.colors = self.colors
+        return m
+
+    def dummy_col2vex(self, lelem=['c'], laty=['0'], addon=None):
+        """returns uncolored graph as molsys.mol instance
+        if addon='spg': generate symmetry perks"""
+        etypes = set(self.elems)
+        lenetypes = len(etypes)
+        lones = [1]*lenetypes
+        lnones = [None]*lenetypes
+        dumpensum = dict(zip(etypes, lones))
+        dumpenori = dict(zip(etypes, lnones))
+        self.set_colpen_sumrule(dumpensum)
+        self.set_colpen_orientrule(dumpenori)
+        self.init_color_edges([1])
+        m = self.col2vex(lelem=lelem, laty=laty)
+        if addon=='spg':
+            m.addon('spg')
+            m.spg.generate_spgcell()
+            m.spg.generate_symmetries()
+            m.spg.generate_symperms()
+        return m
 
     # utility functions
     def set_bcol(self, bond):
@@ -691,6 +783,11 @@ class topo(mol.mol):
         nc = self.bcolors[vert].count(0)
         pen = abs(nc-nc0)*self.colpen_sum_fact
         return pen*pen
+
+    def set_colpen_rule(self,svert_dict, overt_dict):
+        self.set_colpen_sumrule(svert_dict)
+        self.set_colpen_orientrule(overt_dict)
+        return
 
     def set_colpen_sumrule(self, vert_dict):
         """
@@ -746,15 +843,14 @@ class topo(mol.mol):
         for i in xrange(self.natoms):
             self.colpen_orientrule.append(vert_dict[self.elems[i]])
         return
-##### ADDRA ###################################################################
-def GCD(num):
-    """compute greatest common divisor for a list. fractions.gcd works only for two numbers"""
-    from fractions import gcd
-    try:
+
+    @classmethod
+    def GCD(cls,*num):
+        """compute greatest common divisor for a list.
+        rationale: fractions.gcd works only for two numbers"""
+        from fractions import gcd
+        if hasattr(num[0],'__iter__'): return cls.GCD(*num[0])
         if len(num) > 2:
             return reduce(lambda x,y:gcd(x,y),num)
         else:
             return gcd(*num)
-    except TypeError:
-        return num
-##### DDARA ###################################################################

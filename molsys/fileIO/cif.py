@@ -45,10 +45,12 @@ def write(mol,fname, name=''):
     return
 
 def read(mol,fname,make_P1=True,detect_conn=True):
+    """BUG: cif instance cannot be deepcopied!"""
+    """BUG: currently does not always support symmetry operations"""
     try: 
         import CifFile
-    except:
-        print 'ERROR, pycifrw not installed, install via pip!'
+    except ImportError:
+        raise ImportError('pycifrw not installed, install via pip!')
     cf = CifFile.ReadCif(fname)
     if len(cf.keys()) != 1:
         for key in cf.keys(): print key
@@ -81,9 +83,7 @@ def read(mol,fname,make_P1=True,detect_conn=True):
         mol.proper_cif = mol.spg.make_P1()
     if detect_conn:
         mol.detect_conn()
-    
     return
-    #import pdb; pdb.set_trace()
 
 def format_float(data):
     if data.count('(') != 0:

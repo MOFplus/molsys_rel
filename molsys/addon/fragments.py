@@ -139,6 +139,10 @@ class fragments:
         # DEBUG here just for debug reasons
         #self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
         return self.frag_graph
+        
+    def plot_frag_graph(self, fname, **kwargs):
+        self._mol.graph.plot_graph(fname, g=self.frag_graph, **kwargs)
+        return
 
     def upgrade(self, se, rep):
         """

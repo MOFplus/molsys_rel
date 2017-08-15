@@ -5,10 +5,14 @@ import sys
 import molsys
 from graph_tool import Graph
 from graph_tool.topology import *
-import numpy
+import numpy as np
 import copy
 from mofplus import user_api
 from string import ascii_lowercase
+import itertools
+
+import logging
+logger = logging.getLogger("molsys.topos")
 
 class conngraph:
     """ This is the "conngraph" class
@@ -61,7 +65,7 @@ class conngraph:
         Cuts graph to its 2-core
         """
         k = kcore_decomposition(self.molg).get_array()
-        idxlist = numpy.argwhere(k==1).tolist()
+        idxlist = np.argwhere(k==1).tolist()
         idx = []
         for i in idxlist:
             if self.molg.vp.fix[i[0]] == 0:
@@ -112,7 +116,7 @@ class conngraph:
             # ok we have multiple islands, time to find out what we have here.
             # first we sort the islands by size
             island_sizes = map(len, islands)
-            sort_indices = numpy.array(island_sizes).argsort()
+            sort_indices = np.array(island_sizes).argsort()
             biggest_size = island_sizes[sort_indices[-1]]
             remove_list = []
             # then we compare the sizes of the smaller islands with the size of the largest island
@@ -417,9 +421,8 @@ class molgraph(conngraph):
         Groups all organic clusters, which are connected with each other, into a single cluster.
         Like self.get_bbs, this method will OVERWRITE self.clusters.
         """
-        try:
-            assert self.cluster_organicity
-        except:
+        logger.info('Collapse clusters in grouped superclusters')
+        if not hasattr(self,'cluster_organicity'):
             self.detect_organicity()
         stop = False
         while not stop:
@@ -497,10 +500,11 @@ class molgraph(conngraph):
                 if j>i:
                     if not i in tm.conn[j]:
                         if verbose: print "Fragment topology is inconsitent"
-        tm.set_xyz(numpy.array(xyz))
+        tm.set_xyz(np.array(xyz))
         tm.set_elems(elems)
         tm.set_atypes(tm.natoms*['0'])
         tm.set_cell(self.mol.get_cell())
+        tm.ctab = tm.get_conn_as_tab()
         tm.add_pconn()
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
@@ -561,6 +565,7 @@ class topograph(conngraph):
         - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once. 
                       (do NOT use this for topographs deconstructed from a molgraph !!!)
         """
+        logger.info('Compute all coordination sequences')
         if use_atypes:
             vertexlist = []
             found_atypes = []
@@ -576,7 +581,7 @@ class topograph(conngraph):
             cs_list.append(cs)
         return cs_list
 
-    def get_cs(self, depth, start_vertex=0, start_cell=numpy.array([0,0,0])):
+    def get_cs(self, depth, start_vertex=0, start_cell=np.array([0,0,0])):
         """
         Calculates the cs (coordination sequence) values of the vertex specified in start_vertex and start_cell.
         
@@ -624,8 +629,8 @@ class topograph(conngraph):
             # and remove neighbours2 because of side effects
             del(neighbours2)
         return cs
-    
-    def get_cs1(self, start_vertex=0, start_cell=numpy.array([0,0,0])):
+
+    def get_cs1(self, start_vertex=0, start_cell=np.array([0,0,0])):
         """ This function will return all vertices, which are connected to the vertex start_vertex in the cell start_cell. """
         visited = []
         # loop over all neighbouring clusters and add them to the list
@@ -635,14 +640,17 @@ class topograph(conngraph):
             visited.append([current_vertex, current_cell])
         return visited
 
-    def get_all_vs(self, use_atypes=False, wells = False):
+    def get_all_vs(self, use_atypes=False, wells = False, max_supercell_size=20):
         """
         Calculates all vertex symbols of the graph.
         
         :Parameters:
-        - use_atypes: if this is True, then every vertex with the same atomtype will only be calculated once.
-        - wells: If True, the Wells and the long symbols will be returned. If False, only the long symbols are used
+        - use_atypes (bool): if this is True, then every vertex with the same atomtype will only be calculated once.
+        - wells (bool): If True, the Wells and the long symbols will be returned. If False, only the long symbols are used
+        - max_supercell_size (int): throws OverflowError if supercell_size > max_supercell_size
+            (same error as if max_supercell_size is infinite and get_all_vs fails)
         """
+        logger.info('Compute all vertex symbols')
         if use_atypes:
             vertexlist = []
             found_atypes = []
@@ -659,6 +667,9 @@ class topograph(conngraph):
             success = False
             supercell_size = 2
             while not success:
+                if supercell_size > max_supercell_size:
+                    logger.error("Maximum cell size reached!")
+                    raise OverflowError
                 if supercell_size > len(supercells)-1:
                     self.mol = copy.deepcopy(keep)
                     self.mol.make_supercell([supercell_size]*3)
@@ -670,8 +681,8 @@ class topograph(conngraph):
                 try:
                     ws, ls = self.get_vertex_symbol(i)
                 except ValueError:
-                    supercell_size += 1
                     success = False
+                    supercell_size += 1
             self.mol = keep
             self.make_graph()
             if wells: 
@@ -706,7 +717,7 @@ class topograph(conngraph):
                         path = map(int, path)
                         p2 = [start_vertex]+path
                         vol = self.get_cycle_voltage(p2)
-                        if vol.any() != numpy.zeros(3).any():
+                        if vol.any() != np.zeros(3).any():
                             raise ValueError("Cycle with non zero voltage detected")
                         path.append(start_vertex)
                         append_list.append(path)
@@ -718,7 +729,7 @@ class topograph(conngraph):
 
     def compute_wells_symbol(self, clist):
         symbol = ""
-        clist = numpy.array(clist)[:,0].tolist()
+        clist = np.array(clist)[:,0].tolist()
         sclist = sorted(set(clist))
         for i, s in enumerate(sclist):
             count = clist.count(s)
@@ -731,8 +742,8 @@ class topograph(conngraph):
     def compute_long_symbol(self,clist):
         symbol = ""
         dtype = [("length",int),("number",int)]
-        clist = numpy.array(clist,dtype=dtype)
-        sclist = numpy.sort(clist, order=["length","number"]).tolist()
+        clist = np.array(clist,dtype=dtype)
+        sclist = np.sort(clist, order=["length","number"]).tolist()
         for i, s in enumerate(sclist):
             if s[1]==1:
                 symbol += "%s." % s[0]
@@ -742,7 +753,7 @@ class topograph(conngraph):
 
     def get_cycle_voltage(self, cycle):
         cycle.append(cycle[0])
-        vol = numpy.zeros(3)
+        vol = np.zeros(3)
         for i in range(len(cycle)-1):
             cidx = self.mol.conn[cycle[i]].index(cycle[i+1])
             vol += self.mol.pconn[cycle[i]][cidx]
@@ -758,6 +769,7 @@ class topograph(conngraph):
           topograph (i.e. the "vertex types"), according to the different vertex 
           descriptors.
         """
+        logger.info('Get unique vertex descriptors')
         assert type(cs) == list
         assert type(vs) == list
         assert len(vs) == len(cs)
@@ -884,19 +896,47 @@ class topograph(conngraph):
 class topotyper(object):
     """ Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures. """
   
-    def __init__(self, mol, split_by_org=True):
+    def __init__(self, mol, split_by_org=True, depth=10, max_supercell_size=20, isum=3, trip=None):
         """
         :Parameters:
-        - mol: molsys.mol object which should be deconstructed
-        - split_by_org: if True, organicity is used for defining building blocks.
+        - mol (obj): molsys.mol object which should be deconstructed
+        - split_by_org (bool): if True, organicity is used for defining building blocks
+        - depth (int): maximum level of coordination sequences 
+        - isum (int*): summation of indices
+        - trip (nested tuples*): resizing list for make_supercell if vertex symbols method overflows
+        * recursive purpose, DO NOT CHANGE
         """
-        self.mg = molgraph(mol)
         self.api = None
-        self.deconstruct(split_by_org)
+        #molcopy = copy.deepcopy(mol) #prevents mol pollution if restart ###DOES NOT WORK WITH CIF FILES
+        molcopy = copy.copy(mol) #prevents mol pollution if restart
+        self.goodinit = False
+        self.mg = molgraph(molcopy)
+        while not self.goodinit:
+            if trip is None:
+                trinat = self.triplenats_on_sphere(isum)
+            else:
+                trinat = trip
+            try:
+                itri = trinat.pop()
+                logger.info("Triplet is: "+str(itri))
+                if isum > 3: mol.make_supercell(itri)
+                self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
+            except OverflowError: ###specific for supercells
+                logger.error("Deconstruction failed!")
+                logger.info("Resize original cell")
+                self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
+            except IndexError:
+                isum += 1
+                logger.error("Resizing list is empty!")
+                logger.info("Increase index summation to %i and create new resizing list" % (isum,))
+                self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum)
+            else:
+                self.goodinit = True
         return
  
-    def deconstruct(self, split_by_org=True):
-        """ perform deconstruction """
+    def deconstruct(self, split_by_org=True, depth=10, max_supercell_size=5):
+        """ Perform deconstruction """
+        logger.info('Perform topological deconstruction')
         self.mg.handle_islands(silent=True)
         self.mg.determine_Nk()
         self.mg.find_cluster_threshold()
@@ -906,14 +946,14 @@ class topotyper(object):
         else:
             self.mg.get_bbs()
         self.tg = self.mg.make_topograph(False)
-        cs = self.tg.get_all_cs()
-        vs = self.tg.get_all_vs()
+        cs = self.tg.get_all_cs(depth=depth)
+        vs = self.tg.get_all_vs(max_supercell_size=max_supercell_size)
         self.cs, self.vs = self.tg.get_unique_vd(cs, vs)
         return
 
     def get_net(self):
         """ Connects to mofplus API to compare the cs and vs value to the database, and return the topology. """
-        self.api = user_api(experimental=False)
+        self.api = user_api()#experimental=False)
         self.nets = self.api.search_cs(self.cs, self.vs)
         return self.nets
 
@@ -957,7 +997,87 @@ class topotyper(object):
                 self.tg.mol.atypes[i] += ascii_lowercase[n-1]
         return
     
-    def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
+    def get_all_atomseq(self, depth=10, clusters = None):
+        """
+        Calculates all atomseq (atom sequences) of the molecule according to their elements..
+        This function just loops over all vertices and calls get_atomseq for each one
+        
+        :Parameters:
+        - depth: maximum level
+        """
+        logger.info('Compute all atom sequences')
+        if clusters is None:
+            clusters = xrange(self.nbbs)
+        atomseqs = []
+        for i in clusters:
+            atomseq = self.get_atomseq(depth, i)
+            atomseqs.append(atomseq)
+        self.atomseqs = atomseqs
+        return atomseqs
+
+    def get_atomseq(self, depth, start_cluster=0, start_cell=(0,0,0)):
+        ###TBI: implement start_cell!
+        ###start_cell IS NEEDED for images
+        """
+        Calculates the as (atom sequence) of the vertex specified in start_vertex and start_cell.
+        
+        :Parameters:
+        - depth: maximum level
+        - start_vertex: ID of vertex, of which the cs value should be calculated
+        - start_cell: starting cell of the function
+        """
+        def connected(ia, ignore, return_set=True):
+            conn = set(self.mg.mol.conn[ia])
+            ignore = set(ignore)
+            conn -= ignore
+            if return_set:
+                return conn
+            else:
+                return int(*conn)
+        atomconn = self.bb2conn[start_cluster]
+        nconn = len(atomconn)
+        ignore = self.mg.clusters[start_cluster]
+        ignore = set(ignore)
+        atomseq = [[] for i in xrange(nconn)]
+        for ic,iconn in enumerate(atomconn):
+            lever = [iconn] #for depth == 0
+            for level in xrange(depth):
+                levseq = []
+                leverneigh = set([])
+                for cc in lever:
+                        neigh = connected(cc,ignore)
+                        leverneigh |= neigh
+                if neigh:
+                    leverneigh -= ignore
+                    ignore |= leverneigh
+                    levseq.append(tuple(neigh))
+                    lever = leverneigh
+                else:
+                    break
+                atomseq[ic] += levseq
+            atomseq[ic] = tuple(atomseq[ic]) ###
+        return set(atomseq)
+
+    def atomseq2elemseq(self):
+        elems = self.mg.mol.elems
+        atomseq = self.atomseq
+        #elemseq = [[] for i in xrange(len(atomseq))]
+        for i in atomseq:
+            for j in i:
+                print j
+                for k in j:
+                    print elems[k],
+                print
+        #for i,ai in enumerate(atomseq):
+        #    print i
+        #    for j in ai:
+        #        for k in j:
+        #            print elems[k],
+        #        print
+        #    #print i, ai
+        return
+
+    def compute_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
         """
         Write the clusters of the molgraph into the folder specified in the parameters.
         The names of the clusters written out will be those of the atomtypes of the vertices 
@@ -1042,6 +1162,18 @@ class topotyper(object):
                         name = neighbour_atype[0]+"-"+neighbour_atype[1]+ascii_lowercase[j]
                         j += 1
                     cluster_names.append(name)
+        self.bbs = bbs
+        self.nbbs = len(bbs)
+        self.unique_bbs = unique_bbs
+        self.cluster_names = cluster_names
+        self.organicity = organicity
+        self.set_atom2bb()
+        self.detect_all_connectors()
+        self.set_conn2bb()
+        self.set_bb2ubb()
+        return
+
+    def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
         # Now write building blocks
         #print "============"
         #print unique_bbs
@@ -1052,11 +1184,158 @@ class topotyper(object):
         #except:
         #    print "no 2-conns"
         #print "============"
+        self.compute_bbs(foldername, org_flag=org_flag, ino_flag=ino_flag)
         if not os.path.exists(foldername):
             os.mkdir(foldername)
-        for n, i in enumerate(unique_bbs):
-            m = bbs[i[0]]
-            m.write(foldername+"/"+cluster_names[n]+organicity[i[0]]+".mfpx", "mfpx")
+        for n, i in enumerate(self.unique_bbs):
+            m = self.bbs[i[0]]
+            m.write(foldername+"/"+self.cluster_names[n]+self.organicity[i[0]]+".mfpx", "mfpx")
+        return
+        
+### AUXILIARY FUNCTIONS ########################################################
+    def triplenats_on_sphere(self,trisum, trimin=1):
+        """returns triplets of natural numbers on a sphere
+        trisum(int):the summation of the triples must be equal to trisum
+        trimin(int):minimum allowed natural per triplet element (default: 1)"""
+        trinat = []
+        for itri in itertools.product(xrange(trimin, trisum), repeat=3):
+            if sum(itri) == trisum:
+                trinat.append(itri)
+        return trinat
+
+    def detect_all_connectors(self):
+        self.bconn = set(())
+        self.bb2conn = []
+        self.bb2adj = []
+        for ibb in xrange(self.nbbs):
+            ibconn, ilconn, idconn = self.detect_connectors(ibb, return_dict=True)
+            self.bconn |= set(ibconn)
+            self.bb2conn.append(ilconn)
+            self.bb2adj.append(idconn)
+        self.bconn = list(self.bconn)
+        self.nbconn = len(self.bconn)
         return
 
+    def detect_connectors(self, ibb, return_dict=False):
+        batoms = set(self.mg.clusters[ibb])
+        dconn = {}
+        lconn = []
+        bconn = []
+        for ia in batoms:
+            ic = set(self.mg.mol.conn[ia])
+            ic -= batoms #set difference
+            if ic:
+                ic = int(*ic) #safety: if more than 1, raise error
+                dconn[ia] = ic #computed anyway
+                lconn.append(ia)
+                ibconn = [ibb, self.abb[ic]]
+                ibconn.sort()
+                bconn.append(tuple(ibconn)) #needs tuple
+        if return_dict:
+            return bconn, lconn, dconn
+        return bconn, lconn
 
+    def set_atom2bb(self):
+        """from atom index to building block the atom belongs to"""
+        self.abb = [None]*self.mg.mol.natoms
+        for ibb, bb in enumerate(self.mg.clusters):
+            for ia in bb:
+                self.abb[ia] = ibb
+        return
+
+    def set_conn2bb(self):
+        """from connector index to building block the atom connects"""
+        self.conn2bb = [None]*self.mg.mol.natoms
+        for bba in self.bb2adj:
+            for c,ca in bba.items():
+                self.conn2bb[c] = self.abb[ca]
+        return
+
+    def determine_all_color(self, vtype=0, depth=10):
+        edges = self.bconn
+        edcol = []
+        elemseqs = []
+        for e in edges:
+            elemseq = self.determine_elemseq(e, vtype, depth=depth)
+            elemseqs.append(elemseq)
+        unique_elemseqs = []
+        for es in elemseqs:
+            if es not in unique_elemseqs:
+                unique_elemseqs.append(es)
+            edcol.append(unique_elemseqs.index(es)) ###SLOW
+        self.edcol = edcol
+        self.unique_elemseqs = unique_elemseqs
+        return
+
+    def set_bb2ubb(self):
+        """from building block index to unique building block"""
+        self.bb2ubb = [None]*self.nbbs
+        for iu,ubb in enumerate(self.unique_bbs):
+            for jbb in ubb:
+                self.bb2ubb[jbb] = iu
+        return
+    
+    def determine_elemseq(self, edge, vtype=0, depth=10):
+        """N.B.: works only with 2 (0/1) colors
+        TBI: any number of colors"""
+        elems = self.mg.mol.elems
+        if self.bb2ubb[edge[0]] == vtype:
+            ba,bb = edge
+        else: ###AKA### elif self.bb2ubb[edge[1]] == vtype:
+            bb,ba = edge
+        for atomseq in self.atomseqs[ba]:
+            atomseq = list(atomseq)
+            if self.abb[atomseq[0][0]] == bb:
+                break
+        elemseq = []
+        for level in xrange(depth):
+            laseq = atomseq[level]
+            leseq = []
+            for a in laseq:
+                leseq.append(elems[a])
+            leseq.sort()
+            elemseq.append(leseq)
+        return elemseq
+
+    def edges2vconn(self):
+        vconn = [[] for i in xrange(self.nbbs)]
+        for a,b in self.bconn:
+            vconn[a].append(b)
+            vconn[b].append(a)
+        vconn = [list(set(ivconn)) for ivconn in vconn]
+        self.vconn = vconn
+        return
+
+    def set_vbb(self):
+        ###BUGFIX: vbb needs to be checked
+        """vertices in the baricenter of bbs"""
+        nv = self.nbbs
+        xyz_v = [None]*nv
+        celldim = np.array(self.mg.mol.cellparams[:3])
+        invdim1 = 1/celldim
+        invdim2 = 2*invdim1
+        for ibb, bb in enumerate(self.bbs):
+            xyz_bb = bb.xyz
+            xyz_bb += celldim*np.floor(xyz_bb*invdim2) #AKA if x<l/2: x+=l
+            xyz_v[ibb] = xyz_bb.mean(axis=0)
+        xyz_v = np.array(xyz_v)
+        xyz_v -= celldim*np.floor(xyz_v*invdim1) #AKA x-=x*(x%l)
+        self.xyz_v = xyz_v
+        self.nv = nv
+
+    def set_ebb(self):
+        """edges in the baricenter of pairs of vertices"""
+        ###BUG: it does not work due to periodic boundary conditions
+        ne = self.nbconn
+        xyz_e = np.zeros((ne,3))
+        for ibc, bc in enumerate(self.bconn):
+            a1, a2 = bc
+            xyz_e[ibc] = .5*(self.xyz_v[a1]+self.xyz_v[a2])
+        self.xyz_e = xyz_e
+        self.ne = ne
+
+    def get_vbb(self):
+        return self.tg.mol.xyz
+    
+    def get_vconn(self):
+        return self.tg.mol.conn

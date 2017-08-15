@@ -25,6 +25,7 @@ from molsys.util import elems
 from molsys.util import spacegroups
 import molsys
 import sys
+import numpy as np
 
 import logging
 logger = logging.getLogger("molsys.spg")
@@ -41,7 +42,6 @@ class spg:
         """
         self.mol = mol
         self.spgcell = None # tuple of (lattice, position, numbers) as used in spglib
-        #
         self.spg_version = spglib.get_version()
         self.symprec = 1.0e-2
         logger.info("Addon spg loaded (version %d.%d.%d)" % self.spg_version)
@@ -120,6 +120,9 @@ class spg:
         :Parameters:
 
             - spgnum : integer space group number
+
+        :KNOWN BUGS:
+            - scaled_positions could be equivalent from a cif file, so it fails to make_P1
         """
         # how to convert international spgnum to hall number
         # apply operations to self.mol and generate a new mol object
@@ -224,12 +227,124 @@ class spg:
         example:
         >>> import molsys
         >>> import numpy as np
-        >>> m = molsys.mol(); m.read(filename); m.addon("spg")
+        >>> m = molsys.mol()
+        >>> m.read(filename)
+        >>> m.addon("spg")
         >>> m.spg.generate_spgcell()
         >>> sym = m.spg.get_symmetry()
-        >>> n=0 #the symmetry index to be used
+        >>> n=0 #just an example, n could be any btw. 0 and len(sym)-1
         >>> rota, tran = sym['rotations'][n], sym['translations'][n]
         >>> new_vector = rota*old_vector[:,np.newaxis] + tran
         """
+        logger.info("Get symmetries")
         sym = spglib.get_symmetry(self.spgcell)
+        logger.info("Found %s symmetry/ies and %s equivalent atom/s" % \
+            (len(sym['rotations']), len(sym['equivalent_atoms'])))
         return sym['rotations'], sym['translations'], sym['equivalent_atoms']
+
+    def generate_symmetries(self):
+        """
+        Generate list of coordinates by symmetries
+        scale (same scale as per supercell) ###TBI: non-orthorombic cells
+        """
+        logger.info("Generating symmetries")
+        self.generate_spgcell()
+        lrot, ltra, leqa = self.get_symmetry() ###TBI equivalent atoms
+        nsym = len(lrot)
+        supercell = np.diagonal(self.spgcell[0])
+        superinv = 1./supercell
+        self.mol.scale_cell(superinv)
+        xyzsymlist = []
+        fracsymlist = []
+        for i in xrange(nsym):
+            frac = np.tensordot(self.mol.xyz, lrot[i], axes=1)+ltra[i]
+            frac[np.isclose(frac,0)]=0. ###avoid negative zeros for floor
+            frac[np.isclose(frac,1)]=0. ###ones are zeros
+            frac[np.isclose(frac,-1)]=0. ###minus ones are zeros
+            ### TBI: TO BE TRIED, WORKS FOR ANY INTEGER
+            ### fround = np.rint(frac)
+            ### intindex = np.isclose(frac,fround)
+            ### frac[intindex]=fround[intindex]
+            frac -= np.floor(frac)
+            fracsymlist.append(frac)
+            xyzsym = frac*supercell
+            xyzsymlist.append(xyzsym)
+        self.mol.scale_cell(supercell)
+        self.syms = xyzsymlist
+        self.fracsyms = fracsymlist
+
+    def generate_symperms(self):
+        """
+        Each symmetry permutation stores the indices that would sort an array
+        according to each symmetry operation in the symmetry space group.
+
+        >>> m.addon('spg')
+        >>> m.spg.generate_spgcell()
+        >>> m.spg.generate_symmetries()
+        >>> m.spg.generate_symperms()
+        """
+        logger.info("Generating symmetry permutations")
+        xyzfrac = self.mol.get_frac_xyz()
+        symperms = []
+        for i,isym in enumerate(self.fracsyms):
+            symperm = []
+            for c in isym:
+                frac = xyzfrac-c
+                frac[np.isclose(frac,0)]=0. ###avoid negative zeros for floor
+                frac[np.isclose(frac,1)]=0. ###ones are zeros
+                frac[np.isclose(frac,-1)]=0. ###ones are zeros
+                frac -= np.floor(frac)
+                sype = np.where((frac < 1.5e-7).all(axis=1))[0]
+                symperm.append(sype[0])
+            self.syms[i] = frac[symperm] ###ensures equality, overcomes "float" uncertainty
+            symperms.append(symperm)
+        self.symperms = symperms
+
+    def find_symmetry(self, xyzref):
+        """
+        If a match is found, return True. Else, return False.
+        """
+        logger.info("Seeking symmetry match")
+        match = False
+        for i,isp in enumerate(self.symperms):
+            if np.isclose(self.mol.xyz[isp], xyzref).all():
+                match = True
+                logger.info("Find symmetry!\nIndex: %d\nPermutation: %s" % (i,isp))
+                return i, isp
+        if match == False:
+            logger.info("No symmetry found")
+            raise ValueError("No symmetry found")
+
+    def find_symmetry_from_frac(self, fracref):
+        """
+        If a match is found, return True. Else, return False.
+        """
+        logger.info("Seeking symmetry match")
+        match = False
+        frac = self.mol.get_frac_xyz()
+        for i,isp in enumerate(self.symperms):
+            if np.isclose(frac[isp], fracref).all():
+                match = True
+                logger.info("Find symmetry!\nIndex: %d\nPermutation: %s" % (i,isp))
+                return i, isp
+        if match == False:
+            logger.info("No symmetry found")
+            raise ValueError("No symmetry found")
+
+    def find_symmetry_from_colors(self, colref=None, symperms = None):
+        """
+        If a match is found, return True. Else, return False.
+        """
+        if symperms is None: symperms = self.symperms
+        if colref is None: colref = self.colors
+        logger.info("Seeking symmetry match")
+        match = False
+        col = self.mol.colors ###???
+        for i,isp in enumerate(symperms): ###???
+            if np.isclose(col[isp], colref).all():
+                match = True
+                logger.info("Find symmetry!\nIndex: %d\nPermutation: %s" % (i,isp))
+                return i, isp
+        if match == False:
+            logger.info("No symmetry found")
+            raise ValueError("No symmetry found")
