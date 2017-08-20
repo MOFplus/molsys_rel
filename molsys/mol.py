@@ -1073,19 +1073,23 @@ class mol:
         ''' returns the connectivity of the system '''
         return self.conn
 
-    def set_conn(self,conn):
+    def set_conn(self, conn, ctab_flag=False):
         ''' updates the connectivity of the system
         :Parameters:
             - conn    : List of lists describing the connectivity'''
         self.conn = conn
-        self.ctab = self.get_conn_as_tab()
+        if ctab_flag: self.ctab = self.get_conn_as_tab()
 
     def get_ctab(self):
         ''' returns the connectivity table (nbonds, 2)'''
-    def set_ctab(self,ctab):
+        return self.ctab
+
+    def set_ctab(self, ctab, conn_flag=False):
         ''' updates the connectivity table
         :Parameters:
             - ctab  : List of couples describing the connectivity'''
+        self.ctab = ctab
+        if conn_flag: self.set_conn_from_tab(ctab)
 
     def set_empty_conn(self):
         """
@@ -1107,6 +1111,9 @@ class mol:
                     ctab.append([i,j])
         return ctab
         
+    def set_ctab_from_conn(self, conn):
+        self.ctab = self.get_conn_as_tab()
+
     def set_conn_from_tab(self, ctab):
         """
         sets the connectivity froma table of bonds

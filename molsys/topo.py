@@ -12,6 +12,7 @@ import util.unit_cell as unit_cell
 import util.rotations as rotations
 import util.images as images
 import random
+import itertools
 import mol
 
 try:
@@ -510,7 +511,7 @@ class topo(mol.mol):
         return
 
 
-    def init_color_edges(self, proportions=[], colors=[], thresh=1.0e-3, MC=False):
+    def init_color_edges(self, proportions=[], colors=[], bcolors=[], thresh=1.0e-3, MC=False):
         """
         generate datastructures for edge coloring and set up random
         the proportions are a list or tuple of integer.
@@ -522,38 +523,33 @@ class topo(mol.mol):
         """
         self.thresh = thresh
         self.MC = MC
-        assert bool(proportions) ^ bool(list(colors)), "either proportions or colors must be non-empty"
-        # generate the list of bonds only "upwards" bonds (i1<i2) are stored
+        assert (bool(proportions),bool(list(colors)),bool(list(bcolors))).count(True) == 1,\
+            "either proportions or colors or bcolors must be non-empty"
+        ### generate the list of bonds only "upwards" bonds (i1<i2) are stored
         blist = [ [i,j] for i,ci in enumerate(self.conn) for j in ci if i<j ]
-        # convert blist into numpy array
+        ### convert blist into numpy array
         self.blist = np.array(blist)
         self.nbonds = len(self.blist)
         if list(colors):
-            #set colors by argument, get proportions via color
-            assert self.nbonds == len(colors), "number of colors is different than number of bonds"
-            self.prop, self.nprop = zip( *Counter(colors).most_common() ) ###already sorted
-            #assert self.prop[-1] == 1, "proportions must be multiple of 1, these colors do not work"
+            self.prop, self.nprop = self.colors2proportions(colors, set_arg=True)
+            self.bcolors = self.colors2bcolors(colors, set_arg=True)
+        elif list(bcolors):
+            self.colors = self.bcolors2colors(bcolors, set_arg=True)
+            self.prop, self.nprop = self.colors2proportions(self.colors)
         else:
-            #get colors via proportions, set proportions by argument
-            self.prop = proportions
-            self.nprop = np.array(proportions).sum()
-            assert self.nbonds%self.nprop==0,  "these proportions do not work"
-            nc = self.nbonds/self.nprop
-            colors = [c for c,p in enumerate(self.prop) for i in xrange(p*nc)]
+            ###get colors via proportions, set proportions by argument
+            self.colors = self.proportions2colors(proportions, set_arg=True)
+            self.bcolors = self.colors2bcolors(self.colors)
             if self.MC: random.shuffle(colors)
-        self.colors = np.array(colors)
+        self.colors = np.array(self.colors)
         self.ncolors = len(self.prop)
-        # generate the bcolors table (same as self.conn but with colors)
-        self.bcolors = copy.deepcopy(self.conn)
-        for i in xrange(self.nbonds):
-            self.set_bcol(i)
-        # set up penalty table (per vertex)
-        # defaults
+        ### set up penalty table (per vertex)
+        ### defaults
         self.colpen_sum_fact    = 1.0
         self.colpen_orient_fact = 0.5
-        # self.colpen_sumrule = self.natoms*[4.0]
+        ### self.colpen_sumrule = self.natoms*[4.0]
         self.penalty = np.zeros([self.natoms],dtype="float64")
-        # set up the scalmat array for all vertices
+        ### set up the scalmat array for all vertices
         self.setup_scalprod_mats()
         for i in xrange(self.natoms):
             self.penalty[i] = self.calc_colpen(i)
@@ -656,12 +652,13 @@ class topo(mol.mol):
 
     def add_vertex_on_color(self, col, lelem=None, laty=None):
         if lelem is None and laty is None:
-            errmsg = "add_vertex_on_color expects a triplet or \
-                alist of nested triplets"
+            errmsg = \
+            "add_vertex_on_color expects a triplet or alist of nested triplets"
             assert hasattr(col,'__iter__'), errmsg
             for c in col:
                 assert len(c) == 3, errmsg
                 self.add_vertex_on_color(*c)
+            return
         for i,b in enumerate(self.blist):
             if self.colors[i] == col:
                 i,j = b
@@ -722,6 +719,7 @@ class topo(mol.mol):
     def dummy_col2vex(self, lelem=['c'], laty=['0'], addon=None):
         """returns uncolored graph as molsys.mol instance
         if addon='spg': generate symmetry perks"""
+        ### APPLY CONDITIONS ***AFTER*** THE DUMMY COLORING! ###
         etypes = set(self.elems)
         lenetypes = len(etypes)
         lones = [1]*lenetypes
@@ -739,7 +737,39 @@ class topo(mol.mol):
             m.spg.generate_symperms()
         return m
 
-    # utility functions
+### COMPUTE PERMUTATIONS #######################################################
+    def compute_permutations(self, vertices):
+        conns = []
+        for v in vertices:
+            conns.append(self.conn[v])
+        conns = np.array(conns)
+        L, M = conns.shape
+        perms = itertools.permutations(xrange(M),L)
+        perms = [list(i) for i in perms]
+        for i in perms: i.sort()
+        perms = [tuple(i) for i in perms]
+        perms = set(perms)
+        perms = [list(i) for i in perms]
+        N = len(perms)
+        self.perms = perms
+        return perms, L, M, N
+
+### SET CHROMOSOMES ############################################################
+    def set_chromosomes(self):
+        allele = [len(bcvi) for bcvi in self.bcv]
+        permchrom = [xrange(ia) for ia in allele]
+        print "NUMBER OF PERMUTATIONS:", np.prod(allele)
+        chromosomes = list(itertools.product(*permchrom))
+        self.chromosomes = chromosomes
+
+    def set_bcolchromosomes(self):
+        bcolchroms = [self.chrom2bcolchrom(chrom) for chrom in self.chromosomes]
+        self.bcolchroms = bcolchroms
+
+    def chrom2bcolchrom(self, chrom):
+        return self.bcv[xrange(self.bcv.shape[0]),chrom]
+
+### BCOLOR SETTING FUNCTIONS ###################################################
     def set_bcol(self, bond):
         """
         utility to set color values in bcolors for bond
@@ -764,6 +794,34 @@ class topo(mol.mol):
         self.bcolors[j][i_ind] = c
         return
 
+    def set_jbcol_from_ibcol(self, vert, bcol, set_arg=False):
+        """
+        utility to set color value of j from color of i
+
+        :Parameters:
+            - vert (int): the vertex i from which the colors of the other j
+                vertices are assigned
+            - bcol (list of int's): list of colors for that vertex
+            - set_arg (bool): if True, bcolors of vertex is assigned as bcol
+        """
+        iconn = self.conn[vert]
+        for i,iatom in enumerate(iconn):
+            j = self.conn[iatom].index(vert)
+            self.bcolors[iatom][j] = int(bcol[i])
+        if set_arg: self.bcolors[vert] = list(bcol)
+        return
+
+    def set_bcol_from_perms(self, perms, nconn):
+        bcol = np.zeros((len(perms),nconn), dtype=np.int)
+        for i,e in enumerate(perms):
+            bcol[i,e] = 1
+        bcol = [list(bc) for bc in bcol]
+        return bcol
+
+        ### N.B.: works only for 0/1 coloring
+        ### TBI: any number of colors
+        
+### PENALTY FUNCTION HANDLERS ##################################################
     def calc_colpen(self, vert):
         # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(self.bcolors[vert]))
         pen_sum = self.calc_colpen_sum(vert)
@@ -773,6 +831,26 @@ class topo(mol.mol):
             return self.calc_colpen_orient(vert)
         else:
             return pen_sum
+
+    def calc_colpen_from_bcolor(self, vert, bcolor):
+        # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(bcolor))
+        pen_sum = self.calc_colpen_sum_from_bcolor(vert, bcolor)
+        if pen_sum == 0.0:
+            # this vertex has the correct number of colors on the edges
+            # now compute in addition the penalty on the orientation
+            return self.calc_colpen_orient_from_bcolor(vert, bcolor)
+        else:
+            return pen_sum
+
+    def calc_colpen_sum_from_bcolor(self, vert, bcolor):
+        """ compute the color penalty for vertex vert
+            rules are in list self.colpen_sumrule
+        """
+        # get rule for first color (currently only two colors are supported for testing)
+        nc0 = self.colpen_sumrule[vert]
+        nc = bcolor.count(0)
+        pen = abs(nc-nc0)*self.colpen_sum_fact
+        return pen*pen
 
     def calc_colpen_sum(self, vert):
         """ compute the color penalty for vertex vert
@@ -827,6 +905,19 @@ class topo(mol.mol):
         else:
             return 0.0
 
+    def calc_colpen_orient_from_bcolor(self, vert, bcolor):
+        # this is a HACK ... works only for vertices with two colors
+        # if self.colpen_orientrule == None ignore
+        # if not use the number to be added to scal
+        if self.colpen_orientrule[vert] != None:
+            col0_edges = []
+            for i,c in enumerate(bcolor):
+                if c == 0: col0_edges.append(i)
+            scal = self.scalmat[vert][col0_edges[0], col0_edges[1]]
+            return self.colpen_orient_fact*abs(scal+self.colpen_orientrule[vert])
+        else:
+            return 0.0
+
     def set_colpen_orientrule(self, vert_dict):
         """
         set the color penalty for the orientation of colors
@@ -843,6 +934,89 @@ class topo(mol.mol):
         for i in xrange(self.natoms):
             self.colpen_orientrule.append(vert_dict[self.elems[i]])
         return
+
+### FILTER FUNCTIONS ###########################################################
+    def filter_vertices(self, atypes=None, elems=None):
+        assert bool(atypes) ^ bool(elems), """either atom types or elements"""
+        if atypes:
+            arr = self.atypes
+            string = atypes
+        elif elems:
+            arr = self.elems
+            string = elems
+        cond = np.array(arr) == string
+        filtered = np.where(cond)[0]
+        return list(filtered)
+
+    def filter_bcv(self, vertices, bcol, thresh=1e-8, set_arg=False):
+        """filter by color penalty threshold the allowed bond colorings
+            per vertex
+        """
+        bcv = []
+        for v in vertices:
+            bcvi = []
+            for bc in bcol:
+                colpen = self.calc_colpen_from_bcolor(v,bc)
+                if colpen < 1e-8:
+                    bcvi.append(bc)
+            bcv.append(bcvi)
+        bcv = np.array(bcv) ###allowed coloring per vertex
+        if set_arg: self.bcv = bcv
+        return bcv
+
+    def filter_graph(self, vertices, bcolchroms=None, thresh=1e-8):
+        """filter by color penalty threshold the graphs given by bond
+            coloring encoded by chromosomes
+        """
+        if bcolchroms is None: bcolchroms = self.bcolchroms
+        graphs = []
+        for ib, ibcolchrom in enumerate(bcolchroms):
+            for iv,v in enumerate(vertices):
+                self.set_jbcol_from_ibcol(v,ibcolchrom[iv],set_arg=True)
+            totpen = sum(map(self.calc_colpen,xrange(self.natoms)))
+            print totpen
+            if totpen < 1e-8:
+                if self.bcolors not in graphs:
+                    graphs.append(copy.deepcopy(self.bcolors))
+        return graphs
+
+
+### AUXILIARY FUNCTIONS ########################################################
+    def bcolors2colors(self, bcolors, set_arg=False):
+        colors = []
+        for i,iconn in enumerate(self.conn):
+            for j,jatom in enumerate(iconn):
+                if i < jatom:
+                    jcol = bcolors[i][j]
+                    colors.append(jcol)
+        if set_arg: self.bcolors = bcolors
+        return colors
+
+    def colors2bcolors(self, colors, set_arg=False):
+        bcolors = [[None]*len(conni) for conni in self.conn]
+        for k,(a,b) in enumerate(self.blist):
+            conni = self.conn[a].index(b)
+            connj = self.conn[b].index(a)
+            bcolors[a][conni] = colors[k]
+            bcolors[b][connj] = colors[k]
+        if set_arg: self.colors = colors
+        return bcolors
+
+    def colors2proportions(self, colors, set_arg=False):
+        ###set colors by argument, get proportions via color
+        assert self.nbonds == len(colors), "number of colors is different than number of bonds"
+        prop, nprop = zip( *Counter(colors).most_common() ) ###already sorted
+        ###TBI: working for nprop[-1]!=1
+        if set_arg: self.colors = colors
+        return prop, nprop
+
+    def proportions2colors(self, prop, set_arg=False):
+        nprop = np.array(prop).sum()
+        assert self.nbonds%nprop==0,  "these proportions do not work"
+        nc = self.nbonds/nprop
+        colors = [c for c,p in enumerate(prop) for i in xrange(p*nc)]
+        if set_arg: self.prop, self.nprop = prop, nprop
+        return colors
 
     @classmethod
     def GCD(cls,*num):
