@@ -29,7 +29,7 @@ class graph:
         logger.debug("generated the graph addon")
         return
 
-    def make_graph(self, idx = None):
+    def make_graph(self, idx = None, hashes = True):
         """
         generate a graph for the mol object (atoms should be typed)
         we use the atomtype name with the "_" and everything after it (rule=2) truncated.
@@ -51,8 +51,9 @@ class graph:
                 if "_" in vtype:
                     vtype = vtype.split("_")[0]
                 # if the coordination number is one replace the element by a #
-                if vtype[-1] == "1":
-                    vtype = "#"
+                if hashes:
+                    if vtype[-1] == "1":
+                        vtype = "#"
                 self.molg.vp.type[ig] = vtype
                 ig += 1
         self.nvertices = len(self.vert2atom)

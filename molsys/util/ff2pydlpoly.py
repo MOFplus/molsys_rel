@@ -6,6 +6,7 @@ import numpy
 import molsys
 import string
 import pdb
+import molsys.util.unit_cell as unit_cell
 
 attr_mappings = {
         "cnct": "conn",
@@ -60,11 +61,54 @@ class wrapper(object):
     def empty_box(self,box):
         raise ValueError("Not implemted in wrapper")
 
-    def get_system_from_pdlp(self,pdlpf):
-        raise ValueError("Not implemented in wrapper")
+    def get_system_from_pdlp(self,pdlp):
+        """ this function reads system and molecule info from pdlp
+            for a full replacement of read tinker also restart needs to be read from pdlp"""
+        # system info
+        elems, types, boundarycond, ctab = pdlp.get_system()
+        self.m.bcond = boundarycond
+#        self.natoms = len(self.elems)
+        # recover connectivity from ctab
+#        self.cnct = []
+#        for i in xrange(self.natoms): self.cnct.append([])
+#        for c in ctab:
+#            i,j = c
+#            self.cnct[i].append(j)
+#            self.cnct[j].append(i)
+        # register types
+#        for t in self.types:
+#            if not self.typedata.has_key(t): self.typedata[t] = None
+#        self.ntypes = len(self.typedata.keys())
+        print("$$ -- read system from pdlp file")
+        # molecule info - note that only a nonredundant set of info is in pdlp and the
+        # rest needs to be recovered
+        # NOTE: the molecule info is not detected or set but taken as found in the pdlp file
+        self.whichmol, self.moltypes, self.molnames = pdlp.get_molecules()
+        self.nmols = len(self.moltypes)
+        self.mols = []
+        for i in xrange(self.nmols) : self.mols.append([])
+        for i, m in enumerate(self.whichmol): self.mols[m].append(i)
+        print("$$ -- read molecule info from pdlp file")
+        self.m.ff.setup_pair_potentials()
+        # set excluded atoms
+        #self.exclude = self.natoms * [False]
+        # set frozen atoms list
+        #self.frozen = self.natoms * [0]
+        return
+#        raise ValueError("Not implemented in wrapper")
 
-    def read_pdlp_xyz(self, pdlpf, read_stage, velocities):
-        raise ValueError("Not implemented in wrapper")
+    def read_pdlp_xyz(self, pdlp, stage, velflag):
+        self.xyz_filename = pdlp.fname
+        self.m.xyz = pdlp.read_restart(stage, "xyz").tolist()
+        if velflag:
+            self.vel = pdlp.read_restart(stage, "vel").tolist()
+        if self.boundarycond > 0:
+            self.cell = pdlp.read_restart(stage, "cell")
+            self.m.cellparams = unit_cell.abc_from_vectors(self.cell)
+        return
+
+#    def read_pdlp_xyz(self, pdlpf, read_stage, velocities):
+#        raise ValueError("Not implemented in wrapper")
 
     def add_mol_tinker_xyz(self,file, mN, mname, offset, scale):
         raise ValueError("Not implemented in wrapper")
@@ -164,7 +208,7 @@ class wrapper(object):
             chargesum += params[0]
             f.write("   %8s  %10.4f %12.8f %12.8f 1 %1d\n" % 
                     (atype, self.get_mass()[i], params[0], params[1], 0))
-        print "Net charge of the system: %13.7f" % chargesum
+        print "Net charge of the system: %12.8f" % chargesum
         ### bonded potentials ###
         for ict in ["bnd", "ang", "dih", "oop"]:
             buffer_out = ""
