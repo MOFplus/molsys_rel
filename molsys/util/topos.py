@@ -1048,7 +1048,7 @@ class topotyper(object):
                         neigh = connected(cc,ignore)
                         leverneigh |= neigh
                 if neigh:
-                    leverneigh -= ignore
+                    leverneigh -= ignore ###????
                     ignore |= leverneigh
                     levseq.append(tuple(neigh))
                     lever = leverneigh
@@ -1204,36 +1204,43 @@ class topotyper(object):
         return trinat
 
     def detect_all_connectors(self):
-        self.bconn = set(())
+        ###TBI: RETRIEVE EDGES FROM SELF.TG.MOL.CONN
+        self.edges = set(())
         self.bb2conn = []
         self.bb2adj = []
+        self.bb2adjconn = []
         for ibb in xrange(self.nbbs):
-            ibconn, ilconn, idconn = self.detect_connectors(ibb, return_dict=True)
-            self.bconn |= set(ibconn)
-            self.bb2conn.append(ilconn)
-            self.bb2adj.append(idconn)
-        self.bconn = list(self.bconn)
-        self.nbconn = len(self.bconn)
+            iedges, iledges, idedges, icedges = self.detect_connectors(ibb, return_dict=True)
+            self.edges |= set(iedges)
+            self.bb2conn.append(iledges)
+            self.bb2adj.append(idedges)
+            self.bb2adjconn.append(icedges)
+        self.edges = list(self.edges)
+        self.edges.sort()
+        self.tg.mol.set_ctab(self.edges, conn_flag=True)
+        self.nedges = len(self.edges)
         return
 
     def detect_connectors(self, ibb, return_dict=False):
         batoms = set(self.mg.clusters[ibb])
-        dconn = {}
-        lconn = []
-        bconn = []
+        dedges = {}
+        cedges = {} 
+        ledges = []
+        edges = []
         for ia in batoms:
             ic = set(self.mg.mol.conn[ia])
             ic -= batoms #set difference
             if ic:
                 ic = int(*ic) #safety: if more than 1, raise error
-                dconn[ia] = ic #computed anyway
-                lconn.append(ia)
-                ibconn = [ibb, self.abb[ic]]
-                ibconn.sort()
-                bconn.append(tuple(ibconn)) #needs tuple
+                dedges[ia] = ic #computed anyway
+                cedges[self.abb[ic]] = ia
+                ledges.append(ia)
+                iedges = [ibb, self.abb[ic]]
+                iedges.sort()
+                edges.append(tuple(iedges)) #needs tuple
         if return_dict:
-            return bconn, lconn, dconn
-        return bconn, lconn
+            return edges, ledges, dedges, cedges
+        return edges, ledges
 
     def set_atom2bb(self):
         """from atom index to building block the atom belongs to"""
@@ -1252,7 +1259,9 @@ class topotyper(object):
         return
 
     def determine_all_color(self, vtype=0, depth=10):
-        edges = self.bconn
+        """determines colors according to element sequences
+        from connectors to blocks"""
+        edges = self.edges
         edcol = []
         elemseqs = []
         for e in edges:
@@ -1264,6 +1273,7 @@ class topotyper(object):
                 unique_elemseqs.append(es)
             edcol.append(unique_elemseqs.index(es)) ###SLOW
         self.edcol = edcol
+        self.elemseqs = elemseqs
         self.unique_elemseqs = unique_elemseqs
         return
 
@@ -1296,43 +1306,6 @@ class topotyper(object):
             leseq.sort()
             elemseq.append(leseq)
         return elemseq
-
-    def edges2vconn(self):
-        vconn = [[] for i in xrange(self.nbbs)]
-        for a,b in self.bconn:
-            vconn[a].append(b)
-            vconn[b].append(a)
-        vconn = [list(set(ivconn)) for ivconn in vconn]
-        self.vconn = vconn
-        return
-
-    def set_vbb(self):
-        ###BUGFIX: vbb needs to be checked
-        """vertices in the baricenter of bbs"""
-        nv = self.nbbs
-        xyz_v = [None]*nv
-        celldim = np.array(self.mg.mol.cellparams[:3])
-        invdim1 = 1/celldim
-        invdim2 = 2*invdim1
-        for ibb, bb in enumerate(self.bbs):
-            xyz_bb = bb.xyz
-            xyz_bb += celldim*np.floor(xyz_bb*invdim2) #AKA if x<l/2: x+=l
-            xyz_v[ibb] = xyz_bb.mean(axis=0)
-        xyz_v = np.array(xyz_v)
-        xyz_v -= celldim*np.floor(xyz_v*invdim1) #AKA x-=x*(x%l)
-        self.xyz_v = xyz_v
-        self.nv = nv
-
-    def set_ebb(self):
-        """edges in the baricenter of pairs of vertices"""
-        ###BUG: it does not work due to periodic boundary conditions
-        ne = self.nbconn
-        xyz_e = np.zeros((ne,3))
-        for ibc, bc in enumerate(self.bconn):
-            a1, a2 = bc
-            xyz_e[ibc] = .5*(self.xyz_v[a1]+self.xyz_v[a2])
-        self.xyz_e = xyz_e
-        self.ne = ne
 
     def get_vbb(self):
         return self.tg.mol.xyz

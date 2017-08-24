@@ -81,6 +81,7 @@ class mol:
         self.elems=[]
         self.atypes=[]
         self.conn=[]
+        self.ctab=[]
         self.fragtypes=[]
         self.fragnumbers=[]
         self.nfrags = 0
@@ -347,14 +348,17 @@ class mol:
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
         self.supercell = tuple(supercell)
-        logging.info('Generating %i x %i x %i supercell' % tuple(supercell))
-        img = [np.array(i) for i in images.tolist()]
-        ntot = np.prod(supercell)
-        nat = copy.deepcopy(self.natoms)
-        nx,ny,nz = supercell[0],supercell[1],supercell[2]
-        #pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
+        ntot = np.prod(self.supercell)
         conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
+        if sum(self.supercell) == 3:
+            logger.warning('Generating %i x %i x %i supercell? No need to do that!' % self.supercell)
+            return xyz,conn
+        logger.info('Generating %i x %i x %i supercell' % self.supercell)
+        img = [np.array(i) for i in images.tolist()]
+        nat = copy.deepcopy(self.natoms)
+        nx, ny, nz = self.supercell
+        #pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
         elems = copy.deepcopy(self.elems)
         left,right,front,back,bot,top =  [],[],[],[],[],[]
         neighs = [[] for i in range(6)]
@@ -399,8 +403,9 @@ class mol:
                 self.conn.append(c)
         self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
-        cell = self.cell * np.array(supercell)[:,np.newaxis]
+        cell = self.cell * np.array(self.supercell)[:,np.newaxis]
         self.set_cell(cell)
+        self.inv_cell = np.linalg.inv(self.cell)
         self.elems *= ntot
         self.atypes*=ntot
         self.fragtypes*=ntot
@@ -1007,7 +1012,7 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
-        if not hasattr(self, "supercell"): self.supercell = (1,1,1)
+        if not hasattr(self, "supercell"): self.supercell = [1,1,1]
 
     def set_cellparams(self,cellparams, cell_only = True):
         ''' set unit cell using cell parameters and assign cell vectors
@@ -1025,7 +1030,6 @@ class mol:
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
         if cell_only == False: self.set_xyz_from_frac(frac_xyz)
-        if not hasattr(self, "supercell"): self.supercell = (1,1,1)
 
     def get_fragtypes(self):
         ''' return all fragment types '''
@@ -1088,12 +1092,23 @@ class mol:
         ''' returns the connectivity of the system '''
         return self.conn
 
-    def set_conn(self,conn):
+    def set_conn(self, conn, ctab_flag=False):
         ''' updates the connectivity of the system
         :Parameters:
             - conn    : List of lists describing the connectivity'''
         self.conn = conn
-        self.ctab = self.get_conn_as_tab()
+        if ctab_flag: self.ctab = self.get_conn_as_tab()
+
+    def get_ctab(self):
+        ''' returns the connectivity table (nbonds, 2)'''
+        return self.ctab
+
+    def set_ctab(self, ctab, conn_flag=False):
+        ''' updates the connectivity table
+        :Parameters:
+            - ctab  : List of couples describing the connectivity'''
+        self.ctab = ctab
+        if conn_flag: self.set_conn_from_tab(ctab)
 
     def set_empty_conn(self):
         """
@@ -1115,9 +1130,12 @@ class mol:
                     ctab.append([i,j])
         return ctab
         
+    def set_ctab_from_conn(self, conn):
+        self.ctab = self.get_conn_as_tab()
+
     def set_conn_from_tab(self, ctab):
         """
-        sets the connectivity from a table of bonds
+        sets the connectivity froma table of bonds
         :Parameters:
             - ctab   : list of bonds (nbonds, 2)
         """
