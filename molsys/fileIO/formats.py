@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import xyz, txyz, mfpx, cif, plain, array, turbo
+import xyz, txyz, mfpx, cif, plain, array, turbo, lammpstrj
 
 read = {
         'xyz':xyz.read,
@@ -18,6 +18,7 @@ write = {
         'mfpx':mfpx.write,
         'cif':cif.write,
         'plain':plain.write,
+        'lammpstrj':lammpstrj.write,
         'turbo':turbo.write}
 
 #def read(mol, filename, fmt, **kwargs):
