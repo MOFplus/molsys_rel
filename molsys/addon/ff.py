@@ -99,34 +99,39 @@ class ic(list):
 
 class varpar(object):
 
+    """
+    Class to hold information of parameters marked as variable in order to be fitted.
+    
+    """
+
     def __init__(self, ff, name, val = 1.0, range = [0.0,2.0], bounds = ["h","i"]):
         assert len(bounds) == 2
         assert bounds[0] in ["h", "i"] and bounds[1] in ["h", "i"]
         self._ff     = ff
         self.name    = name
-        self.val     = val
+        self._val     = val
         self.range   = range
         self.pos     = []
         self.bounds   = bounds
 
     def __repr__(self):
+        """
+        Returns objects name
+        """
         return self.name
 
     def __call__(self, val = None):
+        """
+        Method to set a new value to the varpar oject and write this 
+        into the ff.par dictionary.
+        :Parameters:
+            - val(float): new value of the varpar object
+        """
         if val != None: self.val = val
         for i,p in enumerate(self.pos):
             ic, pottype, parindex  = p
             self._ff.par[ic][pottype][1][parindex] = self.val
         return
-
-    @property
-    def bound(self):
-        return self._bound
-
-    @bound.setter
-    def bound(self,val):
-        assert val == "w" or val == "h"
-        self._bound = val
 
     @property
     def val(self):
@@ -139,6 +144,10 @@ class varpar(object):
         return
 
 class varpars(dict):
+
+    """
+    Class inherited from dict, that holds all varpar objects
+    """
 
     def __init__(self, *args, **kwargs):
         self.update(*args, **kwargs)
@@ -165,6 +174,9 @@ class varpars(dict):
         return vals
 
     def cleanup(self):
+        """
+        Method to delete all unsused varpar objects
+        """
         rem = []
         for k,v in self.items():
             if len(v.pos) == 0:
@@ -196,9 +208,13 @@ class varpars(dict):
         return varpotnums
 
 
-
-
     def __call__(self, vals = None):
+        """
+        Method to write new values to the varpar objects and in the 
+        ff.par dictionary
+        :Parameters:
+            -vals(list of floats): list holding the new parameters 
+        """
         if type(vals) == type(None): vals = len(self)*[None]
         assert len(vals) == len(self)
         for i,v in enumerate(self.values()): v(vals[i])
@@ -210,11 +226,7 @@ class ric:
     class to detect and keep all the (redundant) internal coordinates of the system
     """
 
-
     def __init__(self, mol):
-        """
-
-        """
         self.timer = Timer()        
         self._mol      = mol
         self.conn      = mol.get_conn()
@@ -226,7 +238,10 @@ class ric:
         return
         
 
-    def find_rics(self, specials={"linear": []}):        
+    def find_rics(self, specials={"linear": []}):
+        """
+        Method to find all rics of the system
+        """
         self.bnd    = self.find_bonds()
         self.ang    = self.find_angles()
         self.oop    = self.find_oops()
@@ -257,6 +272,11 @@ class ric:
 
     @timer("find bonds")
     def find_bonds(self):
+        """
+        Method to find all bonds of a system
+        :Returns:
+            -bonds(list): list of indices defining all bonds
+        """
         bonds=[]
         for a1 in xrange(self.natoms):
             for a2 in self.conn[a1]:
@@ -265,6 +285,11 @@ class ric:
 
     @timer("find angles")
     def find_angles(self):
+        """
+        Method to find all angles of a system
+        :Returns:
+            -angles(list): list of indices defining all angles
+        """
         angles=[]
         for ca in xrange(self.natoms):
             apex_atoms = self.conn[ca]
@@ -281,6 +306,11 @@ class ric:
 
     @timer("find oops")
     def find_oops(self):
+        """
+        Method to find all oops of a system
+        :Returns:
+            -oops(list): list of indices defining all oops
+        """
         oops=[]
         # there are a lot of ways to find oops ...
         # we assume that only atoms with 3 partners can be an oop center
@@ -295,6 +325,13 @@ class ric:
 
     @timer("find dihedrals")
     def find_dihedrals(self, lin_types = []):
+        """
+        Method to find all dihedrals of a system
+        :Parameters:
+            -lin_types(list): list of linear atom types, defaults to []
+        :Returns:
+            -oops(list): list of indices defining all dihedrals
+        """
         dihedrals=[]
         for a2 in xrange(self.natoms):
             for a3 in self.conn[a2]:
@@ -451,6 +488,10 @@ class ric:
         return
 
     def report(self):
+        """
+        Method to reports all found rics by the help of
+        the logger object
+        """
         logger.info("Reporting RICs")
         logger.info("%7d bonds"     % len(self.bnd))
         logger.info("%7d angles"    % len(self.ang))
@@ -469,7 +510,6 @@ class ff:
         :Parameter:
 
              - mol : a mol type object (can be a derived type like bb or topo as well)
-             - mode: [string] default=assign, other options file or pdlp 
         """
 
         self.timer = Timer()
@@ -488,6 +528,9 @@ class ff:
         return
 
     def _init_data(self, cha=None, vdw=None):
+        """
+        Method to setup the internal data structres
+        """
         # make data structures . call after ric has been filled with data either in assign or after read
         # these are the relevant datastructures that need to be filled by one or the other way.
         if cha == None:
@@ -528,8 +571,15 @@ class ff:
         :Parameter:
 
             - FF        :    [string] name of the force field to be used in the parameter search
-            - verbose   :    [integer, optional] print info on assignement process to logger
-            - refsysname :    [string, optional] if set this is a refsystem leading to special treatment of nonidentified params 
+            - verbose   :    [integer, optional] print info on assignement process to logger;
+            defaults to 0
+            - refsysname:    [string, optional] if set this is a refsystem leading to special 
+            treatment of nonidentified params; defaults to None
+            - equivs    :    [dict, optional] dictionary holding information on equivalences,
+            needed for parameterization processes in order to "downgrade" atomtpyes, defaults to
+            {}
+            - azone     :    [list, optional] list of indices defining the active zone;
+            defaults to []
         """
         assert type(equivs) == dict
         assert type(azone) == list
@@ -640,6 +690,10 @@ class ff:
         return
 
     def check_consistency(self):
+        """
+        Method to check the consistency of the assigned parameters, if params are
+        missing an AssignmentError is raised.
+        """
         complete = True
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             unknown_par = []
@@ -658,6 +712,16 @@ class ff:
         return
 
     def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"], strbnd = False):
+        """
+        Equivalent method to check consistency in the case that unknown parameters should
+        be determined eg. fitted. The Method prepares the internal data structures for
+        parameterization or sets default values for unkown params.
+        :Parameters:
+            - var_ics(list, optional): list of strings of internal coordinate names
+            for which the fixup should be done, defaults to ["bnd", "ang", "dih", "oop"]
+            - strbnd(bool, optional): switch for a forcing a fixup of strbnd terms, defauls to
+            False
+        """
         self.ric.compute_rics()
         self.variables = varpars()
         if hasattr(self, "active_zone") == False:
@@ -722,6 +786,9 @@ class ff:
         return
 
     def fix_strbnd(self):
+        """
+        Method to perform the fixup for strbnd potentials
+        """
         ### get potentials to fix
         pots = self.variables.varpots
         dels = []
@@ -757,6 +824,11 @@ class ff:
 
 
     def set_def_vdw(self,ind):
+        """
+        Method to set default vdw parameters for a given atom index
+        :Parameters:
+            - ind(int): atom index
+        """
         elements = self._mol.get_elems()
         atypes   = self._mol.get_atypes()
         truncs   = [i.split("_")[0] for i in atypes]
@@ -776,6 +848,11 @@ class ff:
 
 
     def set_def_sig(self,ind):
+        """
+        Method to set default parameters for gassuain width for the the charges
+        :Parameters:
+            - ind(int): atom index
+        """
         parind = self.parind["cha"]
         fitdat = {"fixed":{}, "equivs": {}, "parnames": []}
         ### first gather already assigned charges and dump them to fitdat["fixed"]
@@ -806,6 +883,10 @@ class ff:
         return
 
     def varnames2par(self):
+        """
+        Forces the paramters in the variables dictionary to be wriiten in the internal
+        data structures
+        """
         self.variables(self.variables.keys())
 
 
@@ -977,14 +1058,24 @@ class ff:
     def atoms_in_subsys(self, alist, fsubsys):
         """
         this helper function checks if all fragments of atoms (indices) in alist
-        appear in the list of fragemnts (indices) in fsubsys
+        appear in the list of fragments (indices) in fsubsys
+        :Parameters:
+            - alist(list): list of atom indices
+            - fsubsys(list): list of fragment indices 
+        :Returns:
+            - True or False
         """
         return all(f in fsubsys for f in map(lambda a: self._mol.fragnumbers[a], alist))
 
     def atoms_in_active(self, alist, subsys):
         """
-        this helper function checks if any  atom (indices) in alist
+        this helper function checks if any atom (indices) in alist
         appear in the list of active atoms (indices) in fsubsys
+        :Parameters:
+            - alist(list): list of atom indices
+            - subsys(list): list of atom indices
+        :Returns:
+            - True or False
         """
         if subsys == None: return True
         return any(a in subsys for a in alist)
@@ -997,6 +1088,16 @@ class ff:
         return tuple(l)
 
     def get_parname_equiv(self,alist, ic, refsys):
+        """
+        helper function to produce the name string using the self.aftypes
+        and the information in the self.equivs dictionary
+        :Parameters:
+            - alist(list): list of atom indices
+            - ic(str): corresponding internal coordinate
+            - refsys(str): corresponding name of reference system
+        :Returns:
+            - parname(str): parname
+        """
         assert type(ic) == type(refsys) == str
         ### first check if an atom in r is in the predifined active zone
         insides = []
@@ -1024,19 +1125,45 @@ class ff:
         return tuple(aftype_sort(l,ic))
 
     def split_parname(self,name):
+        """
+        Helper function to exploit the necessary information from the parname:
+        :Parameters:
+            - name(str): parname
+        :Returns:
+            - pot(str): potential type
+            - ref(str): name of the reference system
+            - aftypes(list): list of aftype names
+        """
         pot = name.split("-")[0]
         ref = name.split("|")[-1]
         aftypes = name.split("(")[1].split(")")[0].split(",")
         return pot, ref, aftypes
 
     def build_parname(self, ic, pot, ref, aftypes):
+        """
+        Helper function to build the parname out of the necessary information
+        :Parameters:
+            - ic(str): name of the internal coordinate
+            - pot(str): pot name
+            - ref(str): name of the reference system
+            - aftypes(list): list of the involved aftypes
+        :Returns:
+            - parname
+        """
         sorted = aftype_sort(aftypes, ic)
         return pot + "->("+string.join(sorted, ",")+")|"+ref
         
     def pick_params(self,aft_list,ic, pardir):
         """
-        new helper function to pick params from the dictionary pardir using permutations for the given ic
+        Hhelper function to pick params from the dictionary pardir using permutations for the given ic
         if len of aft_list == 1 (ic = vdw or cha) no permutations necessary
+        :Parameters:
+            -aft_list(list): list of aftypes
+            -ic(str): name of internal coordinate
+            -pardir(dict): dictionary holding the parameters
+        :Returns:
+            -parname(str): parname
+            -params(list): list of the corresponding parameters
         """
         if aft_list == None: return (), None
         ic_perm = {"bnd": ((0,1), (1,0)),
@@ -1058,21 +1185,10 @@ class ff:
             # if we get to this point all permutations gave no result
             return (), None
 
-    def report_params(self):
-        """
-        TODO: improve this ..write to file or logger in DEBUG level?
-        better sorting and commenting?
-        """
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
-            print ("TYPE: " + ic.upper())
-            pstrings = self.par[ic].keys()
-            pstrings.sort()
-            for s in pstrings:
-                print (s)
-            print ("\n")
-        return
-    
     def enumerate_types(self):
+        """
+        Helper function to assign a number to the type, needed for fileIO
+        """
         # dummy dicts to assign a number to the type
         par_types = {}
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
@@ -1094,6 +1210,8 @@ class ff:
         """
         write the rics including the referencing types to an ascii file
         called <fname>.ric and the parameters to <fname>.par
+        :Parameters:
+            - fname(str): fname
         """
         if mpi_rank > 0:
             return
@@ -1158,6 +1276,10 @@ class ff:
     def read(self, fname, fit=False):
         """
         read the ric/par files instead of assigning params
+        :Parameters:
+            - fname(str) : name of <fname>.par und <fname.ric> file
+            - fit(bool, optional): specify if an fpar file should be read in, 
+            holding fitting information, defaults to False
         """
         fric = open(fname+".ric", "r")
         ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
@@ -1294,8 +1416,16 @@ class ff:
         """
         Method to upload interactively the parameters to the already connected db.
         
-        :PARAMETER:
-            - refname  (str): name of the refsystem for which params should be uploaded
+        :Parameters:
+            - FF(str): Name of the FF
+            - refname(str): name of the refsystem for which params should be uploaded
+            - dbrefname(str, optional): name of the refsystem in the db
+            - azone(bool, optional): boolean flag indicating if an active zone entry in 
+            the db should be created, defaults to True
+            - atfix(list, optional): list of special atypes, which should be created 
+            in the db for the reference system, defaults to None
+            - interactive(bool, optional): specify if an interactive upload should be 
+            done, defaults to True
         """
         assert type(refname) == str
         assert type(FF)      == str

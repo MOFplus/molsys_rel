@@ -1,4 +1,6 @@
 #### cell manipulations
+import numpy as np
+import molsys
 
 def extend_cell(mol,offset):
     ''' Atoms as close as offset to the box boundaries are selected to be copied.
@@ -8,7 +10,6 @@ def extend_cell(mol,offset):
         :Params: 
             - offset: The distance (in Angstroms) from the box boundary at which to duplicate the atoms
     '''
-    logging.warning('connectivity is destroyed')
     frac_xyz = mol.get_frac_xyz()
     wherexp = np.where(np.less(frac_xyz[:,0], offset))
     wherexm = np.where(np.greater(frac_xyz[:,0], 1.0-offset))
@@ -43,3 +44,47 @@ def extend_cell(mol,offset):
     mol.natoms = len(mol.xyz)
     #logging.info('Cell was extended by %8.4f AA in each direction' % (offset))
     return
+
+def extend_cell_with_fragments(mol,fragments, boxtol = [0.1,0.1,0.1]):
+    m = mol
+    addmol = molsys.mol()
+    offset = np.zeros([3],"d")
+    boxtol = np.array(boxtol)
+    for ix in xrange(-1,2):
+        for iy in xrange(-1,2):
+            for iz in xrange(-1,2):
+                cell_disp = np.sum(m.cell*np.array([ix,iy,iz],"d")[:,np.newaxis],axis=0)
+                xyz = m.xyz +cell_disp
+                inflags, frag_com, frag_flag = check_fragcom_in_cell(mol,xyz, boxtol, fragments)
+                for i in xrange(m.natoms):
+                    if inflags[i]:
+                        addmol.add_atom(m.elems[i], m.atypes[i],xyz[i])
+    return addmol
+
+
+def check_fragcom_in_cell(mol,xyz, tol, fragments):
+    m = mol
+    tol = np.array(tol)
+    frag_com = np.zeros([len(fragments), 3],"d")
+    m.set_real_mass()
+    for i in xrange(len(fragments)):
+        frag_com[i] = m.get_com(idx = fragments[i], xyz = xyz[fragments[i]])
+    # convert these coms xyz coordinates into fractional coordinates
+    frag_com_fract = np.dot(frag_com, m.inv_cell)
+    # now check these coms
+    below = np.less_equal(frag_com_fract, -tol)
+    above = np.greater(frag_com_fract, 1.0+tol)
+    allbelow = np.logical_or.reduce(below, axis=1)
+    allabove = np.logical_or.reduce(above, axis=1)
+    out = np.logical_or(allabove, allbelow)
+    incell = np.logical_not(out)
+    flags = m.natoms*[False]
+    for i,f in enumerate(incell):
+        if f:
+            for a in fragments[i]: flags[a] = True
+    return flags, frag_com, incell
+
+
+
+
+

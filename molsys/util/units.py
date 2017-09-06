@@ -93,6 +93,8 @@ hertz = 1/second
 pascal = newton/meter**2
 bar = 100000*pascal
 atm = 1.01325*bar
+torr =133.322*pascal
+mmHg = torr
 
 # *** Temperature ***
 

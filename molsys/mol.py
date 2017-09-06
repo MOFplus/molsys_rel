@@ -274,7 +274,7 @@ class mol:
             for j in c:
                 if i not in conn[j]: return False
         return True
-                
+
     def detect_conn(self, tresh = 0.1,remove_duplicates = False):
         """
         detects the connectivity of the system, based on covalent radii.
@@ -430,6 +430,14 @@ class mol:
         self.set_xyz_from_frac(frac_xyz)
         if self.__class__.__name__=='topo':
             self.add_pconn()
+        return
+
+    def unwrap_fragments(self, fragments):
+        if not self.periodic: return
+        for f in fragments:
+            xyz = self.xyz[f]
+            xyz = self.pbc(xyz,0)
+            self.xyz[f] = xyz
         return
 
     def get_frac_xyz(self):
@@ -631,7 +639,7 @@ class mol:
         self.translate(-center)
         return
 
-    def get_com(self, idx = None):
+    def get_com(self, idx = None, xyz = None):
         """
         returns the center of mass of the mol object.
 
@@ -641,22 +649,25 @@ class mol:
         if hasattr(self,'masstype') == False: self.set_real_mass()
         #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
         #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
-        if idx == None:
+        if xyz is not None:
+            amass = np.array(self.amass)[idx]
+        elif idx == None:
             if self.periodic: return None
             xyz = self.get_xyz()
             amass = np.array(self.amass)
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
-        if self.periodic:
-            fix = xyz[0,:]
-            a = xyz[1:,:] - fix
-            if self.bcond <= 2:
-                cell_abc = self.cellparams[:3]
-                xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
-            elif self.bcond == 3:
-                frac = np.dot(a, self.inv_cell)
-                xyz[1:,:] -= np.dot(np.around(frac),self.cell)
+        xyz = self.pbc(xyz, 0)
+#        if self.periodic:
+#            fix = xyz[0,:]
+#            a = xyz[1:,:] - fix
+#            if self.bcond <= 2:
+#                cell_abc = self.cellparams[:3]
+#                xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
+#            elif self.bcond == 3:
+#                frac = np.dot(a, self.inv_cell)
+#                xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
 
@@ -672,12 +683,20 @@ class mol:
             xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         return xyz
 
-    def pbc(self):
+    def pbc(self, xyz, fixidx = 0):
         """
         Compute periodic boundary conditions in an arbitrary (triclinic) cell
         """
-        ###TBI
-        pass
+        if self.periodic:
+            fix = xyz[fixidx,:]
+            a = xyz[:,:] - fix
+            if self.bcond <= 2:
+                cell_abc = self.cellparams[:3]
+                xyz[:,:] -= cell_abc*np.around(a/cell_abc)
+            elif self.bcond == 3:
+                frac = np.dot(a, self.inv_cell)
+                xyz[:,:] -= np.dot(np.around(frac),self.cell)
+        return xyz
 
     def new_mol_by_index(self, idx):
         """

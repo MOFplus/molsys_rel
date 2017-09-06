@@ -51,11 +51,11 @@ def read_gradfile(mol, f, cycle):
     scycle = range(ncycle)[cycle]
     for line in f:
         sline = string.split(line)
-        if sline[0] == "cycle" and int(sline[2])+1 == scycle:
+        if sline[0] == "cycle" and int(sline[2])-1 == scycle:
             ### found read in 
             energy = float(sline[6])
             found  = True
-        elif sline[0] == "cycle" and int(sline[2])+1 != scycle:
+        elif sline[0] == "cycle" and int(sline[2])-1 != scycle:
             found = False
         if found:
             if len(sline) == 4:

@@ -20,11 +20,19 @@ ricmapping = {"bnd": "str",
 class ric(RedIntCoords):
     """
     class to compute redundant internal coordinates (ric)
-    by using the inherited ric module and to compute deviations from a corresponding
-    reference.
+    by using the inherited ric module.
     """
     
     def __init__(self, mol, lindict = {}):
+        """
+        Init procedure, to setup the a ric instance.
+        :Parameters:
+            - mol(obj): mol class instance
+            - lindict(dict): dictionary holding information about 
+            the linear bends in the system. Keys are lists of 
+            indices defining a linear angle and the value is the
+            corresponding reference atom; defaults to {}
+        """
         self._mol = mol
         ### check if ff is already initialized, else do
         if hasattr(self._mol,"ff") == False:
@@ -45,26 +53,25 @@ class ric(RedIntCoords):
         return
 
     def setup_rics(self, full = True):
+        """
+        Method to setup the rics for the given mol object.
+        :Parameters:
+            - full(bool): if full is equal to True the whole conn
+            table is used to setup the rics, if False only those rics
+            are used fo which FF terms are used; defaults to True
+        """
         self._mol.ff.ric.compute_rics()
         ### bonds
         for i,r in enumerate(self._mol.ff.ric.bnd):
-            if full:
-                self.add_stretch(np.array(list(r))+1)
-            elif r.used:
+            if full or r.used:
                 self.add_stretch(np.array(list(r))+1)
         ### angles
-        # TODO implement linear angles
         for i,r in enumerate(self._mol.ff.ric.ang):
             if abs(r.value-180.0) < 2.0:
                 r.lin = True                
             else:
                 r.lin = False
-            if full:
-                if r.lin:
-                    self.add_lin_bend_mod(r)
-                else:
-                    self.add_in_bend(np.array(list(r))+1)
-            elif r.used:
+            if full or r.used:
                 if r.lin:
                     self.add_lin_bend_mod(r)
                 else:
@@ -72,20 +79,14 @@ class ric(RedIntCoords):
         ### oop
         for i, r in enumerate(self._mol.ff.ric.oop):
             a,b,c,d = r
-            if full:
-                self.add_out_bend(np.array([a,b,c,d])+1)
-                self.add_out_bend(np.array([a,c,b,d])+1)
-                self.add_out_bend(np.array([a,d,c,b])+1)
-            elif r.used:
+            if full or r.used:
                 self.add_out_bend(np.array([a,b,c,d])+1)
                 self.add_out_bend(np.array([a,c,b,d])+1)
                 self.add_out_bend(np.array([a,d,c,b])+1)
         ### dihedrals
         # TODO so far no fragtors are available
         for i, r in enumerate(self._mol.ff.ric.dih):
-            if full:
-                self.add_torsion(np.array(list(r))+1)
-            elif r.used:
+            if full or r.used:
                 self.add_torsion(np.array(list(r))+1)
         self.add_eckart()
         self._mol.set_real_mass()
@@ -94,6 +95,11 @@ class ric(RedIntCoords):
         return
     
     def add_lin_bend_mod(self, indices):
+        """
+        Method to add an linear bend
+        :Parameters:
+            - indices: indices of the linear bend
+        """
         if indices in self.lindict.keys():
             self.add_lin_bend(np.array(list(indices))+1, ref = self.lindict[indices]+1)
         else:
@@ -148,6 +154,17 @@ class ric(RedIntCoords):
         return active
 
     def map_ric(self, ric_type, ind, reversed = False):
+        """
+        Method to map a given ric to the corresponding indices in the internal
+        data structures.
+        :Parameters:
+            - ric_type(str): the ric type, which hast to be either str, ibe, 
+            obe, tor or lbe
+            - ind(list): list of indices
+        :Returns:
+            - i(int): index in the local datastructure of the given ric_type
+            - i_glob(int): index in the global datastructure of all rics
+        """
         mapper = {"str": (self._stretches, self.first_str),
                 "ibe": (self._in_bends, self.first_ibe),
                 "obe": (self._out_bends, self.first_obe),
@@ -165,6 +182,14 @@ class ric(RedIntCoords):
             return None, None
     
     def dih2tor(self,ind):
+        """
+        Method to translate a dihedral consisting of four atom indices
+        to a torsion ric definition consisting of 12 indices
+        :Parameters:
+            - ind(list): list of indices of the dihedral
+        :Returns:
+            - tor(list): list of indices of the torsion
+        """
         assert len(ind) == 4
         mapping = [0,5,6,7]
         new_ind = 12*[-1]
@@ -172,12 +197,25 @@ class ric(RedIntCoords):
         return new_ind
 
     def tor2dih(self, ind):
+        """
+        Method to translate a torsion ric definition to a usual dihedral definition.
+        :Parameters:
+            - ind(list): list of indices defining the dihedral
+        :Returns:
+            - dih(list): list of indices of the dihedral
+        """
         if type(ind[0]) == int:
             return np.array(ind)[0,5,6,7].tolist()
         else:
             return np.array(ind)[:,[0,5,6,7]].tolist()
 
     def report_rics(self, file = None):
+        """
+        Method to report the RICs which has been setup.
+        :Parameters:
+            - file(str): if set the rics are dumped to the given filename;
+            defaults to None
+        """
         buffer = ""
         count = 0
         rics = self.all_rics
