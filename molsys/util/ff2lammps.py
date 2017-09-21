@@ -207,6 +207,120 @@ class ff2lammps(object):
         pf = self._settings["parformat"]+" "
         return n*pf
 
+    def write2internal(self,lmps):
+        formatter = {"bnd": self.bondterm_formatter,
+                "ang": self.angleterm_formatter,
+                "dih": self.dihedralterm_formatter,
+                "oop": self.oopterm_formatter}
+        for ict in ['bnd','ang','dih','oop']:
+            for bt in self.par_types[ict].keys():
+                bt_number = self.par_types[ict][bt]
+                for ibt in bt:
+                    pot_type, params = self.par[ict][ibt]
+                    pstrings = formatter[ict](bt_number, pot_type, params)
+                    for p in pstrings: lmps.lmps.command(p)
+        return
+
+#        for bt in self.par_types["bnd"].keys():
+#            bt_number = self.par_types["bnd"][bt]
+#            for ibt in bt:
+#                pot_type, params = self.par["bnd"][ibt]
+#                if pot_type == "mm3":
+
+    def bondterm_formatter(self, number, pot_type, params):
+        assert type(params) == list
+        if np.count_nonzero(params) == 0:
+            #TODO implement used feature here, quick hack would be to make one dry run
+            # startup with ff2pydlpoly and get the info form there :D
+            pass 
+        if pot_type == "mm3":
+            r0 = params[1]
+            K2 = params[0]*mdyn2kcal/2.0 
+            K3 = K2*(-2.55)
+            K4 = K2*(2.55**2.)*(7.0/12.0)
+            pstring = "bond_coeff %5d class2 %12.6f %12.6f %12.6f %12.6f" % (number,r0, K2, K3, K4)
+        elif pot_type == "morse":
+            r0 = params[1]
+            E0 = params[2]
+            k  = params[0]*mdyn2kcal/2.0
+            alpha = np.sqrt(k/E0)
+            pstring = "bond_coeff %5d morse %12.6f%12.6f %12.6f" % (number, E0, alpha, r0)
+        else:
+            raise ValueError, "unknown bond potential"
+        return [pstring]
+
+    def angleterm_formatter(self, number, pot_type, params):
+        assert type(params) == list
+        pstrings = []
+        if np.count_nonzero(params) == 0:
+            #TODO implement used feature here, quick hack would be to make one dry run
+            # startup with ff2pydlpoly and get the info form there :D
+            pass
+        if pot_type == "mm3":
+            th0 = params[1]
+            K2  = params[0]*mdyn2kcal/2.0 
+            K3 = K2*(-0.014)*rad2deg
+            K4 = K2*5.6e-5*rad2deg**2
+            K5 = K2*-7.0e-7*rad2deg**3
+            K6 = K2*2.2e-8*rad2deg**4
+            pstring = "angle_coeff %5d class2/p6 %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (number,th0, K2, K3, K4, K5, K6)
+            pstrings.append(pstring)
+            # HACk to catch angles witout strbnd
+#            if len(at) == 1:
+#                pstrings.append("angle_coeff %5d class2/p6 bb 0.0 1.0 1.0" % (number))
+#                pstrings.append("angle_coeff %5d class2/p6 ba 0.0 0.0 1.0 1.0" % (number))
+        elif pot_type == "strbnd":
+            ksb1, ksb2, kss = params[:3]
+            r01, r02        = params[3:5]
+            th0             = params[5]
+            pstrings.append("angle_coeff %5d class2/p6 bb %12.6f %12.6f %12.6f" % (number, kss*mdyn2kcal, r01, r02))
+            pstrings.append("angle_coeff %5d class2/p6 ba %12.6f %12.6f %12.6f %12.6f" % (number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
+            # f.write("angle_coeff %5d bb %12.6f %12.6f %12.6f\n" % (at_number, kss*mdyn2kcal, r01, r02))
+            # f.write("angle_coeff %5d ba %12.6f %12.6f %12.6f %12.6f\n" % (at_number, ksb1*mdyn2kcal, ksb2*mdyn2kcal, r01, r02))
+        elif pot_type == "fourier":
+            a0 = params[1]
+            fold = params[2]
+            k = 0.5*params[0]*angleunit*rad2deg*rad2deg/fold
+            pstring = "%12.6f %5d %12.6f" % (k, fold, a0)
+            if self._settings["use_angle_cosine_buck6d"]:
+                pstrings.append("angle_coeff %5d cosine/buck6d   %s" % (number, pstring))                   
+            else:
+                pstrings.append("angle_coeff %5d cosine/vdwl13   %s 1.0" % (number, pstring))
+        else:
+            raise ValueError, "unknown angle potential"
+        return pstrings
+
+#                    pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
+#                    # pstring = "%12.6f %12.6f" % (th0, K2)
+#                    f.write("angle_coeff %5d class2/p6    %s    # %s\n" % (at_number, pstring, iat))
+    def dihedralterm_formatter(self, number, pot_type, params):
+        if np.count_nonzero(params) == 0:
+            #TODO implement used feature here, quick hack would be to make one dry run
+            # startup with ff2pydlpoly and get the info form there :D
+            pass
+        if pot_type == "cos3":
+            v1, v2, v3 = params[:3]
+            pstring = "%12.6f %12.6f %12.6f %12.6f" % (v1, v2, v3, 0.0)
+        elif pot_type == "cos4":
+            v1, v2, v3, v4 = params[:4]
+            pstring = "%12.6f %12.6f %12.6f %12.6f" % (v1, v2, v3, v4)
+        else:
+            raise ValueError, "unknown dihedral potential"
+        return ["dihedral_coeff %5d %s" % (number, pstring)]
+
+
+    def oopterm_formatter(self, number, pot_type, params):
+        if np.count_nonzero(params) == 0:
+            #TODO implement used feature here, quick hack would be to make one dry run
+            # startup with ff2pydlpoly and get the info form there :D
+            pass
+        if pot_type == "harm":
+            pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])
+        else:
+            raise ValueError, "unknown improper/oop potential"
+        return ["improper_coeff %5d %s" % (number, pstring)]
+
+
     def write_input(self, filename = "lmp.input", header=None, footer=None, kspace=False):
         """
         NOTE: add read data ... fix header with periodic info
