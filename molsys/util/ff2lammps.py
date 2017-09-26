@@ -17,6 +17,8 @@ import string
 import molsys
 import molsys.util.elems as elements
 import copy
+import logging
+logger = logging.getLogger('molsys.ff2lammps')
 
 
 mdyn2kcal = 143.88
@@ -111,6 +113,69 @@ class ff2lammps(object):
         self._settings["kspace_prec"] = 1.0e-6
         return
 
+    def adjust_cell(self):
+        if self.mol.bcond > 0:
+            fracs = self.mol.get_frac_xyz()
+            cell  = self.mol.get_cell()
+            self.tilt = 'small'
+            # now check if cell is oriented along the (1,0,0) unit vector
+            if np.linalg.norm(cell[0]) != cell[0,0]:
+                # system needs to be rotated
+                rcell=np.zeros([3,3])
+                A = cell[0]
+                B = cell[1]
+                C = cell[2]
+                AcB = np.cross(A,B)
+                uAcB = AcB/np.linalg.norm(AcB)
+                lA = np.linalg.norm(A)
+                uA = A/lA
+                lx = lA
+                xy = np.dot(B,uA)
+                ly = np.linalg.norm(np.cross(uA,B))
+                xz = np.dot(C,uA)
+                yz = np.dot(C,np.cross(uAcB,uA))
+                lz = np.dot(C,uAcB)
+                print lx, ly,lz, xy,xz,yz
+                #rcell[0,0] = lA
+                #rcell[1,0] = np.dot(B,uA)
+                #rcell[1,1] = np.linalg.norm(np.cross(uA,B))
+                #rcell[2,0] = np.dot(C,uA)
+                #rcell[2,1] = np.dot(C,np.cross(uAcB,uA))
+                #rcell[2,2] = np.dot(C,uAcB)
+                # check for tiltings
+                if abs(xy)>lx/2: 
+                    logger.warning('xy tilting is too large in respect to lx')
+                    self.tilt='large'
+                if abs(xz)>lx/2: 
+                    logger.warning('xz tilting is too large in respect to lx')
+                    self.tilt='large'
+                if abs(yz)>lx/2: 
+                    logger.warning('yz tilting is too large in respect to lx')
+                    self.tilt='large'
+                if abs(xz)>ly/2: 
+                    logger.warning('xz tilting is too large in respect to ly')
+                    self.tilt='large'
+                if abs(yz)>ly/2:
+                    logger.warning('yz tilting is too large in respect to ly')
+                    self.tilt='large'
+#                    if abs(yz)-ly/2. < 10e-14: 
+#                        print abs(yz)-ly/2., "numerical noise"
+#                        yz = np.sign(yz)*(ly/2.0-0.0001)
+#                    else:
+#                        raise IOError('yz tilting is too large in respect to ly')
+                rcell = np.array([
+                        [lx,0,0],
+                        [xy,ly,0.0],
+                        [xz,yz,lz]])
+                # check if celldiag is positve, else a left hand side basis is formed
+                if rcell.diagonal()[0]<0.0: raise IOError('Left hand side coordinate system detected')
+                if rcell.diagonal()[1]<0.0: raise IOError('Left hand side coordinate system detected')
+                if rcell.diagonal()[2]<0.0: raise IOError('Left hand side coordinate system detected')
+                self.mol.set_cell(rcell, cell_only=False)
+#                import pdb; pdb.set_trace()
+        return
+
+
     def setting(self, s, val):
         if not s in self._settings:
             print("This settings %s is not allowed" % s)
@@ -135,22 +200,30 @@ class ff2lammps(object):
         header += "%10d angle types\n"      % len(self.par_types["ang"])
         header += "%10d dihedral types\n"   % len(self.par_types["dih"])
         header += "%10d improper types\n\n" % len(self.par_types["oop"])
-        # currently we support onyl orthorhombic cells
+        self.adjust_cell()
+        xyz = self.mol.get_xyz()
         if self.mol.bcond == 0:
             # in the nonperiodic case center the molecule in the origin
             self.mol.translate(-self.mol.get_com())
-            xyz = self.mol.get_xyz()
             cmax = xyz.max(axis=0)+10.0
             cmin = -xyz.min(axis=0)-10.0
-        else:
+            tilts = (0.0,0.0,0.0)
+        elif self.mol.bcond<2:
+            # orthorombic/cubic bcond
             cell = self.mol.get_cell()
             cmin = np.zeros([3])
             cmax = cell.diagonal()
-            xyz = self.mol.get_xyz()            
+            tilts = (0.0,0.0,0.0)
+        else:
+            # triclinic bcond
+            cell = self.mol.get_cell()
+            cmin = np.zeros([3])
+            cmax = cell.diagonal()
+            tilts = (cell[1,0], cell[2,0], cell[2,1])
         header += '%12.6f %12.6f  xlo xhi\n' % (cmin[0], cmax[0])
         header += '%12.6f %12.6f  ylo yhi\n' % (cmin[1], cmax[1])
         header += '%12.6f %12.6f  zlo zhi\n' % (cmin[2], cmax[2])
-        header += '0.0 0.0 0.0  xy xz yz\n'        
+        header += '%12.6f %12.6f %12.6f  xy xz yz\n' % tilts
         # NOTE in lammps masses are mapped on atomtypes which indicate vdw interactions (pair potentials)
         #   => we do NOT use the masses set up in the mol object because of this mapping
         #   so we need to extract the element from the vdw paramter name which is a bit clumsy (DONE IN INIT NOW)
@@ -335,6 +408,7 @@ class ff2lammps(object):
         else:
             f.write("boundary p p p\n")
         f.write("atom_style full\n")
+        if self.tilt == 'large': f.write('box tilt large\n')
         f.write("read_data %s\n\n" % self.data_filename)
         f.write("neighbor 2.0 bin\n\n")
         # extra header
