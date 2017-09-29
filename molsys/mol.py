@@ -294,7 +294,7 @@ class mol:
         for i in xrange(natoms):
             a = xyz - xyz[i]
             if self.periodic:
-                if self.bcond == 2:
+                if self.bcond <= 2:
                     cell_abc = self.cellparams[:3]
                     a -= cell_abc * np.around(a/cell_abc)
                 elif self.bcond == 3:
@@ -1191,3 +1191,7 @@ class mol:
     def get_weight(self):
         ''' gets the weight of the system. Default: 1.'''
         return self.weight
+
+    def get_volume(self):
+        a,b,c = self.cell
+        return np.dot(np.cross(a,b),c)
