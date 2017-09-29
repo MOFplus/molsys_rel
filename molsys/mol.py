@@ -150,6 +150,21 @@ class mol:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return m
+
+    @classmethod
+    def fromAbinit(cls, elems, xyz, cell):
+        m = cls()
+        logger.info('reading basic data provided by any AbInitio programm')
+        m.natoms = len(elems)
+        m.set_elems(elems)
+        m.set_atypes(elems)
+        m.set_xyz(xyz)
+        m.set_cell(cell)
+        m.set_nofrags()
+        m.set_empty_conn()
+        m.detect_conn()
+        return m
+        
     
     @classmethod
     def fromArray(cls, arr, **kwargs):
