@@ -189,13 +189,14 @@ class mol:
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if self.mpi_rank == 0:
-            if ftype is None:
-                fsplit = fname.rsplit('.',1)[-1]
-                if fsplit != fname: #there is an extension
-                    ftype = fsplit #ftype is inferred from extension
-                else: #there is no extension
-                    ftype = 'mfpx' #default
+            fsplit = fname.rsplit('.',1)[-1]
+            if fsplit == fname: #there is no extension
+                if ftype is None:
+                    ftype = 'mfpx'
                 fname = "%s.%s" % (fname, ftype)
+            else: #there is an extension
+                if ftype is None:
+                    ftype = fsplit #ftype is inferred from extension
             logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
             if ftype in formats.read:
                 formats.write[ftype](self,fname,**kwargs)
