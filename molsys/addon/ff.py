@@ -111,7 +111,7 @@ class varpar(object):
         self.name    = name
         self._val     = val
         self.range   = range
-        self.pos     = []
+        #self.pos     = []
         self.bounds   = bounds
 
     def __repr__(self):
@@ -445,7 +445,7 @@ class ric:
 
 
 
-    def get_dihedral(self, atoms):
+    def get_dihedral(self, atoms,compute_multiplicity=True):
         """
         Computes dihedral angle between four atoms
         :Parameters:
@@ -468,9 +468,12 @@ class ric:
             arg = -1.0
         phi = np.arccos(arg)
         ### get multiplicity
-        m = self.get_multiplicity(len(self._mol.conn[atoms[1]]),
+        if compute_multiplicity : 
+            m = self.get_multiplicity(len(self._mol.conn[atoms[1]]),
                 len(self._mol.conn[atoms[2]]))
-        return (phi * (180.0/np.pi), m)
+            return (phi * (180.0/np.pi), m)
+        else:
+            return (phi * (180.0/np.pi),0)
 
     def get_oop(self,atoms):
         """

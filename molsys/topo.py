@@ -650,6 +650,7 @@ class topo(mol.mol):
             converged = False
         return (converged, step, self.totpen)
 
+### GRAPH TO MOL METHODS #######################################################
     def add_vertex_on_color(self, col, lelem=None, laty=None):
         if lelem is None and laty is None:
             errmsg = \
@@ -738,12 +739,10 @@ class topo(mol.mol):
         return m
 
 ### COMPUTE PERMUTATIONS #######################################################
-    def compute_permutations(self, vertices):
-        conns = []
-        for v in vertices:
-            conns.append(self.conn[v])
-        conns = np.array(conns)
-        L, M = conns.shape
+    def compute_permutations(self, atypes):
+        v = self.atypes.index(atypes)
+        M = len(self.conn[v])
+        L = M - self.colpen_sumrule[v] ### HACK ###
         perms = itertools.permutations(xrange(M),L)
         perms = [list(i) for i in perms]
         for i in perms: i.sort()
@@ -957,6 +956,7 @@ class topo(mol.mol):
             bcvi = []
             for bc in bcol:
                 colpen = self.calc_colpen_from_bcolor(v,bc)
+                #print bc, colpen
                 if colpen < 1e-8:
                     bcvi.append(bc)
             bcv.append(bcvi)
@@ -974,7 +974,7 @@ class topo(mol.mol):
             for iv,v in enumerate(vertices):
                 self.set_jbcol_from_ibcol(v,ibcolchrom[iv],set_arg=True)
             totpen = sum(map(self.calc_colpen,xrange(self.natoms)))
-            print totpen
+            #print totpen
             if totpen < 1e-8:
                 if self.bcolors not in graphs:
                     graphs.append(copy.deepcopy(self.bcolors))

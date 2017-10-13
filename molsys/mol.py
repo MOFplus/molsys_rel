@@ -119,7 +119,11 @@ class mol:
             else: #there is no extension
                 ftype = 'mfpx' #default
         logger.info("reading file "+str(fname)+' in '+str(ftype)+' format')
-        f = open(fname, "r")
+        try:
+            f = open(fname, "r")
+        except IOError:
+            fname = "%s.%s" % (fname, ftype)
+            f = open(fname, "r")
         if ftype in formats.read:
             formats.read[ftype](self,f,**kwargs)
         else:
@@ -182,7 +186,20 @@ class mol:
         formats.read['array'](m,arr,**kwargs)
         return m
 
-    def write(self,fname,ftype=None,**kwargs):
+    @classmethod
+    def fromNestedList(cls, nestl, **kwargs):
+        ''' generic reader for the mol class, reading from a Nx3 array
+        :Parameters:
+            - arr         : the array to be read
+            - **kwargs    : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        logger.info("reading nested lists")
+        for nl in nestl:
+            assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (a.shape,)
+        arr = np.array(nestl)
+        return cls.fromArray(arr, **kwargs)
+
+    def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
         :Parameters:
             - fname        : the filename to be written
@@ -190,12 +207,14 @@ class mol:
             - **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if self.mpi_rank == 0:
-            if ftype is None:
-                fsplit = fname.rsplit('.',1)[-1]
-                if fsplit != fname: #there is an extension
+            fsplit = fname.rsplit('.',1)[-1]
+            if fsplit == fname: #there is no extension
+                if ftype is None:
+                    ftype = 'mfpx'
+                fname = "%s.%s" % (fname, ftype)
+            else: #there is an extension
+                if ftype is None:
                     ftype = fsplit #ftype is inferred from extension
-                else: #there is no extension
-                    ftype = 'mfpx' #default
             logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
             if ftype in formats.read:
                 formats.write[ftype](self,fname,**kwargs)
