@@ -113,6 +113,31 @@ class ff2lammps(object):
         self._settings["kspace_prec"] = 1.0e-6
         return
 
+    @staticmethod
+    def rotate_cell(cell):
+        if np.linalg.norm(cell[0]) != cell[0,0]:
+            # system needs to be rotated
+            A = cell[0]
+            B = cell[1]
+            C = cell[2]
+            AcB = np.cross(A,B)
+            uAcB = AcB/np.linalg.norm(AcB)
+            lA = np.linalg.norm(A)
+            uA = A/lA
+            lx = lA
+            xy = np.dot(B,uA)
+            ly = np.linalg.norm(np.cross(uA,B))
+            xz = np.dot(C,uA)
+            yz = np.dot(C,np.cross(uAcB,uA))
+            lz = np.dot(C,uAcB)
+            print lx, ly,lz, xy,xz,yz
+            cell = np.array([
+                    [lx,0,0],
+                    [xy,ly,0.0],
+                    [xz,yz,lz]])
+        return cell
+ 
+
     def adjust_cell(self):
         if self.mol.bcond > 0:
             fracs = self.mol.get_frac_xyz()
@@ -120,60 +145,53 @@ class ff2lammps(object):
             self.tilt = 'small'
             # now check if cell is oriented along the (1,0,0) unit vector
             if np.linalg.norm(cell[0]) != cell[0,0]:
-                # system needs to be rotated
-                rcell=np.zeros([3,3])
-                A = cell[0]
-                B = cell[1]
-                C = cell[2]
-                AcB = np.cross(A,B)
-                uAcB = AcB/np.linalg.norm(AcB)
-                lA = np.linalg.norm(A)
-                uA = A/lA
-                lx = lA
-                xy = np.dot(B,uA)
-                ly = np.linalg.norm(np.cross(uA,B))
-                xz = np.dot(C,uA)
-                yz = np.dot(C,np.cross(uAcB,uA))
-                lz = np.dot(C,uAcB)
-                print lx, ly,lz, xy,xz,yz
-                #rcell[0,0] = lA
-                #rcell[1,0] = np.dot(B,uA)
-                #rcell[1,1] = np.linalg.norm(np.cross(uA,B))
-                #rcell[2,0] = np.dot(C,uA)
-                #rcell[2,1] = np.dot(C,np.cross(uAcB,uA))
-                #rcell[2,2] = np.dot(C,uAcB)
-                # check for tiltings
-                if abs(xy)>lx/2: 
-                    logger.warning('xy tilting is too large in respect to lx')
-                    self.tilt='large'
-                if abs(xz)>lx/2: 
-                    logger.warning('xz tilting is too large in respect to lx')
-                    self.tilt='large'
-                if abs(yz)>lx/2: 
-                    logger.warning('yz tilting is too large in respect to lx')
-                    self.tilt='large'
-                if abs(xz)>ly/2: 
-                    logger.warning('xz tilting is too large in respect to ly')
-                    self.tilt='large'
-                if abs(yz)>ly/2:
-                    logger.warning('yz tilting is too large in respect to ly')
-                    self.tilt='large'
-#                    if abs(yz)-ly/2. < 10e-14: 
-#                        print abs(yz)-ly/2., "numerical noise"
-#                        yz = np.sign(yz)*(ly/2.0-0.0001)
-#                    else:
-#                        raise IOError('yz tilting is too large in respect to ly')
-                rcell = np.array([
-                        [lx,0,0],
-                        [xy,ly,0.0],
-                        [xz,yz,lz]])
-                # check if celldiag is positve, else a left hand side basis is formed
-                if rcell.diagonal()[0]<0.0: raise IOError('Left hand side coordinate system detected')
-                if rcell.diagonal()[1]<0.0: raise IOError('Left hand side coordinate system detected')
-                if rcell.diagonal()[2]<0.0: raise IOError('Left hand side coordinate system detected')
+                rcell = self.rotate_cell(cell)
                 self.mol.set_cell(rcell, cell_only=False)
+            else:
+                rcell = cell
+            lx,ly,lz,xy,xz,yz = rcell[0,0],rcell[1,1],rcell[2,2],rcell[1,0],rcell[2,0],rcell[2,1]
+                # system needs to be rotated
+#                rcell=np.zeros([3,3])
+#                A = cell[0]
+#                B = cell[1]
+#                C = cell[2]
+#                AcB = np.cross(A,B)
+#                uAcB = AcB/np.linalg.norm(AcB)
+#                lA = np.linalg.norm(A)
+#                uA = A/lA
+#                lx = lA
+#                xy = np.dot(B,uA)
+#                ly = np.linalg.norm(np.cross(uA,B))
+#                xz = np.dot(C,uA)
+#                yz = np.dot(C,np.cross(uAcB,uA))
+#                lz = np.dot(C,uAcB)
+                # check for tiltings
+            if abs(xy)>lx/2: 
+                logger.warning('xy tilting is too large in respect to lx')
+                self.tilt='large'
+            if abs(xz)>lx/2: 
+                logger.warning('xz tilting is too large in respect to lx')
+                self.tilt='large'
+            if abs(yz)>lx/2: 
+                logger.warning('yz tilting is too large in respect to lx')
+                self.tilt='large'
+            if abs(xz)>ly/2: 
+                logger.warning('xz tilting is too large in respect to ly')
+                self.tilt='large'
+            if abs(yz)>ly/2:
+                logger.warning('yz tilting is too large in respect to ly')
+                self.tilt='large'
+            # check if celldiag is positve, else a left hand side basis is formed
+            if rcell.diagonal()[0]<0.0: raise IOError('Left hand side coordinate system detected')
+            if rcell.diagonal()[1]<0.0: raise IOError('Left hand side coordinate system detected')
+            if rcell.diagonal()[2]<0.0: raise IOError('Left hand side coordinate system detected')
+#            self.mol.set_cell(rcell, cell_only=False)
 #                import pdb; pdb.set_trace()
         return
+
+    @staticmethod
+    def cell2tilts(cell):
+        return [cell[0,0],cell[1,1],cell[2,2],cell[1,0],cell[2,0],cell[2,1]]
 
 
     def setting(self, s, val):
