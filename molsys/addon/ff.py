@@ -196,6 +196,10 @@ class varpars(dict):
 
     @property
     def varpotnums(self):
+        """
+        Property which gives a dictionary telling in how much terms a
+        varpot is involved
+        """
         ff = self.values()[0]._ff
         varpots = self.varpots
         varpotnums = {}
