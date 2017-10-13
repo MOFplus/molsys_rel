@@ -111,7 +111,7 @@ class varpar(object):
         self.name    = name
         self._val     = val
         self.range   = range
-        #self.pos     = []
+        self.pos     = []
         self.bounds   = bounds
 
     def __repr__(self):
