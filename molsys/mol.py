@@ -152,14 +152,17 @@ class mol:
         return m
 
     @classmethod
-    def fromAbinit(cls, elems, xyz, cell):
+    def fromAbinit(cls, elems, xyz, cell, frac = False):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
         m.natoms = len(elems)
         m.set_elems(elems)
         m.set_atypes(elems)
-        m.set_xyz(xyz)
         m.set_cell(cell)
+        if frac:
+            m.set_xyz_from_frac(xyz)
+        else:
+            m.set_xyz(xyz)
         m.set_nofrags()
         m.set_empty_conn()
         m.detect_conn()
