@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import xyz, txyz, mfpx, cif, plain, array, turbo, aginp, lammpstrj
+import xyz, txyz, mfpx, cif, plain, array, turbo, mol2, aginp, lammpstrj
 
 read = {
         'xyz':xyz.read,
@@ -11,6 +11,7 @@ read = {
         'plain':plain.read,
         'array':array.read,
         'turbo':turbo.read,
+        'mol2':mol2.read,
         'aginp':aginp.read,
 }
 

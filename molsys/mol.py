@@ -140,7 +140,7 @@ class mol:
         try:
             f = open(fname, "r")
         except IOError:
-            fname += ".mfpx"
+            fname += "."+ftype
             f = open(fname, "r")
         if ftype in formats.read:
             formats.read[ftype](self,f,**kwargs)
@@ -179,6 +179,24 @@ class mol:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return m
+
+    @classmethod
+    def fromAbinit(cls, elems, xyz, cell, frac = False):
+        m = cls()
+        logger.info('reading basic data provided by any AbInitio programm')
+        m.natoms = len(elems)
+        m.set_elems(elems)
+        m.set_atypes(elems)
+        m.set_cell(cell)
+        if frac:
+            m.set_xyz_from_frac(xyz)
+        else:
+            m.set_xyz(xyz)
+        m.set_nofrags()
+        m.set_empty_conn()
+        m.detect_conn()
+        return m
+        
     
     @classmethod
     def fromArray(cls, arr, **kwargs):
@@ -193,7 +211,20 @@ class mol:
         formats.read['array'](m,arr,**kwargs)
         return m
 
-    def write(self,fname,ftype=None,**kwargs):
+    @classmethod
+    def fromNestedList(cls, nestl, **kwargs):
+        ''' generic reader for the mol class, reading from a Nx3 array
+        :Parameters:
+            - arr         : the array to be read
+            - **kwargs    : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        logger.info("reading nested lists")
+        for nl in nestl:
+            assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (a.shape,)
+        arr = np.array(nestl)
+        return cls.fromArray(arr, **kwargs)
+
+    def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
         :Parameters:
             - fname        : the filename to be written
@@ -323,7 +354,7 @@ class mol:
         for i in xrange(natoms):
             a = xyz - xyz[i]
             if self.periodic:
-                if self.bcond == 2:
+                if self.bcond <= 2:
                     cell_abc = self.cellparams[:3]
                     a -= cell_abc * np.around(a/cell_abc)
                 elif self.bcond == 3:

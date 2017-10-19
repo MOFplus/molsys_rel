@@ -124,7 +124,7 @@ class varpar(object):
         self.name    = name
         self._val     = val
         self.range   = range
-        #self.pos     = []
+        self.pos     = []
         self.bounds   = bounds
 
     def __repr__(self):
@@ -209,6 +209,10 @@ class varpars(dict):
 
     @property
     def varpotnums(self):
+        """
+        Property which gives a dictionary telling in how much terms a
+        varpot is involved
+        """
         ff = self.values()[0]._ff
         varpots = self.varpots
         varpotnums = {}
