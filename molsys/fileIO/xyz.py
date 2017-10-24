@@ -40,7 +40,7 @@ def write(mol, fname):
     natoms = mol.natoms 
     f = open(fname,"w")
     if mol.periodic:
-        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n\n" % tuple([mol.natoms]+mol.cellparams))
+        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n\n" % tuple([mol.natoms]+list(mol.cellparams)))
     else:
         f.write("%d\n\n" % mol.natoms)
     for i in xrange(natoms):

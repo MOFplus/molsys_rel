@@ -9,7 +9,16 @@ import string
 import os
 import subprocess
 from cStringIO import StringIO
-from mpi4py import MPI
+try:
+    from mpi4py import MPI
+    mpi_comm = MPI.COMM_WORLD
+    mpi_rank = MPI.COMM_WORLD.Get_rank()
+    mpi_size = MPI.COMM_WORLD.Get_size()
+except ImportError as e:
+    mpi_comm = None
+    mpi_size = 1
+    mpi_rank = 0
+    mpi_err = e
 
 from util import unit_cell
 from util import elems as elements
@@ -30,8 +39,6 @@ import addon
 #        master node writes INFO to stdout
 # TBI: colored logging https://stackoverflow.com/a/384125
 import logging
-mpi_rank = MPI.COMM_WORLD.Get_rank()
-mpi_size = MPI.COMM_WORLD.Get_size()
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
 if mpi_size > 1:
@@ -49,6 +56,10 @@ if mpi_rank == 0:
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
     
+if mpi_comm == None:
+    logger.error("MPI NOT IMPORTED DUE TO ImportError")
+    logger.error(mpi_err)
+
 # overload print function in parallel case
 import __builtin__
 def print(*args, **kwargs):
@@ -69,9 +80,16 @@ class mol:
         if mpi_comm:
             self.mpi_comm = mpi_comm
         else:
-            self.mpi_comm = MPI.COMM_WORLD
-        self.mpi_rank = self.mpi_comm.Get_rank()
-        self.mpi_size = self.mpi_comm.Get_size()
+            try:
+                self.mpi_comm = MPI.COMM_WORLD
+            except NameError:
+                pass #self.mpi_comm = None
+        try:
+            self.mpi_rank = self.mpi_comm.Get_rank()
+            self.mpi_size = self.mpi_comm.Get_size()
+        except AttributeError:
+            self.mpi_rank = 0
+            self.mpi_size = 1
         self.natoms=0
         self.cell=None
         self.cellparams=None
@@ -118,8 +136,12 @@ class mol:
                 ftype = fsplit #ftype is inferred from extension
             else: #there is no extension
                 ftype = 'mfpx' #default
-        logger.info("reading file "+str(fname)+' in '+str(ftype)+' format')
-        f = open(fname, "r")
+        logger.info("reading file %s in %s format" % (fname, ftype))
+        try:
+            f = open(fname, "r")
+        except IOError:
+            fname += "."+ftype
+            f = open(fname, "r")
         if ftype in formats.read:
             formats.read[ftype](self,f,**kwargs)
         else:
@@ -129,8 +151,15 @@ class mol:
     
     @classmethod
     def fromFile(cls, fname, ftype=None, **kwargs):
+        ''' reader for the mol class, reading from a file
+        :Parameters:
+            - fname(str): path to the file (filename included)
+            - ftype=None (or str): the parser type that is used to read the file
+                if None: assigned by read as mfpx (default)
+            - **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
         m = cls()
-        m.read(fname, ftype,**kwargs)
+        m.read(fname, ftype, **kwargs)
         return m
     
     @classmethod
@@ -150,6 +179,24 @@ class mol:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return m
+
+    @classmethod
+    def fromAbinit(cls, elems, xyz, cell, frac = False):
+        m = cls()
+        logger.info('reading basic data provided by any AbInitio programm')
+        m.natoms = len(elems)
+        m.set_elems(elems)
+        m.set_atypes(elems)
+        m.set_cell(cell)
+        if frac:
+            m.set_xyz_from_frac(xyz)
+        else:
+            m.set_xyz(xyz)
+        m.set_nofrags()
+        m.set_empty_conn()
+        m.detect_conn()
+        return m
+        
     
     @classmethod
     def fromArray(cls, arr, **kwargs):
@@ -164,7 +211,20 @@ class mol:
         formats.read['array'](m,arr,**kwargs)
         return m
 
-    def write(self,fname,ftype=None,**kwargs):
+    @classmethod
+    def fromNestedList(cls, nestl, **kwargs):
+        ''' generic reader for the mol class, reading from a Nx3 array
+        :Parameters:
+            - arr         : the array to be read
+            - **kwargs    : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        logger.info("reading nested lists")
+        for nl in nestl:
+            assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (a.shape,)
+        arr = np.array(nestl)
+        return cls.fromArray(arr, **kwargs)
+
+    def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
         :Parameters:
             - fname        : the filename to be written
@@ -294,7 +354,7 @@ class mol:
         for i in xrange(natoms):
             a = xyz - xyz[i]
             if self.periodic:
-                if self.bcond == 2:
+                if self.bcond <= 2:
                     cell_abc = self.cellparams[:3]
                     a -= cell_abc * np.around(a/cell_abc)
                 elif self.bcond == 3:

@@ -97,7 +97,7 @@ class wrapper(object):
         return
 #        raise ValueError("Not implemented in wrapper")
 
-    def read_pdlp_xyz(self, pdlp, stage, velflag):
+    def read_pdlp_xyz(self, pdlp, stage, velflag, imgflag):
         self.xyz_filename = pdlp.fname
         self.m.xyz = pdlp.read_restart(stage, "xyz").tolist()
         if velflag:
@@ -105,6 +105,8 @@ class wrapper(object):
         if self.boundarycond > 0:
             self.cell = pdlp.read_restart(stage, "cell")
             self.m.cellparams = unit_cell.abc_from_vectors(self.cell)
+        if imgflag:
+            self.imgidx = pdlp.read_restart(stage, "imgidx")
         return
 
 #    def read_pdlp_xyz(self, pdlpf, read_stage, velocities):

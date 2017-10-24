@@ -37,7 +37,7 @@ class ric(RedIntCoords):
         ### check if ff is already initialized, else do
         if hasattr(self._mol,"ff") == False:
             self._mol.addon("ff")
-            self._mol.ff.find_rics()
+            self._mol.ff.ric.find_rics()
         elif hasattr(self._mol.ff.ric, "bnd") == False:
             self._mol.ff.ric.find_rics()
         ### init RedIntCoords

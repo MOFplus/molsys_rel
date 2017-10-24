@@ -18,12 +18,19 @@ import logging
 import glob
 import molsys
 import csv
-from mpi4py import MPI
 import atomtyper as atomtyper
 
-mpi_comm = MPI.COMM_WORLD
-mpi_rank = MPI.COMM_WORLD.Get_rank()
-mpi_size = MPI.COMM_WORLD.Get_size()
+try:
+    from mpi4py import MPI
+    mpi_comm = MPI.COMM_WORLD
+    mpi_rank = MPI.COMM_WORLD.Get_rank()
+    mpi_size = MPI.COMM_WORLD.Get_size()
+except ImportError as e:
+    mpi_comm = None
+    mpi_size = 1
+    mpi_rank = 0
+    mpi_err = e
+
 # overload print function in parallel case
 import __builtin__
 def print(*args, **kwargs):
@@ -36,6 +43,10 @@ def print(*args, **kwargs):
 import logging
 
 logger = logging.getLogger("molsys.fragmentizer")
+
+if mpi_comm is None:
+    logger.error("MPI NOT IMPORTED DUE TO ImportError")
+    logger.error(mpi_err)
 
 class fragmentizer:
 
