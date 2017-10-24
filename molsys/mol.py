@@ -615,6 +615,11 @@ class mol:
         self.delete_atoms(badlist)
         #for i in badlist[::-1]: self.delete_atom(i)
         return
+    
+    def randomize_coordinates(self,maxdr=1.0):
+        xyz = self.get_xyz()
+        xyz += np.random.uniform(-maxdr,maxdr,xyz.shape)
+        self.set_xyz(self.pbc(xyz))        
 
     def translate(self, vec):
         self.xyz += vec

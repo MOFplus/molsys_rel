@@ -110,3 +110,32 @@ class plotter(object):
         plt.xlabel('x')
         plt.ylabel('y')
         #plt.show()
+        
+    def write_vmd_bondindices(self,filename='vmd.tcl',maxlength = 2.0):
+        m = self.mol
+        m.set_ctab_from_conn(m.conn)
+        f = open(filename,'w')
+        for i,c in enumerate(m.ctab):
+            text = 'mol color Name\nmol representation DynamicBonds %8.2f 0.100000 30.000000\n' % maxlength
+            text+= 'mol selection index %i %i\nmol material Opaque\nmol addrep 0\n' % (c[0],c[1])
+            print text
+            f.write(text)
+            
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        return
+        
