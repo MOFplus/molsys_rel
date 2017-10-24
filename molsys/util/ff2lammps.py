@@ -253,6 +253,7 @@ class ff2lammps(object):
         # write Atoms
         # NOTE ... this is MOF-FF and we silently assume that all charge params are Gaussians!!
         f.write("\nAtoms\n\n")
+        chargesum = 0.0
         for i in xrange(self.mol.get_natoms()):
             vdwt  = self.parind["vdw"][i][0]
             chat  = self.parind["cha"][i][0]
@@ -262,9 +263,11 @@ class ff2lammps(object):
             chrgpar    = self.par["cha"][chat]
             assert chrgpar[0] == "gaussian", "Only Gaussian type charges supported"
             chrg = chrgpar[1][0]
+            chargesum+=chrg
             x,y,z = xyz[i]
             #   ind  atype molnumb chrg x y z # comment
             f.write("%10d %5d %5d %10.5f %12.6f %12.6f %12.6f # %s\n" % (i+1, molnumb, atype, chrg, x,y,z, vdwt))
+        print("The total charge of the system is: %12.8f" % chargesum)
         # write bonds
         f.write("\nBonds\n\n")
         for i in xrange(len(self.rics["bnd"])):
