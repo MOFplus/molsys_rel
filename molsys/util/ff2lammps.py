@@ -429,7 +429,7 @@ class ff2lammps(object):
         else:
             f.write("boundary p p p\n")
         f.write("atom_style full\n")
-        if self.tilt == 'large': f.write('box tilt large\n')
+        f.write('box tilt large\n')
         f.write("read_data %s\n\n" % self.data_filename)
         f.write("neighbor 2.0 bin\n\n")
         # extra header
