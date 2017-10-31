@@ -247,7 +247,7 @@ class mol:
 
     ##### addons ##################################
 
-    def addon(self, addmod):
+    def addon(self, addmod, **kwargs):
         """
         add an addon module to this object
 
@@ -287,7 +287,7 @@ class mol:
                 logger.error("ric is not available! This addon can not be used")
                 return
         elif addmod == "ff":
-            self.ff = addon.ff(self)
+            self.ff = addon.ff(self, **kwargs)
         elif addmod == "molecules":
             self.molecules = addon.molecules(self)
         else:
