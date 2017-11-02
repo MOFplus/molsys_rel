@@ -14,8 +14,17 @@ Created on Thu Mar 23 11:25:43 2017
 
 """
 
-from mpi4py import MPI
-mpi_rank = MPI.COMM_WORLD.Get_rank()
+try:
+    from mpi4py import MPI
+    mpi_comm = MPI.COMM_WORLD
+    mpi_rank = MPI.COMM_WORLD.Get_rank()
+    mpi_size = MPI.COMM_WORLD.Get_size()
+except ImportError as e:
+    mpi_comm = None
+    mpi_size = 1
+    mpi_rank = 0
+    mpi_err = e
+
 # overload print function in parallel case
 import __builtin__
 def print(*args, **kwargs):
@@ -40,6 +49,10 @@ import cPickle as Pickle
 import logging
 import pdb
 logger = logging.getLogger("molsys.ff")
+
+if mpi_comm == None:
+    logger.error("MPI NOT IMPORTED DUE TO ImportError")
+    logger.error(mpi_err)
 
 class AssignmentError(Exception):
 

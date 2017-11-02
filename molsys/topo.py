@@ -412,7 +412,7 @@ class topo(mol.mol):
         self.pconn[a1].append(images[imgi])
         d,v,imgi = self.get_distvec(a2,a1)
         self.pconn[a2].append(images[imgi])
-        logging.warning('pconn may not be properly updated!!!')
+        logger.warning('pconn may not be properly updated!!!')
         return
 
     def delete_conn(self,el1,el2):
@@ -424,7 +424,7 @@ class topo(mol.mol):
         self.conn[el2].remove(el1)
         self.pconn[el1].pop(idx1)
         self.pconn[el2].pop(idx2)
-        logging.warning('pconn may not be properly updated!!!')
+        logger.warning('pconn may not be properly updated!!!')
         return
 
     def set_elems_by_coord_number(self):
