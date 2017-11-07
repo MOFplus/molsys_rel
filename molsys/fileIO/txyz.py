@@ -58,7 +58,7 @@ def read(mol, f, topo = False):
     mol.set_nofrags()
     return
 
-def parse_connstring(mol, con_info, new = True):
+def parse_connstring_old(mol, con_info, new = True):
     """
     Routines which parses the con_info string of a txyz or an mfpx file
     :Parameters:
@@ -66,10 +66,12 @@ def parse_connstring(mol, con_info, new = True):
         - con_info (str) : string holding the connectors info
         - new      (bool): bool to switch between old and new type of con_info string
     """
-    mol.connector_dummies = []
-    mol.connector_atoms   = []
-    mol.connectors        = []
-    mol.connectors_type   = []
+    mol.connector_dummies     = []
+    mol.connector_atoms       = []
+    mol.connectors            = []
+    mol.connectors_type       = []
+    mol.connectors_group      = []
+    mol.connectors_complexity = []
     contype_count = 0
     for c in con_info:
         if c == "/":
@@ -90,6 +92,89 @@ def parse_connstring(mol, con_info, new = True):
                 mol.connectors.append(string.atoi(c)-1)
                 mol.connector_atoms = [[c] for c in mol.connectors]
                 mol.connectors_type.append(contype_count)
+    return
+
+def parse_connstring(mol, con_info, **kwargs):
+    """
+    Routines which parses the con_info string of a txyz or an mfpx file
+    :Parameters:
+        - mol      (obj) : instance of a molclass
+        - con_info (str) : string holding the connectors info
+    """
+    mol.connector_atoms       = []
+    mol.connector_dummies     = []
+    mol.connectors            = []
+    mol.connectors_complexity = []
+    mol.connectors_group      = []
+    mol.connectors_type       = []
+    contype_count = 0
+    for icon, con in enumerate(con_info):
+        if con == "/":
+            contype_count += 1
+            continue
+        ### PARSE ####
+        logger.debug(con)
+        line = con[:]
+        markcount = line.count("?")
+        starcount = line.count("*")
+        if markcount == 0:
+            complexity = ""
+        elif markcount == 1:
+            line, complexity = line.split('?')
+        else:
+            logger.error("More than one question mark in con_info group")
+            raise ValueError
+        if starcount == 0:
+            connectors = ""
+        elif starcount == 1:
+            line, connectors = line.split('*')
+        else:
+            logger.error("More than one asterisk in con_info group")
+            raise ValueError
+        atoms = line.split(",")
+        line = con #reset, debugging purpose
+        logger.debug("a:%s c:%s t:%s *:%s ?:%s" % 
+            (atoms, connectors, complexity, starcount, markcount))
+        complexity = complexity.split()
+        if complexity != []:
+            complexity = complexity[0].split(",")
+        connectors = connectors.split()
+        if connectors != []:
+            connectors = connectors[0].split(",")
+        logger.debug("a:%s c:%s t:%s *:%s ?:%s" % 
+            (atoms, connectors, complexity, starcount, markcount))
+        logger.debug("la:%s lc:%s lt:%s *:%s ?:%s" % 
+            (len(atoms), len(connectors), len(complexity), starcount, markcount))
+        ### HANDLE ###
+        if len(atoms) == 0:
+            logger.error("No atoms in con_info group")
+            raise ValueError
+        if len(connectors) == 0:
+            connectors = atoms[:]
+        if len(complexity) == 0:
+            complexity = [1]*len(atoms)
+        elif len(complexity) == 1:
+            complexity = complexity*len(atoms)
+        if len(complexity) != len(atoms):
+            logger.error("Complexity can only be: implicit OR one for all OR assigned per each")
+            raise ValueError
+        atoms = [int(a) - 1 for a in atoms] #python indexing
+        connectors = [int(c) - 1 for c in connectors] #python indexing
+        complexity = map(int,complexity)
+        logger.debug("a:%s c:%s t:%s *:%s ?:%s" % 
+            (atoms, connectors, complexity, starcount, markcount))
+        logger.debug("la:%s lc:%s lt:%s *:%s ?:%s" % 
+            (len(atoms), len(connectors), len(complexity), starcount, markcount))
+        ### SET ######
+        mol.connector_atoms.append(atoms) #((numpy.array(map(int,stt)) -1).tolist())
+        for a in atoms:
+            if mol.elems[a].lower() == "x":
+                mol.connector_dummies.append(a) # simplest case only with two atoms being the connecting atoms
+        mol.connectors.append(connectors) #(int(ss[1])-1)
+        mol.connectors_complexity.append(complexity)
+        mol.connectors_group.append(icon - contype_count)
+        mol.connectors_type.append(contype_count)
+    mol.connectors = numpy.array(mol.connectors)
     return
 
 def read_body(f, natoms, frags = True, topo = False):
@@ -138,7 +223,7 @@ def read_body(f, natoms, frags = True, topo = False):
         return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers
 
 
-def write_body(f, mol, frags=True, topo=False, moldenr=False):
+def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
     """
     Routine, which writes the body of a txyz or a mfpx file
     :Parameters:
@@ -146,6 +231,8 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
         -mol    (obj)  : instance of molsys object
         -frags  (bool) : flag to specify if fragment info should be in body or not
         -topo   (bool) : flag to specigy if pconn info should be in body or not
+        -pbc    (bool) : if False, removes connectivity out of the box (meant for visualization)
+        -moldenrc (bool) : atypes compatible with molden, WORK IN PROGRESS
     """
     if topo: frags = False   #from now on this is convention!
     if topo: pconn = mol.pconn
@@ -156,6 +243,9 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
     xyz         = mol.xyz
     cnct        = mol.conn
     natoms      = mol.natoms
+    if pbc == False:
+        cellcond = .5*mol.cellparams[:3]
+        cnct = [ [i for i in c if (abs(xyz[i]-xyz[e]) < cellcond).all()] for e,c in enumerate(cnct)]
     if moldenr: ###TO BE DEBUGGED
         moltypes = {}
         moldentypes = []
@@ -198,7 +288,7 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
     return
 
 
-def write(mol, fname, topo = False, frags = False, moldenr=False):
+def write(mol, fname, topo = False, frags = False, pbc=True, moldenr=False):
     """
     Routine, which writes an txyz file
     :Parameters:
@@ -212,6 +302,6 @@ def write(mol, fname, topo = False, frags = False, moldenr=False):
         f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)
-    write_body(f, mol, topo=topo, frags = frags, moldenr=moldenr)
+    write_body(f, mol, topo=topo, frags = frags, pbc=pbc, moldenr=moldenr)
     f.close()
     return

@@ -132,7 +132,7 @@ class spg:
         try: 
             from ase.lattice.spacegroup import Spacegroup
         except:
-            logging.error('make_P1 requires ASE (i.e. ase.lattice.spacegroup) to function properly')
+            logger.error('make_P1 requires ASE (i.e. ase.lattice.spacegroup) to function properly')
             return
         
         # 1) if provided, use the spacegroup set by the user

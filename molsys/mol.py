@@ -22,8 +22,6 @@ from fileIO import formats
 
 import addon
 
-from profilehooks import profile
-
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
 # DEBUG/LOG goes to logfile, whereas WARNIGNS/ERRORS go to stdout
@@ -574,6 +572,8 @@ class mol:
         :Parameter:
             -a1(int): index of atom1, python-like (starts with 0)
             -a2(int): index of atom2, python-like (starts with 0)"""
+        if hasattr(a1,"__iter__"): a1=a1[0] #in case a singleton is passed
+        if hasattr(a2,"__iter__"): a2=a2[0] #in case a singleton is passed
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
         return
@@ -596,7 +596,6 @@ class mol:
                 self.add_bond(a1,a2)
         return
 
-    @profile
     def add_naive_hungarian_bonds(self,lista1,lista2):
         """Valid only in the 2x2 case, four times faster than standard hungarian method"""
         assert len(lista1) == len(lista2) == 2,\
@@ -613,7 +612,6 @@ class mol:
             self.add_bond(a12,a21)
         return
 
-    @profile
     def add_standard_hungarian_bonds(self,lista1,lista2):
         dim = len(lista1)
         assert dim == len(lista2),\
@@ -734,7 +732,7 @@ class mol:
         #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
         if xyz is not None:
             amass = np.array(self.amass)[idx]
-        elif idx == None:
+        elif idx is None:
             if self.periodic: return None
             xyz = self.get_xyz()
             amass = np.array(self.amass)
