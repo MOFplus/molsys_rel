@@ -113,6 +113,7 @@ class ff2lammps(base):
         self._settings["use_angle_cosine_buck6d"] = False
         self._settings["kspace_method"] = "ewald"
         self._settings["kspace_prec"] = 1.0e-6
+        self._settings["use_improper_umbrella_harmonic"] = False # default is to use improper_inversion_harmonic
         return
 
     @staticmethod
@@ -213,7 +214,10 @@ class ff2lammps(base):
         header += "%10d bonds\n"      % len(self.rics["bnd"])
         header += "%10d angles\n"     % len(self.rics["ang"])
         header += "%10d dihedrals\n"  % len(self.rics["dih"])
-        header += "%10d impropers\n"  % len(self.rics["oop"])
+        if self._settings["use_improper_umbrella_harmonic"] == True:
+            header += "%10d impropers\n"  % (len(self.rics["oop"])*3) # need all three permutations
+        else:
+            header += "%10d impropers\n"  % len(self.rics["oop"])            
         # types are different paramtere types 
         header += "%10d atom types\n"       % len(self.plmps_atypes)
         header += "%10d bond types\n"       % len(self.par_types["bnd"]) 
@@ -295,6 +299,10 @@ class ff2lammps(base):
             if oopt:
                 a,b,c,d  = self.rics["oop"][i]
                 f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, b+1, c+1, d+1, oopt))
+                if self._settings["use_improper_umbrella_harmonic"] == True:
+                    # add the other two permutations of the bended atom (abcd : a is central, d is bent)
+                    f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, d+1, b+1, c+1, oopt))
+                    f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, c+1, d+1, b+1, oopt))
         f.write("\n")
         f.close()
         return
@@ -538,13 +546,19 @@ class ff2lammps(base):
                     raise ValueError, "unknown dihedral potential"
                 f.write("dihedral_coeff %5d %s    # %s\n" % (dt_number, pstring, idt))
         # improper/oop style
-        f.write("\nimproper_style inversion/harmonic\n\n")
+        if self._settings["use_improper_umbrella_harmonic"] == True:
+            f.write("\nimproper_style umbrella/harmonic\n\n")
+        else:
+            f.write("\nimproper_style inversion/harmonic\n\n")
         for it in self.par_types["oop"].keys():
             it_number = self.par_types["oop"][it]
             for iit in it:
                 pot_type, params = self.par["oop"][iit]
                 if pot_type == "harm":
-                    pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])
+                    if self._settings["use_improper_umbrella_harmonic"] == True:
+                        pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal, params[1])
+                    else:
+                        pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])                        
                 else:
                     raise ValueError, "unknown improper/oop potential"
                 f.write("improper_coeff %5d %s    # %s\n" % (it_number, pstring, iit))
