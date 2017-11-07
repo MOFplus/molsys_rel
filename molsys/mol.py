@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # RS .. to overload print in parallel case (needs to be the first line)
 from __future__ import print_function
+import __builtin__
 import string as st
 import numpy as np
 import types
@@ -62,12 +63,11 @@ if mpi_comm == None:
     logger.error(mpi_err)
 
 # overload print function in parallel case
-import __builtin__
-def print(*args, **kwargs):
-    if mpi_rank == 0:
-        return __builtin__.print(*args, **kwargs)
-    else:
-        return
+#def print(*args, **kwargs):
+#    if mpi_rank == 0:
+#        return __builtin__.print(*args, **kwargs)
+#    else:
+#        return
 
 
 
@@ -97,7 +97,7 @@ class mpiobject(object):
             self.out = open(out, "w")
 
     def pprint(self, *args, **kwargs):
-        if mpi_rank == 0: return __builtin__.print(*args, file=self.out, **kwargs)
+        if self.mpi_rank == 0: return __builtin__.print(*args, file=self.out, **kwargs)
 
 
 class mol(mpiobject):
