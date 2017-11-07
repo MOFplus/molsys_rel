@@ -16,15 +16,18 @@
 #
 ###########################################
 
+import os
 import h5py
 
 class DataReference:
     
     def __init__(self, fname, modeaccess = "a"):
+        self.name = fname
+        self.access = modeaccess
         self.h5file = h5py.File(fname, modeaccess)
     
     
-    def build_rec_dataset(self, data, h5file = None, path = None):
+    def build_rec_dataset(self, data, h5file = None, path = None, exists_warning=True):
         """
         Method to store a the data of a dictionary in a recursive manner in a
         hdf5 file, preserving the structure of the dictionary.
@@ -34,8 +37,11 @@ class DataReference:
             the hdf5 file
             - h5file (obj): h5py.File instance
             - path (str): entrypoint of the hdf5 file
-    
+            - exists_warning: if file exists and mode access is not explicit w, raise IOError 
         """
+        if exists_warning:
+            if os.path.isfile and self.access[0] != "w":
+                raise  IOError, "File %s exists, explicit exists_warning=False for DataReference instance" % (fname,)
         if h5file is None:
             h5file = self.h5file
         if path is not None:
