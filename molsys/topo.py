@@ -447,10 +447,12 @@ class topo(mol.mol):
 ############# Plotting
 
     def plot(self,scell=False,bonds=False,labels=False):
+        from mpl_toolkits.mplot3d import axes3d, Axes3D 
         import matplotlib.pyplot as plt
         col = ['r','g','b','m','c','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k']+['k']*200
         fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
-        ax = fig.add_subplot(111, projection='3d')
+        #ax = fig.add_subplot(111, projection='3d')
+        ax = Axes3D(fig)
         atd = {}
         for i,aa in enumerate(list(set(self.atypes))):
             atd.update({aa:col[i]})
