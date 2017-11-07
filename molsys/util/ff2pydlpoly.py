@@ -7,6 +7,7 @@ import molsys
 import string
 import pdb
 import molsys.util.unit_cell as unit_cell
+from molsys.addon import base
 
 attr_mappings = {
         "cnct": "conn",
@@ -15,11 +16,12 @@ attr_mappings = {
         }
 
 rad2deg = 180.0/numpy.pi 
-class wrapper(object):
+class wrapper(base):
 
     def __init__(self,mol,is_master = True):
+        super(wrapper, self).__init__(mol)
         self.is_master = is_master
-        self.m = mol
+        self.m = self._mol
         #
         self.virtual_atoms = []
         self.virtual_bonds = []
@@ -79,7 +81,7 @@ class wrapper(object):
 #        for t in self.types:
 #            if not self.typedata.has_key(t): self.typedata[t] = None
 #        self.ntypes = len(self.typedata.keys())
-        print("$$ -- read system from pdlp file")
+        self.pprint("$$ -- read system from pdlp file")
         # molecule info - note that only a nonredundant set of info is in pdlp and the
         # rest needs to be recovered
         # NOTE: the molecule info is not detected or set but taken as found in the pdlp file
@@ -88,7 +90,7 @@ class wrapper(object):
         self.mols = []
         for i in xrange(self.nmols) : self.mols.append([])
         for i, m in enumerate(self.whichmol): self.mols[m].append(i)
-        print("$$ -- read molecule info from pdlp file")
+        self.pprint("$$ -- read molecule info from pdlp file")
         self.m.ff.setup_pair_potentials()
         # set excluded atoms
         #self.exclude = self.natoms * [False]
@@ -174,6 +176,7 @@ class wrapper(object):
         
 
     def write_FIELD(self):
+        if self.mpi_rank >0: return
         ric_type = {
                 "bnd": self.m.ff.ric.bnd,
                 "ang": self.m.ff.ric.ang,
@@ -210,7 +213,7 @@ class wrapper(object):
             chargesum += params[0]
             f.write("   %8s  %10.4f %12.8f %12.8f 1 %1d\n" % 
                     (atype, self.get_mass()[i], params[0], params[1], 0))
-        print "Net charge of the system: %12.8f" % chargesum
+        self.pprint("Net charge of the system: %12.8f" % chargesum)
         ### bonded potentials ###
         for ict in ["bnd", "ang", "dih", "oop"]:
             buffer_out = ""
@@ -226,7 +229,7 @@ class wrapper(object):
                         count += 1
             f.write("%s %d\n" % (header[ict], count))
             f.write(buffer_out)
-            print ict, count
+#            print ict, count
         f.write("FINISH\n")
         ### pair potentials ###
         buffer_out = ""

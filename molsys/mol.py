@@ -7,6 +7,7 @@ import types
 import copy
 import string
 import os
+import sys
 import subprocess
 from cStringIO import StringIO
 try:
@@ -74,9 +75,9 @@ np.set_printoptions(threshold=20000,precision=5)
 
 SMALL_DIST = 1.0e-3
 
-class mol:
+class mpiobject(object):
 
-    def __init__(self, mpi_comm=None):
+    def __init__(self, mpi_comm = None, out = None):
         if mpi_comm:
             self.mpi_comm = mpi_comm
         else:
@@ -90,6 +91,32 @@ class mol:
         except AttributeError:
             self.mpi_rank = 0
             self.mpi_size = 1
+        if out is None:
+            self.out = sys.stdout
+        else:
+            self.out = open(out, "w")
+
+    def pprint(self, *args, **kwargs):
+        if mpi_rank == 0: return __builtin__.print(*args, file=self.out, **kwargs)
+
+
+class mol(mpiobject):
+
+    def __init__(self, mpi_comm=None, out = None):
+        super(mol,self).__init__(mpi_comm, out)
+#        if mpi_comm:
+#            self.mpi_comm = mpi_comm
+#        else:
+#            try:
+#                self.mpi_comm = MPI.COMM_WORLD
+#            except NameError:
+#                pass #self.mpi_comm = None
+#        try:
+#            self.mpi_rank = self.mpi_comm.Get_rank()
+#            self.mpi_size = self.mpi_comm.Get_size()
+#        except AttributeError:
+#            self.mpi_rank = 0
+#            self.mpi_size = 1
         self.natoms=0
         self.cell=None
         self.cellparams=None
@@ -394,10 +421,10 @@ class mol:
         logger.info("reporting connectivity ... ")
         for i in xrange(self.natoms):
             conn = self.conn[i]
-            print ("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
+            self.pprint ("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
             for j in xrange(len(conn)):
                 d = self.get_neighb_dist(i,j)
-                print ("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
+                self.pprint ("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
 
     ###  periodic systems .. cell manipulation ############
@@ -445,8 +472,6 @@ class mol:
                         for c in range(len(conn[i][cc])):
                             pc = self.get_distvec(cc,conn[i][cc][c])[2]
                             if len(pc) != 1:
-                                print (self.get_distvec(cc,conn[i][cc][c]))
-                                print (c,conn[i][cc][c])
                                 raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
                             pc = pc[0]
                             if pc == 13:

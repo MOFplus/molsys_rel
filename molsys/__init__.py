@@ -5,8 +5,9 @@ from util import elems as elements
 from util import rotations
 from fileIO import formats
 from mol import mol
+from mol import mpiobject
 from topo import topo
 
 import addon
 
-__all__=["mol", "topo"]
+__all__=["mol", "topo", "mpiobject"]

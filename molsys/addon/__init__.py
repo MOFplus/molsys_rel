@@ -34,8 +34,9 @@ from fragments import fragments
 from bb import bb
 from ff import ff
 from molecules import molecules
+from base import base
 
-__all__=["graph", "fragments", "bb", "zmat", "spg", "ff", "molecules", "ric"]
+__all__=["graph", "fragments", "bb", "zmat", "spg", "ff", "molecules", "ric", "base"]
 
 
 

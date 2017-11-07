@@ -35,11 +35,13 @@ def print(*args, **kwargs):
 
 
 import numpy as np
+import molsys
 from molsys.util.timing import timer, Timer
 from molsys.util import elems
 from molsys.util.ff_descriptors import desc as ff_desc
 from molsys.util.aftypes import aftype, aftype_sort
 from molsys.util.ffparameter import potentials, varpars, varpar
+import base
 
 import itertools
 import copy
@@ -394,7 +396,8 @@ class ric:
 
 
 
-class ff:
+#class ff(molsys.base):
+class ff(base.base):
 
     def __init__(self, mol, par = None):
         """
@@ -404,9 +407,8 @@ class ff:
 
              - mol : a mol type object (can be a derived type like bb or topo as well)
         """
-
+        super(ff,self).__init__(mol)
         self.timer = Timer()
-        self._mol = mol
         self.ric = ric(mol)
         # defaults
         self.settings =  {
@@ -1159,7 +1161,7 @@ class ff:
         :Parameters:
             - fname(str): fname
         """
-        if mpi_rank > 0:
+        if self.mpi_rank > 0:
             return
         # dummy dicts to assign a number to the type
         par_types = self.enumerate_types()
