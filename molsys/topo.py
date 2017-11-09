@@ -11,6 +11,7 @@ import util.elems as elements
 import util.unit_cell as unit_cell
 import util.rotations as rotations
 import util.images as images
+from molsys.util import cell_manipulation
 import random
 import itertools
 import mol
@@ -264,6 +265,64 @@ class topo(mol.mol):
                             self.pconn[j].append(image*-1)
         return
     
+    def detect_conn_by_coord(self, pconn=False, exclude_pairs=None):
+        assert len(self.ncoord) == self.natoms , "number of coordination per vertex must be set"
+        self.use_pconn = pconn
+        self.set_empty_conn()
+        ncoord = self.ncoord[:]
+        if self.use_pconn: self.set_empty_pconn
+        for i in xrange(self.natoms):
+            dists = []
+            js = []
+            imgs = []
+            maxcoord = ncoord[i]
+            for j in xrange(i+1,self.natoms):
+                d,r,imgi=self.get_distvec2(i,j)
+                ### sort bond, set true first ncoord-th
+                excluded = False
+                if exclude_pairs:
+                    # delete excluded pairs
+                    el_p1,el_p2 = (self.elems[i], self.elems[j]),(self.elems[j], self.elems[i])
+                    for expair in exclude_pairs:
+                        if (expair == el_p1) or (expair == el_p2):
+                            ### REMOVE BOND
+                            excluded = True
+                            break
+                if not excluded:
+                    dists.append(d)
+                    js.append(j)
+                    imgs.append(imgi)
+            ### INIT np.array
+            dists = np.array(dists)
+            js = np.array(js)
+            imgs = np.array(imgs)
+            ### GET SORTING INDICES
+            sortind = np.argsort(dists)
+            ### ARRANGE BY SORTING INDICES
+            dists = dists[sortind]
+            js = js[sortind]
+            imgs = imgs[sortind]
+            ### GET MAX IND UNTILL BOND
+            imgslen = map(len,imgs)
+            imgscum = np.cumsum(imgslen)
+            try:
+                tillind = np.where(imgscum == maxcoord)[0][0] + 1
+                for k,j in enumerate(js[:tillind]):
+                    if imgslen[k] > 1 and not self.use_pconn:
+                        raise ValueError, "Error in connectivity detection: use pconn!!!"
+                    for ii in imgs[k]:
+                        self.conn[i].append(j)
+                        self.conn[j].append(i)
+                        #if self.use_pconn:
+                        #    image = images[ii]
+                        #    self.pconn[i].append(image)
+                        #    self.pconn[j].append(image*-1)
+                    ncoord[j] -= imgslen[k]
+            except IndexError:
+                import traceback
+                traceback.print_exc()
+        return
+    
     def remove_duplicates(self, thresh=SMALL_DIST):
         badlist = []
         for i in xrange(self.natoms):
@@ -446,12 +505,11 @@ class topo(mol.mol):
 
 ############# Plotting
 
-    def plot(self,scell=False,bonds=False,labels=False):
+    def plot(self,scell=False,bonds=False,labels=False, draw_cell=True):
         from mpl_toolkits.mplot3d import axes3d, Axes3D 
         import matplotlib.pyplot as plt
         col = ['r','g','b','m','c','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k']+['k']*200
         fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
-        #ax = fig.add_subplot(111, projection='3d')
         ax = Axes3D(fig)
         atd = {}
         for i,aa in enumerate(list(set(self.atypes))):
@@ -486,6 +544,23 @@ class topo(mol.mol):
         minbound = np.min([np.min(xyz[:,0]),np.min(xyz[:,1]),np.min(xyz[:,2])])
         maxbound = np.max([np.max(xyz[:,0]),np.max(xyz[:,1]),np.max(xyz[:,2])])
         ax.auto_scale_xyz([0.0, maxbound], [0.0, maxbound], [0.0, maxbound])
+        if draw_cell:
+            cp = [ 
+                [0,0,0],
+                [1,0,0], [0,1,0], [0,0,1],
+                [1,1,0], [1,0,1], [0,1,1],
+                [1,1,1],
+            ]
+            cp = cell_manipulation.frac2cart(cp, self.cellparams)
+            ce = [ ###cell edges
+                [cp[0], cp[1]], [cp[0], cp[2]], [cp[0], cp[3]],
+                [cp[1], cp[4]], [cp[1], cp[5]],
+                [cp[2], cp[4]], [cp[2], cp[6]],
+                [cp[3], cp[5]], [cp[3], cp[6]],
+                [cp[4], cp[7]], [cp[5], cp[7]], [cp[6], cp[7]],
+            ]
+            for e in ce:
+                ax.plot(*zip(*e), color="gray")
         #ax.scatter(xyz1[:,0],xyz1[:,1],xyz1[:,2],color='k')
         plt.xlabel('x')
         plt.ylabel('y')

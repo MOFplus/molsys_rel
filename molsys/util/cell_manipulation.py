@@ -84,7 +84,39 @@ def check_fragcom_in_cell(mol,xyz, tol, fragments):
             for a in fragments[i]: flags[a] = True
     return flags, frag_com, incell
 
+def cart2frac(xyzcart, cellparams):
+    a, b, c, alpha, beta, gamma = np.array(cellparams).astype(float)
+    alpha = np.deg2rad(alpha)
+    beta  = np.deg2rad(beta)
+    gamma = np.deg2rad(gamma)
+    cosa = np.cos(alpha)
+    cosb = np.cos(beta)
+    cosg = np.cos(gamma)
+    sing = np.sin(gamma)
+    v = np.sqrt(1 - cosa*cosa - cosb*cosb - cosg*cosg + 2*cosa*cosb*cosg)
+    cart2frac = np.array([
+        [1./a, -cosg/(a*sing), (cosa*cosg-cosb)/(a*v*sing)],
+        [  0.,    1./(b*sing), (cosb*cosg-cosa)/(b*v*sing)],
+        [  0.,             0.,                  cosg/(c*v)]
+    ])
+    xyzfrac = xyzcart * cart2frac
+    return xyzfrac
+    
 
-
-
-
+def frac2cart(xyzfrac, cellparams):
+    a, b, c, alpha, beta, gamma = np.array(cellparams).astype(float)
+    alpha = np.deg2rad(alpha)
+    beta  = np.deg2rad(beta)
+    gamma = np.deg2rad(gamma)
+    cosa = np.cos(alpha)
+    cosb = np.cos(beta)
+    cosg = np.cos(gamma)
+    sing = np.sin(gamma)
+    v = np.sqrt(1 - cosa*cosa - cosb*cosb - cosg*cosg + 2*cosa*cosb*cosg)
+    frac2cart = np.array([
+        [ a, b*cosg,                  c*cosb],
+        [0., b*sing, c*(cosa-cosb*cosg)/sing],
+        [0.,     0.,                c*v/sing]
+    ])
+    xyzcart = np.dot(xyzfrac, frac2cart)
+    return xyzcart
