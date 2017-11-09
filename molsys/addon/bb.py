@@ -73,8 +73,12 @@ class bb:
         self.mol.conn_elems = []
         for c in self.mol.connectors:
             conn_xyz.append(self.mol.xyz[c].tolist())
-            self.mol.conn_elems.append(self.mol.elems[c])
-        self.mol.connector_xyz = np.array(conn_xyz,"d")
+            self.mol.conn_elems.append(np.array(self.mol.elems)[c].tolist())
+        try:
+            self.mol.connector_xyz = np.array(conn_xyz,"d")
+        except ValueError:
+            conn_xyz = [np.mean(cc,axis=0) for cc in conn_xyz]
+            self.mol.connector_xyz = np.array(conn_xyz,"d")
         self.mol.conn_dist = np.sqrt(np.sum(self.mol.connector_xyz*self.mol.connector_xyz,axis=1))
 
 

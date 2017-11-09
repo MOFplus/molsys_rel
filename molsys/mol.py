@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-# RS .. to overload print in parallel case (needs to be the first line)
+### overload print in parallel case (needs to be the first line) [RS] ###
 from __future__ import print_function
 import __builtin__
 import string as st
 import numpy as np
+from scipy.optimize import linear_sum_assignment as hungarian
 import types
 import copy
 import string
@@ -630,8 +631,67 @@ class mol(mpiobject):
         return
 
     def add_bond(self,a1,a2):
+        """One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
+        is cross-updated by appending. (no sorting)
+        :Parameter:
+            -a1(int): index of atom1, python-like (starts with 0)
+            -a2(int): index of atom2, python-like (starts with 0)"""
+        if hasattr(a1,"__iter__"): a1=a1[0] #in case a singleton is passed
+        if hasattr(a2,"__iter__"): a2=a2[0] #in case a singleton is passed
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
+        return
+
+    def add_bonds(self,lista1,lista2):
+        """Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
+        Each atom of list 1 is connected to each atom of list 2.
+        This is rarely wanted unless (at least) one of the lists has got only one atom.
+        In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
+        Each atom of the "long" list is connected to the atom of the "short" one.
+        If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
+        between atom of list 1 and atom of list 2.
+        :Paramters:
+            -lista1(iterable of int): iterable 1 of atom indices
+            -lista2(iterable of int): iterable 2 of atom indices"""
+        if not hasattr(lista1,'__iter__'): lista1 = [lista1]
+        if not hasattr(lista2,'__iter__'): lista2 = [lista2]
+        for a1 in lista1:
+            for a2 in lista2:
+                self.add_bond(a1,a2)
+        return
+
+    def add_naive_hungarian_bonds(self,lista1,lista2):
+        """Valid only in the 2x2 case, four times faster than standard hungarian method"""
+        assert len(lista1) == len(lista2) == 2,\
+            "only for 2x2 case, here: %dx%d case" % (len(lista1), len(lista2))
+        a11, a12 = lista1
+        a21, a22 = lista2
+        d0 = self.get_distvec(a11,a21)
+        d1 = self.get_distvec(a11,a22)
+        if d1 > d0: #straight
+            self.add_bond(a11,a21)
+            self.add_bond(a12,a22)
+        else: #cross
+            self.add_bond(a11,a22)
+            self.add_bond(a12,a21)
+        return
+
+    def add_standard_hungarian_bonds(self,lista1,lista2):
+        dim = len(lista1)
+        assert dim == len(lista2),\
+            "only for NxN case (same number of atoms), here: %dx%d case" % (len(lista1), len(lista2))
+        dmat = np.zeros([dim,dim])
+        for e1,a1 in enumerate(lista1):
+            for e2,a2 in enumerate(lista2):
+                dmat[e1,e2] = self.get_distvec(a1,a2)[0]
+        a1which, a2which = hungarian(dmat)
+        for i in xrange(dim):
+            self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
+        return
+
+    def add_advanced_hungarian_bonds(self,lista1,lista2):
+        raise NotImplementedError
+
     ###  molecular manipulations #######################################
 
     def delete_atoms(self,bads):
@@ -741,7 +801,7 @@ class mol(mpiobject):
         #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
         if xyz is not None:
             amass = np.array(self.amass)[idx]
-        elif idx == None:
+        elif idx is None:
             if self.periodic: return None
             xyz = self.get_xyz()
             amass = np.array(self.amass)
