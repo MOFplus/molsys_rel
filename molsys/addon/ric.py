@@ -8,7 +8,7 @@ square deviations to be used as ingredients to fittness values
 
 import string
 import numpy as np
-from ff_gen.ric_new import RedIntCoords 
+from ff_gen.ric import RedIntCoords 
 import copy
 
 ricmapping = {"bnd": "str",
