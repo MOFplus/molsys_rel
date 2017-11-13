@@ -93,11 +93,16 @@ class mpiobject(object):
             self.mpi_size = 1
         if out is None:
             self.out = sys.stdout
+        elif type(out) == file:
+            assert out.mode == 'w'
+            self.out = out
         else:
             self.out = open(out, "w")
 
     def pprint(self, *args, **kwargs):
-        if self.mpi_rank == 0: return __builtin__.print(*args, file=self.out, **kwargs)
+        if self.mpi_rank == 0:
+            __builtin__.print(*args, file=self.out, **kwargs)
+            self.out.flush()
 
 
 class mol(mpiobject):
@@ -219,6 +224,27 @@ class mol(mpiobject):
             m.set_xyz_from_frac(xyz)
         else:
             m.set_xyz(xyz)
+        m.set_nofrags()
+        m.set_empty_conn()
+        m.detect_conn()
+        return m
+
+    @classmethod
+    def fromPymatgen(cls, structure):
+        m = cls()
+        logger.info('creating mol object from a pymatgen structure object')
+        cell = structure.lattice.matrix
+        fracs = [] 
+        elems = []
+        for j, site in enumerate(structure.sites):
+            elems.append(string.lower(site.specie.symbol))
+            fracs.append([site.frac_coords[0],site.frac_coords[1], site.frac_coords[2]])
+        fracs = np.array(fracs)
+        m.natoms=len(elems)
+        m.set_elems(elems)
+        m.set_atypes(elems)
+        m.set_cell(cell)
+        m.set_xyz_from_frac(fracs)
         m.set_nofrags()
         m.set_empty_conn()
         m.detect_conn()
