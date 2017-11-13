@@ -23,7 +23,7 @@ else:
     from spg import spg
 
 try:
-    import ff_gen.ric
+    import ff_gen.ric_new
 except:
     ric = None
 else:
