@@ -997,6 +997,19 @@ class mol(mpiobject):
         self.conn[anum1].append(anum2)
         self.conn[anum2].append(anum1)
     	return
+    
+    def test_conn(self):
+        """ helper function to test if connectivity is complete
+        means if a1 is bonded to a2 then also a2 should be bonded to a1
+        """
+        for i in self.natoms:
+            ci = self.conn[i]
+            for j in ci:
+                if self.conn[j].count(i) != 1:
+                    self.pprint("Atom %d bonded to %d but not vice versa!" % (i,j))
+                    raise ValueError
+        return
+                    
 
     def get_natoms(self):
         ''' returns the number of Atoms '''

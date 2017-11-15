@@ -404,8 +404,8 @@ class topo(mol.mol):
     def add_conn(self, a1, a2):
         """ add a connection between a1 and a2 (in both directions)
         """
-        if self.use_pconn:
-            raise ValueError, "Can not add bonds to systems with pconn - well, we can fix this ;) "
+        #if self.use_pconn:
+        #    raise ValueError, "Can not add bonds to systems with pconn - well, we can fix this ;) "
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
         d,v,imgi = self.get_distvec(a1,a2)
@@ -442,6 +442,7 @@ class topo(mol.mol):
         for i in xrange(self.natoms):
             self.pconn.append([])
         return
+
 
 
 ############# Plotting
