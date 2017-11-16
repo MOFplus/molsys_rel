@@ -180,7 +180,7 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
                 pimg = []
                 for pc in pconn[i]:
                     for ii,img in enumerate(images):
-                        if all(img==pc):
+                        if (img==pc).all():
                             pimg.append(ii)
                             break
                 for cc,pp in zip(conn,pimg):
