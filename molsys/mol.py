@@ -998,19 +998,6 @@ class mol(mpiobject):
         self.conn[anum2].append(anum1)
     	return
     
-    def test_conn(self):
-        """ helper function to test if connectivity is complete
-        means if a1 is bonded to a2 then also a2 should be bonded to a1
-        """
-        for i in self.natoms:
-            ci = self.conn[i]
-            for j in ci:
-                if self.conn[j].count(i) != 1:
-                    self.pprint("Atom %d bonded to %d but not vice versa!" % (i,j))
-                    raise ValueError
-        return
-                    
-
     def get_natoms(self):
         ''' returns the number of Atoms '''
         return self.natoms
@@ -1146,7 +1133,7 @@ class mol(mpiobject):
     def set_cellparams(self,cellparams, cell_only = True):
         ''' set unit cell using cell parameters and assign cell vectors
         :Parameters:
-            - cell: cell vectors (3,3)
+            - cellparams: vector (6)
             - cell_only (bool)  : if false, also the coordinates are changed
                                   in respect to new cell
         '''
