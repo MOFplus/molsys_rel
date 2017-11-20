@@ -26,7 +26,10 @@ except ImportError as e:
     mpi_err = e
 
 # overload print function in parallel case
-import __builtin__
+try:
+    import __builtin__
+except ImportError:
+    import builtins as __builtin__
 def print(*args, **kwargs):
     if mpi_rank == 0:
         return __builtin__.print(*args, **kwargs)
@@ -43,7 +46,10 @@ from molsys.util.aftypes import aftype, aftype_sort
 import itertools
 import copy
 import string
-import cPickle as Pickle
+try:
+    import cPickle as Pickle
+except ImportError:
+    import _pickle as Pickle
 
 import logging
 import pdb
@@ -281,7 +287,7 @@ class ric:
             
             mol_bnd = self.find_bonds()
             if mol_bnd != bnd:
-                raise ValueError, "The rics provided do not match the mol object!"
+                raise ValueError("The rics provided do not match the mol object!")
         return
 
     # the follwoing code is adapted from pydlpoly/py/assign_FF.py
@@ -295,7 +301,7 @@ class ric:
             -bonds(list): list of indices defining all bonds
         """
         bonds=[]
-        for a1 in xrange(self.natoms):
+        for a1 in range(self.natoms):
             for a2 in self.conn[a1]:
                 if a2 > a1: bonds.append(ic([a1, a2]))
         return bonds
@@ -308,10 +314,10 @@ class ric:
             -angles(list): list of indices defining all angles
         """
         angles=[]
-        for ca in xrange(self.natoms):
+        for ca in range(self.natoms):
             apex_atoms = self.conn[ca]
             naa = len(apex_atoms)
-            for ia in xrange(naa):
+            for ia in range(naa):
                 aa1 = apex_atoms[ia]
                 other_apex_atoms = apex_atoms[ia+1:]
                 for aa2 in other_apex_atoms:
@@ -331,7 +337,7 @@ class ric:
         oops=[]
         # there are a lot of ways to find oops ...
         # we assume that only atoms with 3 partners can be an oop center
-        for ta in xrange(self.natoms):
+        for ta in range(self.natoms):
             if (len(self.conn[ta]) == 3):
                 # ah! we have an oop
                 a1, a2, a3 = tuple(self.conn[ta])
@@ -350,7 +356,7 @@ class ric:
             -oops(list): list of indices defining all dihedrals
         """
         dihedrals=[]
-        for a2 in xrange(self.natoms):
+        for a2 in range(self.natoms):
             for a3 in self.conn[a2]:
                 # avoid counting central bonds twice
                 if a3 > a2:
@@ -925,8 +931,8 @@ class ff:
             if t not in self.types2numbers.keys():
                 self.types2numbers[t]=str(i)
         ntypes = len(types)
-        for i in xrange(ntypes):
-            for j in xrange(i, ntypes):
+        for i in range(ntypes):
+            for j in range(i, ntypes):
                 #TODO check availability of an explicit paramerter
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
@@ -1321,7 +1327,7 @@ class ff:
                     assigned.append(curric)
                     nric = int(sline[1])
                     rlist = []
-                    for i in xrange(nric):
+                    for i in range(nric):
                         sline = fric.readline().split()
                         rtype = int(sline[1])
                         aind  = map(int, sline[2:curric_len+2])
@@ -1357,7 +1363,7 @@ class ff:
                         azone = True
                     elif sline[0] == "variables":
                         nvar = int(sline[1])
-                        for i in xrange(nvar):
+                        for i in range(nvar):
                             sline = fpar.readline().split()
                             self.variables[sline[0]] = varpar(self, sline[0], 
                                           val = float(sline[1]), 
@@ -1373,7 +1379,7 @@ class ff:
                         break
                 line = fpar.readline()
                 if len(line) == 0:
-                    raise IOError, "Variables block and/or azone in fpar is missing!"
+                    raise IOError("Variables block and/or azone in fpar is missing!")
         else:
             fpar = open(fname+".par", "r")
         stop = False
@@ -1391,7 +1397,7 @@ class ff:
                     par = self.par[curric]
                     t2ident = {} # maps integer type to identifier
                     ntypes = int(sline[1])
-                    for i in xrange(ntypes):
+                    for i in range(ntypes):
                         sline = fpar.readline().split()
                         if sline[0][0] == "#": continue 
                         # now parse the line 
@@ -1405,7 +1411,7 @@ class ff:
                             for paridx,p in enumerate(param):
                                 if p[0] == "$":
                                     if not p in self.variables:
-                                        raise IOError, "Varible %s undefiend in variable block" % p
+                                        raise IOError("Varible %s undefiend in variable block" % p)
                                     self.variables[p].pos.append((curric,ident,paridx))
                                     newparam.append(p)
                                 else:
@@ -1414,7 +1420,7 @@ class ff:
                         else:
                             param = map(float, param)
                         if ident in par:
-                            raise ValueError, "Identifier %s appears twice" % ident
+                            raise ValueError("Identifier %s appears twice" % ident)
                         par[ident] = (ptype, param)
                         if itype in t2ident:
                             t2ident[itype].append(ident)

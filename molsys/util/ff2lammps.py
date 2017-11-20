@@ -71,7 +71,7 @@ class ff2lammps(object):
         self.plmps_atypes = []
         self.plmps_pair_data = {}
         self.plmps_mass = {} # mass from the element .. even if the vdw and cha type differ it is still the same atom
-        for i in xrange(self.mol.get_natoms()):
+        for i in range(self.mol.get_natoms()):
             vdwt = self.parind["vdw"][i][0]
             chrt = self.parind["cha"][i][0]
             at = vdwt+"/"+chrt
@@ -246,14 +246,14 @@ class ff2lammps(object):
         #   => we do NOT use the masses set up in the mol object because of this mapping
         #   so we need to extract the element from the vdw paramter name which is a bit clumsy (DONE IN INIT NOW)
         header += "\nMasses\n\n"        
-        for i in xrange(len(self.plmps_atypes)):
+        for i in range(len(self.plmps_atypes)):
             at = self.plmps_atypes[i]
             header += "%5d %10.4f # %s\n" % (i+1, self.plmps_mass[at], at)
         f.write(header)
         # write Atoms
         # NOTE ... this is MOF-FF and we silently assume that all charge params are Gaussians!!
         f.write("\nAtoms\n\n")
-        for i in xrange(self.mol.get_natoms()):
+        for i in range(self.mol.get_natoms()):
             vdwt  = self.parind["vdw"][i][0]
             chat  = self.parind["cha"][i][0]
             at = vdwt+"/"+chat
@@ -267,25 +267,25 @@ class ff2lammps(object):
             f.write("%10d %5d %5d %10.5f %12.6f %12.6f %12.6f # %s\n" % (i+1, molnumb, atype, chrg, x,y,z, vdwt))
         # write bonds
         f.write("\nBonds\n\n")
-        for i in xrange(len(self.rics["bnd"])):
+        for i in range(len(self.rics["bnd"])):
             bndt = tuple(self.parind["bnd"][i])
             a,b  = self.rics["bnd"][i]
             f.write("%10d %5d %8d %8d  # %s\n" % (i+1, self.par_types["bnd"][bndt], a+1, b+1, bndt))
         # write angles
         f.write("\nAngles\n\n")
-        for i in xrange(len(self.rics["ang"])):
+        for i in range(len(self.rics["ang"])):
             angt = tuple(self.parind["ang"][i])
             a,b,c  = self.rics["ang"][i]
             f.write("%10d %5d %8d %8d %8d  # %s\n" % (i+1, self.par_types["ang"][angt], a+1, b+1, c+1, angt))
         # write dihedrals
         f.write("\nDihedrals\n\n")
-        for i in xrange(len(self.rics["dih"])):
+        for i in range(len(self.rics["dih"])):
             diht = tuple(self.parind["dih"][i])
             a,b,c,d  = self.rics["dih"][i]
             f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["dih"][diht], a+1, b+1, c+1, d+1, diht))
         # write impropers/oops
         f.write("\nImpropers\n\n")
-        for i in xrange(len(self.rics["oop"])):            
+        for i in range(len(self.rics["oop"])):            
             oopt = self.parind["oop"][i]
             if oopt:
                 a,b,c,d  = self.rics["oop"][i]

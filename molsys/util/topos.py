@@ -39,7 +39,7 @@ class conngraph:
         self.molg.vp.elem = self.molg.new_vertex_property("string")
         self.molg.vp.coord = self.molg.new_vertex_property("vector<double>")
         self.molg.vp.filled = self.molg.new_vertex_property("bool") # boolean for flood fill
-        for i in xrange(self.mol.natoms):
+        for i in range(self.mol.natoms):
             ig = self.molg.add_vertex()
             self.molg.vp.coord[ig] = self.mol.xyz[i,:]
             self.molg.vp.elem[ig] = self.mol.elems[i]
@@ -51,7 +51,7 @@ class conngraph:
         # setup edges
         self.molg.ep.act = self.molg.new_edge_property("bool")
         self.molg.ep.Nk = self.molg.new_edge_property("short")
-        for i in xrange(self.mol.natoms):
+        for i in range(self.mol.natoms):
             for j in self.mol.conn[i]:
                 if j > i:
                     e = self.molg.add_edge(self.molg.vertex(i),self.molg.vertex(j))
@@ -489,7 +489,7 @@ class molgraph(conngraph):
                         tm.conn[i].append(ji)
                         break
         ### check for consistence of conn
-        for i in xrange(tm.natoms):
+        for i in range(tm.natoms):
             if len(tm.conn[i]) == 4:
                 elems.append('c')
             elif len(tm.conn[i]) == 2:
@@ -1007,7 +1007,7 @@ class topotyper(object):
         """
         logger.info('Compute all atom sequences')
         if clusters is None:
-            clusters = xrange(self.nbbs)
+            clusters = range(self.nbbs)
         atomseqs = []
         for i in clusters:
             atomseq = self.get_atomseq(depth, i)
@@ -1038,10 +1038,10 @@ class topotyper(object):
         nconn = len(atomconn)
         ignore = self.mg.clusters[start_cluster]
         ignore = set(ignore)
-        atomseq = [[] for i in xrange(nconn)]
+        atomseq = [[] for i in range(nconn)]
         for ic,iconn in enumerate(atomconn):
             lever = [iconn] #for depth == 0
-            for level in xrange(depth):
+            for level in range(depth):
                 levseq = []
                 leverneigh = set([])
                 for cc in lever:
@@ -1061,7 +1061,7 @@ class topotyper(object):
     def atomseq2elemseq(self):
         elems = self.mg.mol.elems
         atomseq = self.atomseq
-        #elemseq = [[] for i in xrange(len(atomseq))]
+        #elemseq = [[] for i in range(len(atomseq))]
         for i in atomseq:
             for j in i:
                 print j
@@ -1198,7 +1198,7 @@ class topotyper(object):
         trisum(int):the summation of the triples must be equal to trisum
         trimin(int):minimum allowed natural per triplet element (default: 1)"""
         trinat = []
-        for itri in itertools.product(xrange(trimin, trisum), repeat=3):
+        for itri in itertools.product(range(trimin, trisum), repeat=3):
             if sum(itri) == trisum:
                 trinat.append(itri)
         return trinat
@@ -1209,7 +1209,7 @@ class topotyper(object):
         self.bb2conn = []
         self.bb2adj = []
         self.bb2adjconn = []
-        for ibb in xrange(self.nbbs):
+        for ibb in range(self.nbbs):
             iedges, iledges, idedges, icedges = self.detect_connectors(ibb, return_dict=True)
             self.edges |= set(iedges)
             self.bb2conn.append(iledges)
@@ -1298,7 +1298,7 @@ class topotyper(object):
             if self.abb[atomseq[0][0]] == bb:
                 break
         elemseq = []
-        for level in xrange(depth):
+        for level in range(depth):
             laseq = atomseq[level]
             leseq = []
             for a in laseq:

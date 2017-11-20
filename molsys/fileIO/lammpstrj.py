@@ -32,7 +32,7 @@ def write(mol, fname,vel=None):
     # i think vmd needs all, vx,vy,vz in order to read it properly!
     f.write('ITEM: ATOMS id type x y z vx vy vz\n')
     if vel is None: vel = numpy.zeros((natoms,3))
-    for i in xrange(natoms):
+    for i in range(natoms):
         f.write("%i %2s %f %f %f %f %f %f \n" % (i,mol.elems[i], mol.xyz[i][0], mol.xyz[i][1], mol.xyz[i][2]))
         #f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     f.close()
@@ -66,7 +66,7 @@ def write_raw(f,stepcount,natoms,cell,elems,xyz,lamb):
     #### atom positions (and velocities) with header
     # i think vmd needs all, vx,vy,vz in order to read it properly!
     f.write('ITEM: ATOMS id type x y z vx vy vz\n')
-    for i in xrange(natoms):
+    for i in range(natoms):
         f.write("%i %2s %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f \n" % (i,elems[i], xyz[i,0], xyz[i,1], xyz[i,2],lamb[i], 0.0,0.0))
         #f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     #f.close()

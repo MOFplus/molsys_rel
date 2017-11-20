@@ -84,7 +84,7 @@ class spg:
         num     = self.mol.get_elems_number()
         pos_rem = []
         num_rem = []
-        for i in xrange(self.mol.natoms):
+        for i in range(self.mol.natoms):
             if num[i] not in omit:
                 pos_rem.append(pos[i])
                 num_rem.append(num[i])
@@ -256,7 +256,7 @@ class spg:
         self.mol.scale_cell(superinv)
         xyzsymlist = []
         fracsymlist = []
-        for i in xrange(nsym):
+        for i in range(nsym):
             frac = np.tensordot(self.mol.xyz, lrot[i], axes=1)+ltra[i]
             frac[np.isclose(frac,0)]=0. ###avoid negative zeros for floor
             frac[np.isclose(frac,1)]=0. ###ones are zeros

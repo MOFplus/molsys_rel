@@ -81,7 +81,7 @@ def write(mol, fname):
     f = open(fname, "w")
     f.write("$coord\n")
     c = mol.xyz*angstrom
-    for i in xrange(mol.natoms):
+    for i in range(mol.natoms):
         f.write("  %19.14f %19.14f %19.14f   %-2s\n" % 
                 (c[i,0],c[i,1], c[i,2], mol.elems[i]))
     f.write("$end\n")

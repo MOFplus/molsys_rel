@@ -1,6 +1,6 @@
 import numpy
 import string
-import txyz
+from . import txyz
 import logging
 
 

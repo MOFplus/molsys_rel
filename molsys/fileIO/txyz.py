@@ -109,7 +109,7 @@ def read_body(f, natoms, frags = True, topo = False):
     fragnumbers = []
     pconn       = []
     if topo: frags=False
-    for i in xrange(natoms):
+    for i in range(natoms):
         lbuffer = string.split(f.readline())
         xyz.append(map(string.atof, lbuffer[2:5]))
         elems.append(string.lower(lbuffer[1]))
@@ -159,7 +159,7 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
     if moldenr: ###TO BE DEBUGGED
         moltypes = {}
         moldentypes = []
-        for i in xrange(mol.natoms):
+        for i in range(mol.natoms):
             #if frags: item = '__'.join([mol.atypes[i], mol.fragtypes[i], str(mol.fragnumbers[i])]) 
             if frags: item = '__'.join([mol.atypes[i], mol.fragtypes[i]]) 
             else: item = mol.atypes[i]
@@ -170,7 +170,7 @@ def write_body(f, mol, frags=True, topo=False, moldenr=False):
         frags=False ### => only one column all together
     else:
         atypes      = mol.atypes
-    for i in xrange(mol.natoms):
+    for i in range(mol.natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
         if frags == True: line += ("%-16s %5d ") % tuple([fragtypes[i]]+[fragnumbers[i]])

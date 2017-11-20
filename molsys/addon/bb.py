@@ -50,8 +50,7 @@ class bb:
         elif self.mol.center_point == "special":
             center = self.mol.special_center_point
         else:
-            print "unknown center point option"
-            raise IOError
+            raise IOError("unknown center point option")
         self.mol.translate(-center)
         return
 
@@ -99,7 +98,7 @@ class bb:
         """
         if self.mol.natoms != other.natoms: return False
         rmsd = 0.0
-        for i in xrange(self.mol.natoms):
+        for i in range(self.mol.natoms):
             sxyz = self.mol.xyz[i]
             r = other.xyz-sxyz
             d = np.sqrt(np.sum(r*r, axis=1))

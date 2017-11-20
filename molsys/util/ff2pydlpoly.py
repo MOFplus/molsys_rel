@@ -70,7 +70,7 @@ class wrapper(object):
 #        self.natoms = len(self.elems)
         # recover connectivity from ctab
 #        self.cnct = []
-#        for i in xrange(self.natoms): self.cnct.append([])
+#        for i in range(self.natoms): self.cnct.append([])
 #        for c in ctab:
 #            i,j = c
 #            self.cnct[i].append(j)
@@ -86,7 +86,7 @@ class wrapper(object):
         self.whichmol, self.moltypes, self.molnames = pdlp.get_molecules()
         self.nmols = len(self.moltypes)
         self.mols = []
-        for i in xrange(self.nmols) : self.mols.append([])
+        for i in range(self.nmols) : self.mols.append([])
         for i, m in enumerate(self.whichmol): self.mols[m].append(i)
         print("$$ -- read molecule info from pdlp file")
         self.m.ff.setup_pair_potentials()
@@ -199,7 +199,7 @@ class wrapper(object):
         ### setup and charges ###
         self.m.set_real_mass()
         chargesum = 0
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             p = self.m.ff.parind["vdw"][i][0]
             atype = self.m.ff.types2numbers[p]
             ### only gaussian implemented, no frozens
@@ -442,7 +442,7 @@ class wrapper(object):
             f.write("%20.12f%20.12f%20.12f\n" % tuple(self.cell[2]))
         else:
             f.write("%10d%10d%10d%20.8f\n" % (velflag, 0, self.natoms, 0.0))
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             p = self.m.ff.parind["vdw"][i][0]
             atype = self.m.ff.types2numbers[p]
             f.write("%-8s%10d\n" % (atype, i+1))

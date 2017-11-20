@@ -45,5 +45,5 @@ def write(mol, fname):
         -fname  (str): name of the plain file
         -mol    (obj): instance of a molclass
     """
-    print 'NOT YET IMPLEMENTED!'
+    print('NOT YET IMPLEMENTED!')
     return

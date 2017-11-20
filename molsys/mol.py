@@ -8,7 +8,10 @@ import copy
 import string
 import os
 import subprocess
-from cStringIO import StringIO
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 try:
     from mpi4py import MPI
     mpi_comm = MPI.COMM_WORLD
@@ -20,13 +23,13 @@ except ImportError as e:
     mpi_rank = 0
     mpi_err = e
 
-from util import unit_cell
-from util import elems as elements
-from util import rotations
-from util import images
-from fileIO import formats
+from .util import unit_cell
+from .util import elems as elements
+from .util import rotations
+from .util import images
+from .fileIO import formats
 
-import addon
+from . import addon
 
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
@@ -61,7 +64,10 @@ if mpi_comm == None:
     logger.error(mpi_err)
 
 # overload print function in parallel case
-import __builtin__
+try:
+    import __builtin__
+except ImportError:
+    import builtins as __builtin__
 def print(*args, **kwargs):
     if mpi_rank == 0:
         return __builtin__.print(*args, **kwargs)
@@ -351,7 +357,7 @@ class mol:
         natoms = self.natoms
         conn = []
         duplicates = []
-        for i in xrange(natoms):
+        for i in range(natoms):
             a = xyz - xyz[i]
             if self.periodic:
                 if self.bcond <= 2:
@@ -364,12 +370,12 @@ class mol:
             dist = ((a**2).sum(axis=1))**0.5 # distances from i to all other atoms
             conn_local = []
             if remove_duplicates == True:
-                for j in xrange(i,natoms):
+                for j in range(i,natoms):
                     if i != j and dist[j] < tresh:
                         logger.warning("atom %i is duplicate of atom %i" % (j,i))
                         duplicates.append(j)
             else:
-                for j in xrange(natoms):
+                for j in range(natoms):
                     if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
                         conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
@@ -392,10 +398,10 @@ class mol:
             and the respective atomic distances '''
 
         logger.info("reporting connectivity ... ")
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             conn = self.conn[i]
             print ("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
-            for j in xrange(len(conn)):
+            for j in range(len(conn)):
                 d = self.get_neighb_dist(i,j)
                 print ("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
@@ -570,7 +576,7 @@ class mol:
                 - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
-                raise ValueError, "can not add periodic systems with unequal cells!!"
+                raise ValueError("can not add periodic systems with unequal cells!!")
                 return
         other_xyz = other.xyz.copy()
         # NOTE: it is important ot keep the order of operations
@@ -615,16 +621,16 @@ class mol:
             if len(bads) >= 2:
                 self.bads = bads
                 self.bads.sort()
-                self.goods = [i for i in xrange(self.natoms) if i not in self.bads]
+                self.goods = [i for i in range(self.natoms) if i not in self.bads]
                 self.offset = np.zeros(self.natoms, 'int')
-                for i in xrange(self.natoms):
+                for i in range(self.natoms):
                     if i in self.bads:
                         self.offset[i:] += 1
                 self.atypes = np.take(self.atypes,self.goods)
                 self.elems  = np.take(self.elems, self.goods)
                 self.conn   = np.take(self.conn,  self.goods)
                 self.natoms = len(self.elems)
-                self.conn =[ [j-self.offset[j] for j in self.conn[i] if j not in bads] for i in xrange(self.natoms) ]
+                self.conn =[ [j-self.offset[j] for j in self.conn[i] if j not in bads] for i in range(self.natoms) ]
                 self.xyz    = self.xyz[self.goods]
                 return
             else:
@@ -639,13 +645,13 @@ class mol:
         new_elems = []
         new_atypes = []
         new_conn = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             if i != bad:
                 new_xyz.append(self.xyz[i].tolist())
                 new_elems.append(self.elems[i])
                 new_atypes.append(self.atypes[i])
                 new_conn.append(self.conn[i])
-                for j in xrange(len(new_conn[-1])):
+                for j in range(len(new_conn[-1])):
                     if new_conn[-1].count(bad) != 0:
                         new_conn[-1].pop(new_conn[-1].index(bad))
         self.xyz = np.array(new_xyz, "d")
@@ -937,10 +943,9 @@ class mol:
     def add_conn(self, anum1, anum2):
         ''' add a bond between two atoms
             BEWARE, does not do any checks '''
-
         self.conn[anum1].append(anum2)
         self.conn[anum2].append(anum1)
-    	return
+        return
 
     def get_natoms(self):
         ''' returns the number of Atoms '''
@@ -1175,7 +1180,7 @@ class mol:
         sets an empty list of lists for the connectivity
         """
         self.conn = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.conn.append([])
         return
         
@@ -1212,7 +1217,7 @@ class mol:
         """
         self.masstype = 'unit'
         self.amass = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.amass.append(1.0)
         return
 

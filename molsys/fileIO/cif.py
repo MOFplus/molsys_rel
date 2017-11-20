@@ -1,6 +1,6 @@
 import numpy
 import string
-import txyz
+from . import txyz
 import logging
 
 def write(mol,fname, name=''):
@@ -35,10 +35,9 @@ def write(mol,fname, name=''):
     f.write("_atom_site_fract_z \n")
     mol.wrap_in_box()
     frac_xyz = mol.get_frac_xyz()
-    for i in xrange(mol.natoms):
-	f.write(" %s  %s %12.6f  %12.6f  %12.6f \n" % (string.upper(mol.elems[i]),string.upper(mol.elems[i]),
+    for i in range(mol.natoms):
+        f.write(" %s  %s %12.6f  %12.6f  %12.6f \n" % (string.upper(mol.elems[i]),string.upper(mol.elems[i]),\
             frac_xyz[i,0],frac_xyz[i,1],frac_xyz[i,2],))
-
     f.write("  \n")
     f.write("#END  \n")
     f.close()
@@ -53,7 +52,7 @@ def read(mol,fname,make_P1=True,detect_conn=True):
         raise ImportError('pycifrw not installed, install via pip!')
     cf = CifFile.ReadCif(fname)
     if len(cf.keys()) != 1:
-        for key in cf.keys(): print key
+        for key in cf.keys(): print(key)
         raise IOError('Cif File has multiple entries ?!')
     cf = cf[cf.keys()[0]]
     cellparams=[]

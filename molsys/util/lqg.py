@@ -79,7 +79,7 @@ class lqg(object):
         self.nedges = 0
         self.edges = []
         self.labels = []
-        for i in xrange(self.nvertices):
+        for i in range(self.nvertices):
             for j,v in enumerate(topo.conn[i]):
                 if v > i:
                     self.nedges += 1
@@ -102,7 +102,7 @@ class lqg(object):
         self.molg = Graph(directed=True)
         self.molg.ep.label  = self.molg.new_edge_property("vector<double>")
         self.molg.ep.number = self.molg.new_edge_property("int")
-        for i in xrange(self.nvertices):
+        for i in range(self.nvertices):
             iv = self.molg.add_vertex()
         for i,e in enumerate(self.edges):
             ie = self.molg.add_edge(self.molg.vertex(e[0]),self.molg.vertex(e[1]))

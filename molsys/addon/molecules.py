@@ -37,7 +37,7 @@ class molecules(object):
                 for l in copy.copy(new_leafs):
                     i = new_leafs.count(l)
                     if i > 1:
-                        for j in xrange(i-1):
+                        for j in range(i-1):
                             new_leafs.remove(l)
                 # now cut new_leafs (remove all those we already have in curr_mol)
                 for l in copy.copy(new_leafs):
