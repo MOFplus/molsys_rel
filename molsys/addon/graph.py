@@ -70,22 +70,42 @@ class graph:
                         #self.molg.add_edge( self.molg.vertex(self.vert2atom.index(ja)),self.molg.vertex(i))
         return
 
-    def plot_graph(self, fname, g = None, size=800, fsize=10, vsize=5, ptype = "pdf"):
+    def plot_graph(self, fname, g = None, size=1000, fsize=16, vsize=8, ptype = "pdf",method='arf'):
         """
         plot the grap (needs more tuning options
 
         :Parameter:
-            - fname : filename (will write filename.pdf)
-            - size  : outputsize will be (size, size) in px [default 800]
-            - fsize : font size [default 10]
-
+            - fname  : filename (will write filename.pdf)
+            - size   : outputsize will be (size, size) in px [default 800]
+            - fsize  : font size [default 10]
+            - method : placement method to draw graph, can be one of
+                       arf
+                       frucht
+                       radtree
+                       sfdp
+                       random
         """
         if g:
             draw_g = g
         else:
             draw_g = self.molg
+        import graph_tool.draw
+        import graph_tool.draw as gt
+        g=draw_g
+        if method=='arf':
+            pos = graph_tool.draw.arf_layout(draw_g, max_iter=0)
+        elif method=='frucht':
+            pos = graph_tool.draw.fruchterman_reingold_layout(draw_g, n_iter=1000)
+        elif method=='radtree':
+            pos = gt.radial_tree_layout(g, g.vertex(0))
+        elif method=='sfdp':
+            pos = gt.sfdp_layout(g)
+        elif method=='sfdp':
+            pos = gt.random_layout(g)
+        else:
+            pos=None
         from graph_tool.draw import graph_draw
-        graph_draw(draw_g, vertex_text=draw_g.vp.type, vertex_font_size=fsize, vertex_size=vsize, \
+        graph_draw(draw_g,pos=pos, vertex_text=draw_g.vp.type, vertex_font_size=fsize, vertex_size=vsize, \
             output_size=(size, size), output=fname+"."+ptype, bg_color=[1,1,1,1])
         return
 

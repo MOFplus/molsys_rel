@@ -80,22 +80,53 @@ np.set_printoptions(threshold=20000,precision=5)
 
 SMALL_DIST = 1.0e-3
 
-class mol:
+class mpiobject(object):
 
-    def __init__(self, mpi_comm=None):
-        if mpi_comm:
-            self.mpi_comm = mpi_comm
-        else:
+    def __init__(self, mpi_comm = None, out = None):
+        if mpi_comm is None:
             try:
                 self.mpi_comm = MPI.COMM_WORLD
             except NameError:
-                pass #self.mpi_comm = None
+                self.mpi_comm = None
+        else:
+            self.mpi_comm = mpi_comm
         try:
             self.mpi_rank = self.mpi_comm.Get_rank()
             self.mpi_size = self.mpi_comm.Get_size()
         except AttributeError:
             self.mpi_rank = 0
             self.mpi_size = 1
+        if out is None:
+            self.out = sys.stdout
+        elif type(out) == file:
+            assert out.mode == 'w'
+            self.out = out
+        else:
+            self.out = open(out, "w")
+
+    def pprint(self, *args, **kwargs):
+        if self.mpi_rank == 0:
+            __builtin__.print(*args, file=self.out, **kwargs)
+            self.out.flush()
+
+
+
+class mol(mpiobject):
+    def __init__(self, mpi_comm = None, out = None):
+        super(mol,self).__init__(mpi_comm, out)
+#        if mpi_comm:
+#            self.mpi_comm = mpi_comm
+#        else:
+#            try:
+#                self.mpi_comm = MPI.COMM_WORLD
+#            except NameError:
+#                pass #self.mpi_comm = None
+#        try:
+#            self.mpi_rank = self.mpi_comm.Get_rank()
+#            self.mpi_size = self.mpi_comm.Get_size()
+#        except AttributeError:
+#            self.mpi_rank = 0
+#            self.mpi_size = 1
         self.natoms=0
         self.cell=None
         self.cellparams=None
@@ -202,6 +233,27 @@ class mol:
         m.set_empty_conn()
         m.detect_conn()
         return m
+
+    @classmethod
+    def fromPymatgen(cls, structure):
+        m = cls()
+        logger.info('creating mol object from a pymatgen structure object')
+        cell = structure.lattice.matrix
+        fracs = [] 
+        elems = []
+        for j, site in enumerate(structure.sites):
+            elems.append(string.lower(site.specie.symbol))
+            fracs.append([site.frac_coords[0],site.frac_coords[1], site.frac_coords[2]])
+        fracs = np.array(fracs)
+        m.natoms=len(elems)
+        m.set_elems(elems)
+        m.set_atypes(elems)
+        m.set_cell(cell)
+        m.set_xyz_from_frac(fracs)
+        m.set_nofrags()
+        m.set_empty_conn()
+        m.detect_conn()
+        return m
         
     
     @classmethod
@@ -276,7 +328,7 @@ class mol:
 
     ##### addons ##################################
 
-    def addon(self, addmod):
+    def addon(self, addmod, **kwargs):
         """
         add an addon module to this object
 
@@ -316,7 +368,7 @@ class mol:
                 logger.error("ric is not available! This addon can not be used")
                 return
         elif addmod == "ff":
-            self.ff = addon.ff(self)
+            self.ff = addon.ff(self, **kwargs)
         elif addmod == "molecules":
             self.molecules = addon.molecules(self)
         else:
@@ -400,10 +452,10 @@ class mol:
         logger.info("reporting connectivity ... ")
         for i in range(self.natoms):
             conn = self.conn[i]
-            print ("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
+            self.pprint("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
             for j in range(len(conn)):
                 d = self.get_neighb_dist(i,j)
-                print ("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
+                self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
 
     ###  periodic systems .. cell manipulation ############
@@ -681,6 +733,11 @@ class mol:
         self.delete_atoms(badlist)
         #for i in badlist[::-1]: self.delete_atom(i)
         return
+    
+    def randomize_coordinates(self,maxdr=1.0):
+        xyz = self.get_xyz()
+        xyz += np.random.uniform(-maxdr,maxdr,xyz.shape)
+        self.set_xyz(self.pbc(xyz))        
 
     def translate(self, vec):
         self.xyz += vec
@@ -1082,7 +1139,7 @@ class mol:
     def set_cellparams(self,cellparams, cell_only = True):
         ''' set unit cell using cell parameters and assign cell vectors
         :Parameters:
-            - cell: cell vectors (3,3)
+            - cellparams: vector (6)
             - cell_only (bool)  : if false, also the coordinates are changed
                                   in respect to new cell
         '''

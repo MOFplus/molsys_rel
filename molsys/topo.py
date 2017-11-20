@@ -11,10 +11,11 @@ from . import util
 from . import mol
 elements = util.elems
 unit_cell = util.unit_cell
-rotations = util.rotations
-images = util.images
+rotations = util.rotations ### THERE SHOULD BE A BETTER SOLUTION
+images = util.images ### THERE SHOULD BE A BETTER SOLUTION
 import random
 import itertools
+import mol
 
 try:
     from ase import Atoms
@@ -369,6 +370,28 @@ class topo(mol):
         #print self.conn
         return
 
+
+    #RS !!! HACK !!! this is not pretty but becasue of the pconn here in topo we need another add_atom
+    #maybe we can just call the add_atom of the mol parent class and just add the pconn stuff here.
+    def add_atom(self, elem, atype, xyz):
+        assert type(elem) == str
+        assert type(atype)== str
+        assert np.shape(xyz) == (3,)
+        self.natoms += 1
+        self.elems.append(elem)
+        self.atypes.append(atype)
+        xyz.shape = (1,3)
+        if isinstance(self.xyz, np.ndarray):
+            self.xyz = np.concatenate((self.xyz, xyz))
+        else:
+            self.xyz = xyz
+        self.conn.append([])
+        self.pconn.append([])
+        return self.natoms -1
+
+
+
+
     def delete_atom(self,bad):
         ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
         new_xyz = []
@@ -448,10 +471,12 @@ class topo(mol):
 ############# Plotting
 
     def plot(self,scell=False,bonds=False,labels=False):
+        from mpl_toolkits.mplot3d import axes3d, Axes3D 
         import matplotlib.pyplot as plt
         col = ['r','g','b','m','c','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k']+['k']*200
         fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
-        ax = fig.add_subplot(111, projection='3d')
+        #ax = fig.add_subplot(111, projection='3d')
+        ax = Axes3D(fig)
         atd = {}
         for i,aa in enumerate(list(set(self.atypes))):
             atd.update({aa:col[i]})

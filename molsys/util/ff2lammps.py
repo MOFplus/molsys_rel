@@ -14,9 +14,12 @@ it will write a data and a lamps input file
 
 import numpy as np
 import string
+import copy
+
 import molsys
 import molsys.util.elems as elements
-import copy
+from molsys.addon import base
+
 import logging
 logger = logging.getLogger('molsys.ff2lammps')
 
@@ -25,7 +28,7 @@ mdyn2kcal = 143.88
 angleunit = 0.02191418
 rad2deg = 180.0/np.pi 
 
-class ff2lammps(object):
+class ff2lammps(base):
     
     def __init__(self, mol):
         """
@@ -35,13 +38,12 @@ class ff2lammps(object):
         
             - mol: mol object with ff addon and params assigned
         """
-        
-        self.mol = mol
+        super(ff2lammps,self).__init__(mol)
         # generate the force field
-        self.mol.ff.setup_pair_potentials()
+        self._mol.ff.setup_pair_potentials()
         # set up the molecules
-        self.mol.addon("molecules")
-        self.mol.molecules()
+        self._mol.addon("molecules")
+        self._mol.molecules()
         # make lists of paramtypes and conenct to mol.ff obejcts as shortcuts
         self.ricnames = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
         self.par_types = {}
@@ -50,9 +52,9 @@ class ff2lammps(object):
         self.rics = {}
         self.npar = {}
         for r in self.ricnames:
-            self.par[r]       = self.mol.ff.par[r]
-            self.parind[r]    = self.mol.ff.parind[r]
-            self.rics[r]      = self.mol.ff.ric_type[r]
+            self.par[r]       = self._mol.ff.par[r]
+            self.parind[r]    = self._mol.ff.parind[r]
+            self.rics[r]      = self._mol.ff.ric_type[r]
             # sort identical parameters (sorted) using a tuple to hash it into the dict par_types : value is a number starting from 1 
             par_types = {}
             i = 1
@@ -89,7 +91,7 @@ class ff2lammps(object):
             for j, atj in enumerate(self.plmps_atypes[i:],i):
                 vdwi, chai = ati.split("/")
                 vdwj, chaj = atj.split("/")
-                vdwpairdata = self.mol.ff.vdwdata[vdwi+":"+vdwj]
+                vdwpairdata = self._mol.ff.vdwdata[vdwi+":"+vdwj]
                 sigma_i = self.par["cha"][chai][1][1]
                 sigma_j = self.par["cha"][chaj][1][1]
                 # compute sigma_ij
@@ -108,9 +110,10 @@ class ff2lammps(object):
         self._settings["vdw_c"] = 2.25
         self._settings["vdw_dampfact"] = 0.25
         self._settings["vdw_smooth"] = 0.9
-        self._settings["use_angle_cosine_buck6d"] = False
+        self._settings["use_angle_cosine_buck6d"] = True
         self._settings["kspace_method"] = "ewald"
         self._settings["kspace_prec"] = 1.0e-6
+        self._settings["use_improper_umbrella_harmonic"] = False # default is to use improper_inversion_harmonic
         return
 
     @staticmethod
@@ -130,7 +133,6 @@ class ff2lammps(object):
             xz = np.dot(C,uA)
             yz = np.dot(C,np.cross(uAcB,uA))
             lz = np.dot(C,uAcB)
-            print lx, ly,lz, xy,xz,yz
             cell = np.array([
                     [lx,0,0],
                     [xy,ly,0.0],
@@ -139,14 +141,14 @@ class ff2lammps(object):
  
 
     def adjust_cell(self):
-        if self.mol.bcond > 0:
-            fracs = self.mol.get_frac_xyz()
-            cell  = self.mol.get_cell()
+        if self._mol.bcond > 0:
+            fracs = self._mol.get_frac_xyz()
+            cell  = self._mol.get_cell()
             self.tilt = 'small'
             # now check if cell is oriented along the (1,0,0) unit vector
             if np.linalg.norm(cell[0]) != cell[0,0]:
                 rcell = self.rotate_cell(cell)
-                self.mol.set_cell(rcell, cell_only=False)
+                self._mol.set_cell(rcell, cell_only=False)
             else:
                 rcell = cell
             lx,ly,lz,xy,xz,yz = rcell[0,0],rcell[1,1],rcell[2,2],rcell[1,0],rcell[2,0],rcell[2,1]
@@ -185,7 +187,7 @@ class ff2lammps(object):
             if rcell.diagonal()[0]<0.0: raise IOError('Left hand side coordinate system detected')
             if rcell.diagonal()[1]<0.0: raise IOError('Left hand side coordinate system detected')
             if rcell.diagonal()[2]<0.0: raise IOError('Left hand side coordinate system detected')
-#            self.mol.set_cell(rcell, cell_only=False)
+#            self._mol.set_cell(rcell, cell_only=False)
 #                import pdb; pdb.set_trace()
         return
 
@@ -196,13 +198,14 @@ class ff2lammps(object):
 
     def setting(self, s, val):
         if not s in self._settings:
-            print("This settings %s is not allowed" % s)
+            self.pprint("This settings %s is not allowed" % s)
             return
         else:
             self._settings[s] = val
             return
         
     def write_data(self, filename="tmp.data"):
+        if self.mpi_rank > 0: return
         self.data_filename = filename
         f = open(filename, "w")
         # write header 
@@ -211,7 +214,10 @@ class ff2lammps(object):
         header += "%10d bonds\n"      % len(self.rics["bnd"])
         header += "%10d angles\n"     % len(self.rics["ang"])
         header += "%10d dihedrals\n"  % len(self.rics["dih"])
-        header += "%10d impropers\n"  % len(self.rics["oop"])
+        if self._settings["use_improper_umbrella_harmonic"] == True:
+            header += "%10d impropers\n"  % (len(self.rics["oop"])*3) # need all three permutations
+        else:
+            header += "%10d impropers\n"  % len(self.rics["oop"])            
         # types are different paramtere types 
         header += "%10d atom types\n"       % len(self.plmps_atypes)
         header += "%10d bond types\n"       % len(self.par_types["bnd"]) 
@@ -219,22 +225,22 @@ class ff2lammps(object):
         header += "%10d dihedral types\n"   % len(self.par_types["dih"])
         header += "%10d improper types\n\n" % len(self.par_types["oop"])
         self.adjust_cell()
-        xyz = self.mol.get_xyz()
-        if self.mol.bcond == 0:
+        xyz = self._mol.get_xyz()
+        if self._mol.bcond == 0:
             # in the nonperiodic case center the molecule in the origin
-            self.mol.translate(-self.mol.get_com())
+            self._mol.translate(-self._mol.get_com())
             cmax = xyz.max(axis=0)+10.0
             cmin = -xyz.min(axis=0)-10.0
             tilts = (0.0,0.0,0.0)
-        elif self.mol.bcond<2:
+        elif self._mol.bcond<2:
             # orthorombic/cubic bcond
-            cell = self.mol.get_cell()
+            cell = self._mol.get_cell()
             cmin = np.zeros([3])
             cmax = cell.diagonal()
             tilts = (0.0,0.0,0.0)
         else:
             # triclinic bcond
-            cell = self.mol.get_cell()
+            cell = self._mol.get_cell()
             cmin = np.zeros([3])
             cmax = cell.diagonal()
             tilts = (cell[1,0], cell[2,0], cell[2,1])
@@ -253,18 +259,21 @@ class ff2lammps(object):
         # write Atoms
         # NOTE ... this is MOF-FF and we silently assume that all charge params are Gaussians!!
         f.write("\nAtoms\n\n")
+        chargesum = 0.0
         for i in range(self.mol.get_natoms()):
             vdwt  = self.parind["vdw"][i][0]
             chat  = self.parind["cha"][i][0]
             at = vdwt+"/"+chat
             atype = self.plmps_atypes.index(at)+1
-            molnumb = self.mol.molecules.whichmol[i]+1
+            molnumb = self._mol.molecules.whichmol[i]+1
             chrgpar    = self.par["cha"][chat]
             assert chrgpar[0] == "gaussian", "Only Gaussian type charges supported"
             chrg = chrgpar[1][0]
+            chargesum+=chrg
             x,y,z = xyz[i]
             #   ind  atype molnumb chrg x y z # comment
             f.write("%10d %5d %5d %10.5f %12.6f %12.6f %12.6f # %s\n" % (i+1, molnumb, atype, chrg, x,y,z, vdwt))
+        self.pprint("The total charge of the system is: %12.8f" % chargesum)
         # write bonds
         f.write("\nBonds\n\n")
         for i in range(len(self.rics["bnd"])):
@@ -290,6 +299,10 @@ class ff2lammps(object):
             if oopt:
                 a,b,c,d  = self.rics["oop"][i]
                 f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, b+1, c+1, d+1, oopt))
+                if self._settings["use_improper_umbrella_harmonic"] == True:
+                    # add the other two permutations of the bended atom (abcd : a is central, d is bent)
+                    f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, d+1, b+1, c+1, oopt))
+                    f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, c+1, d+1, b+1, oopt))
         f.write("\n")
         f.close()
         return
@@ -416,17 +429,18 @@ class ff2lammps(object):
         """
         NOTE: add read data ... fix header with periodic info
         """
+        if self.mpi_rank > 0: return
         self.input_filename = filename
         f = open(filename, "w")
         # write standard header        
         f.write("clear\n")
         f.write("units real\n")
-        if self.mol.bcond == 0:
+        if self._mol.bcond == 0:
             f.write("boundary f f f\n")
         else:
             f.write("boundary p p p\n")
         f.write("atom_style full\n")
-        if self.tilt == 'large': f.write('box tilt large\n')
+        f.write('box tilt large\n')
         f.write("read_data %s\n\n" % self.data_filename)
         f.write("neighbor 2.0 bin\n\n")
         # extra header
@@ -532,13 +546,19 @@ class ff2lammps(object):
                     raise ValueError, "unknown dihedral potential"
                 f.write("dihedral_coeff %5d %s    # %s\n" % (dt_number, pstring, idt))
         # improper/oop style
-        f.write("\nimproper_style inversion/harmonic\n\n")
+        if self._settings["use_improper_umbrella_harmonic"] == True:
+            f.write("\nimproper_style umbrella/harmonic\n\n")
+        else:
+            f.write("\nimproper_style inversion/harmonic\n\n")
         for it in self.par_types["oop"].keys():
             it_number = self.par_types["oop"][it]
             for iit in it:
                 pot_type, params = self.par["oop"][iit]
                 if pot_type == "harm":
-                    pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])
+                    if self._settings["use_improper_umbrella_harmonic"] == True:
+                        pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal, params[1])
+                    else:
+                        pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])                        
                 else:
                     raise ValueError, "unknown improper/oop potential"
                 f.write("improper_coeff %5d %s    # %s\n" % (it_number, pstring, iit))

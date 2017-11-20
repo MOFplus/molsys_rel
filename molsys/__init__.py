@@ -7,8 +7,9 @@ from .util import elems as elements
 from .util import rotations
 from .fileIO import formats
 from .mol import mol
+from .mol import mpiobject
 from .topo import topo
 
 from . import addon
 
-__all__=["mol", "topo", "util"]
+__all__=["mol", "topo", "mpiobject"]

@@ -72,7 +72,7 @@ def read(mol, f):
         txyz.parse_connstring(mol,con_info)
     return
 
-def write(mol, fname):
+def write(mol, fname, fullcell = True):
     """
     Routine, which writes an mfpx file
     :Parameters:
@@ -88,8 +88,18 @@ def write(mol, fname):
         ftype = 'xyz'
     f.write('# type %s\n' % ftype)
     if type(mol.cellparams) != type(None):
-        f.write('# cell %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
-                tuple(mol.cellparams))
+        if fullcell:
+#            elif keyword == 'cellvect':
+#                mol.periodic = True
+#                celllist = map(string.atof,lbuffer[2:11])
+#                cell = numpy.array(celllist)
+#                cell.shape = (3,3)
+#                mol.set_cell(cell)
+            f.write('# cellvect %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
+                    tuple(mol.cell.ravel()))
+        else:
+            f.write('# cell %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
+                    tuple(mol.cellparams))
     if mol.is_bb:
         if mol.center_point != 'special':
             f.write('# bbcenter %s\n' % mol.center_point)
