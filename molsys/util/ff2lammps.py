@@ -110,7 +110,7 @@ class ff2lammps(base):
         self._settings["vdw_c"] = 2.25
         self._settings["vdw_dampfact"] = 0.25
         self._settings["vdw_smooth"] = 0.9
-        self._settings["use_angle_cosine_buck6d"] = False
+        self._settings["use_angle_cosine_buck6d"] = True
         self._settings["kspace_method"] = "ewald"
         self._settings["kspace_prec"] = 1.0e-6
         self._settings["use_improper_umbrella_harmonic"] = False # default is to use improper_inversion_harmonic

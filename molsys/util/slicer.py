@@ -22,7 +22,7 @@ import numpy as np
 
 class slicer:
     
-    def __init__(self, mol, orig_atoms=None):
+    def __init__(self, mol, orig_atoms=None, cell_factor = 1.5):
         self.mol = mol
         self.planes = []
         self.stubs = {}
@@ -34,6 +34,7 @@ class slicer:
             shift /= len(orig_atoms)
             self.mol.translate(-shift)
             self.mol.wrap_in_box()
+        self.cell_factor = cell_factor
         return
     
     def set_stub(self, atype, new_elem, new_atype, dist):
@@ -65,6 +66,7 @@ class slicer:
         delete = []
         stubs  = []
         xyz = mol.get_xyz() - shift
+        periodic = np.array([True,True,True])
         for p in self.planes:
             # run over all planes and find those atoms to be sliced 
             # at the same time detect those to be fixed with a stub
@@ -86,6 +88,8 @@ class slicer:
                                 vect = vect/dvect
                                 if dvect < max_dist:
                                     stubs.append((j, vect))
+            # no test which dimension this plane cuts
+            periodic = np.logical_and(np.equal(p, 0.0),periodic)
         # now add stubs (only those registered)
         for s in stubs:
             if s[0] not in delete:
@@ -95,9 +99,18 @@ class slicer:
                     # to compute the new position we need sdist times the unit vect plus the overall shift
                     spos = xyz[s[0]]+sdist*s[1]+shift
                     k = mol.add_atom(sel, sat, spos)
-                    mol.add_bond(s[0], k)
+                    # print "adding bond between %d %s and %d %s" % (s[0], self.mol.elems[s[0]], k, self.mol.elems[k])
+                    mol.add_conn(s[0], k)
         # now all is parsed and we can remove the corresponding atoms
         mol.delete_atoms(delete) 
+        # now add an offset to the cell for all nonperiodic dims
+        cell = self.mol.get_cell()
+        for i,d in enumerate(periodic):
+            if not d:
+                cell[i]*= self.cell_factor
+        self.mol.set_cell(cell)
+        # now regenerate the pconn
+        self.mol.add_pconn()
         return mol
     
     

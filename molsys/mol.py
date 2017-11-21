@@ -997,7 +997,7 @@ class mol(mpiobject):
         self.conn[anum1].append(anum2)
         self.conn[anum2].append(anum1)
     	return
-
+    
     def get_natoms(self):
         ''' returns the number of Atoms '''
         return self.natoms
@@ -1133,7 +1133,7 @@ class mol(mpiobject):
     def set_cellparams(self,cellparams, cell_only = True):
         ''' set unit cell using cell parameters and assign cell vectors
         :Parameters:
-            - cell: cell vectors (3,3)
+            - cellparams: vector (6)
             - cell_only (bool)  : if false, also the coordinates are changed
                                   in respect to new cell
         '''

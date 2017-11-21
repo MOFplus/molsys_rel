@@ -335,6 +335,8 @@ class topo(mol.mol):
             #if len(atoms_pconn) != len(c): print "AOSUHDAPUFHPOUFHPWOUFHPOUDHSPUODHASIUDHAUSIDHSD"
         return
 
+
+    #RS !!! TODO !!! not sure if the insertion of pconn is correct in this routine
         # 'na',lower(label),xyz,i,j)
     def insert_atom(self, lab, aty, xyz, i, j):
         xyz.shape=(1,3)
@@ -367,6 +369,28 @@ class topo(mol.mol):
         #print "end of insert .. conn:"
         #print self.conn
         return
+
+
+    #RS !!! HACK !!! this is not pretty but becasue of the pconn here in topo we need another add_atom
+    #maybe we can just call the add_atom of the mol parent class and just add the pconn stuff here.
+    def add_atom(self, elem, atype, xyz):
+        assert type(elem) == str
+        assert type(atype)== str
+        assert np.shape(xyz) == (3,)
+        self.natoms += 1
+        self.elems.append(elem)
+        self.atypes.append(atype)
+        xyz.shape = (1,3)
+        if isinstance(self.xyz, np.ndarray):
+            self.xyz = np.concatenate((self.xyz, xyz))
+        else:
+            self.xyz = xyz
+        self.conn.append([])
+        self.pconn.append([])
+        return self.natoms -1
+
+
+
 
     def delete_atom(self,bad):
         ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
@@ -404,8 +428,8 @@ class topo(mol.mol):
     def add_conn(self, a1, a2):
         """ add a connection between a1 and a2 (in both directions)
         """
-        if self.use_pconn:
-            raise ValueError, "Can not add bonds to systems with pconn - well, we can fix this ;) "
+        #if self.use_pconn:
+        #    raise ValueError, "Can not add bonds to systems with pconn - well, we can fix this ;) "
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
         d,v,imgi = self.get_distvec(a1,a2)
@@ -442,6 +466,7 @@ class topo(mol.mol):
         for i in xrange(self.natoms):
             self.pconn.append([])
         return
+
 
 
 ############# Plotting
