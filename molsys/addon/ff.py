@@ -844,10 +844,10 @@ class ff(base):
                             for idx,vn in enumerate(vnames):
                                 if type(vn) == str:
                                     if defaults[ic][3][idx] == "r":
-                                        self.par.variables[vn]=varpar(ff=self.par,name = vn, 
+                                        self.par.variables[vn]=varpar(self.par,name = vn, 
                                                 val = p.value, range = [0.9*p.value, 1.1*p.value])
                                     else:
-                                        self.par.variables[vn]=varpar(ff=self.par,name = vn)
+                                        self.par.variables[vn]=varpar(self.par,name = vn)
                                     self.par.variables[vn].pos.append((ic, fullparname, idx))
                             # hack for strbnd
                             if ic == "ang" and strbnd == True:
@@ -856,7 +856,7 @@ class ff(base):
                                 vnames = map(lambda a: "$a%i_%i" % (count, a), range(6))
                                 par[fullparname2] = ("strbnd", vnames)
                                 for idx,vn in enumerate(vnames):
-                                    self.par.variables[vn] = varpar(ff=self.par, name = vn)
+                                    self.par.variables[vn] = varpar(self.par, name = vn)
                                     self.par.variables[vn].pos.append((ic,fullparname2,idx))
                         else:
                             par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
