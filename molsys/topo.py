@@ -314,10 +314,10 @@ class topo(mol):
 #            try:
 #                tillind = np.where(imgscum == maxcoord)[0][0] + 1
 #            except IndexError:
-#                print self.name, self.ncoord[i], maxcoord
-#                print self.ncoord
-#                print ncoord
-#                print imgslen, imgscum
+#                print(self.name, self.ncoord[i], maxcoord)
+#                print(self.ncoord)
+#                print(ncoord)
+#                print(imgslen, imgscum)
 #                break
 #            for k,j in enumerate(js[:tillind]):
 #                if imgslen[k] > 1 and not self.use_pconn:
@@ -398,7 +398,7 @@ class topo(mol):
         ### set impossible cost to same bonds
         bonds = zip(*hungarian(ahung)) ###HERE BROKEN
         for b in bonds:
-            print ia[b[0]], jaia[b[1]]
+            print(ia[b[0]], jaia[b[1]])
         ### exclude w/ exclude pairs: sets very-high
         excluded = False
         if exclude_pairs:

@@ -58,7 +58,7 @@ def read(mol, f, topo = False):
     mol.set_nofrags()
     return
 
-def parse_connstring_old(mol, con_info, new = True):
+def parse_connstring(mol, con_info, new = True):
     """
     Routines which parses the con_info string of a txyz or an mfpx file
     :Parameters:
@@ -93,6 +93,90 @@ def parse_connstring_old(mol, con_info, new = True):
                 mol.connector_atoms = [[c] for c in mol.connectors]
                 mol.connectors_type.append(contype_count)
     return
+
+def parse_connstring_new(mol, con_info, **kwargs):
+    """
+    Routines which parses the con_info string of a txyz or an mfpx file
+    :Parameters:
+        - mol      (obj) : instance of a molclass
+        - con_info (str) : string holding the connectors info
+    """
+    mol.connector_atoms       = []
+    mol.connector_dummies     = []
+    mol.connectors            = []
+    mol.connectors_complexity = []
+    mol.connectors_group      = []
+    mol.connectors_type       = []
+    contype_count = 0
+    for icon, con in enumerate(con_info):
+        if con == "/":
+            contype_count += 1
+            continue
+        ### PARSE ####
+        logger.debug(con)
+        line = con[:]
+        markcount = line.count("?")
+        starcount = line.count("*")
+        if markcount == 0:
+            complexity = ""
+        elif markcount == 1:
+            line, complexity = line.split('?')
+        else:
+            logger.error("More than one question mark in con_info group")
+            raise ValueError
+        if starcount == 0:
+            connectors = ""
+        elif starcount == 1:
+            line, connectors = line.split('*')
+        else:
+            logger.error("More than one asterisk in con_info group")
+            raise ValueError
+        atoms = line.split(",")
+        line = con #reset, debugging purpose
+        logger.debug("a:%s c:%s t:%s *:%s ?:%s" % 
+            (atoms, connectors, complexity, starcount, markcount))
+        complexity = complexity.split()
+        if complexity != []:
+            complexity = complexity[0].split(",")
+        connectors = connectors.split()
+        if connectors != []:
+            connectors = connectors[0].split(",")
+        logger.debug("a:%s c:%s t:%s *:%s ?:%s" % 
+            (atoms, connectors, complexity, starcount, markcount))
+        logger.debug("la:%s lc:%s lt:%s *:%s ?:%s" % 
+            (len(atoms), len(connectors), len(complexity), starcount, markcount))
+        ### HANDLE ###
+        if len(atoms) == 0:
+            logger.error("No atoms in con_info group")
+            raise ValueError
+        if len(connectors) == 0:
+            connectors = atoms[:]
+        if len(complexity) == 0:
+            complexity = [1]*len(atoms)
+        elif len(complexity) == 1:
+            complexity = complexity*len(atoms)
+        if len(complexity) != len(atoms):
+            logger.error("Complexity can only be: implicit OR one for all OR assigned per each")
+            raise ValueError
+        atoms = [int(a) - 1 for a in atoms] #python indexing
+        connectors = [int(c) - 1 for c in connectors] #python indexing
+        complexity = map(int,complexity)
+        logger.debug("a:%s c:%s t:%s *:%s ?:%s" % 
+            (atoms, connectors, complexity, starcount, markcount))
+        logger.debug("la:%s lc:%s lt:%s *:%s ?:%s" % 
+            (len(atoms), len(connectors), len(complexity), starcount, markcount))
+        ### SET ######
+        mol.connector_atoms.append(atoms) #((numpy.array(map(int,stt)) -1).tolist())
+        for a in atoms:
+            if mol.elems[a].lower() == "x":
+                mol.connector_dummies.append(a) # simplest case only with two atoms being the connecting atoms
+        mol.connectors.append(connectors) #(int(ss[1])-1)
+        mol.connectors_complexity.append(complexity)
+        mol.connectors_group.append(icon - contype_count)
+        mol.connectors_type.append(contype_count)
+    mol.connectors = numpy.array(mol.connectors)
+    return
+
 
 def read_body(f, natoms, frags = True, topo = False):
     """
