@@ -1,13 +1,15 @@
+from __future__ import absolute_import
 import numpy as np
 # RS .. i think we should import util and add it to __all__
-from util import unit_cell
-from util import elems as elements
-from util import rotations
-from fileIO import formats
-from mol import mol
-from mol import mpiobject
-from topo import topo
+from . import util
+from .util import unit_cell
+from .util import elems as elements
+from .util import rotations
+from .fileIO import formats
+from .mol import mol
+from .mol import mpiobject
+from .topo import topo
 
-import addon
+from . import addon
 
 __all__=["mol", "topo", "mpiobject"]

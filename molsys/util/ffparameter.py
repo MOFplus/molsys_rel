@@ -28,7 +28,7 @@ class varpar(object):
 
     def __init__(self, par, name, val = 1.0, range = [0.0,2.0], bounds = ["h","i"]):
         assert len(bounds) == 2
-        assert bounds[0] in ["h", "i"] and bounds[1] in ["h", "i"]
+        assert bounds[0] in ["h", "i", "z"] and bounds[1] in ["h", "i"]
         self._par     = par
         self.name    = name
         self._val     = val

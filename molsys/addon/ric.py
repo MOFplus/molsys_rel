@@ -107,12 +107,12 @@ class ric(RedIntCoords):
                 lref = copy.copy(self._mol.conn[indices[0]])
                 lref.pop(lref.index(indices[1]))
                 self.add_lin_bend(np.array(list(indices))+1, ref = lref[0]+1)
-                print "Using atom %s for lin bend %s as reference" % (lref[0], indices)
+                print("Using atom %s for lin bend %s as reference" % (lref[0], indices))
             elif len(self._mol.conn[indices[2]])>1:
                 lref = copy.copy(self._mol.conn[indices[2]])
                 lref.pop(lref.index(indices[1]))
                 self.add_lin_bend(np.array(list(indices))+1, ref = lref[0]+1)
-                print "Using atom %s for lin bend %s as reference" % (lref[0], indices)
+                print("Using atom %s for lin bend %s as reference" % (lref[0], indices))
             else:
                 raise ValueError("No reference atom found for linear bend %s" % indices)
         
@@ -224,7 +224,7 @@ class ric(RedIntCoords):
                 buffer+= ("%4d %3d %5s " % (count,i,k)+len(r)*" %4d")  % tuple(r)+"\n"
                 count += 1
         if file == None:
-            print buffer
+            print(buffer)
         else:
             with open(file, "w") as f:
                 f.write(buffer)

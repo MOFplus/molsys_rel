@@ -72,7 +72,7 @@ class wrapper(base):
 #        self.natoms = len(self.elems)
         # recover connectivity from ctab
 #        self.cnct = []
-#        for i in xrange(self.natoms): self.cnct.append([])
+#        for i in range(self.natoms): self.cnct.append([])
 #        for c in ctab:
 #            i,j = c
 #            self.cnct[i].append(j)
@@ -88,7 +88,7 @@ class wrapper(base):
         self.whichmol, self.moltypes, self.molnames = pdlp.get_molecules()
         self.nmols = len(self.moltypes)
         self.mols = []
-        for i in xrange(self.nmols) : self.mols.append([])
+        for i in range(self.nmols) : self.mols.append([])
         for i, m in enumerate(self.whichmol): self.mols[m].append(i)
         self.pprint("$$ -- read molecule info from pdlp file")
         self.m.ff.setup_pair_potentials()
@@ -202,7 +202,7 @@ class wrapper(base):
         ### setup and charges ###
         self.m.set_real_mass()
         chargesum = 0
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             p = self.m.ff.parind["vdw"][i][0]
             atype = self.m.ff.types2numbers[p]
             ### only gaussian implemented, no frozens
@@ -229,7 +229,7 @@ class wrapper(base):
                         count += 1
             f.write("%s %d\n" % (header[ict], count))
             f.write(buffer_out)
-#            print ict, count
+#            print(ict, count)
         f.write("FINISH\n")
         ### pair potentials ###
         buffer_out = ""
@@ -407,7 +407,7 @@ class wrapper(base):
                 "c-expterm"  : 2.25,
                 "vdwdampfact": 0.25,
                 }):
-        t1,t2 = string.split(pair,":")
+        t1,t2 = pair.split(":")
         dlp_t1 = self.m.ff.types2numbers[t1]
         dlp_t2 = self.m.ff.types2numbers[t2]
         if potential == "buck6d":
@@ -445,7 +445,7 @@ class wrapper(base):
             f.write("%20.12f%20.12f%20.12f\n" % tuple(self.cell[2]))
         else:
             f.write("%10d%10d%10d%20.8f\n" % (velflag, 0, self.natoms, 0.0))
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             p = self.m.ff.parind["vdw"][i][0]
             atype = self.m.ff.types2numbers[p]
             f.write("%-8s%10d\n" % (atype, i+1))

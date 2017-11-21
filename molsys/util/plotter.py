@@ -70,7 +70,7 @@ class plotter(object):
         atd = {}
         for i,aa in enumerate(list(set(mol.atypes))):
             atd.update({aa:col[i]})
-        print atd
+        print(atd)
         if bonds:
             for i in range(mol.natoms):
                 conn = mol.conn[i]
@@ -118,7 +118,7 @@ class plotter(object):
         for i,c in enumerate(m.ctab):
             text = 'mol color %s\nmol representation DynamicBonds %8.6f %8.6f 30.000000\n' % (color,maxlength,radius)
             text+= 'mol selection index %i %i\nmol material Opaque\nmol addrep 0\n' % (c[0],c[1])
-            print text
+            print(text)
             f.write(text)
             
         

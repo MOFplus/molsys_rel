@@ -73,7 +73,7 @@ class ff2lammps(base):
         self.plmps_atypes = []
         self.plmps_pair_data = {}
         self.plmps_mass = {} # mass from the element .. even if the vdw and cha type differ it is still the same atom
-        for i in xrange(self._mol.get_natoms()):
+        for i in range(self.mol.get_natoms()):
             vdwt = self.parind["vdw"][i][0]
             chrt = self.parind["cha"][i][0]
             at = vdwt+"/"+chrt
@@ -86,7 +86,7 @@ class ff2lammps(base):
                 e = etup.split("_")[0]
                 e = filter(lambda x: x.isalpha(), e)
                 self.plmps_mass[at] = elements.mass[e]
-                #print "with mass %12.6f" % elements.mass[e]
+                #print("with mass %12.6f" % elements.mass[e])
         for i, ati in enumerate(self.plmps_atypes):
             for j, atj in enumerate(self.plmps_atypes[i:],i):
                 vdwi, chai = ati.split("/")
@@ -110,9 +110,10 @@ class ff2lammps(base):
         self._settings["vdw_c"] = 2.25
         self._settings["vdw_dampfact"] = 0.25
         self._settings["vdw_smooth"] = 0.9
-        self._settings["use_angle_cosine_buck6d"] = False
+        self._settings["use_angle_cosine_buck6d"] = True
         self._settings["kspace_method"] = "ewald"
         self._settings["kspace_prec"] = 1.0e-6
+        self._settings["use_improper_umbrella_harmonic"] = False # default is to use improper_inversion_harmonic
         return
 
     @staticmethod
@@ -209,11 +210,14 @@ class ff2lammps(base):
         f = open(filename, "w")
         # write header 
         header = "LAMMPS data file for mol object with MOF-FF params from www.mofplus.org\n\n"
-        header += "%10d atoms\n"      % self._mol.get_natoms()
+        header += "%10d atoms\n"      % self.mol.get_natoms()
         header += "%10d bonds\n"      % len(self.rics["bnd"])
         header += "%10d angles\n"     % len(self.rics["ang"])
         header += "%10d dihedrals\n"  % len(self.rics["dih"])
-        header += "%10d impropers\n"  % len(self.rics["oop"])
+        if self._settings["use_improper_umbrella_harmonic"] == True:
+            header += "%10d impropers\n"  % (len(self.rics["oop"])*3) # need all three permutations
+        else:
+            header += "%10d impropers\n"  % len(self.rics["oop"])            
         # types are different paramtere types 
         header += "%10d atom types\n"       % len(self.plmps_atypes)
         header += "%10d bond types\n"       % len(self.par_types["bnd"]) 
@@ -248,7 +252,7 @@ class ff2lammps(base):
         #   => we do NOT use the masses set up in the mol object because of this mapping
         #   so we need to extract the element from the vdw paramter name which is a bit clumsy (DONE IN INIT NOW)
         header += "\nMasses\n\n"        
-        for i in xrange(len(self.plmps_atypes)):
+        for i in range(len(self.plmps_atypes)):
             at = self.plmps_atypes[i]
             header += "%5d %10.4f # %s\n" % (i+1, self.plmps_mass[at], at)
         f.write(header)
@@ -256,7 +260,7 @@ class ff2lammps(base):
         # NOTE ... this is MOF-FF and we silently assume that all charge params are Gaussians!!
         f.write("\nAtoms\n\n")
         chargesum = 0.0
-        for i in xrange(self._mol.get_natoms()):
+        for i in range(self.mol.get_natoms()):
             vdwt  = self.parind["vdw"][i][0]
             chat  = self.parind["cha"][i][0]
             at = vdwt+"/"+chat
@@ -272,29 +276,33 @@ class ff2lammps(base):
         self.pprint("The total charge of the system is: %12.8f" % chargesum)
         # write bonds
         f.write("\nBonds\n\n")
-        for i in xrange(len(self.rics["bnd"])):
+        for i in range(len(self.rics["bnd"])):
             bndt = tuple(self.parind["bnd"][i])
             a,b  = self.rics["bnd"][i]
             f.write("%10d %5d %8d %8d  # %s\n" % (i+1, self.par_types["bnd"][bndt], a+1, b+1, bndt))
         # write angles
         f.write("\nAngles\n\n")
-        for i in xrange(len(self.rics["ang"])):
+        for i in range(len(self.rics["ang"])):
             angt = tuple(self.parind["ang"][i])
             a,b,c  = self.rics["ang"][i]
             f.write("%10d %5d %8d %8d %8d  # %s\n" % (i+1, self.par_types["ang"][angt], a+1, b+1, c+1, angt))
         # write dihedrals
         f.write("\nDihedrals\n\n")
-        for i in xrange(len(self.rics["dih"])):
+        for i in range(len(self.rics["dih"])):
             diht = tuple(self.parind["dih"][i])
             a,b,c,d  = self.rics["dih"][i]
             f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["dih"][diht], a+1, b+1, c+1, d+1, diht))
         # write impropers/oops
         f.write("\nImpropers\n\n")
-        for i in xrange(len(self.rics["oop"])):            
+        for i in range(len(self.rics["oop"])):            
             oopt = self.parind["oop"][i]
             if oopt:
                 a,b,c,d  = self.rics["oop"][i]
                 f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, b+1, c+1, d+1, oopt))
+                if self._settings["use_improper_umbrella_harmonic"] == True:
+                    # add the other two permutations of the bended atom (abcd : a is central, d is bent)
+                    f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, d+1, b+1, c+1, oopt))
+                    f.write("%10d %5d %8d %8d %8d %8d # %s\n" % (i+1, self.par_types["oop"][tuple(oopt)], a+1, c+1, d+1, b+1, oopt))
         f.write("\n")
         f.close()
         return
@@ -342,7 +350,7 @@ class ff2lammps(base):
             alpha = np.sqrt(k/E0)
             pstring = "bond_coeff %5d morse %12.6f%12.6f %12.6f" % (number, E0, alpha, r0)
         else:
-            raise ValueError, "unknown bond potential"
+            raise ValueError("unknown bond potential")
         return [pstring]
 
     def angleterm_formatter(self, number, pot_type, params):
@@ -383,7 +391,7 @@ class ff2lammps(base):
             else:
                 pstrings.append("angle_coeff %5d cosine/vdwl13   %s 1.0" % (number, pstring))
         else:
-            raise ValueError, "unknown angle potential"
+            raise ValueError("unknown angle potential")
         return pstrings
 
 #                    pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
@@ -401,7 +409,7 @@ class ff2lammps(base):
             v1, v2, v3, v4 = params[:4]
             pstring = "%12.6f %12.6f %12.6f %12.6f" % (v1, v2, v3, v4)
         else:
-            raise ValueError, "unknown dihedral potential"
+            raise ValueError("unknown dihedral potential")
         return ["dihedral_coeff %5d %s" % (number, pstring)]
 
 
@@ -413,7 +421,7 @@ class ff2lammps(base):
         if pot_type == "harm":
             pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])
         else:
-            raise ValueError, "unknown improper/oop potential"
+            raise ValueError("unknown improper/oop potential")
         return ["improper_coeff %5d %s" % (number, pstring)]
 
 
@@ -476,7 +484,7 @@ class ff2lammps(base):
                     alpha = np.sqrt(k/E0)
                     pstring = "morse %12.6f%12.6f %12.6f" % (E0, alpha, r0)
                 else:
-                    raise ValueError, "unknown bond potential"
+                    raise ValueError("unknown bond potential")
                 f.write("bond_coeff %5d %s    # %s\n" % (bt_number, pstring, ibt))
         # angle style
         if self._settings["use_angle_cosine_buck6d"]:
@@ -521,7 +529,7 @@ class ff2lammps(base):
                     else:
                         f.write("angle_coeff %5d cosine/vdwl13   %s 1.0   # %s\n" % (at_number, pstring, iat))
                 else:
-                    raise ValueError, "unknown angle potential"
+                    raise ValueError("unknown angle potential")
         # dihedral style
         f.write("\ndihedral_style opls\n\n")
         for dt in self.par_types["dih"].keys():
@@ -535,18 +543,24 @@ class ff2lammps(base):
                     v1, v2, v3, v4 = params[:4]
                     pstring = "%12.6f %12.6f %12.6f %12.6f" % (v1, v2, v3, v4)
                 else:
-                    raise ValueError, "unknown dihedral potential"
+                    raise ValueError("unknown dihedral potential")
                 f.write("dihedral_coeff %5d %s    # %s\n" % (dt_number, pstring, idt))
         # improper/oop style
-        f.write("\nimproper_style inversion/harmonic\n\n")
+        if self._settings["use_improper_umbrella_harmonic"] == True:
+            f.write("\nimproper_style umbrella/harmonic\n\n")
+        else:
+            f.write("\nimproper_style inversion/harmonic\n\n")
         for it in self.par_types["oop"].keys():
             it_number = self.par_types["oop"][it]
             for iit in it:
                 pot_type, params = self.par["oop"][iit]
                 if pot_type == "harm":
-                    pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])
+                    if self._settings["use_improper_umbrella_harmonic"] == True:
+                        pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal, params[1])
+                    else:
+                        pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])                        
                 else:
-                    raise ValueError, "unknown improper/oop potential"
+                    raise ValueError("unknown improper/oop potential")
                 f.write("improper_coeff %5d %s    # %s\n" % (it_number, pstring, iit))
         f.write("\nspecial_bonds lj 0.0 0.0 1.0 coul 1.0 1.0 1.0\n\n")
         f.write("# ------------------------ MOF-FF FORCE FIELD END --------------------------\n")

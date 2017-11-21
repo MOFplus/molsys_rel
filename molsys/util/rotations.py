@@ -157,7 +157,7 @@ def pax(rs,ms=None):
     else: ms = numpy.asarray(ms)
     rs = numpy.asarray(rs)
     I = moi(rs,ms=ms)
-    #print I
+    #print(I)
     eigval, eigvec = numpy.linalg.eigh(I)
     return eigval,eigvec
     

@@ -25,7 +25,7 @@ def _read_cube_header(f):
 
     # number of atoms and origin of the grid
     natom, origin = read_grid_line(f.readline())
-    print origin
+    print(origin)
     # numer of grid points in A direction and step vector A, and so on
     shape0, axis0 = read_grid_line(f.readline())
     shape1, axis1 = read_grid_line(f.readline())
@@ -48,7 +48,7 @@ def _read_cube_header(f):
     numbers = np.zeros(natom, int)
     pseudo_numbers = np.zeros(natom, float)
     coordinates = np.zeros((natom, 3), float)
-    for i in xrange(natom):
+    for i in range(natom):
         numbers[i], pseudo_numbers[i], coordinates[i] = read_coordinate_line(f.readline())
         # If the pseudo_number field is zero, we assume that no effective core
         # potentials were used.
@@ -103,10 +103,10 @@ def _write_cube_header(f, title, coordinates, numbers, origin, shape, axes, pseu
     x, y, z = origin
     print >> f, '%5i % 11.6f % 11.6f % 11.6f' % (natom, x, y, z)
     rvecs = axes
-    for i in xrange(3):
+    for i in range(3):
         x, y, z = rvecs[i]
         print >> f, '%5i % 11.6f % 11.6f % 11.6f' % (shape[i], x, y, z)
-    for i in xrange(natom):
+    for i in range(natom):
         q = pseudo_numbers[i]
         x, y, z = coordinates[i]
         print >> f, '%5i % 11.6f % 11.6f % 11.6f % 11.6f' % (numbers[i], q, x, y, z)

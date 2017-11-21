@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#from molsys import *
+import molsys
 import molsys.util.elems as elements
 import molsys.util.rotations as rotations
 import string
@@ -15,13 +15,32 @@ class bb:
 
     def __init__(self,mol):
 #        if mol.is_bb == False:
-#            raise IOError, "No bb info available!"
+#            raise IOError,("No bb info available!")
         self.mol = mol
         self.mol.dummies_hidden=False
         self.mol.connectors = []
         self.mol.connector_dummies=[]
         self.mol.connector_atoms = []
         return
+
+    def __mildcopy__(self, memo):
+        """self.mol instance is kept the same, the rest is deepcopied
+        __mildcopy__ is meant as an auxiliary method of mol.__deepcopy__
+        to prevent recursion error. Deepcopying a bb instance works
+        as usual because the bb.mol.__deepcopy__ stops the recursion
+        with bb.mol.bb.__mildcopy__"""
+        try: #python3
+            newone = type(self)(molsys.mol())
+        except: #python2
+            newone = type(self)(bb, None)
+        newdict = newone.__dict__
+        newdict.update(self.__dict__)
+        for key, val in newdict.items():
+            if key != "mol":
+                newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
+        return newone
+
+
 
     def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=2, label = None):
         self.mol.specific_conn = specific_conn  # that should be obtained from the file itself ?!!?
@@ -50,8 +69,7 @@ class bb:
         elif self.mol.center_point == "special":
             center = self.mol.special_center_point
         else:
-            print "unknown center point option"
-            raise IOError
+            raise IOError("unknown center point option")
         self.mol.translate(-center)
         return
 
@@ -114,7 +132,7 @@ class bb:
         """
         if self.mol.natoms != other.natoms: return False
         rmsd = 0.0
-        for i in xrange(self.mol.natoms):
+        for i in range(self.mol.natoms):
             sxyz = self.mol.xyz[i]
             r = other.xyz-sxyz
             d = np.sqrt(np.sum(r*r, axis=1))

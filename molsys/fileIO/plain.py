@@ -27,6 +27,6 @@ def write(mol, fname):
         -mol    (obj): instance of a molclass
     """
     with open(fname,'w') as f:
-        for i in xrange(natoms):
+        for i in range(natoms):
             f.write("%12.6f %12.6f %12.6f\n" % (mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     return

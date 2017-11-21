@@ -84,7 +84,7 @@ class spg:
         num     = self.mol.get_elems_number()
         pos_rem = []
         num_rem = []
-        for i in xrange(self.mol.natoms):
+        for i in range(self.mol.natoms):
             if num[i] not in omit:
                 pos_rem.append(pos[i])
                 num_rem.append(num[i])
@@ -102,7 +102,7 @@ class spg:
             assert self.spgcell != None
         except:
             self.generate_spgcell()
-        #print self.spgcell
+        #print(self.spgcell)
         result = spglib.get_spacegroup(self.spgcell, symprec=self.symprec)
         result = result.split()
         symbol = result[0]
@@ -164,7 +164,7 @@ class spg:
                     return False
         
         dataset = spglib.get_symmetry_from_database(spgnum)
-        #print dataset
+        #print(dataset)
         
         #self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
         self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
@@ -206,8 +206,8 @@ class spg:
         if new_spgcell == None:
             logger.error("Search for primitive cell failed with symprec %f" % self.symprec)
             return
-        print new_spgcell[0]
-        print new_spgcell[2]
+        print(new_spgcell[0])
+        print(new_spgcell[2])
         new_mol = molsys.mol()
         new_mol.set_natoms(len(new_spgcell[2]))
         new_mol.set_cell(new_spgcell[0])
@@ -256,7 +256,7 @@ class spg:
         self.mol.scale_cell(superinv)
         xyzsymlist = []
         fracsymlist = []
-        for i in xrange(nsym):
+        for i in range(nsym):
             frac = np.tensordot(self.mol.xyz, lrot[i], axes=1)+ltra[i]
             frac[np.isclose(frac,0)]=0. ###avoid negative zeros for floor
             frac[np.isclose(frac,1)]=0. ###ones are zeros
