@@ -55,6 +55,17 @@ class bb:
         self.mol.translate(-center)
         return
 
+    def get_coc(self):
+        """redundant if center_point == 'coc' """
+        mass, masstype = self.mol.get_mass(return_masstype=True)
+        self.mol.set_unit_mass()
+        coc = self.mol.get_com(idx=self.mol.connectors)
+        self.mol.set_mass(mass, masstype)
+        return coc
+
+    #def get_radius(self):
+    #    coc = self.get_coc()
+    #    self.mol.connector_xyz[:,0:]
 
     def hide_dummy_atoms(self):
         ''' depreciated, has been used to remove dummies, requires them to be the last atoms

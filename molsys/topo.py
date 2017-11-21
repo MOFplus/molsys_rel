@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import sys
 import string as st
 import numpy as np
 import types
@@ -15,6 +16,8 @@ from molsys.util import cell_manipulation
 import random
 import itertools
 import mol
+
+from scipy.optimize import linear_sum_assignment as hungarian
 
 try:
     from ase import Atoms
@@ -265,62 +268,155 @@ class topo(mol.mol):
                             self.pconn[j].append(image*-1)
         return
     
+#    def detect_conn_by_coord_WRONG(self, pconn=False, exclude_pairs=None):
+#        assert len(self.ncoord) == self.natoms , "number of coordination per vertex must be set"
+#        self.use_pconn = pconn
+#        self.set_empty_conn()
+#        ncoord = self.ncoord[:]
+#        if self.use_pconn: self.set_empty_pconn()
+#        for i in xrange(self.natoms):
+#            dists = []
+#            js = []
+#            imgs = []
+#            maxcoord = ncoord[i]
+#            if maxcoord == 0:
+#                continue
+#            for j in xrange(i+1,self.natoms):
+#                d,r,imgi=self.get_distvec2(i,j)
+#                ### exclude w/ exclude pairs
+#                excluded = False
+#                if exclude_pairs:
+#                    # delete excluded pairs
+#                    el_p1,el_p2 = (self.elems[i], self.elems[j]),(self.elems[j], self.elems[i])
+#                    for expair in exclude_pairs:
+#                        if (expair == el_p1) or (expair == el_p2):
+#                            excluded = True
+#                            break
+#                if not excluded:
+#                    dists.append(d)
+#                    js.append(j)
+#                    imgs.append(imgi)
+#            ### INIT np.array
+#            dists = np.array(dists)
+#            js = np.array(js)
+#            imgs = np.array(imgs)
+#            ### GET SORTING INDICES
+#            sortind = np.argsort(dists)
+#            ### ARRANGE BY SORTING INDICES
+#            dists = dists[sortind]
+#            js = js[sortind]
+#            imgs = imgs[sortind]
+#            ### GET MAX IND UNTILL BOND
+#            imgslen = map(len,imgs)
+#            imgscum = np.cumsum(imgslen)
+#            try:
+#                tillind = np.where(imgscum == maxcoord)[0][0] + 1
+#            except IndexError:
+#                print self.name, self.ncoord[i], maxcoord
+#                print self.ncoord
+#                print ncoord
+#                print imgslen, imgscum
+#                break
+#            for k,j in enumerate(js[:tillind]):
+#                if imgslen[k] > 1 and not self.use_pconn:
+#                    raise ValueError, "Error in connectivity detection: use pconn!!!"
+#                for ii in imgs[k]:
+#                    self.conn[i].append(j)
+#                    self.conn[j].append(i)
+#                    if self.use_pconn:
+#                        image = images[ii]
+#                        self.pconn[i].append(image)
+#                        self.pconn[j].append(image*-1)
+#                ncoord[j] -= imgslen[k]
+#        return
+    
     def detect_conn_by_coord(self, pconn=False, exclude_pairs=None):
-        assert len(self.ncoord) == self.natoms , "number of coordination per vertex must be set"
+        """Detects connectivity by coordination number of the vertices/atoms
+        :Variables:
+            - self.natoms = N (int): number of atoms
+            - self.ncoord (list of int's): coordination number per vertex/atom
+            - dists (NxN float np.triu array): distances per distinct couple of vertices
+            - imgs (NxN list np.triu array): (periodic) images per bond
+            - nimgs (NxN int np.triu array): number of images per bond
+            - maximgs (N int array): max number of images per bond per atom
+                N.B.: 1 where 0
+            - rimgs (NxN int np.tril array): remainder nimgs - maximgs
+            - lnimgs (N list of lists): default addend list for possible bonds (=0)
+            - lrimgs (N list of lists): very-high addend list for impossible bonds (>>0, e.g. sys.maxint)
+                N.B.: impossible bonds are self bonds, inverse-cross bonds, and bonds that are non-detected as periodic images (hence rimgs)
+            - aimgs (NxM int array): augmented addend cost array for images
+            - adists (NxM float array): augmented dists array
+                N.B.: adists == 0 where aimgs returns "impossible" cost
+                else: returns default cost
+                N.B.B.: aimgs == very-high cost where adists CAN BE != 0
+        """
+        np.set_printoptions(precision=2,linewidth=240)
+        assert len(self.ncoord) == self.natoms,\
+            "number of coordination per vertex must be set"
         self.use_pconn = pconn
         self.set_empty_conn()
-        ncoord = self.ncoord[:]
-        if self.use_pconn: self.set_empty_pconn
+        if self.use_pconn: self.set_empty_pconn()
+        dists = np.zeros([self.natoms]*2)
+        imgs = np.empty([self.natoms]*2, dtype=np.object_)
+        imgs.fill([])
+        imgs = np.frompyfunc(list,1,1)(imgs)
+        nimgs = np.zeros([self.natoms]*2, dtype=np.int)
         for i in xrange(self.natoms):
-            dists = []
-            js = []
-            imgs = []
-            maxcoord = ncoord[i]
-            for j in xrange(i+1,self.natoms):
-                d,r,imgi=self.get_distvec2(i,j)
-                ### sort bond, set true first ncoord-th
-                excluded = False
-                if exclude_pairs:
-                    # delete excluded pairs
-                    el_p1,el_p2 = (self.elems[i], self.elems[j]),(self.elems[j], self.elems[i])
-                    for expair in exclude_pairs:
-                        if (expair == el_p1) or (expair == el_p2):
-                            ### REMOVE BOND
-                            excluded = True
-                            break
-                if not excluded:
-                    dists.append(d)
-                    js.append(j)
-                    imgs.append(imgi)
-            ### INIT np.array
-            dists = np.array(dists)
-            js = np.array(js)
-            imgs = np.array(imgs)
-            ### GET SORTING INDICES
-            sortind = np.argsort(dists)
-            ### ARRANGE BY SORTING INDICES
-            dists = dists[sortind]
-            js = js[sortind]
-            imgs = imgs[sortind]
-            ### GET MAX IND UNTILL BOND
-            imgslen = map(len,imgs)
-            imgscum = np.cumsum(imgslen)
-            try:
-                tillind = np.where(imgscum == maxcoord)[0][0] + 1
-                for k,j in enumerate(js[:tillind]):
-                    if imgslen[k] > 1 and not self.use_pconn:
-                        raise ValueError, "Error in connectivity detection: use pconn!!!"
-                    for ii in imgs[k]:
-                        self.conn[i].append(j)
-                        self.conn[j].append(i)
-                        #if self.use_pconn:
-                        #    image = images[ii]
-                        #    self.pconn[i].append(image)
-                        #    self.pconn[j].append(image*-1)
-                    ncoord[j] -= imgslen[k]
-            except IndexError:
-                import traceback
-                traceback.print_exc()
+            for j in xrange(i+1, self.natoms):
+                dists[i,j], rdummy, imgs[i,j] = self.get_distvec(i,j)
+            nimgs[i] = map(len,imgs[:,i])
+        nimgs = nimgs.T[:]
+        maximgs = np.max(nimgs, axis=0)
+        maximgs[0] = 1 ### zero atom bonds with first
+        rimgs = maximgs[np.newaxis,:] - nimgs #remainder
+        ### INIT AUGMENTED IMAGES ###
+        lnimgs = [[         [0]*j for j in i] for i in nimgs]
+        lrimgs = [[[sys.maxint]*j for j in i] for i in rimgs]
+        collect = zip(lnimgs,lrimgs)
+        aimgs = []
+        for i in xrange(self.natoms):
+            iaimgs = []
+            for c in zip(*collect[i]):
+                iaimgs.append(sum(c,[]))
+            aimgs.append(sum(iaimgs,[]))
+        aimgs = np.array(aimgs)
+        ### INIT AUGMENTED COSTS ###
+        ja = sum([[j]*m for j,m in enumerate(maximgs)], [])
+        adists = dists[:,ja]
+        acosts = adists + aimgs
+        ### INIT AUGMENTED COORDINATIONS ###
+        ia = sum([[i]*c for i,c in enumerate(self.ncoord)], [])
+        ### INIT BOTH AUGMENTATIONS (IMGS and COORDS) ###
+        ka = sum([[j]*self.ncoord[j] for j in ja], [])
+        ###ahung = acosts[ia]
+        ahung = acosts[ia][:,ka]
+        ### sort by increasing cost
+        hungarg = np.argsort(ahung, axis=1)
+        ###import pdb; pdb.set_trace()
+        ### set impossible cost to same bonds
+        bonds = zip(*hungarian(ahung)) ###HERE BROKEN
+        for b in bonds:
+            print ia[b[0]], jaia[b[1]]
+        ### exclude w/ exclude pairs: sets very-high
+        excluded = False
+        if exclude_pairs:
+            # delete excluded pairs
+            el_p1,el_p2 = (self.elems[i], self.elems[j]),(self.elems[j], self.elems[i])
+            for expair in exclude_pairs:
+                if (expair == el_p1) or (expair == el_p2):
+                    excluded = True
+                    break
+            #for k,j in enumerate(js[:tillind]):
+            #    if imgslen[k] > 1 and not self.use_pconn:
+            #        raise ValueError, "Error in connectivity detection: use pconn!!!"
+            #    for ii in imgs[k]:
+            #        self.conn[i].append(j)
+            #        self.conn[j].append(i)
+            #        if self.use_pconn:
+            #            image = images[ii]
+            #            self.pconn[i].append(image)
+            #            self.pconn[j].append(image*-1)
+            #    ncoord[j] -= imgslen[k]
         return
     
     def remove_duplicates(self, thresh=SMALL_DIST):
@@ -509,6 +605,7 @@ class topo(mol.mol):
         from mpl_toolkits.mplot3d import axes3d, Axes3D 
         import matplotlib.pyplot as plt
         col = ['r','g','b','m','c','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k','k']+['k']*200
+        print self.name
         fig = plt.figure(figsize=plt.figaspect(1.0)*1.5)
         ax = Axes3D(fig)
         atd = {}
@@ -1089,7 +1186,7 @@ class topo(mol.mol):
 
     def proportions2colors(self, prop, set_arg=False):
         nprop = np.array(prop).sum()
-        assert self.nbonds%nprop==0,  "these proportions do not work"
+        assert self.nbonds%nprop==0, "these proportions do not work"
         nc = self.nbonds/nprop
         colors = [c for c,p in enumerate(prop) for i in xrange(p*nc)]
         if set_arg: self.prop, self.nprop = prop, nprop

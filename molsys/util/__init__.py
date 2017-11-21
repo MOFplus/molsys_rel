@@ -8,4 +8,4 @@ from molsys.util.images import images
 from molsys.util.atomtyper import atomtyper
 from fragmentizer import fragmentizer
 
-__all__ = ['unit_cell', 'elems', 'rotations', 'atomtyper', 'images', 'fragmentizer','spacegroups']
+__all__ = ['unit_cell', 'elems', 'rotations', 'atomtyper', 'images', 'fragmentizer','spacegroups', 'parutil']

@@ -49,13 +49,15 @@ if mpi_size > 1:
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
-fhandler.setLevel(logging.DEBUG)
+#fhandler.setLevel(logging.DEBUG)
+fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
 if mpi_rank == 0:
     shandler  = logging.StreamHandler()
-    shandler.setLevel(logging.INFO)
+    #shandler.setLevel(logging.INFO)
+    shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
     
@@ -570,8 +572,10 @@ class mol(mpiobject):
         ''' scales the cell by a given fraction (0.1 ^= 10%)
         :Parameters:
             - scale: either single float or list (3,) of floats for x,y,z'''
+        if scale is None:
+            scale = [1,1,1]
         if not hasattr(scale, '__iter__'):
-            scale = 3*[scale]
+            scale = [scale,scale,scale]
         self.cellparams *= np.hstack([scale,[1,1,1]])
         frac_xyz = self.get_frac_xyz()
         self.cell *= np.array(scale)[:,np.newaxis]
@@ -1316,11 +1320,22 @@ class mol(mpiobject):
             self.amass.append(elements.mass[i])
         return
 
-    def get_mass(self):
+    def get_mass(self, return_masstype=False):
         """
         returns the mass for every atom as list
         """
-        return self.amass
+        if return_masstype:
+            return self.amass, self.masstype
+        else:
+            return self.amass
+
+    def set_mass(self, mass, masstype='real'):
+        """
+        returns the mass for every atom as list
+        """
+        self.amass = mass
+        self.masstype = masstype
+        return
 
     def set_nofrags(self):
         ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''

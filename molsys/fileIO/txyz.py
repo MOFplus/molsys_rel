@@ -177,7 +177,7 @@ def parse_connstring(mol, con_info, **kwargs):
     mol.connectors = numpy.array(mol.connectors)
     return
 
-def read_body(f, natoms, frags = True, topo = False):
+def read_body(f, natoms, frags = False, topo = False):
     """
     Routine, which reads the body of a txyz or a mfpx file
     :Parameters:
@@ -232,34 +232,36 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
         -frags  (bool) : flag to specify if fragment info should be in body or not
         -topo   (bool) : flag to specigy if pconn info should be in body or not
         -pbc    (bool) : if False, removes connectivity out of the box (meant for visualization)
-        -moldenrc (bool) : atypes compatible with molden, WORK IN PROGRESS
+        -moldenrc (bool) : atypes compatible with molden
     """
     if topo: frags = False   #from now on this is convention!
     if topo: pconn = mol.pconn
     if frags == True:
         fragtypes   = mol.fragtypes
         fragnumbers = mol.fragnumbers
+    else:
+        fragtypes = None
+        fragnumbers = None
     elems       = mol.elems
     xyz         = mol.xyz
     cnct        = mol.conn
     natoms      = mol.natoms
+    atypes      = mol.atypes
     if pbc == False:
         cellcond = .5*mol.cellparams[:3]
         cnct = [ [i for i in c if (abs(xyz[i]-xyz[e]) < cellcond).all()] for e,c in enumerate(cnct)]
-    if moldenr: ###TO BE DEBUGGED
-        moltypes = {}
-        moldentypes = []
-        for i in xrange(mol.natoms):
-            #if frags: item = '__'.join([mol.atypes[i], mol.fragtypes[i], str(mol.fragnumbers[i])]) 
-            if frags: item = '__'.join([mol.atypes[i], mol.fragtypes[i]]) 
-            else: item = mol.atypes[i]
-            if not item in moltypes:
-                moltypes[item]=(len(moltypes)+1, mol.elems[i])
-            moldentypes.append( moltypes[item][0] )
-        atypes = moldentypes
-        frags=False ### => only one column all together
-    else:
-        atypes      = mol.atypes
+    if moldenr:
+        if fragtypes is None: fragtypes = [None for i in mol.atypes]
+        if fragnumbers is None: fragnumbers = [None for i in mol.atypes]
+        from collections import Counter
+        oldatypes = zip(fragnumbers, fragtypes, atypes)
+        unique_oldatypes = Counter(oldatypes).keys()
+        unique_oldatypes.sort()
+        old2newatypes = {e:i for i,e in enumerate(unique_oldatypes)}
+        new2oldatypes = {i:e for i,e in enumerate(unique_oldatypes)}
+        newatypes = [old2newatypes[i] for i in oldatypes]
+        atypes = newatypes
+        frags = False ### encoded in one column only
     for i in xrange(mol.natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
@@ -282,13 +284,15 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
                 line += (len(conn)*"%7d ") % tuple(conn)
         f.write("%s \n" % line)
     if moldenr:
-        f.write("#atomtypes \n")
-        for i in moltypes:
-            f.write("%s %s %s \n" % (moltypes[i][0], i, moltypes[i][1]))
+        satoms = len(str(mol.natoms))
+        f.write("### type fragment_type fragment_number atom_type\n{\n")
+        for key,val in new2oldatypes.items():
+            f.write("    %%%ds: %%s,\n" % (satoms,) % (key,val))
+        f.write("}\n")
     return
 
 
-def write(mol, fname, topo = False, frags = False, pbc=True, moldenr=False):
+def write(mol, fname, topo = False, frags = False, pbc=True, moldenr=True):
     """
     Routine, which writes an txyz file
     :Parameters:
@@ -298,10 +302,10 @@ def write(mol, fname, topo = False, frags = False, pbc=True, moldenr=False):
     """
     cellparams = mol.cellparams
     f = open(fname, 'w')
-    if type(cellparams) != type(None):
+    if cellparams is not None:
         f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)
-    write_body(f, mol, topo=topo, frags = frags, pbc=pbc, moldenr=moldenr)
+    write_body(f, mol, topo = topo, frags = frags, pbc = pbc, moldenr = moldenr)
     f.close()
     return
