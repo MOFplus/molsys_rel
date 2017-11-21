@@ -17,7 +17,7 @@ def read(mol, f, gradient = False, cycle = -1):
     xyz = []
     elems = []
     for line in f:
-        sline = string.split(line)
+        sline = line.split()
         if sline[0][0] == "$":
             if sline[0] == "$coord": 
                 coord = True
@@ -26,7 +26,7 @@ def read(mol, f, gradient = False, cycle = -1):
                 coord = False
                 continue
         if coord:
-            xyz.append(map(float,sline[:3]))
+            xyz.append([float(i) for i in sline[:3]])
             elems.append(sline[3])
     f.close()
     mol.natoms = len(elems)
@@ -45,12 +45,12 @@ def read_gradfile(mol, f, cycle):
     found    = False
     ### get how many cylces are in the file
     for line in f:
-        sline = string.split(line)
+        sline = line.split()
         if sline[0] == "cycle": ncycle += 1
     f.seek(0)
     scycle = range(ncycle)[cycle]
     for line in f:
-        sline = string.split(line)
+        sline = line.split()
         if sline[0] == "cycle" and int(sline[2])-1 == scycle:
             ### found read in 
             energy = float(sline[6])
@@ -60,11 +60,11 @@ def read_gradfile(mol, f, cycle):
         if found:
             if len(sline) == 4:
                 ### coord info
-                xyz.append(map(float,sline[:3]))
+                xyz.append([float(i) for i in sline[:3]])
                 elems.append(sline[3])
             elif len(sline) == 3:
                 ### grad info
-                grad.append(map(lambda a: float(a.replace("D","E")), sline[:3]))
+                grad.append([lambda a: float(a.replace("D","E"))(i) for i in sline[:3]])
     f.close()
     mol.natoms = len(elems)
     mol.xyz = numpy.array(xyz)/angstrom

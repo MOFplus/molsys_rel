@@ -143,7 +143,7 @@ class conngraph:
         islands = []
         while len(remain_list) > 0:
             l = self.flood_fill(self.molg, self.molg.vertex(remain_list[0]), [])
-            #print len(l) # debug message - prints sizes of all islands...
+            #print(len(l) # debug message - prints sizes of all islands...)
             islands.append(l)
             for i in l:
                 remain_list.remove(int(i))
@@ -186,7 +186,7 @@ class molgraph(conngraph):
                 self.molg.ep.Nk[e] = dist+1
             else:
                 self.molg.ep.Nk[e] = 0
-            #print self.molg.ep.Nk[e]
+            #print(self.molg.ep.Nk[e])
         return
 
     def find_cluster_treshold(self):
@@ -338,13 +338,13 @@ class molgraph(conngraph):
                 for j in via.all_neighbours():
                     if j not in cluster_atoms:
                         ext_bond.append(int(str(j)))
-            #print "cluster %s consisting of %d atoms is %d times connected" % (str(i), len(cluster_atoms), len(ext_bond))
+            #print("cluster %s consisting of %d atoms is %d times connected" % (str(i), len(cluster_atoms), len(ext_bond)))
             # now check to which clusters these external bonds belong to
             for ea in ext_bond:
                 for ji, j in enumerate(self.clusters):
                     if ea in j:
                         this_cluster_conn.append(ji)
-            #            print " -> bonded to cluster ", ji
+            #            print(" -> bonded to cluster ", ji)
                         break
             cluster_conn.append(this_cluster_conn)
         return cluster_conn
@@ -479,13 +479,13 @@ class molgraph(conngraph):
                         ext_bond.append(int(str(j)))
             xyz.append(self.mol.get_com(cidx))
             #xyz.append(self.center(cxyz))
-            if verbose: print "cluster %s consisting of %d atoms is %d times connected" % (str(i), 
+            if verbose: print("cluster %s consisting of %d atoms is %d times connected" % (str(i), )
                     len(cluster_atoms), len(ext_bond))
             # now check to which clusters these external bonds belong to
             for ea in ext_bond:
                 for ji, j in enumerate(self.clusters):
                     if ea in j:
-                        if verbose: print " -> bonded to cluster ", ji
+                        if verbose: print(" -> bonded to cluster ", ji)
                         tm.conn[i].append(ji)
                         break
         ### check for consistence of conn
@@ -499,7 +499,7 @@ class molgraph(conngraph):
             for j in tm.conn[i]:
                 if j>i:
                     if not i in tm.conn[j]:
-                        if verbose: print "Fragment topology is inconsitent"
+                        if verbose: print("Fragment topology is inconsitent")
         tm.set_xyz(np.array(xyz))
         tm.set_elems(elems)
         tm.set_atypes(tm.natoms*['0'])
@@ -508,7 +508,7 @@ class molgraph(conngraph):
         tm.add_pconn()
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
-        if verbose: print self.threshes
+        if verbose: print(self.threshes)
         return tg
     
 
@@ -608,8 +608,8 @@ class topograph(conngraph):
         neighbours = [[start_vertex, start_cell]]
         for level in range(depth):
             neighbours2 = []
-            #print "--------- level "+str(level)+" -----------"
-            #print "neighbours: "+str(neighbours)
+            #print("--------- level "+str(level)+" -----------")
+            #print("neighbours: "+str(neighbours))
             for n in neighbours:
                 # get the neighbours of the neighbours and add them to the list neighbours2
                 visited = self.get_cs1(n[0], n[1])
@@ -617,11 +617,11 @@ class topograph(conngraph):
                     if not contains(neighbours2, v):
                         if not contains(ignore_list, v):
                             neighbours2.append(v)
-            #print "ignore_list: " +str(ignore_list)
+            #print("ignore_list: " +str(ignore_list))
             # put the neighbours2 into the ignore list
             for n2 in neighbours2:
                 ignore_list.append(n2)
-            #print "neighbours2: "+str(neighbours2)
+            #print("neighbours2: "+str(neighbours2))
             # the neighbours2 are all the vertices which can be reached with the cs_level operation.
             cs[level] = len(neighbours2)
             # if we want to repeat the procedure for the cs_(level+1) operation we have to make the neighbours2 to the neighbours
@@ -978,11 +978,11 @@ class topotyper(object):
         for i, atoms in enumerate(ca):
             m = self.mg.mol.new_mol_by_index(atoms)
             mg = molgraph(m)
-            #print "i "+str(i)
+            #print("i "+str(i))
             j = len(bb_molgraphs) - 1
             while j >= 0:
                 mg2 = bb_molgraphs[j]
-                #print "  j "+str(j)
+                #print("  j "+str(j))
                 if mg.mol.natoms > 1 and mg2.mol.natoms > 1:
                     if self.tg.mol.atypes[j] == self.tg.mol.atypes[i]:
                         if not isomorphism(mg.molg, mg2.molg):
@@ -1064,17 +1064,17 @@ class topotyper(object):
         #elemseq = [[] for i in range(len(atomseq))]
         for i in atomseq:
             for j in i:
-                print j
+                print(j)
                 for k in j:
-                    print elems[k],
-                print
+                    print(elems[k], end=" ")
+                print()
         #for i,ai in enumerate(atomseq):
-        #    print i
+        #    print(i)
         #    for j in ai:
         #        for k in j:
-        #            print elems[k],
-        #        print
-        #    #print i, ai
+        #            print(elems[k], end=" ")
+        #        print()
+        #    #print(i, ai)
         return
 
     def compute_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
@@ -1175,15 +1175,15 @@ class topotyper(object):
 
     def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
         # Now write building blocks
-        #print "============"
-        #print unique_bbs
-        #print atomtype_dict
-        #print organicity
+        #print("============")
+        #print(unique_bbs)
+        #print(atomtype_dict)
+        #print(organicity)
         #try:
-        #    print neighbour_atypes
+        #    print(neighbour_atypes)
         #except:
-        #    print "no 2-conns"
-        #print "============"
+        #    print("no 2-conns")
+        #print("============")
         self.compute_bbs(foldername, org_flag=org_flag, ino_flag=ino_flag)
         if not os.path.exists(foldername):
             os.mkdir(foldername)

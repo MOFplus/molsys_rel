@@ -13,14 +13,14 @@ def read(mol, f, cycle = 0):
     natoms = int(fline[0])
     ### look how many cycles are in 
 #    for line in f.readlines():
-#        sline=string.split(line)
+#        sline=line.split()
 #        if len(sline)==1:
 #            if int(sline)==natoms: ncycle+=1
 #    ### now seek to cycle
 #    cycle=range(ncycle)[cycle]
 #    f.seek(natoms*cycle+1)
 #    if len(fline)>1:
-#        cellparams = map(string.atof,fline[1:7])
+#        cellparams = map(float,fline[1:7])
 #        mol.set_cellparams(cellparams)
     f.readline()
     xyz = numpy.zeros((natoms, 3))

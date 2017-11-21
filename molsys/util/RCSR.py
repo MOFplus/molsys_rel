@@ -12,7 +12,7 @@ class rcsr(object):
     def read_arc(self,fname):
         f = open(fname, 'r')
         for line in f.xreadlines():
-            sline = string.split(line)
+            sline = line.split()
             if len(sline)>0:
                 if sline[0] == 'key':
                     dim = int(sline[1])
@@ -100,7 +100,7 @@ class rcsr(object):
 
     def parse_3dall(self, txt):
         ndic = {}
-#        print txt
+#        print(txt)
         lines = txt.split('\n')[1:]
         # jump over line cotaining the id
         lines.pop(0)

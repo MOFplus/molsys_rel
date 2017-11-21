@@ -86,7 +86,7 @@ class ff2lammps(base):
                 e = etup.split("_")[0]
                 e = filter(lambda x: x.isalpha(), e)
                 self.plmps_mass[at] = elements.mass[e]
-                #print "with mass %12.6f" % elements.mass[e]
+                #print("with mass %12.6f" % elements.mass[e])
         for i, ati in enumerate(self.plmps_atypes):
             for j, atj in enumerate(self.plmps_atypes[i:],i):
                 vdwi, chai = ati.split("/")
@@ -350,7 +350,7 @@ class ff2lammps(base):
             alpha = np.sqrt(k/E0)
             pstring = "bond_coeff %5d morse %12.6f%12.6f %12.6f" % (number, E0, alpha, r0)
         else:
-            raise ValueError, "unknown bond potential"
+            raise ValueError("unknown bond potential")
         return [pstring]
 
     def angleterm_formatter(self, number, pot_type, params):
@@ -391,7 +391,7 @@ class ff2lammps(base):
             else:
                 pstrings.append("angle_coeff %5d cosine/vdwl13   %s 1.0" % (number, pstring))
         else:
-            raise ValueError, "unknown angle potential"
+            raise ValueError("unknown angle potential")
         return pstrings
 
 #                    pstring = "%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" % (th0, K2, K3, K4, K5, K6)
@@ -409,7 +409,7 @@ class ff2lammps(base):
             v1, v2, v3, v4 = params[:4]
             pstring = "%12.6f %12.6f %12.6f %12.6f" % (v1, v2, v3, v4)
         else:
-            raise ValueError, "unknown dihedral potential"
+            raise ValueError("unknown dihedral potential")
         return ["dihedral_coeff %5d %s" % (number, pstring)]
 
 
@@ -421,7 +421,7 @@ class ff2lammps(base):
         if pot_type == "harm":
             pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])
         else:
-            raise ValueError, "unknown improper/oop potential"
+            raise ValueError("unknown improper/oop potential")
         return ["improper_coeff %5d %s" % (number, pstring)]
 
 
@@ -484,7 +484,7 @@ class ff2lammps(base):
                     alpha = np.sqrt(k/E0)
                     pstring = "morse %12.6f%12.6f %12.6f" % (E0, alpha, r0)
                 else:
-                    raise ValueError, "unknown bond potential"
+                    raise ValueError("unknown bond potential")
                 f.write("bond_coeff %5d %s    # %s\n" % (bt_number, pstring, ibt))
         # angle style
         if self._settings["use_angle_cosine_buck6d"]:
@@ -529,7 +529,7 @@ class ff2lammps(base):
                     else:
                         f.write("angle_coeff %5d cosine/vdwl13   %s 1.0   # %s\n" % (at_number, pstring, iat))
                 else:
-                    raise ValueError, "unknown angle potential"
+                    raise ValueError("unknown angle potential")
         # dihedral style
         f.write("\ndihedral_style opls\n\n")
         for dt in self.par_types["dih"].keys():
@@ -543,7 +543,7 @@ class ff2lammps(base):
                     v1, v2, v3, v4 = params[:4]
                     pstring = "%12.6f %12.6f %12.6f %12.6f" % (v1, v2, v3, v4)
                 else:
-                    raise ValueError, "unknown dihedral potential"
+                    raise ValueError("unknown dihedral potential")
                 f.write("dihedral_coeff %5d %s    # %s\n" % (dt_number, pstring, idt))
         # improper/oop style
         if self._settings["use_improper_umbrella_harmonic"] == True:
@@ -560,7 +560,7 @@ class ff2lammps(base):
                     else:
                         pstring = "%12.6f %12.6f" % (params[0]*mdyn2kcal*1.5, params[1])                        
                 else:
-                    raise ValueError, "unknown improper/oop potential"
+                    raise ValueError("unknown improper/oop potential")
                 f.write("improper_coeff %5d %s    # %s\n" % (it_number, pstring, iit))
         f.write("\nspecial_bonds lj 0.0 0.0 1.0 coul 1.0 1.0 1.0\n\n")
         f.write("# ------------------------ MOF-FF FORCE FIELD END --------------------------\n")

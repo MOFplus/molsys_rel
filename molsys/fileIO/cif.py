@@ -58,10 +58,11 @@ def read(mol,fname,make_P1=True,detect_conn=True):
     cellparams=[]
     cellparams.append(cf['_cell_length_a'])
     
-    elems = map(str.lower,map(str,cf.GetItemValue('_atom_site_type_symbol')))
-    x = map(format_float, cf.GetItemValue('_atom_site_fract_x'))
-    y = map(format_float, cf.GetItemValue('_atom_site_fract_y'))
-    z = map(format_float, cf.GetItemValue('_atom_site_fract_z'))
+    elems = [str(i) for i in cf.GetItemValue('_atom_site_type_symbol')]
+    elems = [i.lower() for i in elems]
+    x = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_x')]
+    y = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_y')]
+    z = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_z')]
     a = format_float(cf.GetItemValue('_cell_length_a'))
     b = format_float(cf.GetItemValue('_cell_length_b'))
     c = format_float(cf.GetItemValue('_cell_length_c'))

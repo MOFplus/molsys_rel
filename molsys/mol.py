@@ -7,6 +7,7 @@ import types
 import copy
 import string
 import os
+import sys
 import subprocess
 try:
     from cStringIO import StringIO
@@ -109,24 +110,35 @@ class mpiobject(object):
             __builtin__.print(*args, file=self.out, **kwargs)
             self.out.flush()
 
+    def __deepcopy__(self, memo):
+        """__deepcopy__ method for mol class.
+        The main reason to override the default deepcopy behaviour is 
+        forward-compatibility with python3. Two reasons:
+        - mol.out can be sys.stdout, now a TextIOWrapper.
+            TextIOWrapper is not pickable, thus not copyable. In our case it is
+            just set the same and not copied.
+        - mol.bb.mol.bb.mol... circular reference is not handled properly
+            and raises an RecursionError. The reference is properly kept.
+            Try:
+                mnew = copy.deepcopy(m)
+                print(mnew is mnew.bb.mol)
+                print(mnew.bb is mnew.bb.mol.bb)"""
+        newone = type(self)()
+        newdict = newone.__dict__
+        newdict.update(self.__dict__)
+        for key, val in newdict.items():
+            if key == "out":
+                newdict[key] = val
+            elif key != "bb":
+                newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
+        newone.bb = newone.bb.__mildcopy__(memo)
+        newone.bb.mol = newone ### AND RECURSIVELY! :)
+        return newone
 
 
 class mol(mpiobject):
     def __init__(self, mpi_comm = None, out = None):
         super(mol,self).__init__(mpi_comm, out)
-#        if mpi_comm:
-#            self.mpi_comm = mpi_comm
-#        else:
-#            try:
-#                self.mpi_comm = MPI.COMM_WORLD
-#            except NameError:
-#                pass #self.mpi_comm = None
-#        try:
-#            self.mpi_rank = self.mpi_comm.Get_rank()
-#            self.mpi_size = self.mpi_comm.Get_size()
-#        except AttributeError:
-#            self.mpi_rank = 0
-#            self.mpi_size = 1
         self.natoms=0
         self.cell=None
         self.cellparams=None
@@ -242,7 +254,7 @@ class mol(mpiobject):
         fracs = [] 
         elems = []
         for j, site in enumerate(structure.sites):
-            elems.append(string.lower(site.specie.symbol))
+            elems.append(site.specie.symbol.lower())
             fracs.append([site.frac_coords[0],site.frac_coords[1], site.frac_coords[2]])
         fracs = np.array(fracs)
         m.natoms=len(elems)
@@ -503,8 +515,8 @@ class mol(mpiobject):
                         for c in range(len(conn[i][cc])):
                             pc = self.get_distvec(cc,conn[i][cc][c])[2]
                             if len(pc) != 1:
-                                print (self.get_distvec(cc,conn[i][cc][c]))
-                                print (c,conn[i][cc][c])
+                                print(self.get_distvec(cc,conn[i][cc][c]))
+                                print(c,conn[i][cc][c])
                                 raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
                             pc = pc[0]
                             if pc == 13:
@@ -1045,7 +1057,7 @@ class mol(mpiobject):
 
     def get_elems_number(self):
         ''' return a list of atomic numbers '''
-        return map(elements.number.__getitem__, self.elems)
+        return [elements.number[i] for i in self.elems]
 
     def get_elemlist(self):
         ''' Returns a list of unique elements '''
@@ -1067,7 +1079,7 @@ class mol(mpiobject):
             - elem_number: list of atomic numbers
         """
         assert len(elems_number) == self.natoms
-        self.elems = map(elements.number.keys().__getitem__, elems_number)
+        self.elems = [elements.number.keys()[i] for i in elems_number]
         return
 
     def get_atypes(self):
@@ -1143,7 +1155,7 @@ class mol(mpiobject):
             - cell_only (bool)  : if false, also the coordinates are changed
                                   in respect to new cell
         '''
-        assert len(cellparams) == 6
+        assert len(list(cellparams)) == 6
         if cell_only == False: frac_xyz = self.get_frac_xyz()
         self.periodic = True
         self.cellparams = cellparams

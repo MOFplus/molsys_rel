@@ -43,6 +43,7 @@ from molsys.util.timing import timer, Timer
 from molsys.util import elems
 from molsys.util.ff_descriptors import desc as ff_desc
 from molsys.util.aftypes import aftype, aftype_sort
+from molsys.addon import base
 
 import itertools
 import copy
@@ -754,9 +755,9 @@ class ff(base):
                                     counter += 1
                                     self.parind[ic][i] = full_parname_list
                                 #else:
-                                #    print "DEBUG DEBUG DEBUG %s" % ic
-                                #    print self.get_parname(r)
-                                #    print self.get_parname_sort(r, ic)
+                                #    print("DEBUG DEBUG DEBUG %s" % ic)
+                                #    print(self.get_parname(r))
+                                #    print(self.get_parname_sort(r, ic))
                 logger.info("%i parameters assigned for ref system %s" % (counter,ref))
                 #EQUIVALENCE
                 # now all params for this ref have been assigned ... any equivalnce will be renamed now in aftypes
@@ -1132,8 +1133,8 @@ class ff(base):
             if self._mol.mpi_size > 1:
                 ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
             self.ref_params[ref] = ref_par
-            #print ("DEBUG DEBUG Ref system %s" % ref)
-            #print (self.ref_params[ref])
+            #print(("DEBUG DEBUG Ref system %s" % ref))
+            #print((self.ref_params[ref]))
         self.timer.stop()
         return
 
@@ -1560,7 +1561,7 @@ class ff(base):
                             break
                     line = fpar.readline()
                     if len(line) == 0:
-                        raise IOError, "Variables block in fpar is missing!"
+                        raise IOError("Variables block in fpar is missing!")
         with open(fname, 'r') as fpar:
             stop = False
             while not stop:
@@ -1584,7 +1585,7 @@ class ff(base):
                             itype = int(sline[0])
                             ptype = sline[1]
                             ident = sline[-1]
-#                            pot = string.split(ident, '-')
+#                            pot = ident.split('-')
 #                            if pot not in self.loaded_pots[curric]: self.loaded_pots[curric].append(pot[0])
                             param = sline[2:-2]
                             if fit:
@@ -1593,7 +1594,7 @@ class ff(base):
                                 for paridx,p in enumerate(param):
                                     if p[0] == "$":
                                         if not p in self.par.variables:
-                                            raise IOError, "Varible %s undefiend in variable block" % p
+                                            raise IOError("Varible %s undefiend in variable block" % p)
                                         self.par.variables[p].pos.append((curric,ident,paridx))
                                         newparam.append(p)
                                     else:
@@ -1601,7 +1602,7 @@ class ff(base):
                                 param = newparam
                             else:
                                 param = map(float, param)
-                            #if ident in par: raise ValueError, "Identifier %s appears twice" % ident
+                            #if ident in par: raise ValueError("Identifier %s appears twice" % ident)
                             if ident in par:
                                 logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
                             par[ident] = (ptype, param)

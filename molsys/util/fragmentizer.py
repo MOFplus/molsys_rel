@@ -168,7 +168,7 @@ class fragmentizer:
         vtype = map(lambda e: e.split("_")[0], atypes)
         vtype = filter(lambda e: (e[0] != "x") and (e[0] != "h"), vtype)
         vtype = list(set(vtype))
-        # print vtype
+        # print(vtype)
         # scan for relevant fragments
         scan_frag = []
         scan_prio = []

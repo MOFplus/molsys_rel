@@ -229,7 +229,7 @@ class wrapper(base):
                         count += 1
             f.write("%s %d\n" % (header[ict], count))
             f.write(buffer_out)
-#            print ict, count
+#            print(ict, count)
         f.write("FINISH\n")
         ### pair potentials ###
         buffer_out = ""
@@ -407,7 +407,7 @@ class wrapper(base):
                 "c-expterm"  : 2.25,
                 "vdwdampfact": 0.25,
                 }):
-        t1,t2 = string.split(pair,":")
+        t1,t2 = pair.split(":")
         dlp_t1 = self.m.ff.types2numbers[t1]
         dlp_t2 = self.m.ff.types2numbers[t2]
         if potential == "buck6d":

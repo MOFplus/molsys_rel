@@ -29,11 +29,11 @@ def main(argv, option):
     try:
           opts, args = getopt.getopt(argv, shortoptions, longoptions) # Similar to GNU version of getopt: options do not have to appear before all the operands
     except getopt.GetoptError:
-          print '*** INPUT ERROR:\n'+helpmessage
+          print('*** INPUT ERROR:\n'+helpmessage)
           sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print '*** INPUT HELP :\n'+helpmessage
+            print('*** INPUT HELP :\n'+helpmessage)
             sys.exit()
         for field in option:
             if opt in ("-"+field[1], "--"+field[2]):

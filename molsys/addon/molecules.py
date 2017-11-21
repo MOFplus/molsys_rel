@@ -53,6 +53,6 @@ class molecules(object):
             nmol += 1
         # all atoms are assigned
         #if mol.verbose:
-        #print "$$ -- found %d independent molecules from connectivity" % nmol
+        #print("$$ -- found %d independent molecules from connectivity" % nmol)
         self.nmols=nmol
         return

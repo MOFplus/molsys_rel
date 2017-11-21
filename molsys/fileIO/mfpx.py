@@ -15,7 +15,7 @@ def read(mol, f):
     """
     ### read header ###
     ftype = 'xyz'
-    lbuffer = string.split(f.readline())
+    lbuffer = f.readline().split()
     stop = False
     while not stop:
         if lbuffer[0] != '#':
@@ -26,11 +26,11 @@ def read(mol, f):
             if keyword == 'type':
                 ftype = lbuffer[2]
             elif keyword == 'cell':
-                cellparams = map(string.atof,lbuffer[2:8])
+                cellparams = [float(i) for i in lbuffer[2:8]]
                 mol.set_cellparams(cellparams)
             elif keyword == 'cellvect':
                 mol.periodic = True
-                celllist = map(string.atof,lbuffer[2:11])
+                celllist = [float(i) for i in lbuffer[2:11]]
                 cell = numpy.array(celllist)
                 cell.shape = (3,3)
                 mol.set_cell(cell)
@@ -38,14 +38,14 @@ def read(mol, f):
                 mol.is_bb = True
                 mol.center_point = lbuffer[2]
                 if mol.center_point == 'special':
-                    mol.special_center_point = numpy.array(map(float,lbuffer[3:6]))
+                    mol.special_center_point = numpy.array([float(i) for i in lbuffer[3:6]])
             elif keyword == 'bbconn':
                 mol.is_bb = True
                 con_info = lbuffer[2:]
             elif keyword == 'orient':
-                orient = map(string.atoi,lbuffer[2:])
+                orient = [int(i) for i in lbuffer[2:]]
                 mol.orientation = orient
-            lbuffer = string.split(f.readline())
+            lbuffer = f.readline().split()
     ### read body
     if ftype == 'xyz':
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
@@ -91,7 +91,7 @@ def write(mol, fname, fullcell = True):
         if fullcell:
 #            elif keyword == 'cellvect':
 #                mol.periodic = True
-#                celllist = map(string.atof,lbuffer[2:11])
+#                celllist = [float(i) for i in lbuffer[2:11]]
 #                cell = numpy.array(celllist)
 #                cell.shape = (3,3)
 #                mol.set_cell(cell)

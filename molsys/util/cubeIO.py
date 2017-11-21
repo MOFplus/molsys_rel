@@ -25,7 +25,7 @@ def _read_cube_header(f):
 
     # number of atoms and origin of the grid
     natom, origin = read_grid_line(f.readline())
-    print origin
+    print(origin)
     # numer of grid points in A direction and step vector A, and so on
     shape0, axis0 = read_grid_line(f.readline())
     shape1, axis1 = read_grid_line(f.readline())

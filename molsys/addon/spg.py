@@ -102,7 +102,7 @@ class spg:
             assert self.spgcell != None
         except:
             self.generate_spgcell()
-        #print self.spgcell
+        #print(self.spgcell)
         result = spglib.get_spacegroup(self.spgcell, symprec=self.symprec)
         result = result.split()
         symbol = result[0]
@@ -164,7 +164,7 @@ class spg:
                     return False
         
         dataset = spglib.get_symmetry_from_database(spgnum)
-        #print dataset
+        #print(dataset)
         
         #self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
         self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
@@ -206,8 +206,8 @@ class spg:
         if new_spgcell == None:
             logger.error("Search for primitive cell failed with symprec %f" % self.symprec)
             return
-        print new_spgcell[0]
-        print new_spgcell[2]
+        print(new_spgcell[0])
+        print(new_spgcell[2])
         new_mol = molsys.mol()
         new_mol.set_natoms(len(new_spgcell[2]))
         new_mol.set_cell(new_spgcell[0])

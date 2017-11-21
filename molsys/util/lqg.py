@@ -19,7 +19,7 @@ class reader(object):
         self.keys = {}
         f = open(fname, 'r')
         for line in f.xreadlines():
-            sline = string.split(line)
+            sline = line.split()
             if len(sline)>0:
                 if sline[0] == 'key':
                     dim = int(sline[1])
@@ -49,7 +49,7 @@ class lqg(object):
     def read_systre_key(self, skey, dim=3):
         self.dim = dim
         dfac = 2+self.dim
-        skey = string.split(skey)
+        skey = skey.split()
         self.nedges = len(skey)/dfac
         self.nvertices = 1
         self.edges = []
@@ -245,7 +245,7 @@ class lqg(object):
         idx = self.find_li_vectors(self.alpha)
         latbase = self.alpha[idx]
         counter = 0
-        ### TODO: switsch to other basis to make it more beautiful
+        ### TODO: switch to other basis to make it more beautiful
         for i in range(self.nbasevec):
             if i not in idx:
                 b = numpy.linalg.solve(latbase.T,self.alpha[i])
@@ -253,7 +253,7 @@ class lqg(object):
                 for j in range(self.dim):
                     bb += b[j]*self.cyclic_basis[idx[j]]
                 k[counter] = self.cyclic_basis[i]-bb
-                #print self.get_image(k[counter])
+                #print(self.get_image(k[counter]))
                 counter += 1
         if self.nvertices > 1:
             k[self.nbasevec-self.dim:,:] = self.cocycle_basis[0:self.nvertices-1,:]
@@ -278,7 +278,7 @@ class lqg(object):
             for i,e in enumerate(self.edges):
                 if self.labels[i] == [0,0,0]:
                     if ((e[0] in done) and (e[1] not in done)):
-                        #print e, self.fracs[i,:]
+                        #print(e, self.fracs[i,:])
                         frac_xyz[e[1],:] = (frac_xyz[e[0],:] + self.fracs[i,:])
                         done.append(e[1])
                     elif ((e[1] in done) and (e[0] not in done)):
@@ -288,16 +288,16 @@ class lqg(object):
             counter += 1
             if counter > 10: break
             #frac_xyz = frac_xyz%1
-        print len(done)
+        print(len(done))
         if len(done) != self.nvertices: 
-            print 'proceed'
+            print('proceed')
             for i,e in enumerate(self.edges):
                 if ((e[0] in done) and (e[1] not in done)):
-                    print e
+                    print(e)
                     frac_xyz[e[1],:] = frac_xyz[e[0],:] + self.fracs[i,:]
                     done.append(e[1])
                 elif ((e[1] in done) and (e[0] not in done)):
-                    print e, self.labels[i], self.fracs[i,:]
+                    print(e, self.labels[i], self.fracs[i,:])
                     #### problem!!!!!
                     frac_xyz[e[0],:] = frac_xyz[e[1],:] - self.fracs[i,:]
                     done.append(e[0])
@@ -382,7 +382,7 @@ class lqg(object):
             self.molg.set_directed(False)
             ee = self.molg.vertex(to_v).out_edges()
             newedges = [i for i in ee if i not in used and i not in edges]
-            print newedges
+            print(newedges)
             edges = newedges + edges[1:]
         else:
             used.append(e)

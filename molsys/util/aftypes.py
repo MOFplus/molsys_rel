@@ -177,7 +177,7 @@ if __name__ == "__main__":
 
     print(afd[t1])
     print(afd[t3])
-    print (c,c) in afd
+    print(c,c) in afd
     afd.appenditem(t1, "test")
 
     print(afd)

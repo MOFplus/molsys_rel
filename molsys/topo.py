@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
 import string as st
 import numpy as np
 import types
@@ -15,7 +16,7 @@ rotations = util.rotations ### THERE SHOULD BE A BETTER SOLUTION
 images = util.images ### THERE SHOULD BE A BETTER SOLUTION
 import random
 import itertools
-import mol
+from . import mol as mol
 
 try:
     from ase import Atoms
@@ -197,7 +198,7 @@ class topo(mol):
                                 pconn[i][cc][c] = np.array([0,0,0])
                             else:
                                 px,py,pz     = pconn[i][cc][c][0],pconn[i][cc][c][1],pconn[i][cc][c][2]
-                                #print px,py,pz
+                                #print(px,py,pz)
                                 iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
                                 iixyz= iix+nx*iiy+nx*ny*iiz
                                 conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
@@ -208,7 +209,7 @@ class topo(mol):
                                 if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
                                 if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
                                 if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
-                                #print px,py,pz
+                                #print(px,py,pz)
         self.conn, self.pconn, self.xyz = [],[],[]
         for cc in conn:
             for c in cc:
@@ -325,16 +326,16 @@ class topo(mol):
                         else:
                             # ok, we have this image already
                             use_it = True
-                            #print c, "=>", j
-                            #print atoms_image
+                            #print(c, "=>", j)
+                            #print(atoms_image)
                             for k, iii in enumerate(atoms_image):
-                                #print 'k',k
+                                #print('k',k)
                                 if (iii == ii) and (c[k] == j): use_it=False
                             if use_it:
                                 atoms_image.append(ii)
                                 atoms_pconn.append(images[ii])
             self.pconn.append(atoms_pconn)
-            #if len(atoms_pconn) != len(c): print "AOSUHDAPUFHPOUFHPWOUFHPOUDHSPUODHASIUDHAUSIDHSD"
+            #if len(atoms_pconn) != len(c): print("AOSUHDAPUFHPOUFHPWOUFHPOUDHSPUODHASIUDHAUSIDHSD")
         return
 
         # 'na',lower(label),xyz,i,j)
@@ -346,8 +347,8 @@ class topo(mol):
         ci = self.conn[i]
         cj = self.conn[j]
         #self.natoms += 1
-        #print i, ci
-        #print j, cj
+        #print(i, ci)
+        #print(j, cj)
         if ((i <= -1) or (j <= -1)):
             self.conn.append([])
             #self.pconn.append([])
@@ -366,8 +367,8 @@ class topo(mol):
         if self.use_pconn:
             self.pconn.append([np.zeros([3]),pci])
         self.natoms += 1
-        #print "end of insert .. conn:"
-        #print self.conn
+        #print("end of insert .. conn:")
+        #print(self.conn)
         return
 
 
@@ -614,7 +615,7 @@ class topo(mol):
         self.changed_vert = vert
         # compute delta in penalty
         delta_pen = self.pennew.sum()-peninit.sum()
-        # print "flipped colors of bonds %3d and %3d (vertices: %20s) -- delta penalty: %10.3f" % (self.bondA, self.bondB, str(vert), delta_pen)
+        # print("flipped colors of bonds %3d and %3d (vertices: %20s) -- delta penalty: %10.3f" % (self.bondA, self.bondB, str(vert), delta_pen))
         return delta_pen
 
     def unflip_colors(self):
@@ -657,7 +658,7 @@ class topo(mol):
                 accept = True
             else:
                 prob = np.exp(-dpen/penref)
-                #print "dpen %10.5f prob %10.5f" %(dpen, prob)
+                #print("dpen %10.5f prob %10.5f" %(dpen, prob))
                 if random.random() < prob:
                     accept=True
             if accept:
@@ -729,7 +730,7 @@ class topo(mol):
             laty = range(ncol)
             lowercase = list('kbabcdefghijklmnopqrstuvwxyz')
             lelem = [lowercase[i] for i in laty]
-            laty = map(str,laty)
+            laty = [str(i) for i in laty]
         elif lelem is None or laty is None:
             raise TypeError("lelem and laty must be both either None or ndarrays")
         elif len(lelem) != ncol or len(laty) != ncol:
@@ -848,7 +849,7 @@ class topo(mol):
         
 ### PENALTY FUNCTION HANDLERS ##################################################
     def calc_colpen(self, vert):
-        # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(self.bcolors[vert]))
+        # print("calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(self.bcolors[vert])))
         pen_sum = self.calc_colpen_sum(vert)
         if pen_sum == 0.0:
             # this vertex has the correct number of colors on the edges
@@ -858,7 +859,7 @@ class topo(mol):
             return pen_sum
 
     def calc_colpen_from_bcolor(self, vert, bcolor):
-        # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(bcolor))
+        # print("calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(bcolor)))
         pen_sum = self.calc_colpen_sum_from_bcolor(vert, bcolor)
         if pen_sum == 0.0:
             # this vertex has the correct number of colors on the edges
@@ -982,7 +983,7 @@ class topo(mol):
             bcvi = []
             for bc in bcol:
                 colpen = self.calc_colpen_from_bcolor(v,bc)
-                #print bc, colpen
+                #print(bc, colpen)
                 if colpen < 1e-8:
                     bcvi.append(bc)
             bcv.append(bcvi)
@@ -999,8 +1000,8 @@ class topo(mol):
         for ib, ibcolchrom in enumerate(bcolchroms):
             for iv,v in enumerate(vertices):
                 self.set_jbcol_from_ibcol(v,ibcolchrom[iv],set_arg=True)
-            totpen = sum(map(self.calc_colpen,range(self.natoms)))
-            #print totpen
+            totpen = sum([self.calc_colpen(i) for i in range(self.natoms)])
+            #print(totpen)
             if totpen < 1e-8:
                 if self.bcolors not in graphs:
                     graphs.append(copy.deepcopy(self.bcolors))

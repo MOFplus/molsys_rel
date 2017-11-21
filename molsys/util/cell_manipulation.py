@@ -18,15 +18,15 @@ def extend_cell(mol,offset):
     wherezp = np.where(np.less(frac_xyz[:,2], offset))
     wherezm = np.where(np.greater(frac_xyz[:,2], 1.0-offset))
     new_xyz = frac_xyz
-    #print new_xyz.shape
+    #print(new_xyz.shape)
     new_xyz = np.append(new_xyz, frac_xyz[wherexp[0]]+[1.0,0.0,0.0],0)
     new_xyz = np.append(new_xyz, frac_xyz[whereyp[0]]+[0.0,1.0,0.0],0)
     new_xyz = np.append(new_xyz, frac_xyz[wherezp[0]]+[0.0,0.0,1.0],0)
     new_xyz = np.append(new_xyz, frac_xyz[wherexm[0]]-[1.0,0.0,0.0],0)
     new_xyz = np.append(new_xyz, frac_xyz[whereym[0]]-[0.0,1.0,0.0],0)
     new_xyz = np.append(new_xyz, frac_xyz[wherezm[0]]-[0.0,0.0,1.0],0)
-    #print new_xyz
-    #print new_xyz.shape
+    #print(new_xyz)
+    #print(new_xyz.shape)
     mol.set_xyz_from_frac(new_xyz)
     for i in range(len(wherexp[0])):
         mol.elems.append(mol.elems[wherexp[0][i]])
@@ -40,7 +40,7 @@ def extend_cell(mol,offset):
         mol.elems.append(mol.elems[whereym[0][i]])
     for i in range(len(wherezm[0])):
         mol.elems.append(mol.elems[wherezm[0][i]])
-    #print new_xyz
+    #print(new_xyz)
     mol.natoms = len(mol.xyz)
     #logging.info('Cell was extended by %8.4f AA in each direction' % (offset))
     return

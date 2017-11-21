@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
 
 try:
     import graph_tool
@@ -20,7 +21,7 @@ try:
 except:
     spg = None
 else:
-    from spg import spg
+    from .spg import spg
 
 try:
     import ff_gen.ric_new
@@ -31,8 +32,8 @@ else:
 
 from .fragments import fragments
 from .bb import bb
+from .base import base
 from .ff import ff
 from .molecules import molecules
-from .base import base
 
 __all__=["graph", "fragments", "bb", "zmat", "spg", "ff", "molecules", "ric" "base"]
