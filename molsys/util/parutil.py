@@ -37,7 +37,12 @@ def gather(iterable, keep_order=True, keep_type=True):
         if keep_order:
             natural = range(len(iterable))
             mixed = chop(natural)
-            mixed = sum(mixed,[])
+            try:
+                mixed = sum(mixed,[])
+            except TypeError:
+                ### list elements are generators!
+                mixed = [list(i) for i in mixed]
+                mixed = sum(mixed,[])
             order = np.argsort(mixed)
             iterable = np.array(iterable)[order]
             if keep_type == True:

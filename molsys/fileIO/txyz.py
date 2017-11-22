@@ -255,8 +255,8 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
         if fragtypes is None: fragtypes = [None for i in mol.atypes]
         if fragnumbers is None: fragnumbers = [None for i in mol.atypes]
         from collections import Counter
-        oldatypes = zip(fragnumbers, fragtypes, atypes)
-        unique_oldatypes = Counter(oldatypes).keys()
+        oldatypes = list(zip(fragnumbers, fragtypes, atypes))
+        unique_oldatypes = list(Counter(oldatypes).keys())
         unique_oldatypes.sort()
         old2newatypes = {e:i for i,e in enumerate(unique_oldatypes)}
         new2oldatypes = {i:e for i,e in enumerate(unique_oldatypes)}
@@ -264,8 +264,11 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
         atypes = newatypes
         frags = False ### encoded in one column only
     for i in range(mol.natoms):
-        line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
+        try:
+            line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
+        except IndexError:
+            import pdb; pdb.set_trace()
         if frags == True: line += ("%-16s %5d ") % tuple([fragtypes[i]]+[fragnumbers[i]])
         conn = (numpy.array(cnct[i])+1).tolist()
         if len(conn) != 0:

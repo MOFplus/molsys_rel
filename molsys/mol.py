@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 ### overload print in parallel case (needs to be the first line) [RS] ###
 from __future__ import print_function
+
 import string as st
 import numpy as np
 from scipy.optimize import linear_sum_assignment as hungarian
@@ -113,57 +114,20 @@ class mpiobject(object):
             __builtin__.print(*args, file=self.out, **kwargs)
             self.out.flush()
 
-    def __copy__(self, memo):
-        """__copy__ method for mol class.
-        The main reason to override the default copy behaviour is 
-        forward-compatibility with python3. Two reasons:
-        - mol.out can be sys.stdout, now a TextIOWrapper.
-            TextIOWrapper is not pickable, thus not copyable. In our case it is
-            just set the same and not copied.
-        - mol.bb.mol.bb.mol... circular reference is not handled properly
-            and raises an RecursionError. The reference is properly kept.
-            Try:
-                mnew = copy.copy(m)
-                print(mnew is mnew.bb.mol)
-                print(mnew.bb is mnew.bb.mol.bb)"""
+    def __getstate__(self):
         newone = type(self)()
         newdict = newone.__dict__
         newdict.update(self.__dict__)
-        for key, val in newdict.items():
-            if key == "out":
-                newdict[key] = val
-            elif key != "bb":
-                newdict[copy.copy(key, memo)] = copy.copy(val, memo)
-        newone.bb = newone.bb.__mildcopy__(memo)
-        newone.bb.mol = newone ### AND RECURSIVELY! :)
-        return newone
+        newdict["out.name"] = newdict["out"].name
+        newdict["out.mode"] = newdict["out"].mode
+        newdict["out.encoding"] = newdict["out"].encoding
+        del newdict["out"]
+        return newdict
 
-
-    def __deepcopy__(self, memo):
-        """__deepcopy__ method for mol class.
-        The main reason to override the default deepcopy behaviour is 
-        forward-compatibility with python3. Two reasons:
-        - mol.out can be sys.stdout, now a TextIOWrapper.
-            TextIOWrapper is not pickable, thus not copyable. In our case it is
-            just set the same and not copied.
-        - mol.bb.mol.bb.mol... circular reference is not handled properly
-            and raises an RecursionError. The reference is properly kept.
-            Try:
-                mnew = copy.deepcopy(m)
-                print(mnew is mnew.bb.mol)
-                print(mnew.bb is mnew.bb.mol.bb)"""
-        newone = type(self)()
-        newdict = newone.__dict__
-        newdict.update(self.__dict__)
-        for key, val in newdict.items():
-            if key == "out":
-                newdict[key] = val
-            elif key != "bb":
-                newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
-        newone.bb = newone.bb.__mildcopy__(memo)
-        newone.bb.mol = newone ### AND RECURSIVELY! :)
-        return newone
-
+    def __setstate__(self, stored_dict):
+        if stored_dict["out.name"] == '<stdout>':
+            stored_dict["out"] = sys.stdout
+        self.__dict__ = stored_dict
 
 class mol(mpiobject):
     def __init__(self, mpi_comm = None, out = None):
@@ -760,7 +724,7 @@ class mol(mpiobject):
             for e2,a2 in enumerate(lista2):
                 dmat[e1,e2] = self.get_distvec(a1,a2)[0]
         a1which, a2which = hungarian(dmat)
-        for i in xrange(dim):
+        for i in range(dim):
             self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
         return
 

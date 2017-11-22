@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
 
-import molsys
+#from molsys import mol
 import molsys.util.elems as elements
 import molsys.util.rotations as rotations
 import string
@@ -30,7 +31,7 @@ class bb:
         as usual because the bb.mol.__deepcopy__ stops the recursion
         with bb.mol.bb.__mildcopy__"""
         try: #python3
-            newone = type(self)(molsys.mol())
+            newone = type(self)(self.mol.__class__())
         except: #python2
             newone = type(self)(bb, None)
         newdict = newone.__dict__

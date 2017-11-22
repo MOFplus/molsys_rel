@@ -9,12 +9,18 @@ else:
     from graph import graph
 
 try:
-    import pandas
+    import os
+    import sys
+    f = open(os.devnull, 'w') #cross-platform and version
+    sys.stderr = f
+    import pandas ### MODULE WITH ANNOYING WARNING MESSAGES
     import chemcoord
 except:
     zmat = None
 else:
     from zmat import zmat
+finally:
+    sys.stderr = sys.__stderr__
 
 try:
     import spglib
