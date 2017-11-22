@@ -113,6 +113,32 @@ class mpiobject(object):
             __builtin__.print(*args, file=self.out, **kwargs)
             self.out.flush()
 
+    def __copy__(self, memo):
+        """__copy__ method for mol class.
+        The main reason to override the default copy behaviour is 
+        forward-compatibility with python3. Two reasons:
+        - mol.out can be sys.stdout, now a TextIOWrapper.
+            TextIOWrapper is not pickable, thus not copyable. In our case it is
+            just set the same and not copied.
+        - mol.bb.mol.bb.mol... circular reference is not handled properly
+            and raises an RecursionError. The reference is properly kept.
+            Try:
+                mnew = copy.copy(m)
+                print(mnew is mnew.bb.mol)
+                print(mnew.bb is mnew.bb.mol.bb)"""
+        newone = type(self)()
+        newdict = newone.__dict__
+        newdict.update(self.__dict__)
+        for key, val in newdict.items():
+            if key == "out":
+                newdict[key] = val
+            elif key != "bb":
+                newdict[copy.copy(key, memo)] = copy.copy(val, memo)
+        newone.bb = newone.bb.__mildcopy__(memo)
+        newone.bb.mol = newone ### AND RECURSIVELY! :)
+        return newone
+
+
     def __deepcopy__(self, memo):
         """__deepcopy__ method for mol class.
         The main reason to override the default deepcopy behaviour is 
