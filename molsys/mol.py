@@ -86,7 +86,12 @@ np.set_printoptions(threshold=20000,precision=5)
 SMALL_DIST = 1.0e-3
 
 class mpiobject(object):
-
+    """Basic class to handle parallel attributes
+    
+    :Parameters:
+    - mpi_comm(obj): Intracomm object for parallelization
+    - out(str): output file name. If None: stdout
+    """
     def __init__(self, mpi_comm = None, out = None):
         if mpi_comm is None:
             try:
@@ -110,11 +115,21 @@ class mpiobject(object):
             self.out = open(out, "w")
 
     def pprint(self, *args, **kwargs):
+        """Parallel print function"""
         if self.mpi_rank == 0:
             __builtin__.print(*args, file=self.out, **kwargs)
             self.out.flush()
 
     def __getstate__(self):
+        """Get state for pickle and pickle-based method (e.g. copy.deepcopy)
+        Meant for python3 forward-compatibility.
+        Files (and standard output/error as well) are _io.TextIOWrapper
+        in python3, and thus they are not pickle-able. A dedicated method for
+        files is needed.
+        An example: https://docs.python.org/2.0/lib/pickle-example.html
+
+        N.B.: experimental for "out" != sys.stdout
+        """
         newone = type(self)()
         newdict = newone.__dict__
         newdict.update(self.__dict__)
@@ -125,11 +140,21 @@ class mpiobject(object):
         return newdict
 
     def __setstate__(self, stored_dict):
+        """Set state for pickle and pickle-based method (e.g. copy.deepcopy)
+        For python3 forward-compatibility
+        Whatever comes out of getstate, goes int setstate.
+        https://stackoverflow.com/a/41754104
+
+        N.B.: experimental for "out" != sys.stdout
+        """
         if stored_dict["out.name"] == '<stdout>':
             stored_dict["out"] = sys.stdout
         self.__dict__ = stored_dict
 
 class mol(mpiobject):
+    """mol class, the basis for any atomistic (or atomistic-like,
+    e.g. topo) representation."""
+
     def __init__(self, mpi_comm = None, out = None):
         super(mol,self).__init__(mpi_comm, out)
         self.natoms=0
