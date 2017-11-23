@@ -878,7 +878,7 @@ class topo(mol):
             xyz_c.append(xyz_ic)
         xyz_c = np.array(xyz_c) + xyz_a
         xyz_c *= .5
-        m = mol.mol.fromArray(xyz_c)
+        m = mol.fromArray(xyz_c)
         ### DEFAULT ASSIGNMENT
         if lelem is None and laty is None:
             laty = range(ncol)
