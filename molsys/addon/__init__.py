@@ -6,7 +6,7 @@ try:
 except ImportError:
     graph = None
 else:
-    from graph import graph
+    from .graph import graph
 
 try:
     import os
@@ -18,7 +18,7 @@ try:
 except:
     zmat = None
 else:
-    from zmat import zmat
+    from .zmat import zmat
 finally:
     sys.stderr = sys.__stderr__
 
