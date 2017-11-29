@@ -33,10 +33,10 @@ class fragments:
         self.fraglist  = [None]*(self.nfrags) # additional list to hold the fragments with their name
         self.frag_conn = []        # fragment connectivity (indices of fragments)
         self.frag_conn_atoms = []  # atoms making the fragemnt connectivity (tuples of atom indices: first in frgmnt, second in other fragmnt)
-        for i in xrange(self.nfrags):
+        for i in range(self.nfrags):
             self.frag_atoms.append([])
         self.setup = True
-        for i in xrange(self._mol.natoms):
+        for i in range(self._mol.natoms):
             ft = self._mol.fragtypes[i]
             fn = self._mol.fragnumbers[i]
             if ft == "0":
@@ -55,7 +55,7 @@ class fragments:
                 self.frag_atoms[self._mol.fragnumbers[i]].append(i)
         # in the end make sure that all fragments have been named
         if None in self.fraglist:
-            raise ValueError, "A fragment name is missing"
+            raise ValueError("A fragment name is missing")
         return
 
     def get_fragnames(self):
@@ -68,7 +68,7 @@ class fragments:
         """
         assert self.setup
         # prepare the atom list for the fragments
-        for i in xrange(self.nfrags):
+        for i in range(self.nfrags):
             self.frag_conn.append([])
             self.frag_conn_atoms.append([])
         for i,f in enumerate(self.fraglist):
@@ -100,7 +100,7 @@ class fragments:
         self.frag_bond_types= {}
         errors = 0
         # iterate over all frags and check their frag connections (if conencted frag is higher index)
-        for i in xrange(self.nfrags):
+        for i in range(self.nfrags):
             for nj, j in enumerate(self.frag_conn[i]):
                 if j>i:
                     atom_pair = self.frag_conn_atoms[i][nj]
@@ -120,7 +120,7 @@ class fragments:
                             self.rev_fraglist[j] = response
         if errors == 0:
             if reset_atypes:
-                for i in xrange(self._mol.natoms):
+                for i in range(self._mol.natoms):
                     f = self._mol.fragnumbers[i]
                     if self.rev_fraglist[f] == None:
                         ft = self.fraglist[f]

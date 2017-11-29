@@ -13,7 +13,7 @@ def read(mol, f, delimiter=','):
     bonds,atoms=0,0
     mol.xyz,mol.elems,mol.ctab = [],[],[]
     for i,line in enumerate(s): 
-        #print i,len(line),line
+        #print(i,len(line),line)
         if len(line) != 0: stsp = line.split()
         if i==3:
             natoms = int(stsp[0])
@@ -26,7 +26,7 @@ def read(mol, f, delimiter=','):
             continue
         if atoms != 0: 
             mol.xyz.append(map(float, stsp[0:3]))
-            mol.elems.append(string.lower(stsp[3]))
+            mol.elems.append(stsp[3].lower())
             atoms -= 1
             continue
     import pdb; pdb.set_trace()
@@ -45,5 +45,5 @@ def write(mol, fname):
         -fname  (str): name of the plain file
         -mol    (obj): instance of a molclass
     """
-    print 'NOT YET IMPLEMENTED!'
+    print('NOT YET IMPLEMENTED!')
     return

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
+import sys
 import string as st
 import numpy as np
 import types
@@ -7,13 +9,17 @@ import string
 import logging
 from collections import Counter
 
-import util.elems as elements
-import util.unit_cell as unit_cell
-import util.rotations as rotations
-import util.images as images
+from . import util
+from . import mol
+from molsys.util import cell_manipulation
+elements = util.elems
+unit_cell = util.unit_cell
+rotations = util.rotations ### THERE SHOULD BE A BETTER SOLUTION
+images = util.images ### THERE SHOULD BE A BETTER SOLUTION
 import random
 import itertools
-import mol
+from . import mol as mol
+from scipy.optimize import linear_sum_assignment as hungarian
 
 try:
     from ase import Atoms
@@ -43,9 +49,9 @@ deg2rad = np.pi/180.0
 SMALL_DIST = 1.0e-3
 
 
-class topo(mol.mol):
+class topo(mol):
     def __init__(self):
-        mol.mol.__init__(self)
+        mol.__init__(self)
         self.periodic= True
         self.use_pconn = True   # flag to use pconn: keeps the image number along with the bond
         self.pconn=[]
@@ -195,7 +201,7 @@ class topo(mol.mol):
                                 pconn[i][cc][c] = np.array([0,0,0])
                             else:
                                 px,py,pz     = pconn[i][cc][c][0],pconn[i][cc][c][1],pconn[i][cc][c][2]
-                                #print px,py,pz
+                                #print(px,py,pz)
                                 iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
                                 iixyz= iix+nx*iiy+nx*ny*iiz
                                 conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
@@ -206,7 +212,7 @@ class topo(mol.mol):
                                 if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
                                 if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
                                 if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
-                                #print px,py,pz
+                                #print(px,py,pz)
         self.conn, self.pconn, self.xyz = [],[],[]
         for cc in conn:
             for c in cc:
@@ -232,11 +238,11 @@ class topo(mol.mol):
             self.use_pconn=True
         else:
             self.use_pconn=False
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.conn.append([])
             if self.use_pconn: self.pconn.append([])
-        for i in xrange(self.natoms):
-            for j in xrange(i+1,self.natoms):
+        for i in range(self.natoms):
+            for j in range(i+1,self.natoms):
                 d,r,imgi=self.get_distvec(i,j)
                 bond = False
                 if fixed_cutoff:
@@ -254,7 +260,7 @@ class topo(mol.mol):
                             break
                 if bond:
                     if len(imgi)>1 and not self.use_pconn:
-                        raise ValueError, "Error in connectivity detection: use pconn!!!"
+                        raise ValueError("Error in connectivity detection: use pconn!!!")
                     for ii in imgi:
                         self.conn[i].append(j)
                         self.conn[j].append(i)
@@ -264,17 +270,168 @@ class topo(mol.mol):
                             self.pconn[j].append(image*-1)
         return
     
-    def remove_duplicates(self, thresh=SMALL_DIST):
-        badlist = []
+#    def detect_conn_by_coord_WRONG(self, pconn=False, exclude_pairs=None):
+#        assert len(self.ncoord) == self.natoms , "number of coordination per vertex must be set"
+#        self.use_pconn = pconn
+#        self.set_empty_conn()
+#        ncoord = self.ncoord[:]
+#        if self.use_pconn: self.set_empty_pconn()
+#        for i in xrange(self.natoms):
+#            dists = []
+#            js = []
+#            imgs = []
+#            maxcoord = ncoord[i]
+#            if maxcoord == 0:
+#                continue
+#            for j in xrange(i+1,self.natoms):
+#                d,r,imgi=self.get_distvec2(i,j)
+#                ### exclude w/ exclude pairs
+#                excluded = False
+#                if exclude_pairs:
+#                    # delete excluded pairs
+#                    el_p1,el_p2 = (self.elems[i], self.elems[j]),(self.elems[j], self.elems[i])
+#                    for expair in exclude_pairs:
+#                        if (expair == el_p1) or (expair == el_p2):
+#                            excluded = True
+#                            break
+#                if not excluded:
+#                    dists.append(d)
+#                    js.append(j)
+#                    imgs.append(imgi)
+#            ### INIT np.array
+#            dists = np.array(dists)
+#            js = np.array(js)
+#            imgs = np.array(imgs)
+#            ### GET SORTING INDICES
+#            sortind = np.argsort(dists)
+#            ### ARRANGE BY SORTING INDICES
+#            dists = dists[sortind]
+#            js = js[sortind]
+#            imgs = imgs[sortind]
+#            ### GET MAX IND UNTILL BOND
+#            imgslen = map(len,imgs)
+#            imgscum = np.cumsum(imgslen)
+#            try:
+#                tillind = np.where(imgscum == maxcoord)[0][0] + 1
+#            except IndexError:
+#                print(self.name, self.ncoord[i], maxcoord)
+#                print(self.ncoord)
+#                print(ncoord)
+#                print(imgslen, imgscum)
+#                break
+#            for k,j in enumerate(js[:tillind]):
+#                if imgslen[k] > 1 and not self.use_pconn:
+#                    raise ValueError, "Error in connectivity detection: use pconn!!!"
+#                for ii in imgs[k]:
+#                    self.conn[i].append(j)
+#                    self.conn[j].append(i)
+#                    if self.use_pconn:
+#                        image = images[ii]
+#                        self.pconn[i].append(image)
+#                        self.pconn[j].append(image*-1)
+#                ncoord[j] -= imgslen[k]
+#        return
+    
+    def detect_conn_by_coord(self, pconn=False, exclude_pairs=None):
+        """Detects connectivity by coordination number of the vertices/atoms
+        :Variables:
+            - self.natoms = N (int): number of atoms
+            - self.ncoord (list of int's): coordination number per vertex/atom
+            - dists (NxN float np.triu array): distances per distinct couple of vertices
+            - imgs (NxN list np.triu array): (periodic) images per bond
+            - nimgs (NxN int np.triu array): number of images per bond
+            - maximgs (N int array): max number of images per bond per atom
+                N.B.: 1 where 0
+            - rimgs (NxN int np.tril array): remainder nimgs - maximgs
+            - lnimgs (N list of lists): default addend list for possible bonds (=0)
+            - lrimgs (N list of lists): very-high addend list for impossible bonds (>>0, e.g. sys.maxint)
+                N.B.: impossible bonds are self bonds, inverse-cross bonds, and bonds that are non-detected as periodic images (hence rimgs)
+            - aimgs (NxM int array): augmented addend cost array for images
+            - adists (NxM float array): augmented dists array
+                N.B.: adists == 0 where aimgs returns "impossible" cost
+                else: returns default cost
+                N.B.B.: aimgs == very-high cost where adists CAN BE != 0
+        """
+        np.set_printoptions(precision=2,linewidth=240)
+        assert len(self.ncoord) == self.natoms,\
+            "number of coordination per vertex must be set"
+        self.use_pconn = pconn
+        self.set_empty_conn()
+        if self.use_pconn: self.set_empty_pconn()
+        dists = np.zeros([self.natoms]*2)
+        imgs = np.empty([self.natoms]*2, dtype=np.object_)
+        imgs.fill([])
+        imgs = np.frompyfunc(list,1,1)(imgs)
+        nimgs = np.zeros([self.natoms]*2, dtype=np.int)
         for i in xrange(self.natoms):
             for j in xrange(i+1, self.natoms):
+                dists[i,j], rdummy, imgs[i,j] = self.get_distvec(i,j)
+            nimgs[i] = map(len,imgs[:,i])
+        nimgs = nimgs.T[:]
+        maximgs = np.max(nimgs, axis=0)
+        maximgs[0] = 1 ### zero atom bonds with first
+        rimgs = maximgs[np.newaxis,:] - nimgs #remainder
+        ### INIT AUGMENTED IMAGES ###
+        lnimgs = [[         [0]*j for j in i] for i in nimgs]
+        lrimgs = [[[sys.maxint]*j for j in i] for i in rimgs]
+        collect = zip(lnimgs,lrimgs)
+        aimgs = []
+        for i in xrange(self.natoms):
+            iaimgs = []
+            for c in zip(*collect[i]):
+                iaimgs.append(sum(c,[]))
+            aimgs.append(sum(iaimgs,[]))
+        aimgs = np.array(aimgs)
+        ### INIT AUGMENTED COSTS ###
+        ja = sum([[j]*m for j,m in enumerate(maximgs)], [])
+        adists = dists[:,ja]
+        acosts = adists + aimgs
+        ### INIT AUGMENTED COORDINATIONS ###
+        ia = sum([[i]*c for i,c in enumerate(self.ncoord)], [])
+        ### INIT BOTH AUGMENTATIONS (IMGS and COORDS) ###
+        ka = sum([[j]*self.ncoord[j] for j in ja], [])
+        ###ahung = acosts[ia]
+        ahung = acosts[ia][:,ka]
+        ### sort by increasing cost
+        hungarg = np.argsort(ahung, axis=1)
+        ###import pdb; pdb.set_trace()
+        ### set impossible cost to same bonds
+        bonds = zip(*hungarian(ahung)) ###HERE BROKEN
+        for b in bonds:
+            print(ia[b[0]], jaia[b[1]])
+        ### exclude w/ exclude pairs: sets very-high
+        excluded = False
+        if exclude_pairs:
+            # delete excluded pairs
+            el_p1,el_p2 = (self.elems[i], self.elems[j]),(self.elems[j], self.elems[i])
+            for expair in exclude_pairs:
+                if (expair == el_p1) or (expair == el_p2):
+                    excluded = True
+                    break
+            #for k,j in enumerate(js[:tillind]):
+            #    if imgslen[k] > 1 and not self.use_pconn:
+            #        raise ValueError, "Error in connectivity detection: use pconn!!!"
+            #    for ii in imgs[k]:
+            #        self.conn[i].append(j)
+            #        self.conn[j].append(i)
+            #        if self.use_pconn:
+            #            image = images[ii]
+            #            self.pconn[i].append(image)
+            #            self.pconn[j].append(image*-1)
+            #    ncoord[j] -= imgslen[k]
+        return
+    
+    def remove_duplicates(self, thresh=SMALL_DIST):
+        badlist = []
+        for i in range(self.natoms):
+            for j in range(i+1, self.natoms):
                 d,r,imgi=self.get_distvec(i,j)
                 if d < thresh:
                     badlist.append(j)
         new_xyz = []
         new_elems = []
         new_atypes = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             if not badlist.count(i):
                 new_xyz.append(self.xyz[i].tolist())
                 new_elems.append(self.elems[i])
@@ -323,20 +480,18 @@ class topo(mol.mol):
                         else:
                             # ok, we have this image already
                             use_it = True
-                            #print c, "=>", j
-                            #print atoms_image
+                            #print(c, "=>", j)
+                            #print(atoms_image)
                             for k, iii in enumerate(atoms_image):
-                                #print 'k',k
+                                #print('k',k)
                                 if (iii == ii) and (c[k] == j): use_it=False
                             if use_it:
                                 atoms_image.append(ii)
                                 atoms_pconn.append(images[ii])
             self.pconn.append(atoms_pconn)
-            #if len(atoms_pconn) != len(c): print "AOSUHDAPUFHPOUFHPWOUFHPOUDHSPUODHASIUDHAUSIDHSD"
+            #if len(atoms_pconn) != len(c): print("AOSUHDAPUFHPOUFHPWOUFHPOUDHSPUODHASIUDHAUSIDHSD")
         return
 
-
-    #RS !!! TODO !!! not sure if the insertion of pconn is correct in this routine
         # 'na',lower(label),xyz,i,j)
     def insert_atom(self, lab, aty, xyz, i, j):
         xyz.shape=(1,3)
@@ -346,8 +501,8 @@ class topo(mol.mol):
         ci = self.conn[i]
         cj = self.conn[j]
         #self.natoms += 1
-        #print i, ci
-        #print j, cj
+        #print(i, ci)
+        #print(j, cj)
         if ((i <= -1) or (j <= -1)):
             self.conn.append([])
             #self.pconn.append([])
@@ -366,8 +521,8 @@ class topo(mol.mol):
         if self.use_pconn:
             self.pconn.append([np.zeros([3]),pci])
         self.natoms += 1
-        #print "end of insert .. conn:"
-        #print self.conn
+        #print("end of insert .. conn:")
+        #print(self.conn)
         return
 
 
@@ -399,14 +554,14 @@ class topo(mol.mol):
         new_atypes = []
         new_conn = []
         new_pconn = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             if i != bad:
                 new_xyz.append(self.xyz[i].tolist())
                 new_elems.append(self.elems[i])
                 new_atypes.append(self.atypes[i])
                 new_conn.append(self.conn[i])
                 new_pconn.append(self.pconn[i])
-                for j in xrange(len(new_conn[-1])):
+                for j in range(len(new_conn[-1])):
                     if new_conn[-1].count(bad) != 0:
                         new_conn[-1].pop(new_conn[-1].index(bad))
         self.xyz = np.array(new_xyz, "d")
@@ -428,8 +583,8 @@ class topo(mol.mol):
     def add_conn(self, a1, a2):
         """ add a connection between a1 and a2 (in both directions)
         """
-        #if self.use_pconn:
-        #    raise ValueError, "Can not add bonds to systems with pconn - well, we can fix this ;) "
+        if self.use_pconn:
+            raise ValueError("Can not add bonds to systems with pconn - well, we can fix this ;) ")
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
         d,v,imgi = self.get_distvec(a1,a2)
@@ -463,10 +618,9 @@ class topo(mol.mol):
         sets an empty list of lists for the periodic connectivity
         """
         self.pconn = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.pconn.append([])
         return
-
 
 
 ############# Plotting
@@ -481,7 +635,7 @@ class topo(mol.mol):
         atd = {}
         for i,aa in enumerate(list(set(self.atypes))):
             atd.update({aa:col[i]})
-        print atd
+        print(atd)
         if bonds:
             for i in range(self.natoms):
                 conn = self.conn[i]
@@ -532,9 +686,9 @@ class topo(mol.mol):
             result = self.run_flip(maxstep, nprint=nprint, penref=penref, thresh=thresh)
             if result[0] : converged=True
             niter += 1
-        print "**********************************************************************"
-        print "edge coloring is convereged !!"
-        print "final penalty is %12.6f" % result[2]
+        print("**********************************************************************")
+        print("edge coloring is convereged !!")
+        print("final penalty is %12.6f" % result[2])
         return
 
 
@@ -578,7 +732,7 @@ class topo(mol.mol):
         self.penalty = np.zeros([self.natoms],dtype="float64")
         ### set up the scalmat array for all vertices
         self.setup_scalprod_mats()
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.penalty[i] = self.calc_colpen(i)
         self.totpen = self.penalty.sum()
         return
@@ -615,7 +769,7 @@ class topo(mol.mol):
         self.changed_vert = vert
         # compute delta in penalty
         delta_pen = self.pennew.sum()-peninit.sum()
-        # print "flipped colors of bonds %3d and %3d (vertices: %20s) -- delta penalty: %10.3f" % (self.bondA, self.bondB, str(vert), delta_pen)
+        # print("flipped colors of bonds %3d and %3d (vertices: %20s) -- delta penalty: %10.3f" % (self.bondA, self.bondB, str(vert), delta_pen))
         return delta_pen
 
     def unflip_colors(self):
@@ -658,7 +812,7 @@ class topo(mol.mol):
                 accept = True
             else:
                 prob = np.exp(-dpen/penref)
-                #print "dpen %10.5f prob %10.5f" %(dpen, prob)
+                #print("dpen %10.5f prob %10.5f" %(dpen, prob))
                 if random.random() < prob:
                     accept=True
             if accept:
@@ -666,14 +820,14 @@ class topo(mol.mol):
             else:
                 self.unflip_colors()
             if (step%nprint) == 0:
-                print "step: %7d ; penalty %10.5f" % (step, self.totpen)
+                print("step: %7d ; penalty %10.5f" % (step, self.totpen))
             step += 1
         if step<maxstep:
-            print "Converged after %7d steps with penalty %10.5f" % (step, self.totpen)
-            print "last delta_pen was %10.5f" % dpen
+            print("Converged after %7d steps with penalty %10.5f" % (step, self.totpen))
+            print("last delta_pen was %10.5f" % dpen)
             converged = True
         else:
-            print "Not converged!!!"
+            print("Not converged!!!")
             converged = False
         return (converged, step, self.totpen)
 
@@ -718,19 +872,19 @@ class topo(mol.mol):
             bb = self.blist[:,1][indexcol]
         xyz_a = self.xyz[ba]
         xyz_c = []
-        for i in xrange(nbonds):
+        for i in range(nbonds):
             bci = self.conn[ba[i]].index(bb[i])
             xyz_ic = self.get_neighb_coords(ba[i], bci)
             xyz_c.append(xyz_ic)
         xyz_c = np.array(xyz_c) + xyz_a
         xyz_c *= .5
-        m = mol.mol.fromArray(xyz_c)
+        m = mol.fromArray(xyz_c)
         ### DEFAULT ASSIGNMENT
         if lelem is None and laty is None:
-            laty = xrange(ncol)
+            laty = range(ncol)
             lowercase = list('kbabcdefghijklmnopqrstuvwxyz')
             lelem = [lowercase[i] for i in laty]
-            laty = map(str,laty)
+            laty = [str(i) for i in laty]
         elif lelem is None or laty is None:
             raise TypeError("lelem and laty must be both either None or ndarrays")
         elif len(lelem) != ncol or len(laty) != ncol:
@@ -770,7 +924,7 @@ class topo(mol.mol):
         v = self.atypes.index(atypes)
         M = len(self.conn[v])
         L = M - self.colpen_sumrule[v] ### HACK ###
-        perms = itertools.permutations(xrange(M),L)
+        perms = itertools.permutations(range(M),L)
         perms = [list(i) for i in perms]
         for i in perms: i.sort()
         perms = [tuple(i) for i in perms]
@@ -783,8 +937,8 @@ class topo(mol.mol):
 ### SET CHROMOSOMES ############################################################
     def set_chromosomes(self):
         allele = [len(bcvi) for bcvi in self.bcv]
-        permchrom = [xrange(ia) for ia in allele]
-        print "NUMBER OF PERMUTATIONS:", np.prod(allele)
+        permchrom = [range(ia) for ia in allele]
+        print("NUMBER OF PERMUTATIONS:", np.prod(allele))
         chromosomes = list(itertools.product(*permchrom))
         self.chromosomes = chromosomes
 
@@ -793,7 +947,7 @@ class topo(mol.mol):
         self.bcolchroms = bcolchroms
 
     def chrom2bcolchrom(self, chrom):
-        return self.bcv[xrange(self.bcv.shape[0]),chrom]
+        return self.bcv[range(self.bcv.shape[0]),chrom]
 
 ### BCOLOR SETTING FUNCTIONS ###################################################
     def set_bcol(self, bond):
@@ -849,7 +1003,7 @@ class topo(mol.mol):
         
 ### PENALTY FUNCTION HANDLERS ##################################################
     def calc_colpen(self, vert):
-        # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(self.bcolors[vert]))
+        # print("calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(self.bcolors[vert])))
         pen_sum = self.calc_colpen_sum(vert)
         if pen_sum == 0.0:
             # this vertex has the correct number of colors on the edges
@@ -859,7 +1013,7 @@ class topo(mol.mol):
             return pen_sum
 
     def calc_colpen_from_bcolor(self, vert, bcolor):
-        # print "calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(bcolor))
+        # print("calculating penalty for vert %d (%s)  colors: %s" % (vert, self.elems[vert], str(bcolor)))
         pen_sum = self.calc_colpen_sum_from_bcolor(vert, bcolor)
         if pen_sum == 0.0:
             # this vertex has the correct number of colors on the edges
@@ -901,15 +1055,15 @@ class topo(mol.mol):
             - vert_dict: dictionary of vertices with the number of expected edges for color 0
         """
         self.colpen_sumrule = np.zeros([self.natoms], dtype="int32")
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.colpen_sumrule[i] = vert_dict[self.elems[i]]
         return
 
     def setup_scalprod_mats(self):
         self.scalmat = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             v = []
-            for ji in xrange(len(self.conn[i])):
+            for ji in range(len(self.conn[i])):
                 v.append(self.get_neighb_coords(i, ji)-self.xyz[i])
             v = np.array(v)
             vn = v / np.linalg.norm(v, axis=-1)[:, np.newaxis]
@@ -957,7 +1111,7 @@ class topo(mol.mol):
                                             90deg set it to 0.0 and the fact to -0.5
         """
         self.colpen_orientrule = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.colpen_orientrule.append(vert_dict[self.elems[i]])
         return
 
@@ -983,7 +1137,7 @@ class topo(mol.mol):
             bcvi = []
             for bc in bcol:
                 colpen = self.calc_colpen_from_bcolor(v,bc)
-                #print bc, colpen
+                #print(bc, colpen)
                 if colpen < 1e-8:
                     bcvi.append(bc)
             bcv.append(bcvi)
@@ -1000,8 +1154,8 @@ class topo(mol.mol):
         for ib, ibcolchrom in enumerate(bcolchroms):
             for iv,v in enumerate(vertices):
                 self.set_jbcol_from_ibcol(v,ibcolchrom[iv],set_arg=True)
-            totpen = sum(map(self.calc_colpen,xrange(self.natoms)))
-            #print totpen
+            totpen = sum([self.calc_colpen(i) for i in range(self.natoms)])
+            #print(totpen)
             if totpen < 1e-8:
                 if self.bcolors not in graphs:
                     graphs.append(copy.deepcopy(self.bcolors))
@@ -1041,7 +1195,7 @@ class topo(mol.mol):
         nprop = np.array(prop).sum()
         assert self.nbonds%nprop==0,  "these proportions do not work"
         nc = self.nbonds/nprop
-        colors = [c for c,p in enumerate(prop) for i in xrange(p*nc)]
+        colors = [c for c,p in enumerate(prop) for i in range(p*nc)]
         if set_arg: self.prop, self.nprop = prop, nprop
         return colors
 

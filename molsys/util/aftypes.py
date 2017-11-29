@@ -108,7 +108,7 @@ class afdict(object):
 
     def __setitem__(self, key, value):
         if key in self._keys:
-            raise KeyError, "key %s exists in afdict" % str(key)
+            raise KeyError("key %s exists in afdict" % str(key))
         self._keys.append(key)
         self._values.append(value)
         return
@@ -123,7 +123,7 @@ class afdict(object):
         try:
             idx = self._keys.index(key)
         except ValueError:
-            raise KeyError, "key %s not in afdict" % str(key)
+            raise KeyError("key %s not in afdict" % str(key))
         return self._values[idx]
 
     def __contains__(self, item):
@@ -150,37 +150,37 @@ if __name__ == "__main__":
     c = aftype("c3", "ph")
     d = aftype("c3", "co2")
 
-    print a == b
-    print a == c
-    print a == d
+    print(a == b)
+    print(a == c)
+    print(a == d)
 
     l = [a,b,c]
     l.sort
-    print l
+    print(l)
 
-    print aftype_sort(l, "ang")
+    print(aftype_sort(l, "ang"))
     exit()
 
-    print "tuple comparison"
+    print("tuple comparison")
     t1 = (a,b)
     t2 = (a,c)
     t3 = (c,c)
-    print t1 == t2
-    print t1 == t3
+    print(t1 == t2)
+    print(t1 == t3)
 
-    print "test afdict"
+    print("test afdict")
     # afd is non-political and means afdict!!!
     afd = afdict()
 
     afd[t1] = [str(t1)]
     afd[(a,d)] = [str((a,d,))]
 
-    print afd[t1]
-    print afd[t3]
-    print (c,c) in afd
+    print(afd[t1])
+    print(afd[t3])
+    print(c,c) in afd
     afd.appenditem(t1, "test")
 
-    print afd
+    print(afd)
 
 
 

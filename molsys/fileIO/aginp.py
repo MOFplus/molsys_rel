@@ -1,6 +1,6 @@
 import numpy
 import string
-import txyz
+from . import txyz
 import logging
 
 logger = logging.getLogger("molsys.io")
@@ -51,7 +51,7 @@ def read(mol, f, connectors=False, morebonds = False):
         econn = [e for (e,el) in enumerate(elems) if el == "X"]
         ag2weaver_connectors(mol,econn)
     if morebonds:
-        raise NotImplementedError, "additional bonds information is not implemented"
+        raise NotImplementedError("additional bonds information is not implemented")
     mol.set_nofrags() ###dunno why
     return
 
@@ -69,7 +69,7 @@ def ag2weaver_connectors(mol,agconn):
     lagneigh = map(len,agneigh)
     lagn = None #[i for i in lagneigh if i != 1]
     if lagn:
-        raise NotImplementedError, "more than one real atom per dummy"
+        raise NotImplementedError("more than one real atom per dummy")
     ### function starts here ###
     else:
         mol.is_bb = True

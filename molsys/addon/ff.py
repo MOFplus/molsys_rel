@@ -26,7 +26,10 @@ except ImportError as e:
     mpi_err = e
 
 # overload print function in parallel case
-import __builtin__
+try:
+    import __builtin__
+except ImportError:
+    import builtins as __builtin__
 def print(*args, **kwargs):
     if mpi_rank == 0:
         return __builtin__.print(*args, **kwargs)
@@ -40,13 +43,15 @@ from molsys.util.timing import timer, Timer
 from molsys.util import elems
 from molsys.util.ff_descriptors import desc as ff_desc
 from molsys.util.aftypes import aftype, aftype_sort
-from molsys.util.ffparameter import potentials, varpars, varpar
-import base
+from molsys.addon import base
 
 import itertools
 import copy
 import string
-import cPickle as Pickle
+try:
+    import cPickle as Pickle
+except ImportError:
+    import _pickle as Pickle
 
 import logging
 import pdb
@@ -111,6 +116,134 @@ class ic(list):
         else:
             values = tuple(self)
         return ((len(self)*form) % values) + attrstring
+        
+
+class varpar(object):
+
+    """
+    Class to hold information of parameters marked as variable in order to be fitted.
+    
+    """
+
+    def __init__(self, ff, name, val = 1.0, range = [0.0,2.0], bounds = ["h","i"]):
+        assert len(bounds) == 2
+        assert bounds[0] in ["h", "i"] and bounds[1] in ["h", "i"]
+        self._ff     = ff
+        self.name    = name
+        self._val     = val
+        self.range   = range
+        self.pos     = []
+        self.bounds   = bounds
+
+    def __repr__(self):
+        """
+        Returns objects name
+        """
+        return self.name
+
+    def __call__(self, val = None):
+        """
+        Method to set a new value to the varpar oject and write this 
+        into the ff.par dictionary.
+        :Parameters:
+            - val(float): new value of the varpar object
+        """
+        if val != None: self.val = val
+        for i,p in enumerate(self.pos):
+            ic, pottype, parindex  = p
+            self._ff.par[ic][pottype][1][parindex] = self.val
+        return
+
+    @property
+    def val(self):
+        return self._val
+
+    @val.setter
+    def val(self,val):
+        assert (type(val) == float) or (type(val) == np.float64) or (val[0] == "$") 
+        self._val = val
+        return
+
+class varpars(dict):
+
+    """
+    Class inherited from dict, that holds all varpar objects
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.update(*args, **kwargs)
+        return
+
+    @property
+    def ranges(self):
+        ranges = []
+        for k,v in self.items():
+            ranges.append(v.range)
+        return np.array(ranges)
+
+    @ranges.setter
+    def ranges(self, ranges):
+        assert len(ranges) == len(self.keys())
+        for i,v in enumerate(self.values()):
+            v.range = ranges[i]
+
+    @property
+    def vals(self):
+        vals   = []
+        for k,v in self.items():
+            vals.append(v.val)
+        return vals
+
+    def cleanup(self):
+        """
+        Method to delete all unsused varpar objects
+        """
+        rem = []
+        for k,v in self.items():
+            if len(v.pos) == 0:
+                logger.warning("varpar %s is not used --> will be deleted!" % k)
+                rem.append(k)
+        for k in rem: del[self[k]]
+        return
+
+    @property
+    def varpots(self):
+        varpots = []
+        for k,v in self.items():
+            for i in range(len(v.pos)):
+                varpot = (v.pos[i][0], v.pos[i][1])
+                if varpot not in varpots: varpots.append(varpot)
+        return varpots
+
+    @property
+    def varpotnums(self):
+        """
+        Property which gives a dictionary telling in how much terms a
+        varpot is involved
+        """
+        ff = self.values()[0]._ff
+        varpots = self.varpots
+        varpotnums = {}
+        for i in varpots: varpotnums[i] = 0
+        ics = ["bnd", "ang", "dih", "oop"]
+        for ic in ics:
+            for pi in ff.parind[ic]:
+                for p in pi:
+                    if (ic,p) in varpots: varpotnums[(ic,p)]+=1
+        return varpotnums
+
+
+    def __call__(self, vals = None):
+        """
+        Method to write new values to the varpar objects and in the 
+        ff.par dictionary
+        :Parameters:
+            -vals(list of floats): list holding the new parameters 
+        """
+        if type(vals) == type(None): vals = len(self)*[None]
+        assert len(vals) == len(self)
+        for i,v in enumerate(self.values()): v(vals[i])
+        return
 
 
 class ric:
@@ -156,7 +289,7 @@ class ric:
             
             mol_bnd = self.find_bonds()
             if mol_bnd != bnd:
-                raise ValueError, "The rics provided do not match the mol object!"
+                raise ValueError("The rics provided do not match the mol object!")
         return
 
     # the follwoing code is adapted from pydlpoly/py/assign_FF.py
@@ -170,7 +303,7 @@ class ric:
             -bonds(list): list of indices defining all bonds
         """
         bonds=[]
-        for a1 in xrange(self.natoms):
+        for a1 in range(self.natoms):
             for a2 in self.conn[a1]:
                 if a2 > a1: bonds.append(ic([a1, a2]))
         return bonds
@@ -183,10 +316,10 @@ class ric:
             -angles(list): list of indices defining all angles
         """
         angles=[]
-        for ca in xrange(self.natoms):
+        for ca in range(self.natoms):
             apex_atoms = self.conn[ca]
             naa = len(apex_atoms)
-            for ia in xrange(naa):
+            for ia in range(naa):
                 aa1 = apex_atoms[ia]
                 other_apex_atoms = apex_atoms[ia+1:]
                 for aa2 in other_apex_atoms:
@@ -206,7 +339,7 @@ class ric:
         oops=[]
         # there are a lot of ways to find oops ...
         # we assume that only atoms with 3 partners can be an oop center
-        for ta in xrange(self.natoms):
+        for ta in range(self.natoms):
             if (len(self.conn[ta]) == 3):
                 # ah! we have an oop
                 a1, a2, a3 = tuple(self.conn[ta])
@@ -225,7 +358,7 @@ class ric:
             -oops(list): list of indices defining all dihedrals
         """
         dihedrals=[]
-        for a2 in xrange(self.natoms):
+        for a2 in range(self.natoms):
             for a3 in self.conn[a2]:
                 # avoid counting central bonds twice
                 if a3 > a2:
@@ -397,9 +530,10 @@ class ric:
 
 
 #class ff(molsys.base):
-class ff(base.base):
+#class ff(base.base):
+class ff(base):
 
-    def __init__(self, mol, par = None):
+    def __init__(self, mol):
         """
         instantiate a ff object which will be attached to the parent mol
 
@@ -408,6 +542,7 @@ class ff(base.base):
              - mol : a mol type object (can be a derived type like bb or topo as well)
         """
         super(ff,self).__init__(mol)
+#        self._mol = mol
         self.timer = Timer()
         self.ric = ric(mol)
         # defaults
@@ -530,6 +665,7 @@ class ff(base.base):
         """
         assert type(equivs) == dict
         assert type(azone) == list
+        ### self.FF = FF ### check
         self.refsysname = refsysname
         self.equivs = equivs
         self.active_zone = azone
@@ -619,9 +755,9 @@ class ff(base.base):
                                     counter += 1
                                     self.parind[ic][i] = full_parname_list
                                 #else:
-                                #    print "DEBUG DEBUG DEBUG %s" % ic
-                                #    print self.get_parname(r)
-                                #    print self.get_parname_sort(r, ic)
+                                #    print("DEBUG DEBUG DEBUG %s" % ic)
+                                #    print(self.get_parname(r))
+                                #    print(self.get_parname_sort(r, ic))
                 logger.info("%i parameters assigned for ref system %s" % (counter,ref))
                 #EQUIVALENCE
                 # now all params for this ref have been assigned ... any equivalnce will be renamed now in aftypes
@@ -853,8 +989,8 @@ class ff(base.base):
             if t not in self.types2numbers.keys():
                 self.types2numbers[t]=str(i)
         ntypes = len(types)
-        for i in xrange(ntypes):
-            for j in xrange(i, ntypes):
+        for i in range(ntypes):
+            for j in range(i, ntypes):
                 #TODO check availability of an explicit paramerter
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
@@ -997,8 +1133,8 @@ class ff(base.base):
             if self._mol.mpi_size > 1:
                 ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
             self.ref_params[ref] = ref_par
-            #print ("DEBUG DEBUG Ref system %s" % ref)
-            #print (self.ref_params[ref])
+            #print(("DEBUG DEBUG Ref system %s" % ref))
+            #print((self.ref_params[ref]))
         self.timer.stop()
         return
 
@@ -1329,7 +1465,7 @@ class ff(base.base):
                     assigned.append(curric)
                     nric = int(sline[1])
                     rlist = []
-                    for i in xrange(nric):
+                    for i in range(nric):
                         sline = fric.readline().split()
                         rtype = int(sline[1])
                         aind  = map(int, sline[2:curric_len+2])
@@ -1346,10 +1482,8 @@ class ff(base.base):
         self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
         # time to init the data structures .. supply vdw and cha here
         self._init_data(cha=ric["cha"], vdw=ric["vdw"])
-        self._init_pardata()
         # now open and read in the par file
         if fit:
-            nkeys={}
             self.fit=True
             fpar = open(fname+".fpar", "r")
             # in the fit case we first screen for the variables block and read it ini
@@ -1368,7 +1502,7 @@ class ff(base.base):
                         azone = True
                     elif sline[0] == "variables":
                         nvar = int(sline[1])
-                        for i in xrange(nvar):
+                        for i in range(nvar):
                             sline = fpar.readline().split()
 #                            nkey = self.par.variables[sline[0]] = varpar(self.par, sline[0], 
 #                                          val = float(sline[1]), 
@@ -1390,7 +1524,7 @@ class ff(base.base):
                         break
                 line = fpar.readline()
                 if len(line) == 0:
-                    raise IOError, "Variables block and/or azone in fpar is missing!"
+                    raise IOError("Variables block and/or azone in fpar is missing!")
         else:
             fpar = open(fname+".par", "r")
         stop = False
@@ -1408,7 +1542,7 @@ class ff(base.base):
                     par = self.par[curric]
                     t2ident = {} # maps integer type to identifier
                     ntypes = int(sline[1])
-                    for i in xrange(ntypes):
+                    for i in range(ntypes):
                         sline = fpar.readline().split()
                         if sline[0][0] == "#": continue 
                         # now parse the line 
@@ -1425,7 +1559,7 @@ class ff(base.base):
                                     if p in nkeys: p = nkeys[p]
                                     #import pdb; pdb.set_trace()
                                     if not p in self.par.variables:
-                                        raise IOError, "Varible %s undefiend in variable block" % p
+                                        raise IOError("Varible %s undefiend in variable block" % p)
                                     # for multistruc fits the $ name are not anymore valid, it has
                                     # to be checked firtst if the variable is already defined under
                                     # a different name
@@ -1445,7 +1579,7 @@ class ff(base.base):
                             param = map(float, param)
                         if ident in par:
                             logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
-#                            raise ValueError, "Identifier %s appears twice" % ident
+                            raise ValueError("Identifier %s appears twice" % ident)
                         par[ident] = (ptype, param)
                         if itype in t2ident:
                             t2ident[itype].append(ident)
@@ -1489,7 +1623,7 @@ class ff(base.base):
                         #    azone = True
                         if sline[0] == "variables":
                             nvar = int(sline[1])
-                            for i in xrange(nvar):
+                            for i in range(nvar):
                                 sline = fpar.readline().split()
                                 self.par.variables[sline[0]] = varpar(self.par, sline[0], 
                                               val = float(sline[1]), 
@@ -1505,7 +1639,7 @@ class ff(base.base):
                             break
                     line = fpar.readline()
                     if len(line) == 0:
-                        raise IOError, "Variables block in fpar is missing!"
+                        raise IOError("Variables block in fpar is missing!")
         with open(fname, 'r') as fpar:
             stop = False
             while not stop:
@@ -1522,14 +1656,14 @@ class ff(base.base):
                         par = self.par[curric]
 #                        t2ident = {} # maps integer type to identifier
                         ntypes = int(sline[1]) # number of potentials for current ric
-                        for i in xrange(ntypes):
+                        for i in range(ntypes):
                             sline = fpar.readline().split()
                             if sline[0][0] == "#": continue 
                             # now parse the line 
                             itype = int(sline[0])
                             ptype = sline[1]
                             ident = sline[-1]
-#                            pot = string.split(ident, '-')
+#                            pot = ident.split('-')
 #                            if pot not in self.loaded_pots[curric]: self.loaded_pots[curric].append(pot[0])
                             param = sline[2:-2]
                             if fit:
@@ -1538,7 +1672,7 @@ class ff(base.base):
                                 for paridx,p in enumerate(param):
                                     if p[0] == "$":
                                         if not p in self.par.variables:
-                                            raise IOError, "Varible %s undefiend in variable block" % p
+                                            raise IOError("Varible %s undefiend in variable block" % p)
                                         self.par.variables[p].pos.append((curric,ident,paridx))
                                         newparam.append(p)
                                     else:
@@ -1546,7 +1680,7 @@ class ff(base.base):
                                 param = newparam
                             else:
                                 param = map(float, param)
-                            #if ident in par: raise ValueError, "Identifier %s appears twice" % ident
+                            #if ident in par: raise ValueError("Identifier %s appears twice" % ident)
                             if ident in par:
                                 logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
                             par[ident] = (ptype, param)

@@ -59,13 +59,13 @@ class graph:
         self.nvertices = len(self.vert2atom)
         logger.info("generated a graph for a mol object with %d vertices" % self.nvertices)
         # now add edges ... only bonds between vertices
-        for i in xrange(self.nvertices):
+        for i in range(self.nvertices):
             ia = self.vert2atom[i]
             for ja in self._mol.conn[ia]:
                 if ja>=ia:   #we need a .le. here for those atoms/vertices connected to itself twice in different boxes
                     if ja in self.vert2atom:
-                    # print "bond from %d to %d" % (ia, ja)
-                    # print self._mol.atypes[ia], self._mol.atypes[ja]
+                    # print("bond from %d to %d" % (ia, ja))
+                    # print(self._mol.atypes[ia], self._mol.atypes[ja])
                         self.molg.add_edge(self.molg.vertex(i), self.molg.vertex(self.vert2atom.index(ja)))
                         #self.molg.add_edge( self.molg.vertex(self.vert2atom.index(ja)),self.molg.vertex(i))
         return

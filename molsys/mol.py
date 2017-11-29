@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
-# RS .. to overload print in parallel case (needs to be the first line)
+### overload print in parallel case (needs to be the first line) [RS] ###
 from __future__ import print_function
-import __builtin__
+
 import string as st
 import numpy as np
+from scipy.optimize import linear_sum_assignment as hungarian
 import types
 import copy
 import string
 import os
 import sys
 import subprocess
-from cStringIO import StringIO
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 try:
     from mpi4py import MPI
     mpi_comm = MPI.COMM_WORLD
@@ -22,13 +26,13 @@ except ImportError as e:
     mpi_rank = 0
     mpi_err = e
 
-from util import unit_cell
-from util import elems as elements
-from util import rotations
-from util import images
-from fileIO import formats
+from .util import unit_cell
+from .util import elems as elements
+from .util import rotations
+from .util import images
+from .fileIO import formats
 
-import addon
+from . import addon
 
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
@@ -48,13 +52,15 @@ if mpi_size > 1:
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
-fhandler.setLevel(logging.DEBUG)
+#fhandler.setLevel(logging.DEBUG)
+fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
 if mpi_rank == 0:
     shandler  = logging.StreamHandler()
-    shandler.setLevel(logging.INFO)
+    #shandler.setLevel(logging.INFO)
+    shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
     
@@ -63,11 +69,15 @@ if mpi_comm == None:
     logger.error(mpi_err)
 
 # overload print function in parallel case
-#def print(*args, **kwargs):
-#    if mpi_rank == 0:
-#        return __builtin__.print(*args, **kwargs)
-#    else:
-#        return
+try:
+    import __builtin__
+except ImportError:
+    import builtins as __builtin__
+def print(*args, **kwargs):
+    if mpi_rank == 0:
+        return __builtin__.print(*args, **kwargs)
+    else:
+        return
 
 
 
@@ -76,15 +86,20 @@ np.set_printoptions(threshold=20000,precision=5)
 SMALL_DIST = 1.0e-3
 
 class mpiobject(object):
-
+    """Basic class to handle parallel attributes
+    
+    :Parameters:
+    - mpi_comm(obj): Intracomm object for parallelization
+    - out(str): output file name. If None: stdout
+    """
     def __init__(self, mpi_comm = None, out = None):
-        if mpi_comm:
-            self.mpi_comm = mpi_comm
-        else:
+        if mpi_comm is None:
             try:
                 self.mpi_comm = MPI.COMM_WORLD
             except NameError:
-                pass #self.mpi_comm = None
+                self.mpi_comm = None
+        else:
+            self.mpi_comm = mpi_comm
         try:
             self.mpi_rank = self.mpi_comm.Get_rank()
             self.mpi_size = self.mpi_comm.Get_size()
@@ -100,28 +115,48 @@ class mpiobject(object):
             self.out = open(out, "w")
 
     def pprint(self, *args, **kwargs):
+        """Parallel print function"""
         if self.mpi_rank == 0:
             __builtin__.print(*args, file=self.out, **kwargs)
             self.out.flush()
 
+    def __getstate__(self):
+        """Get state for pickle and pickle-based method (e.g. copy.deepcopy)
+        Meant for python3 forward-compatibility.
+        Files (and standard output/error as well) are _io.TextIOWrapper
+        in python3, and thus they are not pickle-able. A dedicated method for
+        files is needed.
+        An example: https://docs.python.org/2.0/lib/pickle-example.html
+
+        N.B.: experimental for "out" != sys.stdout
+        """
+        newone = type(self)()
+        newdict = newone.__dict__
+        newdict.update(self.__dict__)
+        newdict["out.name"] = newdict["out"].name
+        newdict["out.mode"] = newdict["out"].mode
+        newdict["out.encoding"] = newdict["out"].encoding
+        del newdict["out"]
+        return newdict
+
+    def __setstate__(self, stored_dict):
+        """Set state for pickle and pickle-based method (e.g. copy.deepcopy)
+        For python3 forward-compatibility
+        Whatever comes out of getstate, goes int setstate.
+        https://stackoverflow.com/a/41754104
+
+        N.B.: experimental for "out" != sys.stdout
+        """
+        if stored_dict["out.name"] == '<stdout>':
+            stored_dict["out"] = sys.stdout
+        self.__dict__ = stored_dict
 
 class mol(mpiobject):
+    """mol class, the basis for any atomistic (or atomistic-like,
+    e.g. topo) representation."""
 
-    def __init__(self, mpi_comm=None, out = None):
+    def __init__(self, mpi_comm = None, out = None):
         super(mol,self).__init__(mpi_comm, out)
-#        if mpi_comm:
-#            self.mpi_comm = mpi_comm
-#        else:
-#            try:
-#                self.mpi_comm = MPI.COMM_WORLD
-#            except NameError:
-#                pass #self.mpi_comm = None
-#        try:
-#            self.mpi_rank = self.mpi_comm.Get_rank()
-#            self.mpi_size = self.mpi_comm.Get_size()
-#        except AttributeError:
-#            self.mpi_rank = 0
-#            self.mpi_size = 1
         self.natoms=0
         self.cell=None
         self.cellparams=None
@@ -237,7 +272,7 @@ class mol(mpiobject):
         fracs = [] 
         elems = []
         for j, site in enumerate(structure.sites):
-            elems.append(string.lower(site.specie.symbol))
+            elems.append(site.specie.symbol.lower())
             fracs.append([site.frac_coords[0],site.frac_coords[1], site.frac_coords[2]])
         fracs = np.array(fracs)
         m.natoms=len(elems)
@@ -404,7 +439,7 @@ class mol(mpiobject):
         natoms = self.natoms
         conn = []
         duplicates = []
-        for i in xrange(natoms):
+        for i in range(natoms):
             a = xyz - xyz[i]
             if self.periodic:
                 if self.bcond <= 2:
@@ -417,12 +452,12 @@ class mol(mpiobject):
             dist = ((a**2).sum(axis=1))**0.5 # distances from i to all other atoms
             conn_local = []
             if remove_duplicates == True:
-                for j in xrange(i,natoms):
+                for j in range(i,natoms):
                     if i != j and dist[j] < tresh:
                         logger.warning("atom %i is duplicate of atom %i" % (j,i))
                         duplicates.append(j)
             else:
-                for j in xrange(natoms):
+                for j in range(natoms):
                     if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
                         conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
@@ -445,12 +480,12 @@ class mol(mpiobject):
             and the respective atomic distances '''
 
         logger.info("reporting connectivity ... ")
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             conn = self.conn[i]
-            self.pprint ("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
-            for j in xrange(len(conn)):
+            self.pprint("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
+            for j in range(len(conn)):
                 d = self.get_neighb_dist(i,j)
-                self.pprint ("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
+                self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
 
     ###  periodic systems .. cell manipulation ############
@@ -498,6 +533,8 @@ class mol(mpiobject):
                         for c in range(len(conn[i][cc])):
                             pc = self.get_distvec(cc,conn[i][cc][c])[2]
                             if len(pc) != 1:
+                                print(self.get_distvec(cc,conn[i][cc][c]))
+                                print(c,conn[i][cc][c])
                                 raise ValueError('an Atom is connected to the same atom twice in different cells! \n requires pconn!! use topo molsys instead!')
                             pc = pc[0]
                             if pc == 13:
@@ -595,8 +632,10 @@ class mol(mpiobject):
         ''' scales the cell by a given fraction (0.1 ^= 10%)
         :Parameters:
             - scale: either single float or list (3,) of floats for x,y,z'''
+        if scale is None:
+            scale = [1,1,1]
         if not hasattr(scale, '__iter__'):
-            scale = 3*[scale]
+            scale = [scale,scale,scale]
         self.cellparams *= np.hstack([scale,[1,1,1]])
         frac_xyz = self.get_frac_xyz()
         self.cell *= np.array(scale)[:,np.newaxis]
@@ -621,7 +660,7 @@ class mol(mpiobject):
                 - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
-                raise ValueError, "can not add periodic systems with unequal cells!!"
+                raise ValueError("can not add periodic systems with unequal cells!!")
                 return
         other_xyz = other.xyz.copy()
         # NOTE: it is important ot keep the order of operations
@@ -656,8 +695,67 @@ class mol(mpiobject):
         return
 
     def add_bond(self,a1,a2):
+        """One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
+        is cross-updated by appending. (no sorting)
+        :Parameter:
+            -a1(int): index of atom1, python-like (starts with 0)
+            -a2(int): index of atom2, python-like (starts with 0)"""
+        if hasattr(a1,"__iter__"): a1=a1[0] #in case a singleton is passed
+        if hasattr(a2,"__iter__"): a2=a2[0] #in case a singleton is passed
         self.conn[a1].append(a2)
         self.conn[a2].append(a1)
+        return
+
+    def add_bonds(self,lista1,lista2):
+        """Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
+        Each atom of list 1 is connected to each atom of list 2.
+        This is rarely wanted unless (at least) one of the lists has got only one atom.
+        In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
+        Each atom of the "long" list is connected to the atom of the "short" one.
+        If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
+        between atom of list 1 and atom of list 2.
+        :Paramters:
+            -lista1(iterable of int): iterable 1 of atom indices
+            -lista2(iterable of int): iterable 2 of atom indices"""
+        if not hasattr(lista1,'__iter__'): lista1 = [lista1]
+        if not hasattr(lista2,'__iter__'): lista2 = [lista2]
+        for a1 in lista1:
+            for a2 in lista2:
+                self.add_bond(a1,a2)
+        return
+
+    def add_naive_hungarian_bonds(self,lista1,lista2):
+        """Valid only in the 2x2 case, four times faster than standard hungarian method"""
+        assert len(lista1) == len(lista2) == 2,\
+            "only for 2x2 case, here: %dx%d case" % (len(lista1), len(lista2))
+        a11, a12 = lista1
+        a21, a22 = lista2
+        d0 = self.get_distvec(a11,a21)
+        d1 = self.get_distvec(a11,a22)
+        if d1 > d0: #straight
+            self.add_bond(a11,a21)
+            self.add_bond(a12,a22)
+        else: #cross
+            self.add_bond(a11,a22)
+            self.add_bond(a12,a21)
+        return
+
+    def add_standard_hungarian_bonds(self,lista1,lista2):
+        dim = len(lista1)
+        assert dim == len(lista2),\
+            "only for NxN case (same number of atoms), here: %dx%d case" % (len(lista1), len(lista2))
+        dmat = np.zeros([dim,dim])
+        for e1,a1 in enumerate(lista1):
+            for e2,a2 in enumerate(lista2):
+                dmat[e1,e2] = self.get_distvec(a1,a2)[0]
+        a1which, a2which = hungarian(dmat)
+        for i in range(dim):
+            self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
+        return
+
+    def add_advanced_hungarian_bonds(self,lista1,lista2):
+        raise NotImplementedError
+
     ###  molecular manipulations #######################################
 
     def delete_atoms(self,bads):
@@ -666,16 +764,16 @@ class mol(mpiobject):
             if len(bads) >= 2:
                 self.bads = bads
                 self.bads.sort()
-                self.goods = [i for i in xrange(self.natoms) if i not in self.bads]
+                self.goods = [i for i in range(self.natoms) if i not in self.bads]
                 self.offset = np.zeros(self.natoms, 'int')
-                for i in xrange(self.natoms):
+                for i in range(self.natoms):
                     if i in self.bads:
                         self.offset[i:] += 1
                 self.atypes = np.take(self.atypes,self.goods)
                 self.elems  = np.take(self.elems, self.goods)
                 self.conn   = np.take(self.conn,  self.goods)
                 self.natoms = len(self.elems)
-                self.conn =[ [j-self.offset[j] for j in self.conn[i] if j not in bads] for i in xrange(self.natoms) ]
+                self.conn =[ [j-self.offset[j] for j in self.conn[i] if j not in bads] for i in range(self.natoms) ]
                 self.xyz    = self.xyz[self.goods]
                 return
             else:
@@ -690,13 +788,13 @@ class mol(mpiobject):
         new_elems = []
         new_atypes = []
         new_conn = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             if i != bad:
                 new_xyz.append(self.xyz[i].tolist())
                 new_elems.append(self.elems[i])
                 new_atypes.append(self.atypes[i])
                 new_conn.append(self.conn[i])
-                for j in xrange(len(new_conn[-1])):
+                for j in range(len(new_conn[-1])):
                     if new_conn[-1].count(bad) != 0:
                         new_conn[-1].pop(new_conn[-1].index(bad))
         self.xyz = np.array(new_xyz, "d")
@@ -767,7 +865,7 @@ class mol(mpiobject):
         #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
         if xyz is not None:
             amass = np.array(self.amass)[idx]
-        elif idx == None:
+        elif idx is None:
             if self.periodic: return None
             xyz = self.get_xyz()
             amass = np.array(self.amass)
@@ -993,11 +1091,10 @@ class mol(mpiobject):
     def add_conn(self, anum1, anum2):
         ''' add a bond between two atoms
             BEWARE, does not do any checks '''
-
         self.conn[anum1].append(anum2)
         self.conn[anum2].append(anum1)
-    	return
-    
+        return
+
     def get_natoms(self):
         ''' returns the number of Atoms '''
         return self.natoms
@@ -1039,7 +1136,7 @@ class mol(mpiobject):
 
     def get_elems_number(self):
         ''' return a list of atomic numbers '''
-        return map(elements.number.__getitem__, self.elems)
+        return [elements.number[i] for i in self.elems]
 
     def get_elemlist(self):
         ''' Returns a list of unique elements '''
@@ -1061,7 +1158,7 @@ class mol(mpiobject):
             - elem_number: list of atomic numbers
         """
         assert len(elems_number) == self.natoms
-        self.elems = map(elements.number.keys().__getitem__, elems_number)
+        self.elems = [elements.number.keys()[i] for i in elems_number]
         return
 
     def get_atypes(self):
@@ -1137,7 +1234,7 @@ class mol(mpiobject):
             - cell_only (bool)  : if false, also the coordinates are changed
                                   in respect to new cell
         '''
-        assert len(cellparams) == 6
+        assert len(list(cellparams)) == 6
         if cell_only == False: frac_xyz = self.get_frac_xyz()
         self.periodic = True
         self.cellparams = cellparams
@@ -1231,7 +1328,7 @@ class mol(mpiobject):
         sets an empty list of lists for the connectivity
         """
         self.conn = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.conn.append([])
         return
         
@@ -1268,7 +1365,7 @@ class mol(mpiobject):
         """
         self.masstype = 'unit'
         self.amass = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.amass.append(1.0)
         return
 
@@ -1282,11 +1379,22 @@ class mol(mpiobject):
             self.amass.append(elements.mass[i])
         return
 
-    def get_mass(self):
+    def get_mass(self, return_masstype=False):
         """
         returns the mass for every atom as list
         """
-        return self.amass
+        if return_masstype:
+            return self.amass, self.masstype
+        else:
+            return self.amass
+
+    def set_mass(self, mass, masstype='real'):
+        """
+        returns the mass for every atom as list
+        """
+        self.amass = mass
+        self.masstype = masstype
+        return
 
     def set_nofrags(self):
         ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''

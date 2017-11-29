@@ -24,7 +24,7 @@ class fconn_validator:
         self.frag_pairs = {}
         self.mode = mode
         if mode == "api":
-            raise ValueError, "Not implemented yet..."
+            raise ValueError("Not implemented yet...")
         elif mode == "csv":
             csvf = open(csv_file, "r")
             csvreader = csv.reader(csvf, delimiter=",")
@@ -37,12 +37,12 @@ class fconn_validator:
                     if not spair in self.frag_pairs.keys():
                         self.frag_pairs[spair] = line[2].strip()
                     else:
-                        raise ValueError, "A pair appears twice in the csv file"
+                        raise ValueError("A pair appears twice in the csv file")
             csvf.close()
         return
 
     def report(self):
-        print self.frag_pairs
+        print(self.frag_pairs)
         return
 
     def __call__(self, fbond):

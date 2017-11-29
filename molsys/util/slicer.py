@@ -99,7 +99,7 @@ class slicer:
                     # to compute the new position we need sdist times the unit vect plus the overall shift
                     spos = xyz[s[0]]+sdist*s[1]+shift
                     k = mol.add_atom(sel, sat, spos)
-                    # print "adding bond between %d %s and %d %s" % (s[0], self.mol.elems[s[0]], k, self.mol.elems[k])
+                    # print("adding bond between %d %s and %d %s" % (s[0], self.mol.elems[s[0]], k, self.mol.elems[k]))
                     mol.add_conn(s[0], k)
         # now all is parsed and we can remove the corresponding atoms
         mol.delete_atoms(delete) 
