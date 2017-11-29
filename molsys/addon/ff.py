@@ -1223,6 +1223,84 @@ class ff(base.base):
         f.close()
         return
 
+    def write_key(self,fname,atype_map=False,atype_addendum=''):
+        '''
+        author: Julian
+        try to write a key file from the data available in the class
+        needs then to be merged manually in case there is only a partial system
+        '''
+        a = atype_addendum
+        fkey=open(fname, 'w')
+        par = self.par
+        #syntax of keyfile:
+        # red name [atypes] [params] 
+        parkeys= self.par.keys() # cha ang dih oop vdw bnd
+        atypes_set = []        
+        # bonds 
+        for bond in par['bnd'].keys():
+            atype1,atype2 = bond.split('(')[-1].split(')')[0].split(',')
+            atype1,atype2 = atype1+a,atype2+a
+            partype, vals = par['bnd'][bond]
+            if atype_map != False:
+                #tbi
+                pass
+            fkey.write('%15s     %15s   %15s   %18.10f   %18.10f\n' % ('bond',atype1,atype2,vals[0],vals[1]))
+
+        # angles
+        for angle in par['ang'].keys():
+            atype1,atype2,atype3 = angle.split('(')[-1].split(')')[0].split(',')
+            atype1,atype2,atype3 = atype1+a,atype2+a,atype3+a
+            partype,vals = par['ang'][angle]
+            if partype == 'mm3':
+                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f\n' % ('angle',atype1,atype2,atype3,vals[0],vals[1]))
+            elif partype == 'strbnd':
+                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f\n' % ('strbnd',atype1,atype2,atype3,vals[0],vals[1],vals[2]))
+            else:
+                raise IOError('partype %s not yet implemented' % partype)
+        
+        # torsions
+        for torsion in par['dih'].keys():
+            atype1,atype2,atype3,atype4 = torsion.split('(')[-1].split(')')[0].split(',')
+            atype1,atype2,atype3,atype4 = atype1+a,atype2+a,atype3+a,atype4+a
+            partype,vals = par['dih'][torsion]
+            if partype == 'cos3':
+                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f   %18.10f\n' % ('torsion',atype1,atype2,atype3,atype4,vals[0],vals[1],vals[2]))
+            else:
+                raise IOError('partype %s not yet implemented' % partype)
+        
+        # oops
+        for oop in par['oop'].keys():
+            atype1,atype2,atype3,atype4 = oop.split('(')[-1].split(')')[0].split(',')
+            atype1,atype2,atype3,atype4 = atype1+a,atype2+a,atype3+a,atype4+a
+            partype,vals = par['oop'][oop]
+            if partype == 'harm':
+                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f\n' % ('opbend',atype1,atype2,atype3,atype4,vals[0],vals[1]))
+            else:
+                raise IOError('partype %s not yet implemented' % partype)
+
+        for vdw in par['vdw'].keys():
+            atype1 = vdw.split('(')[-1].split(')')[0]
+            atype1 = atype1+a
+            partype, vals = par['vdw'][vdw]
+            if atype_map != False:
+                #tbi
+                pass
+            fkey.write('%15s     %15s   %18.10f   %18.10f\n' % ('vdw',atype1,vals[0],vals[1]))
+        
+        for charge in par['cha'].keys():
+            atype1 = charge.split('(')[-1].split(')')[0]
+            atype1 = atype1+a
+            partype, vals = par['cha'][charge]
+            if atype_map != False:
+                #tbi
+                pass
+            fkey.write('%15s     %15s   %18.10f   %18.10f\n' % ('charge',atype1,vals[0],vals[1]))
+        fkey.close() 
+        
+        return
+
+
+
     def read(self, fname, fit=False):
         """
         read the ric/par files instead of assigning params
