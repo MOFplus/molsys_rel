@@ -194,6 +194,7 @@ def read_body(f, natoms, frags = True, topo = False):
     fragtypes   = []
     fragnumbers = []
     pconn       = []
+    pimages     = []
     if topo: frags=False
     for i in range(natoms):
         lbuffer = f.readline().split()
@@ -214,12 +215,13 @@ def read_body(f, natoms, frags = True, topo = False):
         else:
             txt = lbuffer[6+offset:]
             a = [[int(j) for j in i.split('/')] for i in txt]
-            c,pc = [i[0]-1 for i in a], [images[i[1]] for i in a]
+            c,pc,pim = [i[0]-1 for i in a], [images[i[1]] for i in a], [i[1] for i in a]
             conn.append(c)
             pconn.append(pc)
+            pimages.append(pim)
     if topo:
 #        return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers, pconn
-        return elems, numpy.array(xyz), atypes, conn, pconn
+        return elems, numpy.array(xyz), atypes, conn, pconn, pimages
     else:
         return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers
 
@@ -249,7 +251,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
     natoms      = mol.natoms
     atypes      = mol.atypes
     if pbc == False:
-        cellcond = .5*mol.cellparams[:3]
+        cellcond = .5*numpy.array(mol.cellparams[:3])
         cnct = [ [i for i in c if (abs(xyz[i]-xyz[e]) < cellcond).all()] for e,c in enumerate(cnct)]
     if moldenr:
         if fragtypes is None: fragtypes = [None for i in mol.atypes]

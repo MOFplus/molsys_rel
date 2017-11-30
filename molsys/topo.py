@@ -12,10 +12,10 @@ from collections import Counter
 from . import util
 from . import mol
 from molsys.util import cell_manipulation
-elements = util.elems
-unit_cell = util.unit_cell
-rotations = util.rotations ### THERE SHOULD BE A BETTER SOLUTION
-images = util.images ### THERE SHOULD BE A BETTER SOLUTION
+from .util import unit_cell
+from .util import elems as elements
+from .util import rotations
+from .util import images
 import random
 import itertools
 from . import mol as mol
@@ -333,6 +333,7 @@ class topo(mol):
 #        return
     
     def detect_conn_by_coord(self, pconn=False, exclude_pairs=None):
+        """TBI: EXCLUDE_PAIRS"""
         """Detects connectivity by coordination number of the vertices/atoms
         :Variables:
             - self.natoms = N (int): number of atoms
@@ -368,57 +369,52 @@ class topo(mol):
                 dists[i,j], rdummy, imgs[i,j] = self.get_distvec(i,j)
             nimgs[i] = map(len,imgs[:,i])
         nimgs = nimgs.T[:]
-        maximgs = np.max(nimgs, axis=0)
-        maximgs[0] = 1 ### zero atom bonds with first
-        rimgs = maximgs[np.newaxis,:] - nimgs #remainder
-        ### INIT AUGMENTED IMAGES ###
-        lnimgs = [[         [0]*j for j in i] for i in nimgs]
-        lrimgs = [[[sys.maxint]*j for j in i] for i in rimgs]
-        collect = zip(lnimgs,lrimgs)
-        aimgs = []
-        for i in xrange(self.natoms):
-            iaimgs = []
-            for c in zip(*collect[i]):
-                iaimgs.append(sum(c,[]))
-            aimgs.append(sum(iaimgs,[]))
-        aimgs = np.array(aimgs)
-        ### INIT AUGMENTED COSTS ###
-        ja = sum([[j]*m for j,m in enumerate(maximgs)], [])
-        adists = dists[:,ja]
-        acosts = adists + aimgs
-        ### INIT AUGMENTED COORDINATIONS ###
-        ia = sum([[i]*c for i,c in enumerate(self.ncoord)], [])
-        ### INIT BOTH AUGMENTATIONS (IMGS and COORDS) ###
-        ka = sum([[j]*self.ncoord[j] for j in ja], [])
-        ###ahung = acosts[ia]
-        ahung = acosts[ia][:,ka]
-        ### sort by increasing cost
-        hungarg = np.argsort(ahung, axis=1)
-        ###import pdb; pdb.set_trace()
-        ### set impossible cost to same bonds
-        bonds = zip(*hungarian(ahung)) ###HERE BROKEN
-        for b in bonds:
-            print(ia[b[0]], jaia[b[1]])
-        ### exclude w/ exclude pairs: sets very-high
-        excluded = False
-        if exclude_pairs:
-            # delete excluded pairs
-            el_p1,el_p2 = (self.elems[i], self.elems[j]),(self.elems[j], self.elems[i])
-            for expair in exclude_pairs:
-                if (expair == el_p1) or (expair == el_p2):
-                    excluded = True
-                    break
-            #for k,j in enumerate(js[:tillind]):
-            #    if imgslen[k] > 1 and not self.use_pconn:
-            #        raise ValueError, "Error in connectivity detection: use pconn!!!"
-            #    for ii in imgs[k]:
-            #        self.conn[i].append(j)
-            #        self.conn[j].append(i)
-            #        if self.use_pconn:
-            #            image = images[ii]
-            #            self.pconn[i].append(image)
-            #            self.pconn[j].append(image*-1)
-            #    ncoord[j] -= imgslen[k]
+        ### ### ### ### ###
+        from pyscipopt import Model, quicksum
+        self.E = {}
+        model = Model("getConnByCoord")
+        for i,row in enumerate(imgs):
+            for j,entries in enumerate(row): #last is empty
+                for e in entries:
+                    self.E[(i,j),e] = model.addVar(
+                        vtype="B",
+                        name="e(%s-%s.%s)" % (i,j,e)
+                    )
+        imgs_redundant = imgs + imgs.T
+        imgs_mod = []
+        for i, row in enumerate(imgs_redundant):
+            rowmod = [[[(i,j),e] for e in entries] if entries != [] and i<j else [[(j,i),e] for e in entries] if i>j else [] for j,entries in enumerate(row)]
+            rowmod = sum([e for e in rowmod if e !=[]],[])
+            rowmod = [tuple(e) for e in rowmod]
+            imgs_mod.append(rowmod)
+            try:
+                model.addCons(
+                    quicksum( self.E[k] for k in rowmod ) == self.ncoord[i],
+                    "RespectCoordination(c[%i]==%s)" % (i,self.ncoord[i])
+                )
+            except ValueError as e:
+                print("Failure! "+str(e)+" "+self.name)
+                return
+        model.setObjective(
+            quicksum( dists[k[0]]*e for k,e in self.E.items() ),
+            sense="minimize"
+        )
+        model.hideOutput()
+        model.optimize()
+        if model.getStatus() == "optimal":
+            print("Success!")
+        else:
+            print("Failure! Not optimized! "+self.name)
+            return
+        pbonds = []
+        for k,v in self.E.items():
+            if int(model.getVal(v)) == 1:
+                pbonds.append(k)
+        conn, pimages = zip(*pbonds)
+        pconn = [images[i] for i in pimages]
+        self.set_ctab( conn,  conn_flag=True)
+        self.set_ptab(pconn, pconn_flag=True)
+        #self.model = model
         return
     
     def remove_duplicates(self, thresh=SMALL_DIST):
@@ -613,6 +609,28 @@ class topo(mol):
         self.set_elems(elems)
         return
 
+    def get_pconn(self):
+        ''' returns the connectivity of the system '''
+        return self.pconn
+
+    def set_pconn(self, pconn, ptab_flag=False):
+        ''' updates the periodic connectivity of the system
+        :Parameters:
+            - pconn    : List of lists describing the pconnectivity'''
+        self.pconn = pconn
+        if ptab_flag: self.ptab = self.get_pconn_as_tab()
+
+    def get_ptab(self):
+        ''' returns the periodic connectivity table (nbonds, 2)'''
+        return self.ptab
+
+    def set_ptab(self, ptab, pconn_flag=False):
+        ''' updates the periodic connectivity table
+        :Parameters:
+            - ptab  : List of couples describing the periodic connectivity'''
+        self.ptab = ptab
+        if pconn_flag: self.set_pconn_from_tab(ptab)
+
     def set_empty_pconn(self):
         """
         sets an empty list of lists for the periodic connectivity
@@ -622,6 +640,34 @@ class topo(mol):
             self.pconn.append([])
         return
 
+    def get_pconn_as_tab(self):
+        """
+        gets the periodic connectivity as a table of bonds with shape (nbonds, 2)
+        """
+        ptab = []
+        for i, ci in enumerate(self.pconn):
+            for j in ci:
+                if j > i:
+                    ptab.append([i,j])
+        return ptab
+
+    def set_ptab_from_pconn(self, pconn):
+        self.ptab = self.get_pconn_as_tab()
+
+    def set_pconn_from_tab(self, ptab):
+        """
+        sets the periodic connectivity froma table of bonds
+        :Parameters:
+            - ptab   : list of bonds (nbonds, 2)
+        """
+        self.set_empty_pconn()
+        for c in self.ctab:
+            i,j = c
+            pj = ptab[j]
+            pi = -pj
+            self.pconn[i].append(pj)
+            self.pconn[j].append(pi)
+        return
 
 ############# Plotting
 
@@ -888,7 +934,7 @@ class topo(mol):
         elif lelem is None or laty is None:
             raise TypeError("lelem and laty must be both either None or ndarrays")
         elif len(lelem) != ncol or len(laty) != ncol:
-            raise ValueError("len of sele, lelem and laty must be the same!sele:\t%s\nlelem:\t%s\nlaty:\t%s" % (sele, lelem, laty))
+            raise ValueError("len of sele, lelem and laty must be the same!\nsele:\t%s\nlelem:\t%s\nlaty:\t%s" % (sele, lelem, laty))
         lelem = np.array(lelem)
         laty = np.array(laty)
         m.set_elems(lelem[col])
@@ -900,7 +946,12 @@ class topo(mol):
 
     def dummy_col2vex(self, lelem=['c'], laty=['0'], addon=None):
         """returns uncolored graph as molsys.mol instance
-        if addon='spg': generate symmetry perks"""
+        if addon='spg': generate symmetry perks
+            
+        :Variables:
+        - etypes(set): set of unique vertex types (as letters)
+        - dumpensum(dict): dummy penalty summations: 1 per each vertex type
+        - dumpenori(dict): dummy penalty orientations: None per each vertex type"""
         ### APPLY CONDITIONS ***AFTER*** THE DUMMY COLORING! ###
         etypes = set(self.elems)
         lenetypes = len(etypes)
@@ -1073,6 +1124,7 @@ class topo(mol):
         return
 
     def calc_colpen_orient(self, vert):
+        ### BROKEN ???
         # this is a HACK ... works only for vertices with two colors
         # if self.colpen_orientrule == None ignore
         # if not use the number to be added to scal
