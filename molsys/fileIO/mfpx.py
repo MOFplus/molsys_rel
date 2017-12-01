@@ -50,7 +50,7 @@ def read(mol, f):
     if ftype == 'xyz':
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
             txyz.read_body(f,mol.natoms,frags=True)
-    lif ftype == 'topo':
+    elif ftype == 'topo':
         if mol.__class__.__name__ != 'topo':
             logger.warning('Topology information is read to a regular mol object')
 #        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
