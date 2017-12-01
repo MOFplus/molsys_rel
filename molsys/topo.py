@@ -55,6 +55,7 @@ class topo(mol):
         self.periodic= True
         self.use_pconn = True   # flag to use pconn: keeps the image number along with the bond
         self.pconn=[]
+        self.ptab= []
         # extra deafult sfor pyspglib
         if spg:
             self.symprec = SMALL_DIST        # precsion in symmetry detection .. pyspglib default of 1.0e-5 seems to be way too small for large systems (in Angstrom)

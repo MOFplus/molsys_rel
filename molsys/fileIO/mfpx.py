@@ -49,18 +49,19 @@ def read(mol, f):
     ### read body
     if ftype == 'xyz':
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
-                txyz.read_body(f,mol.natoms,frags=True)
-    elif ftype == 'topo':
+            txyz.read_body(f,mol.natoms,frags=True)
+    lif ftype == 'topo':
         if mol.__class__.__name__ != 'topo':
             logger.warning('Topology information is read to a regular mol object')
 #        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
-        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages = txyz.read_body(f,mol.natoms,frags=True, topo = True)
-        pass
+        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages =\
+            txyz.read_body(f,mol.natoms,frags=True, topo = True)
     else:
         ftype = 'xyz'
         logger.warning('Unknown mfpx file type specified. Using xyz as default')
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
                 txyz.read_body(f,mol.natoms,frags=False)
+    mol.set_ctab_from_conn()
     ### pass bb info
     try:
         line = f.readline().split()
