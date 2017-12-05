@@ -23,7 +23,7 @@ class ric(RedIntCoords):
     by using the inherited ric module.
     """
     
-    def __init__(self, mol, lindict = {}):
+    def __init__(self, mol, lindict = {}, npproj = True):
         """
         Init procedure, to setup the a ric instance.
         :Parameters:
@@ -42,6 +42,9 @@ class ric(RedIntCoords):
             self._mol.ff.ric.find_rics()
         ### init RedIntCoords
         RedIntCoords.__init__(self)
+        if npproj == True:
+            self.invert_b_matrix = self.invert_b_matrix_np
+            self.project_hessian = self.project_hessian_np
         self.val_dict = {"str": self.get_val_stretches,
                 "ibe": self.get_val_in_bends,
                 "obe": self.get_val_out_bends,
@@ -228,3 +231,75 @@ class ric(RedIntCoords):
         else:
             with open(file, "w") as f:
                 f.write(buffer)
+
+
+    def invert_b_matrix_np(self):
+        """
+        Invert B-matrix
+
+        The order of RIC is described in the *construct_b_matrix* documentation.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        bmat_inv: (3*N,M) array
+                  Inverse B-matrix, where N is the number of atom in the system and M is
+                  the number of RICs.
+        rank: int
+              Rank of the inverse B-matrix. If rank is smaller than the number of
+              Cartesian coordinates (3*N), the set of RICs is incomplete.
+
+        Example
+        -------
+
+        >>> bmat_inv, rank = ric.invert_b_matrix()
+        """
+
+        # Invert B-matrix
+        # TODO Add parameters controlling SVD convergence to avoid numerical
+        # instabilities.
+        self._ric.bmat_inv = np.linalg.pinv(self._ric.bmat).T 
+#        rank, stat = _ric_build.bmat_invert(self._ric.bmat, self._ric.bmat_inv)
+    #    stat = self._ric.bmat_invert()
+#        assert stat == 0
+
+    #    return self._ric.bmat_inv, self._ric.rank
+        return self._ric.bmat_inv
+
+    def project_hessian_np(self, cart_hessian):
+        """
+        Project Hessian matrix from Cartesian coordinates to RICs.
+
+        Parameters
+        ----------
+        cart_hessian: (3*N, 3*N) array
+                      A symmetric Hessian matrix in Cartesian coordinates, where N
+                      is the number of atoms in the system.
+
+        Returns
+        -------
+        ric_hessian: (M, M) array
+                     A symmetric Hessian matrix in RICs, where M is the number of
+                     RICs.
+
+        Example
+        -------
+
+        >>> ric_hess = ric.project_hessian(cart_hess)
+        """
+
+        # Check and assign Hessian matrix (Cartesian)
+        assert isinstance(cart_hessian,np.ndarray)
+        assert cart_hessian.dtype == np.float64
+        assert cart_hessian.shape == self._ric.cart_hessian.shape
+        #assert np.all(cart_hessian == np.transpose(cart_hessian)) # Slow!!!
+        self._ric.cart_hessian[:,:] = cart_hessian
+        # Project Cartesian Hessian to RICs
+    #    import pdb; pdb.set_trace()
+        self._ric.ric_hessian = np.dot(self._ric.bmat_inv.T,
+                np.dot(self._ric.cart_hessian, self._ric.bmat_inv)) 
+        return self._ric.ric_hessian
+
