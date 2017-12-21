@@ -1332,19 +1332,36 @@ class mol(mpiobject):
             self.conn.append([])
         return
         
-    def get_conn_as_tab(self):
+    def get_conn_as_tab(self, pconn_flag=None):
         """
         gets the connectivity as a table of bonds with shape (nbonds, 2)
+        N.B.: can return ctab AND ptab if self.use_pconn == True
         """
+        if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
         ctab = []
-        for i, ci in enumerate(self.conn):
-            for j in ci:
-                if j > i:
-                    ctab.append([i,j])
+        ptab = []
+        if pconn_flag:
+            for i in range(self.natoms):
+                ci = self.conn[i]
+                pi = self.pimages[i]
+                for j, pj in zip(ci,pi):
+                    if j > i or (j==i and pj <= 13):
+                        ctab.append([i,j])
+                        ptab.append(pj)
+            return ctab, ptab
+        else:
+            for i, ci in enumerate(self.conn):
+                for j in ci:
+                    if j > i:
+                        ctab.append([i,j])
         return ctab
         
-    def set_ctab_from_conn(self, conn):
-        self.ctab = self.get_conn_as_tab()
+    def set_ctab_from_conn(self, pconn_flag=None):
+        if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
+        if pconn_flag:
+            self.ctab, self.ptab = self.get_conn_as_tab(pconn_flag=True)
+        else:
+            self.ctab = self.get_conn_as_tab(pconn_flag=False)
 
     def set_conn_from_tab(self, ctab):
         """
