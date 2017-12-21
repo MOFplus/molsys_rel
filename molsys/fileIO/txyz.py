@@ -298,7 +298,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
     return
 
 
-def write(mol, fname, topo = False, frags = False, pbc=True, moldenr=True):
+def write(mol, fname, topo = False, frags = False, pbc=True, moldenr=False):
     """
     Routine, which writes an txyz file
     :Parameters:
