@@ -343,6 +343,12 @@ class ff2lammps(base):
             K3 = K2*(-2.55)
             K4 = K2*(2.55**2.)*(7.0/12.0)
             pstring = "bond_coeff %5d class2 %12.6f %12.6f %12.6f %12.6f" % (number,r0, K2, K3, K4)
+        elif pot_type == "quartic":
+            r0 = params[1]
+            K2 = params[0]*mdyn2kcal/2.0 
+            K3 = -1*K2*params[2]
+            K4 = K2*(2.55**2.)*params[3]
+            pstring = "bond_coeff %5d class2 %12.6f %12.6f %12.6f %12.6f" % (number,r0, K2, K3, K4)
         elif pot_type == "morse":
             r0 = params[1]
             E0 = params[2]
@@ -476,6 +482,12 @@ class ff2lammps(base):
                     K2 = params[0]*mdyn2kcal/2.0 
                     K3 = K2*(-2.55)
                     K4 = K2*(2.55**2.)*(7.0/12.0)
+                    pstring = "class2 %12.6f %12.6f %12.6f %12.6f" % (r0, K2, K3, K4)
+                elif pot_type == "quartic":
+                    r0 = params[1]
+                    K2 = params[0]*mdyn2kcal/2.0 
+                    K3 = -1*K2*params[2]
+                    K4 = K2*(2.55**2.)*params[3]
                     pstring = "class2 %12.6f %12.6f %12.6f %12.6f" % (r0, K2, K3, K4)
                 elif pot_type == "morse":
                     r0 = params[1]
