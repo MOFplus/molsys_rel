@@ -48,6 +48,7 @@ class Timer:
 
     def __init__(self, print_levels=1000):
         self.timers = {}
+        self.timercalls = {}
         self.t0 = time.time()
         self.running = []
         self.print_levels = print_levels
@@ -59,6 +60,7 @@ class Timer:
     def start(self, name):
         names = tuple(self.running + [name])
         self.timers[names] = self.timers.get(names, 0.0) - time.time()
+        self.timercalls[names] = self.timercalls.get(names,0)
         self.running.append(name)
 
     def stop(self, name=None):
@@ -70,6 +72,7 @@ class Timer:
             raise RuntimeError('Must stop timers by stack order.  '
                                'Requested stopping of %s but topmost is %s'
                                % (name, running))
+        self.timercalls[names] += 1
         self.timers[names] += time.time()
         return names
 
@@ -113,7 +116,7 @@ class Timer:
         timer_report.close()
         return
 
-    def write(self, out=sys.stdout):
+    def write(self, out=sys.stdout, date = True):
         were_running = list(self.running)
         while self.running:
             self.stop()
@@ -124,9 +127,9 @@ class Timer:
         tot = t0 - self.t0
 
         n = max([len(names[-1]) + len(names) for names in self.timers]) + 1
-        line = '=' * (n + 26) + '\n'
+        line = '=' * (n + 37) + '\n'
         out.write(line)
-        out.write('%-*s    incl.     excl.\n' % (n, 'Timing:'))
+        out.write('%-*s     calls     incl.     excl.\n' % (n, 'Timing:'))
         out.write(line)
         tother = tot
 
@@ -142,8 +145,10 @@ class Timer:
                 tother -= t
         exclusive[('Other',)] = tother
         inclusive[('Other',)] = tother
+        self.timercalls[('Other',)] = 0
         keys.append(('Other',))
         for names in keys:
+            calls = self.timercalls[names]
             t = exclusive[names]
             tinclusive = inclusive[names]
             r = t / tot
@@ -157,12 +162,12 @@ class Timer:
             if level > self.print_levels:
                 continue
             name = (level - 1) * ' ' + names[-1] + ':'
-            out.write('%-*s%9.3f %9.3f %5.1f%% %s\n' %
-                      (n, name, tinclusive, t, p, bar))
+            out.write('%-*s %9i %9.3f %9.3f %5.1f%% %s\n' %
+                      (n, name, calls, tinclusive, t, p, bar))
         out.write(line)
-        out.write('%-*s%9.3f %5.1f%%\n' % (n + 10, 'Total:', tot, 100.0))
+        out.write('%-*s%9.3f %5.1f%%\n' % (n + 21, 'Total:', tot, 100.0))
         out.write(line)
-        out.write('date: %s\n' % time.asctime())
+        if date: out.write('date: %s\n' % time.asctime())
 
         for name in were_running:
             self.start(name)

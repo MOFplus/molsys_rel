@@ -34,7 +34,7 @@ try:
 except:
     ric = None
 else:
-    from ric import ric
+    from .ric import ric
 
 from .fragments import fragments
 from .bb import bb
