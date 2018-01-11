@@ -18,7 +18,7 @@ import logging
 import glob
 import molsys
 import csv
-import atomtyper as atomtyper
+from . import atomtyper
 
 try:
     from mpi4py import MPI
@@ -32,7 +32,10 @@ except ImportError as e:
     mpi_err = e
 
 # overload print function in parallel case
-import __builtin__
+try:
+    import __builtin__
+except ImportError:
+    import builtins as __builtin__
 def print(*args, **kwargs):
     if mpi_rank == 0:
         return __builtin__.print(*args, **kwargs)
@@ -165,7 +168,7 @@ class fragmentizer:
         vtype = map(lambda e: e.split("_")[0], atypes)
         vtype = filter(lambda e: (e[0] != "x") and (e[0] != "h"), vtype)
         vtype = list(set(vtype))
-        # print vtype
+        # print(vtype)
         # scan for relevant fragments
         scan_frag = []
         scan_prio = []
@@ -181,7 +184,7 @@ class fragmentizer:
                     elif self.source == "mofp":
                         self.read_frag_from_API(fname)
                     else:
-                        raise ValueError, "unknwon source for fragments"
+                        raise ValueError("unknwon source for fragments")
         # now sort according to prio
         sorted_scan_frag = [scan_frag[i] for i in numpy.argsort(scan_prio)]
         sorted_scan_frag.reverse()
@@ -233,9 +236,9 @@ class fragmentizer:
         frag_atoms = []       # a list of the fragments with their atoms
         nfrags =  max(mol.fragnumbers)+1
         fraglist  = [None]*(nfrags) # additional list to hold the fragments with their name
-        for i in xrange(nfrags):
+        for i in range(nfrags):
             frag_atoms.append([])
-        for i in xrange(mol.natoms):
+        for i in range(mol.natoms):
             ft = mol.fragtypes[i]
             fn = mol.fragnumbers[i]
             if ft == "0":

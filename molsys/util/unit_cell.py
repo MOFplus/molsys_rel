@@ -77,7 +77,7 @@ def get_cart_deformed_cell(cell, axis=0, size=1):
             L[0,1]+=l
     uc=numpy.dot(uc,L)
     v = numpy.linalg.det(uc)
-    print 'volume:', v
+    print('volume:', v)
     return uc
 
 def monoclinic_strain(cell, size=1):
@@ -87,7 +87,7 @@ def monoclinic_strain(cell, size=1):
     L[0,1] = 0.5*l
     L[1,0] = 0.5*l
     L[2,2] = l**2/(4-l**2)
-    print L
+    print(L)
     uc = numpy.dot(uc,L)
     return uc
 

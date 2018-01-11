@@ -9,28 +9,28 @@ def read(mol, f, cycle = 0):
         -mol (obj): instance of a molclass
     """
     ncycle=0
-    fline = string.split(f.readline())
-    natoms = string.atoi(fline[0])
+    fline = f.readline().split()
+    natoms = int(fline[0])
     ### look how many cycles are in 
 #    for line in f.readlines():
-#        sline=string.split(line)
+#        sline=line.split()
 #        if len(sline)==1:
 #            if int(sline)==natoms: ncycle+=1
 #    ### now seek to cycle
 #    cycle=range(ncycle)[cycle]
 #    f.seek(natoms*cycle+1)
 #    if len(fline)>1:
-#        cellparams = map(string.atof,fline[1:7])
+#        cellparams = map(float,fline[1:7])
 #        mol.set_cellparams(cellparams)
     f.readline()
     xyz = numpy.zeros((natoms, 3))
     elements = []
     atypes = []
     for i in range(natoms):
-        line = string.split(f.readline())
-        elements.append(string.lower(line[0]))
-        atypes.append(string.lower(line[0]))
-        xyz[i,:] = map(float,line[1:4])
+        line = f.readline().split()
+        elements.append(line[0].lower())
+        atypes.append(line[0].lower())
+        xyz[i,:] = list(map(float,line[1:4]))
     mol.natoms = natoms
     mol.xyz = numpy.array(xyz)
     mol.elems = elements
@@ -52,7 +52,7 @@ def write(mol, fname):
 #        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n\n" % tuple([mol.natoms]+mol.cellparams))
 #    else:
     f.write("%d\n\n" % mol.natoms)
-    for i in xrange(natoms):
+    for i in range(natoms):
         f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     f.close()
     return

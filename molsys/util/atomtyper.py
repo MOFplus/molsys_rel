@@ -83,13 +83,13 @@ class atomtyper:
                         cona[a] += 1
                     else:
                         cona[a] = 1
-            for i in xrange(self.natoms):
+            for i in range(self.natoms):
                 bonded_atoms = map(self.elements.__getitem__, self.cnct[i])
                 if cona.has_key(i):
                     bonded_atoms += cona[i]*["*"]
                 self.atoms.append(atom(self.elements[i], bonded_atoms))
         else:
-            for i in xrange(self.natoms):
+            for i in range(self.natoms):
                 self.atoms.append(atom(self.elements[i], map(self.elements.__getitem__, self.cnct[i])))
         return
 
@@ -152,10 +152,10 @@ class atomtyper:
         try:
             rule = self.rules[atom.element]
         except KeyError:
-            print 'No rule found for element %s!' % atom.element
+            print('No rule found for element %s!' % atom.element)
             exit()
         if rule not in rules_iml:
-            print 'Rule %s not known' % rule
+            print('Rule %s not known' % rule)
         type = self.apply_rule(atom, rule)
         return type
 

@@ -148,7 +148,7 @@ class zmat:
             if a.fun < 0.1:
                 count = 100000000000
             else:
-                print a
+                print(a)
         ### trans
         c1vec = c1vec*dist
         trans = self._mol.xyz[pc[0],:]+c1vec

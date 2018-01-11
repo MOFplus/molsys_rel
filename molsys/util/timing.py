@@ -10,7 +10,10 @@ import sys
 import time
 import functools
 
-from cStringIO import StringIO
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 
 def function_timer(func, *args, **kwargs):
