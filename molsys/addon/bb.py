@@ -7,6 +7,7 @@ import molsys.util.rotations as rotations
 import string
 import copy
 import numpy as np
+numpy = np
 
 
 import logging
@@ -15,6 +16,14 @@ logger = logging.getLogger("molsys.bb")
 class bb:
 
     def __init__(self,mol):
+        '''
+        initialize data structure for mol object so it can handle building block files
+        beware, there is a litte chaos in the writing of bb files. what is needed is:
+        - is_mol=True i.o. to write
+        - mol.connectors as a list of 'connectors'
+        - mol.connector_atoms as a list of lists of the atoms (inner list) belonging to the connector (outer list)
+        - mol.connectors_type a list if type indices, nconn*[0] for no special connectors, otherwise something like [0,0,0,0,1,1]. needs to be ordered ascendingly:w
+        '''
 #        if mol.is_bb == False:
 #            raise IOError,("No bb info available!")
         self.mol = mol
@@ -129,7 +138,7 @@ class bb:
         """ we test if two molecular systems are equal (superimpose) by way of calculating the rmsd
         :Parameters:
             - other      : mol instance of the system in question
-            - thresh=0.1 : allowed deviation of rmsd between self and other mol
+            - thresh=0.1 : allowed deviation of rmsd between self and other mconnecl
         """
         if self.mol.natoms != other.natoms: return False
         rmsd = 0.0
@@ -155,5 +164,54 @@ class bb:
         else:
             self.mol.centers = centers
         return centers
+    
+    def add_bb_info(self,conn_identifier = 'He',center_point='coc'):
+        '''
+        use for quick conversion of a chemdraw-built MM3 tinker txyz file into a BB file type
+        the connecting atom is next to a He atom, it is beign deleted and 
+        '''
+        self.mol.center_point = center_point
+        self.mol.is_bb=True
+        
+        # get indices of atoms conencted to conn_identifier
+        cident_idx = [i for i,e in enumerate(self.mol.elems) if e.lower() == conn_identifier.lower()]
+        logger.debug(cident_idx)
+        self.mol.connectors = []
+        for i,c in enumerate(self.mol.conn):
+            for j,ci in enumerate(c):
+                if cident_idx.count(ci) != 0: # atom i is connected to to an identifier_atom
+                    self.mol.connectors.append(i)
+        logger.debug('connectors',self.mol.connectors)
+        # remove identifier atoms
+        for ci,connector in enumerate(self.mol.connectors):
+            offset = [True for cidx in cident_idx if cidx < connector].count(True)
+            self.mol.connectors[ci] -= offset
+        self.mol.connector_atoms = [[i] for i in self.mol.connectors]
+        self.mol.connectors_type = [0 for i in range(len(self.mol.connectors))]
+        self.mol.delete_atoms(cident_idx)
+        self.align_pax_to_xyz(use_connxyz=False)
+        return
+    
+    def align_pax_to_xyz(self,use_connxyz = False):
+        '''
+        use to align the principal axes of the building block with x,y,and z.
+        does not yet use weights, but assumes w=1 for all  atoms
+        '''
+        ### TODO has been tested for m-bdc and some others to work, test for others aswell! 
+        import molsys.util.rotations as rotations
+        self.center()
+        if use_connxyz == True:
+            xyz = numpy.array(self.mol.xyz[self.mol.connectors])
+        else:
+            xyz = numpy.array(self.mol.xyz)
+            self.mol.xyz = rotations.align_pax(xyz)
+            #self.mol.view(program='vmdx')
+            return
+        eigval,eigvec = rotations.pax(xyz)
+        eigorder = numpy.argsort(eigval)
+        rotmat = eigvec[:,eigorder] #  sort the column vectors in the order of the eigenvalues to have largest on x, second largest on y, ... 
+        self.mol.xyz = rotations.apply_mat(rotmat,self.mol.xyz)
+        #import pdb; pdb.set_trace()
+        return
 
 

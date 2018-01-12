@@ -161,3 +161,8 @@ def pax(rs,ms=None):
     eigval, eigvec = numpy.linalg.eigh(I)
     return eigval,eigvec
     
+def align_pax(xyz,masses=None):
+    eigval,eigvec = pax(xyz,ms=masses)
+    eigorder = numpy.argsort(eigval)
+    rotmat = eigvec[:,eigorder] #  sort the column vectors in the order of the eigenvalues to have largest on x, second largest on y, ... 
+    return apply_mat(rotmat,xyz)
