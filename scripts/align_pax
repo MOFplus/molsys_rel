@@ -17,6 +17,12 @@ import molsys.util.rotations as rotations
 fi = sys.argv[1]
 fi_type = fi.split('.')[-1]
 
+fo,fo_type = fi,fi_type
+
+if len(sys.argv) == 3:
+    fo = sys.argv[2]
+    fo_type = fo.rsplit('.',1)[-1]
+
 m = mol()
 m.read(fi, ftype = fi_type)
 m.addon('bb')
@@ -26,4 +32,4 @@ m.xyz = rotations.align_pax(m.xyz,masses=m.get_mass())
 
 
 
-m.write(fi, ftype = fi_type)
+m.write(fo, ftype = fo_type)
