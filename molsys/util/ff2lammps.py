@@ -73,7 +73,7 @@ class ff2lammps(base):
         self.plmps_atypes = []
         self.plmps_pair_data = {}
         self.plmps_mass = {} # mass from the element .. even if the vdw and cha type differ it is still the same atom
-        for i in range(self.mol.get_natoms()):
+        for i in xrange(self._mol.get_natoms()):
             vdwt = self.parind["vdw"][i][0]
             chrt = self.parind["cha"][i][0]
             at = vdwt+"/"+chrt
@@ -110,6 +110,7 @@ class ff2lammps(base):
         self._settings["vdw_c"] = 2.25
         self._settings["vdw_dampfact"] = 0.25
         self._settings["vdw_smooth"] = 0.9
+        self._settings["coul_smooth"] = 0.9
         self._settings["use_angle_cosine_buck6d"] = True
         self._settings["kspace_method"] = "ewald"
         self._settings["kspace_prec"] = 1.0e-6
@@ -210,7 +211,7 @@ class ff2lammps(base):
         f = open(filename, "w")
         # write header 
         header = "LAMMPS data file for mol object with MOF-FF params from www.mofplus.org\n\n"
-        header += "%10d atoms\n"      % self.mol.get_natoms()
+        header += "%10d atoms\n"      % self._mol.get_natoms()
         header += "%10d bonds\n"      % len(self.rics["bnd"])
         header += "%10d angles\n"     % len(self.rics["ang"])
         header += "%10d dihedrals\n"  % len(self.rics["dih"])
@@ -260,7 +261,7 @@ class ff2lammps(base):
         # NOTE ... this is MOF-FF and we silently assume that all charge params are Gaussians!!
         f.write("\nAtoms\n\n")
         chargesum = 0.0
-        for i in range(self.mol.get_natoms()):
+        for i in range(self._mol.get_natoms()):
             vdwt  = self.parind["vdw"][i][0]
             chat  = self.parind["cha"][i][0]
             at = vdwt+"/"+chat
@@ -342,6 +343,12 @@ class ff2lammps(base):
             K2 = params[0]*mdyn2kcal/2.0 
             K3 = K2*(-2.55)
             K4 = K2*(2.55**2.)*(7.0/12.0)
+            pstring = "bond_coeff %5d class2 %12.6f %12.6f %12.6f %12.6f" % (number,r0, K2, K3, K4)
+        elif pot_type == "quartic":
+            r0 = params[1]
+            K2 = params[0]*mdyn2kcal/2.0 
+            K3 = -1*K2*params[2]
+            K4 = K2*(2.55**2.)*params[3]
             pstring = "bond_coeff %5d class2 %12.6f %12.6f %12.6f %12.6f" % (number,r0, K2, K3, K4)
         elif pot_type == "morse":
             r0 = params[1]
@@ -453,7 +460,8 @@ class ff2lammps(base):
         if kspace:
             # use kspace for the long range electrostatics and the corresponding long for the real space pair
             f.write("\nkspace_style %s %10.4g\n" % (self._settings["kspace_method"], self._settings["kspace_prec"]))
-            f.write("pair_style buck6d/coul/gauss/long %10.4f %10.4f\n\n" % (self._settings["vdw_smooth"], self._settings["cutoff"]))
+            # for DEBUG f.write("kspace_modify gewald 0.265058\n")
+            f.write("pair_style buck6d/coul/gauss/long %10.4f %10.4f %10.4f\n\n" % (self._settings["vdw_smooth"], self._settings["coul_smooth"], self._settings["cutoff"]))
         else:
             # use shift damping (dsf)
             f.write("\npair_style buck6d/coul/gauss/dsf %10.4f %10.4f\n\n" % (self._settings["vdw_smooth"], self._settings["cutoff"]))
@@ -476,6 +484,12 @@ class ff2lammps(base):
                     K2 = params[0]*mdyn2kcal/2.0 
                     K3 = K2*(-2.55)
                     K4 = K2*(2.55**2.)*(7.0/12.0)
+                    pstring = "class2 %12.6f %12.6f %12.6f %12.6f" % (r0, K2, K3, K4)
+                elif pot_type == "quartic":
+                    r0 = params[1]
+                    K2 = params[0]*mdyn2kcal/2.0 
+                    K3 = -1*K2*params[2]
+                    K4 = K2*(2.55**2.)*params[3]
                     pstring = "class2 %12.6f %12.6f %12.6f %12.6f" % (r0, K2, K3, K4)
                 elif pot_type == "morse":
                     r0 = params[1]

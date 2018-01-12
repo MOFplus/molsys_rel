@@ -43,6 +43,7 @@ from molsys.util.timing import timer, Timer
 from molsys.util import elems
 from molsys.util.ff_descriptors import desc as ff_desc
 from molsys.util.aftypes import aftype, aftype_sort
+from molsys.util.ffparameter import potentials, varpars, varpar
 from molsys.addon import base
 
 import itertools
@@ -116,134 +117,6 @@ class ic(list):
         else:
             values = tuple(self)
         return ((len(self)*form) % values) + attrstring
-        
-
-class varpar(object):
-
-    """
-    Class to hold information of parameters marked as variable in order to be fitted.
-    
-    """
-
-    def __init__(self, ff, name, val = 1.0, range = [0.0,2.0], bounds = ["h","i"]):
-        assert len(bounds) == 2
-        assert bounds[0] in ["h", "i"] and bounds[1] in ["h", "i"]
-        self._ff     = ff
-        self.name    = name
-        self._val     = val
-        self.range   = range
-        self.pos     = []
-        self.bounds   = bounds
-
-    def __repr__(self):
-        """
-        Returns objects name
-        """
-        return self.name
-
-    def __call__(self, val = None):
-        """
-        Method to set a new value to the varpar oject and write this 
-        into the ff.par dictionary.
-        :Parameters:
-            - val(float): new value of the varpar object
-        """
-        if val != None: self.val = val
-        for i,p in enumerate(self.pos):
-            ic, pottype, parindex  = p
-            self._ff.par[ic][pottype][1][parindex] = self.val
-        return
-
-    @property
-    def val(self):
-        return self._val
-
-    @val.setter
-    def val(self,val):
-        assert (type(val) == float) or (type(val) == np.float64) or (val[0] == "$") 
-        self._val = val
-        return
-
-class varpars(dict):
-
-    """
-    Class inherited from dict, that holds all varpar objects
-    """
-
-    def __init__(self, *args, **kwargs):
-        self.update(*args, **kwargs)
-        return
-
-    @property
-    def ranges(self):
-        ranges = []
-        for k,v in self.items():
-            ranges.append(v.range)
-        return np.array(ranges)
-
-    @ranges.setter
-    def ranges(self, ranges):
-        assert len(ranges) == len(self.keys())
-        for i,v in enumerate(self.values()):
-            v.range = ranges[i]
-
-    @property
-    def vals(self):
-        vals   = []
-        for k,v in self.items():
-            vals.append(v.val)
-        return vals
-
-    def cleanup(self):
-        """
-        Method to delete all unsused varpar objects
-        """
-        rem = []
-        for k,v in self.items():
-            if len(v.pos) == 0:
-                logger.warning("varpar %s is not used --> will be deleted!" % k)
-                rem.append(k)
-        for k in rem: del[self[k]]
-        return
-
-    @property
-    def varpots(self):
-        varpots = []
-        for k,v in self.items():
-            for i in range(len(v.pos)):
-                varpot = (v.pos[i][0], v.pos[i][1])
-                if varpot not in varpots: varpots.append(varpot)
-        return varpots
-
-    @property
-    def varpotnums(self):
-        """
-        Property which gives a dictionary telling in how much terms a
-        varpot is involved
-        """
-        ff = self.values()[0]._ff
-        varpots = self.varpots
-        varpotnums = {}
-        for i in varpots: varpotnums[i] = 0
-        ics = ["bnd", "ang", "dih", "oop"]
-        for ic in ics:
-            for pi in ff.parind[ic]:
-                for p in pi:
-                    if (ic,p) in varpots: varpotnums[(ic,p)]+=1
-        return varpotnums
-
-
-    def __call__(self, vals = None):
-        """
-        Method to write new values to the varpar objects and in the 
-        ff.par dictionary
-        :Parameters:
-            -vals(list of floats): list holding the new parameters 
-        """
-        if type(vals) == type(None): vals = len(self)*[None]
-        assert len(vals) == len(self)
-        for i,v in enumerate(self.values()): v(vals[i])
-        return
 
 
 class ric:
@@ -533,7 +406,7 @@ class ric:
 #class ff(base.base):
 class ff(base):
 
-    def __init__(self, mol):
+    def __init__(self, mol, par = None):
         """
         instantiate a ff object which will be attached to the parent mol
 
@@ -665,7 +538,6 @@ class ff(base):
         """
         assert type(equivs) == dict
         assert type(azone) == list
-        ### self.FF = FF ### check
         self.refsysname = refsysname
         self.equivs = equivs
         self.active_zone = azone
@@ -1482,8 +1354,10 @@ class ff(base):
         self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
         # time to init the data structures .. supply vdw and cha here
         self._init_data(cha=ric["cha"], vdw=ric["vdw"])
+        self._init_pardata()
         # now open and read in the par file
         if fit:
+            nkeys={}
             self.fit=True
             fpar = open(fname+".fpar", "r")
             # in the fit case we first screen for the variables block and read it ini
