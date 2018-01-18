@@ -116,9 +116,19 @@ class mpiobject(object):
 
     def pprint(self, *args, **kwargs):
         """Parallel print function"""
-        if self.mpi_rank == 0:
+        if self.is_master:
             __builtin__.print(*args, file=self.out, **kwargs)
             self.out.flush()
+
+    @property
+    def is_master(self):
+        """
+        The mpi process with global rank 0 is always the master rank.
+        This methods returns True if the current process has rank 0, else
+        False
+        """
+        return self.mpi_rank == 0
+
 
     def __getstate__(self):
         """Get state for pickle and pickle-based method (e.g. copy.deepcopy)
