@@ -8,8 +8,11 @@ square deviations to be used as ingredients to fittness values
 
 import string
 import numpy as np
-from ff_gen.ric_new import RedIntCoords 
 import copy
+
+from base import base
+from ff_gen.ric_new import RedIntCoords
+
 
 ricmapping = {"bnd": "str",
         "ang": "ibe",
@@ -17,13 +20,13 @@ ricmapping = {"bnd": "str",
         "dih": "tor"}
 
 
-class ric(RedIntCoords):
+class ric(base,RedIntCoords):
     """
     class to compute redundant internal coordinates (ric)
     by using the inherited ric module.
     """
     
-    def __init__(self, mol, lindict = {}, npproj = True):
+    def __init__(self, mol, npproj = True):
         """
         Init procedure, to setup the a ric instance.
         :Parameters:
@@ -33,7 +36,7 @@ class ric(RedIntCoords):
             indices defining a linear angle and the value is the
             corresponding reference atom; defaults to {}
         """
-        self._mol = mol
+        base.__init__(self, mol)
         ### check if ff is already initialized, else do
         if hasattr(self._mol,"ff") == False:
             self._mol.addon("ff")
@@ -52,16 +55,15 @@ class ric(RedIntCoords):
                 "tor": self.get_val_torsions,
                 "eck": self.get_val_eckarts,
                 "hes": self.get_ric_hessian}
-        self.lindict = lindict
         return
 
-    def setup_rics(self, full = True):
+    def setup_rics(self, full = True, lindict={}):
         """
         Method to setup the rics for the given mol object.
         :Parameters:
             - full(bool): if full is equal to True the whole conn
             table is used to setup the rics, if False only those rics
-            are used fo which FF terms are used; defaults to True
+            are used for which FF terms are used; defaults to True
         """
         self._mol.ff.ric.compute_rics()
         ### bonds
@@ -76,7 +78,8 @@ class ric(RedIntCoords):
                 r.lin = False
             if full or r.used:
                 if r.lin:
-                    self.add_lin_bend_mod(r)
+                    #pass
+                    self.add_lin_bend_mod(r, lindict)
                 else:
                     self.add_in_bend(np.array(list(r))+1)
         ### oop
@@ -97,25 +100,26 @@ class ric(RedIntCoords):
         self.report_rics("rics.dat")
         return
     
-    def add_lin_bend_mod(self, indices):
+    def add_lin_bend_mod(self, indices, lindict={}):
         """
         Method to add an linear bend
         :Parameters:
             - indices: indices of the linear bend
         """
-        if indices in self.lindict.keys():
-            self.add_lin_bend(np.array(list(indices))+1, ref = self.lindict[indices]+1)
+        if tuple(indices) in lindict.keys():
+            self.add_lin_bend(np.array(list(indices))+1, ref = lindict[tuple(indices)]+1)
+            self.pprint("Using atom %s for lin bend %s as reference" % (lindict[tuple(indices)], indices))
         else:
             if len(self._mol.conn[indices[0]])>1:
                 lref = copy.copy(self._mol.conn[indices[0]])
                 lref.pop(lref.index(indices[1]))
                 self.add_lin_bend(np.array(list(indices))+1, ref = lref[0]+1)
-                print("Using atom %s for lin bend %s as reference" % (lref[0], indices))
+                self.pprint("Using atom %s for lin bend %s as reference" % (lref[0], indices))
             elif len(self._mol.conn[indices[2]])>1:
                 lref = copy.copy(self._mol.conn[indices[2]])
                 lref.pop(lref.index(indices[1]))
                 self.add_lin_bend(np.array(list(indices))+1, ref = lref[0]+1)
-                print("Using atom %s for lin bend %s as reference" % (lref[0], indices))
+                self.pprint("Using atom %s for lin bend %s as reference" % (lref[0], indices))
             else:
                 raise ValueError("No reference atom found for linear bend %s" % indices)
         
