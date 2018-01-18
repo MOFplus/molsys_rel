@@ -136,14 +136,14 @@ class ric:
         return
         
 
-    def find_rics(self, specials={"linear": []}):
+    def find_rics(self, specials={"linear": [], "sqp":[]}):
         """
         Method to find all rics of the system
         """
         self.bnd    = self.find_bonds()
         self.ang    = self.find_angles()
         self.oop    = self.find_oops()
-        self.dih    = self.find_dihedrals(specials["linear"])
+        self.dih    = self.find_dihedrals(**specials)
         self.report()
         self.timer.write_logger(logger.info)
         return
@@ -222,14 +222,16 @@ class ric:
         return oops
 
     @timer("find dihedrals")
-    def find_dihedrals(self, lin_types = []):
+    def find_dihedrals(self, lin_types = [], sqp_types = []):
         """
         Method to find all dihedrals of a system
         :Parameters:
             -lin_types(list): list of linear atom types, defaults to []
+            -sqp_types(list): list of square planar atom types, defaults to []
         :Returns:
             -oops(list): list of indices defining all dihedrals
         """
+        print (lin_types, sqp_types)
         dihedrals=[]
         for a2 in range(self.natoms):
             for a3 in self.conn[a2]:
@@ -285,6 +287,12 @@ class ric:
                                 ### it has to be checked if we have this dihedral already
                                 if d not in dihedrals:
                                     dihedrals.append(d)
+                            elif self.aftypes[a2] in sqp_types:
+                                # calculate angle a1 a2 a3
+                                if abs(self.get_angle([a1,a2,a3])-180.0) > 2.0: dihedrals.append(d)
+                            elif self.aftypes[a3] in sqp_types:
+                                # calculate angle a2 a3 a4
+                                if abs(self.get_angle([a2,a3,a4])-180.0) > 2.0: dihedrals.append(d)
                             else:
                                 dihedrals.append(d)
         return dihedrals
@@ -518,7 +526,7 @@ class ff(base):
 
                 
     @timer("assign parameter")
-    def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], plot=False):
+    def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, plot=False):
         """
         method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -535,6 +543,8 @@ class ff(base):
             {}
             - azone     :    [list, optional] list of indices defining the active zone;
             defaults to []
+            - special_atypes : [dict, optional] dict of special atypes, if empty special atypes from
+            mofplus are requested, defaults to {}
         """
         assert type(equivs) == dict
         assert type(azone) == list
@@ -550,7 +560,7 @@ class ff(base):
             if self._mol.mpi_rank == 0:
                 from mofplus import FF_api
                 self.api = FF_api()
-                special_atypes = self.api.list_special_atypes()
+                if len(special_atypes) == 0: special_atypes = self.api.list_special_atypes()
             else:
                 self.api = None
                 special_atypes = None
