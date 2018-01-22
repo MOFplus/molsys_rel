@@ -501,7 +501,7 @@ class ff(base):
                 pot = params[0]
                 if pot not in loaded_pots[ic]: loaded_pots[ic].append(pot)
         with self.timer("find rics"):
-            self.ric.find_rics(specials = {'linear':[]})
+            self.ric.find_rics(specials = {'lin_types':[]})
             self._init_data()
         with self.timer("make atypes"):
             self.aftypes = []
