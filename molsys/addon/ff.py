@@ -231,7 +231,6 @@ class ric:
         :Returns:
             -oops(list): list of indices defining all dihedrals
         """
-        print (lin_types, sqp_types)
         dihedrals=[]
         for a2 in range(self.natoms):
             for a3 in self.conn[a2]:
