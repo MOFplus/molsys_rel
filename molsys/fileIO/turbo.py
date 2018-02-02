@@ -64,7 +64,8 @@ def read_gradfile(mol, f, cycle):
                 elems.append(sline[3])
             elif len(sline) == 3:
                 ### grad info
-                grad.append([lambda a: float(a.replace("D","E"))(i) for i in sline[:3]])
+                #grad.append([lambda a: float(a.replace("D","E"))(i) for i in sline[:3]])
+                grad.append([float(i.replace("D","E")) for i in sline[:3]])
     f.close()
     mol.natoms = len(elems)
     mol.xyz = numpy.array(xyz)/angstrom
