@@ -14,10 +14,19 @@ It is used by other projects within the CMC group such as PYDLPOLY, WEAVER, FFGE
 .. toctree::
    :maxdepth: 2
    :numbered:
-   :caption: User Documentation:
+   :caption: User Documentation
 
    user_addon
    user_util
+
+.. toctree::
+   :maxdepth: 1
+   :numbered:
+   :caption: Technical Stuff
+
+   tech_api
+
+
 
 
 

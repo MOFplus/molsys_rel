@@ -13,4 +13,5 @@ Molsys features several addons:
    :maxdepth: 3
 
    user_util_wrapper
+   user_util_alone
 
