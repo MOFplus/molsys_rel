@@ -113,13 +113,24 @@ class plotter(object):
         
     def write_vmd_bondindices(self,filename='vmd.tcl',maxlength = 2.0,radius=0.2,color='Name'):
         m = self.mol
+        from molsys.util import unit_cell
         m.set_ctab_from_conn()
-f = open(filename,'w')
-for i,c in enumerate(m.ctab):
-    text = 'mol color %s\nmol representation DynamicBonds %8.6f %8.6f 30.000000\n' % (color,maxlength,radius)
-    text+= 'mol selection index %i %i\nmol material Opaque\nmol addrep 0\n' % (c[0],c[1])
-    print(text)
-f.write(text)
+        f = open(filename,'w')     
+        cellparams = unit_cell.abc_from_vectors(m.get_cell())
+        origin = numpy.min(m.xyz,axis=0)
+        #import pdb; pdb.set_trace()
+        #text = 'pbc set { %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f} -all\n' % tuple(cellparams)
+        #text += 'pbc box -center origin -shiftcenter {%12.6f %12.6f %12.6f}\n' % tuple(origin)
+        #text += 'pbc wrap\n'
+        #text += 'pbc box_draw\n'
+        #print(text)
+        #f.write(text)
+        for i,c in enumerate(m.ctab):
+            text = 'mol color %s\nmol representation DynamicBonds %8.6f %8.6f 30.000000\n' % (color,maxlength,radius)
+            text+= 'mol selection index %i %i\nmol material Opaque\nmol addrep 0\n' % (c[0],c[1])
+            print(text)
+            f.write(text)
+
             
         
         
