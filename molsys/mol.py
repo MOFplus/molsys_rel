@@ -2,29 +2,29 @@
 ### overload print in parallel case (needs to be the first line) [RS] ###
 from __future__ import print_function
 
-import string as st
+#import string as st
 import numpy as np
-from scipy.optimize import linear_sum_assignment as hungarian
-import types
+#from scipy.optimize import linear_sum_assignment as hungarian
+#import types
 import copy
 import string
 import os
-import sys
+#import sys
 import subprocess
 try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-try:
-    from mpi4py import MPI
-    mpi_comm = MPI.COMM_WORLD
-    mpi_rank = MPI.COMM_WORLD.Get_rank()
-    mpi_size = MPI.COMM_WORLD.Get_size()
-except ImportError as e:
-    mpi_comm = None
-    mpi_size = 1
-    mpi_rank = 0
-    mpi_err = e
+#try:
+#    from mpi4py import MPI
+#    mpi_comm = MPI.COMM_WORLD
+#    mpi_rank = MPI.COMM_WORLD.Get_rank()
+#    mpi_size = MPI.COMM_WORLD.Get_size()
+#except ImportError as e:
+#    mpi_comm = None
+#    mpi_size = 1
+#    mpi_rank = 0
+#    mpi_err = e
 
 from .util import unit_cell
 from .util import elems as elements
@@ -32,6 +32,7 @@ from .util import rotations
 from .util import images
 from .fileIO import formats
 
+from . import mpiobject
 from . import addon
 
 # set up logging using a logger
@@ -47,8 +48,8 @@ from . import addon
 import logging
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
-if mpi_size > 1:
-    logger_file_name = "molsys.%d.log" % mpi_rank
+if mpiobject.mpi_size > 1:
+    logger_file_name = "molsys.%d.log" % mpiobject.mpi_rank
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
@@ -57,16 +58,16 @@ fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
-if mpi_rank == 0:
+if mpiobject.mpi_rank == 0:
     shandler  = logging.StreamHandler()
     #shandler.setLevel(logging.INFO)
     shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
     
-if mpi_comm == None:
+if mpiobject.mpi_comm == None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
-    logger.error(mpi_err)
+    logger.error(mpiobject.mpi_err)
 
 # overload print function in parallel case
 try:
@@ -74,94 +75,17 @@ try:
 except ImportError:
     import builtins as __builtin__
 def print(*args, **kwargs):
-    if mpi_rank == 0:
+    if mpiobject.mpi_rank == 0:
         return __builtin__.print(*args, **kwargs)
     else:
         return
 
 
-
 np.set_printoptions(threshold=20000,precision=5)
-
 SMALL_DIST = 1.0e-3
 
-class mpiobject(object):
-    """Basic class to handle parallel attributes
-    
-    :Parameters:
-    - mpi_comm(obj): Intracomm object for parallelization
-    - out(str): output file name. If None: stdout
-    """
-    def __init__(self, mpi_comm = None, out = None):
-        if mpi_comm is None:
-            try:
-                self.mpi_comm = MPI.COMM_WORLD
-            except NameError:
-                self.mpi_comm = None
-        else:
-            self.mpi_comm = mpi_comm
-        try:
-            self.mpi_rank = self.mpi_comm.Get_rank()
-            self.mpi_size = self.mpi_comm.Get_size()
-        except AttributeError:
-            self.mpi_rank = 0
-            self.mpi_size = 1
-        if out is None:
-            self.out = sys.stdout
-        elif type(out) == file:
-            assert out.mode == 'w'
-            self.out = out
-        else:
-            self.out = open(out, "w")
 
-    def pprint(self, *args, **kwargs):
-        """Parallel print function"""
-        if self.is_master:
-            __builtin__.print(*args, file=self.out, **kwargs)
-            self.out.flush()
-
-    @property
-    def is_master(self):
-        """
-        The mpi process with global rank 0 is always the master rank.
-        This methods returns True if the current process has rank 0, else
-        False
-        """
-        return self.mpi_rank == 0
-
-
-    def __getstate__(self):
-        """Get state for pickle and pickle-based method (e.g. copy.deepcopy)
-        Meant for python3 forward-compatibility.
-        Files (and standard output/error as well) are _io.TextIOWrapper
-        in python3, and thus they are not pickle-able. A dedicated method for
-        files is needed.
-        An example: https://docs.python.org/2.0/lib/pickle-example.html
-
-        N.B.: experimental for "out" != sys.stdout
-        """
-        newone = type(self)()
-        newdict = newone.__dict__
-        newdict.update(self.__dict__)
-        newdict["out.name"] = newdict["out"].name
-        newdict["out.mode"] = newdict["out"].mode
-        newdict["out.encoding"] = newdict["out"].encoding
-        del newdict["out"]
-        return newdict
-
-    def __setstate__(self, stored_dict):
-        """Set state for pickle and pickle-based method (e.g. copy.deepcopy)
-        For python3 forward-compatibility
-        Whatever comes out of getstate, goes int setstate.
-        https://stackoverflow.com/a/41754104
-
-        N.B.: experimental for "out" != sys.stdout
-        """
-        if stored_dict["out.name"] == '<stdout>':
-            stored_dict["out"] = sys.stdout
-        self.__dict__ = stored_dict
-
-class mol(mpiobject):
+class mol(mpiobject.mpiobject):
     """mol class, the basis for any atomistic (or atomistic-like,
     e.g. topo) representation."""
 
@@ -185,6 +109,11 @@ class mol(mpiobject):
         self.weight=1
         self.loaded_addons =  []
         self.set_logger_level()
+        # defaults
+        self.is_topo = False # this flag replaces the old topo object derived from mol
+        self.use_pconn = False # extra flag .. we could have topos that do not need pconn
+        self.pconn = []
+        self.ptab  = []
         return
 
     #####  I/O stuff ############################
@@ -305,7 +234,7 @@ class mol(mpiobject):
                              see molsys.io.* for detailed info'''
         m = cls()
         logger.info("reading array")
-        assert arr.shape[1] == 3, "Wrong array dimension (second must be 3): %s" % (a.shape,)
+        assert arr.shape[1] == 3, "Wrong array dimension (second must be 3): %s" % (arr.shape,)
         formats.read['array'](m,arr,**kwargs)
         return m
 
@@ -318,7 +247,7 @@ class mol(mpiobject):
                              see molsys.io.* for detailed info'''
         logger.info("reading nested lists")
         for nl in nestl:
-            assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (a.shape,)
+            assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (arr.shape,)
         arr = np.array(nestl)
         return cls.fromArray(arr, **kwargs)
 
@@ -427,7 +356,6 @@ class mol(mpiobject):
         :Parameters:
             - conn (list): list of lists holding the connectivity
         """
-        natoms = len(conn)
         for i, c in enumerate(conn):
             for j in c:
                 if i not in conn[j]: return False
@@ -734,37 +662,35 @@ class mol(mpiobject):
                 self.add_bond(a1,a2)
         return
 
-    def add_naive_hungarian_bonds(self,lista1,lista2):
-        """Valid only in the 2x2 case, four times faster than standard hungarian method"""
-        assert len(lista1) == len(lista2) == 2,\
-            "only for 2x2 case, here: %dx%d case" % (len(lista1), len(lista2))
-        a11, a12 = lista1
-        a21, a22 = lista2
-        d0 = self.get_distvec(a11,a21)
-        d1 = self.get_distvec(a11,a22)
-        if d1 > d0: #straight
-            self.add_bond(a11,a21)
-            self.add_bond(a12,a22)
-        else: #cross
-            self.add_bond(a11,a22)
-            self.add_bond(a12,a21)
+    def add_shortest_bonds(self,lista1,lista2):
+        """Adds bonds between atoms from list1 and list2 (same length!) to connect
+        the shortest pairs
+        
+        in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
+        is used"""
+        assert len(lista1) == len(lista2), "only for lists of same length: %dx != %d " % (len(lista1), len(lista2))
+        if len(lista1) < 3:
+            a11, a12 = lista1
+            a21, a22 = lista2
+            d0 = self.get_distvec(a11,a21)
+            d1 = self.get_distvec(a11,a22)
+            if d1 > d0: #straight
+                self.add_bond(a11,a21)
+                self.add_bond(a12,a22)
+            else: #cross
+                self.add_bond(a11,a22)
+                self.add_bond(a12,a21)
+        else:
+            from scipy.optimize import linear_sum_assignment as hungarian
+            dim = len(lista1)
+            dmat = np.zeros([dim,dim])
+            for e1,a1 in enumerate(lista1):
+                for e2,a2 in enumerate(lista2):
+                    dmat[e1,e2] = self.get_distvec(a1,a2)[0]
+            a1which, a2which = hungarian(dmat)
+            for i in range(dim):
+                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])            
         return
-
-    def add_standard_hungarian_bonds(self,lista1,lista2):
-        dim = len(lista1)
-        assert dim == len(lista2),\
-            "only for NxN case (same number of atoms), here: %dx%d case" % (len(lista1), len(lista2))
-        dmat = np.zeros([dim,dim])
-        for e1,a1 in enumerate(lista1):
-            for e2,a2 in enumerate(lista2):
-                dmat[e1,e2] = self.get_distvec(a1,a2)[0]
-        a1which, a2which = hungarian(dmat)
-        for i in range(dim):
-            self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
-        return
-
-    def add_advanced_hungarian_bonds(self,lista1,lista2):
-        raise NotImplementedError
 
     ###  molecular manipulations #######################################
 
