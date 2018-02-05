@@ -1,5 +1,4 @@
 import numpy
-import string
 from . import txyz
 import logging
 
@@ -51,9 +50,9 @@ def read(mol, f):
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
             txyz.read_body(f,mol.natoms,frags=True)
     elif ftype == 'topo':
-        if mol.__class__.__name__ != 'topo':
-            logger.warning('Topology information is read to a regular mol object')
-#        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers,\
+        # topo file so set the corresponding flags
+        mol.is_topo =   True
+        mol.use_pconn = True
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages =\
             txyz.read_body(f,mol.natoms,frags=True, topo = True)
     else:
@@ -79,11 +78,11 @@ def write(mol, fname, fullcell = True):
     :Parameters:
         -mol   (obj) : instance of a molsys class
         -fname (str) : name of the mfpx file
-        -topo  (bool): flag to specify if pconn should be in mfpx file or not
+        -fullcell  (bool): flag to specify if complete cellvectors arre written
     """
     if mol.fragtypes == []: mol.set_nofrags()
     f = open(fname, 'w')
-    if mol.__class__.__name__ == 'topo':
+    if mol.is_topo:
         ftype = 'topo'
     else:
         ftype = 'xyz'

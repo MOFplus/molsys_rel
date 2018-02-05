@@ -387,7 +387,7 @@ class mol(mpiobject.mpiobject):
                     frac = np.dot(a, self.inv_cell)
                     frac -= np.around(frac)
                     a = np.dot(frac, self.cell)
-            dist = ((a**2).sum(axis=1))**0.5 # distances from i to all other atoms
+            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
             conn_local = []
             if remove_duplicates == True:
                 for j in range(i,natoms):
@@ -427,12 +427,22 @@ class mol(mpiobject.mpiobject):
         return
 
     ###  periodic systems .. cell manipulation ############
-
+    
+    #RS  Fix this
+    #    currently if pconn is used we just call the old method from topo.py ... a lot of redundant things could 
+    #    could be removed and all should be merged into one method at some point
+    #
+    
     def make_supercell(self,supercell):
         ''' Extends the periodic system in all directions by the factors given in the
             supercell upon preserving the connectivity of the initial system
             :Parameters:
                 - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
+        # HACK
+        if mol.use_pconn:
+            xyz,conn,pconn = self.make_supercell_pconn(supercell)
+            return xyz,conn,pconn
+        # END HACK
         self.supercell = tuple(supercell)
         ntot = np.prod(self.supercell)
         conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
@@ -502,6 +512,80 @@ class mol(mpiobject.mpiobject):
         self.fragnumbers=nfragnumbers
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn
+
+
+    def make_supercell_pconn(self, supercell):
+        """ old make_supercell from topo object 
+        """
+        self.supercell = tuple(supercell)
+        logger.info('Generating %i x %i x %i supercell' % self.supercell)
+        img = [np.array(i) for i in images.tolist()]
+        ntot = np.prod(supercell)
+        nat = copy.deepcopy(self.natoms)
+        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
+        pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
+        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
+        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
+        elems = copy.deepcopy(self.elems)
+        left,right,front,back,bot,top =  [],[],[],[],[],[]
+        neighs = [[] for i in range(6)]
+        iii = []
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    iii.append(ixyz)
+                    if ix == 0   : left.append(ixyz)
+                    if ix == nx-1: right.append(ixyz)
+                    if iy == 0   : bot.append(ixyz)
+                    if iy == ny-1: top.append(ixyz)
+                    if iz == 0   : front.append(ixyz)
+                    if iz == nz-1: back.append(ixyz)
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
+                    xyz[ixyz] += dispvect
+
+                    i = copy.copy(ixyz)
+                    for cc in range(len(conn[i])):
+                        for c in range(len(conn[i][cc])):
+                            if (img[13] == pconn[i][cc][c]).all():
+                                #conn[i][cc][c] += ixyz*nat
+                                conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
+                                pconn[i][cc][c] = np.array([0,0,0])
+                            else:
+                                px,py,pz     = pconn[i][cc][c][0],pconn[i][cc][c][1],pconn[i][cc][c][2]
+                                #print(px,py,pz)
+                                iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
+                                iixyz= iix+nx*iiy+nx*ny*iiz
+                                conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
+                                pconn[i][cc][c] = np.array([0,0,0])
+                                if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
+                                if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
+                                if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
+                                if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
+                                if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
+                                if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
+                                #print(px,py,pz)
+        self.conn, self.pconn, self.xyz = [],[],[]
+        for cc in conn:
+            for c in cc:
+                self.conn.append(c)
+        for pp in pconn:
+            for p in pp:
+                self.pconn.append(p)
+        self.natoms = nat*ntot
+        self.xyz = np.array(xyz).reshape(nat*ntot,3)
+        self.cellparams[0:3] *= np.array(self.supercell)
+        self.cell *= np.array(self.supercell)[:,np.newaxis]
+        self.inv_cell = np.linalg.inv(self.cell)
+        self.elems *= ntot
+        self.atypes*=ntot
+        self.images_cellvec = np.dot(images, self.cell)
+        return xyz,conn,pconn
+
 
     def wrap_in_box(self, thresh=SMALL_DIST):
         ''' In case atoms are outside the box defined by the cell,
@@ -953,11 +1037,15 @@ class mol(mpiobject.mpiobject):
         j = self.conn[i][ci]
         rj = self.xyz[j].copy()
         if self.periodic:
-            all_rj = rj + self.images_cellvec
-            all_r = all_rj - self.xyz[i]
-            all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
-            closest = np.argsort(all_d)[0]
-            return all_rj[closest]
+            if self.use_pconn:
+                img = self.pconn[i][ci]
+                rj += np.dot(img, self.cell)
+            else:
+                all_rj = rj + self.images_cellvec
+                all_r = all_rj - self.xyz[i]
+                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+                closest = np.argsort(all_d)[0]
+                return all_rj[closest]
         return rj
 
     def get_neighb_dist(self, i, ci):
@@ -969,11 +1057,15 @@ class mol(mpiobject.mpiobject):
         j = self.conn[i][ci]
         rj = self.xyz[j].copy()
         if self.periodic:
-            all_rj = rj + self.images_cellvec
-            all_r = all_rj - self.xyz[i]
-            all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
-            closest = np.argsort(all_d)[0]
-            return all_rj[closest]
+            if self.use_pconn:
+                img = self.pconn[i][ci]
+                rj += np.dot(img, self.cell)
+            else:
+                all_rj = rj + self.images_cellvec
+                all_r = all_rj - self.xyz[i]
+                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+                closest = np.argsort(all_d)[0]
+                return all_rj[closest]
         dr = ri-rj
         d = np.sqrt(np.sum(dr*dr))
         return d
