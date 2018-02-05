@@ -41,7 +41,7 @@ class DataReference:
         """
         if exists_warning:
             if os.path.isfile and self.access[0] != "w":
-                raise  IOError, "File %s exists, explicit exists_warning=False for DataReference instance" % (fname,)
+                raise  IOError, "File %s exists, explicit exists_warning=False for DataReference instance" % (self.name,)
         if h5file is None:
             h5file = self.h5file
         if path is not None:
@@ -53,7 +53,7 @@ class DataReference:
             value = data[key]
             if type(value) is dict:
                 group = h5file.create_group(key)
-                self.build_rec_dataset(value, group)
+                self.build_rec_dataset(value, group, exists_warning=exists_warning)
             else:
                 h5file.create_dataset(key, data=value)
     
