@@ -72,6 +72,7 @@ class spg:
         if len(omit)>0:
             new_omit = []
             for e in omit:
+                if type(e)==str and len(e)==0: continue
                 if type(e) != type(1):
                     new_omit.append(elems.number[e.lower()])
                 else:
