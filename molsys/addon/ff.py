@@ -222,14 +222,16 @@ class ric:
         return oops
 
     @timer("find dihedrals")
-    def find_dihedrals(self, lin_types = [], sqp_types = []):
+    def find_dihedrals(self, linear = [], sqp = []):
         """
         Method to find all dihedrals of a system
-        :Parameters:
-            -lin_types(list): list of linear atom types, defaults to []
-            -sqp_types(list): list of square planar atom types, defaults to []
-        :Returns:
-            -oops(list): list of indices defining all dihedrals
+
+        Parameters:
+            linear(list): list of linear atom types, defaults to []
+            sqp(list): list of square planar atom types, defaults to []
+
+        Returns:
+            dihedrals(list): list of indices defining all dihedrals
         """
         dihedrals=[]
         for a2 in range(self.natoms):
@@ -243,7 +245,7 @@ class ric:
                     ### check if a3 or a2 is a linear one
                     lin = False
                     stubb = False
-                    while self.aftypes[a2] in lin_types:
+                    while self.aftypes[a2] in linear:
                         assert len(endatom1) == 1
                         lin = True
                         a2old = a2
@@ -255,7 +257,7 @@ class ric:
                             stubb = True
                             break
                     if stubb: continue
-                    while self.aftypes[a3] in lin_types:
+                    while self.aftypes[a3] in linear:
                         assert len(endatom4) == 1
                         lin = True
                         a3old = a3
@@ -286,10 +288,10 @@ class ric:
                                 ### it has to be checked if we have this dihedral already
                                 if d not in dihedrals:
                                     dihedrals.append(d)
-                            elif self.aftypes[a2] in sqp_types:
+                            elif self.aftypes[a2] in sqp:
                                 # calculate angle a1 a2 a3
                                 if abs(self.get_angle([a1,a2,a3])-180.0) > 2.0: dihedrals.append(d)
-                            elif self.aftypes[a3] in sqp_types:
+                            elif self.aftypes[a3] in sqp:
                                 # calculate angle a2 a3 a4
                                 if abs(self.get_angle([a2,a3,a4])-180.0) > 2.0: dihedrals.append(d)
                             else:
@@ -500,7 +502,7 @@ class ff(base):
                 pot = params[0]
                 if pot not in loaded_pots[ic]: loaded_pots[ic].append(pot)
         with self.timer("find rics"):
-            self.ric.find_rics(specials = {'lin_types':[]})
+            self.ric.find_rics(specials = {'linear':[]})
             self._init_data()
         with self.timer("make atypes"):
             self.aftypes = []
@@ -1036,11 +1038,13 @@ class ff(base):
         """
         this helper function checks if any atom (indices) in alist
         appear in the list of active atoms (indices) in fsubsys
-        :Parameters:
-            - alist(list): list of atom indices
-            - subsys(list): list of atom indices
-        :Returns:
-            - True or False
+
+        Args:
+            alist (list): list of atom indices
+            subsys (list): list of atom indices
+            
+        Returns:
+            bool: True or False
         """
         if subsys == None: return True
         return any(a in subsys for a in alist)
