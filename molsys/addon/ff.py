@@ -665,7 +665,7 @@ class ff(base):
             unknown_par = []
             for i, p in enumerate(self.ric_type[ic]):
                 if self.parind[ic][i] == None:
-                    parname = self.get_parname(p)
+                    parname = self.get_parname_sort(p,ic)
                     if not parname in unknown_par:
                         unknown_par.append(parname)
             if len(unknown_par) > 0:
