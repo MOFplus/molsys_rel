@@ -9,10 +9,10 @@ syntax: glob
 *.pyo
 *.orig
 *_keep
-.swp.*
-.swp
-.spyderworkspace
-.spyderproject
-molsys.log
+*.swp.*
+*.swp
+*.spyderworkspace
+*.spyderproject
+*molsys.log
 doc/_build
 doc/build

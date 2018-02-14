@@ -907,10 +907,11 @@ class mol(mpiobject):
             xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         return xyz
 
-    def pbc(self, xyz, fixidx = 0):
+    def pbc(self, xyz=None, fixidx = 0):
         """
         Compute periodic boundary conditions in an arbitrary (triclinic) cell
         """
+        if xyz is None: xyz = self.xyz
         if self.periodic:
             fix = xyz[fixidx,:]
             a = xyz[:,:] - fix
