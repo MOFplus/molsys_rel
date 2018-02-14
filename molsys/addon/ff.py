@@ -1604,6 +1604,8 @@ class ff(base):
         """
         assert type(refname) == str
         assert type(FF)      == str
+        from mofplus import FF_api
+        self.api = FF_api()
         if dbrefname == None: dbrefname = refname
         if atfix is not None:
             fixes = {}
