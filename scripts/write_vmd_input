@@ -11,18 +11,24 @@
 import sys
 import string
 import molsys.mol as mol
-
-
+import molsys
+from molsys.util import plotter
 fi = sys.argv[1]
-fo = sys.argv[2]
 fi_type = fi.split('.')[-1]
-fo_type = fo.split('.')[-1]
-
-
+try:
+    radius = float(sys.argv[2])
+except:
+    radius = 3.00
 m = mol()
 m.read(fi, ftype = fi_type)
+
 if fi_type == 'xyz':
     m.detect_conn(remove_duplicates = True)
     m.set_nofrags()
 
-m.write(fo, ftype = fo_type)
+p = plotter.plotter(m)
+p.write_vmd_bondindices(filename='bonds.tcl',maxlength = radius)
+
+
+
+#m.write(fo, ftype = fo_type)
