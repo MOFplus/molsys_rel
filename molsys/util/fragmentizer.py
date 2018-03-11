@@ -136,11 +136,12 @@ class fragmentizer:
         API call on master only ... broadcsted to other nodes 
         """
         if mpi_rank == 0:
-            m = self.api.get_FFfrag(fname, mol = True)
+            ms = self.api.get_FFfrag(fname, out = "str")
         else:
-            m = []
+            ms = []
         if mpi_size > 1:
-            m = mpi_comm.bcast(m, root=0)
+            ms = mpi_comm.bcast(ms, root=0)
+        m = molsys.mol.fromString(ms)
         m.addon("graph")
         m.graph.make_graph()
         self.fragments[fname] = m
