@@ -219,9 +219,9 @@ class mol(mpiobject.mpiobject):
     @classmethod
     def fromArray(cls, arr, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
-        :Parameters:
-            - arr         : the array to be read
-            - **kwargs    : all options of the parser are passed by the kwargs
+        Parameters:
+            arr         : the array to be read
+            **kwargs    : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         m = cls()
         logger.info("reading array")
@@ -232,9 +232,9 @@ class mol(mpiobject.mpiobject):
     @classmethod
     def fromNestedList(cls, nestl, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
-        :Parameters:
-            - arr         : the array to be read
-            - **kwargs    : all options of the parser are passed by the kwargs
+        Parameters:
+            arr         : the array to be read
+            **kwargs    : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         logger.info("reading nested lists")
         for nl in nestl:
@@ -244,10 +244,10 @@ class mol(mpiobject.mpiobject):
 
     def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
-        :Parameters:
-            - fname        : the filename to be written
-            - ftype="mfpx" : the parser type that is used to writen the file
-            - **kwargs     : all options of the parser are passed by the kwargs
+        Parameters:
+            fname        : the filename to be written
+            ftype="mfpx" : the parser type that is used to writen the file
+            **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if self.mpi_rank == 0:
             if ftype is None:
@@ -358,8 +358,8 @@ class mol(mpiobject.mpiobject):
         detects the connectivity of the system, based on covalent radii.
 
         Parameters:
-            - tresh  (float): additive treshhold
-            - remove_duplicates  (bool): flag for the detection of duplicates
+            tresh  (float): additive treshhold
+            remove_duplicates  (bool): flag for the detection of duplicates
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -526,8 +526,9 @@ class mol(mpiobject.mpiobject):
     def make_supercell(self,supercell):
         ''' Extends the periodic system in all directions by the factors given in the
             supercell upon preserving the connectivity of the initial system
+            
             Parameters:
-                - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
+                supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
         # HACK
         if self.use_pconn:
             xyz,conn,pconn = self._make_supercell_pconn(supercell)
@@ -678,7 +679,9 @@ class mol(mpiobject.mpiobject):
 
 
     def apply_pbc(self, xyz=None, fixidx=0):
-        ''' apply pbc to the atoms of the system or some external positions
+        ''' 
+        apply pbc to the atoms of the system or some external positions
+        Note: If pconn is used it is ivalid after this operation and will be reconstructed.
         
         Args:
             xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
@@ -710,6 +713,8 @@ class mol(mpiobject.mpiobject):
             elif self.bcond == 3:
                 frac = np.dot(a, self.inv_cell)
                 xyz[:,:] -= np.dot(np.around(frac),self.cell)
+        if self.use_pconn:
+            self.add_pconn()
         return xyz
 
     # legacy name just to keep compat
@@ -717,7 +722,7 @@ class mol(mpiobject.mpiobject):
         """
         legacy method maps on apply_pbc
         """
-        self.appy_pbc()
+        self.apply_pbc()
         return
     
     def get_cell(self):
@@ -756,7 +761,8 @@ class mol(mpiobject.mpiobject):
 
         '''
         assert np.shape(cell) == (3,3)
-        if cell_only == False: frac_xyz = self.get_frac_xyz()
+        if cell_only == False: 
+            frac_xyz = self.get_frac_from_xyz()
         self.periodic = True
         self.cell = cell
         self.cellparams = unit_cell.abc_from_vectors(self.cell)
@@ -787,7 +793,7 @@ class mol(mpiobject.mpiobject):
             
         cell = self.get_cell()
         cell *= scale
-        self.set_call(cell, cell_only=False)
+        self.set_cell(cell, cell_only=False)
         return
 
     def get_frac_from_xyz(self, xyz=None):
@@ -843,12 +849,12 @@ class mol(mpiobject.mpiobject):
 
     def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
         ''' adds a  nonperiodic mol object to the current one ... self can be both
-            :Parameters:
-                - other        (mol): an instance of the to-be-inserted mol instance
-                - translate=None    : (3,) numpy array as shift vector for the other mol
-                - rotate=None       : (3,) rotation triple to apply to the other mol object before insertion
-                - scale=None (float): scaling factor for other mol object coodinates
-                - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
+            Parameters:
+                other        (mol)      : an instance of the to-be-inserted mol instance
+                translate (numpy.ndarry): numpy array as shift vector for the other mol
+                rotate (numpy.ndarry)   : rotation triple to apply to the other mol object before insertion
+                scale (float)           : scaling factor for other mol object coodinates
+                roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
@@ -886,11 +892,13 @@ class mol(mpiobject.mpiobject):
         return
 
     def add_bond(self,a1,a2):
-        """One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
+        """
+        One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
         is cross-updated by appending. (no sorting)
-        :Parameter:
-            -a1(int): index of atom1, python-like (starts with 0)
-            -a2(int): index of atom2, python-like (starts with 0)"""
+        
+        Parameter:
+            a1 (int): index of atom1, python-like (starts with 0)
+            a2 (int): index of atom2, python-like (starts with 0)"""
         if hasattr(a1,"__iter__"): a1=a1[0] #in case a singleton is passed
         if hasattr(a2,"__iter__"): a2=a2[0] #in case a singleton is passed
         self.conn[a1].append(a2)
@@ -898,16 +906,18 @@ class mol(mpiobject.mpiobject):
         return
 
     def add_bonds(self,lista1,lista2):
-        """Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
+        """ 
+        Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
         Each atom of list 1 is connected to each atom of list 2.
         This is rarely wanted unless (at least) one of the lists has got only one atom.
         In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
         Each atom of the "long" list is connected to the atom of the "short" one.
         If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
         between atom of list 1 and atom of list 2.
-        :Paramters:
-            -lista1(iterable of int): iterable 1 of atom indices
-            -lista2(iterable of int): iterable 2 of atom indices"""
+        
+        Paramters:
+            lista1(iterable of int): iterable 1 of atom indices
+            lista2(iterable of int): iterable 2 of atom indices"""
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
         if not hasattr(lista2,'__iter__'): lista2 = [lista2]
         for a1 in lista1:
@@ -916,7 +926,8 @@ class mol(mpiobject.mpiobject):
         return
 
     def add_shortest_bonds(self,lista1,lista2):
-        """Adds bonds between atoms from list1 and list2 (same length!) to connect
+        """
+        Adds bonds between atoms from list1 and list2 (same length!) to connect
         the shortest pairs
         
         in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
@@ -948,7 +959,8 @@ class mol(mpiobject.mpiobject):
     ###  molecular manipulations #######################################
 
     def delete_atoms(self,bads):
-        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        ''' 
+        deletes an atom and its connections and fixes broken indices of all other atoms '''
         if hasattr(bads, '__iter__'):
             if len(bads) >= 2:
                 self.bads = bads
@@ -1046,8 +1058,8 @@ class mol(mpiobject.mpiobject):
         """
         returns the center of mass of the mol object.
 
-        :Parameters:
-            - idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
+        Parameters:
+            idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
         if hasattr(self,'masstype') == False: self.set_real_mass()
         #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
@@ -1061,16 +1073,7 @@ class mol(mpiobject.mpiobject):
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
-        xyz = self.pbc(xyz, 0)
-#        if self.periodic:
-#            fix = xyz[0,:]
-#            a = xyz[1:,:] - fix
-#            if self.bcond <= 2:
-#                cell_abc = self.cellparams[:3]
-#                xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
-#            elif self.bcond == 3:
-#                frac = np.dot(a, self.inv_cell)
-#                xyz[1:,:] -= np.dot(np.around(frac),self.cell)
+        xyz = self.apply_pbc(xyz, 0)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
 
