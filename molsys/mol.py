@@ -15,16 +15,6 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-#try:
-#    from mpi4py import MPI
-#    mpi_comm = MPI.COMM_WORLD
-#    mpi_rank = MPI.COMM_WORLD.Get_rank()
-#    mpi_size = MPI.COMM_WORLD.Get_size()
-#except ImportError as e:
-#    mpi_comm = None
-#    mpi_size = 1
-#    mpi_rank = 0
-#    mpi_err = e
 
 from .util import unit_cell
 from .util import elems as elements
@@ -115,9 +105,10 @@ class mol(mpiobject):
         self.use_pconn = False # extra flag .. we could have topos that do not need pconn
         self.pconn = []
         self.ptab  = []
+        self.supercell=[1,1,1]
         return
 
-    #####  I/O stuff ############################
+    #####  I/O stuff ######################################################################################
 
     def set_logger_level(self,level='INFO'):
         if level=='INFO':
@@ -229,9 +220,9 @@ class mol(mpiobject):
     @classmethod
     def fromArray(cls, arr, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
-        :Parameters:
-            - arr         : the array to be read
-            - **kwargs    : all options of the parser are passed by the kwargs
+        Parameters:
+            arr         : the array to be read
+            **kwargs    : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         m = cls()
         logger.info("reading array")
@@ -242,9 +233,9 @@ class mol(mpiobject):
     @classmethod
     def fromNestedList(cls, nestl, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
-        :Parameters:
-            - arr         : the array to be read
-            - **kwargs    : all options of the parser are passed by the kwargs
+        Parameters:
+            arr         : the array to be read
+            **kwargs    : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         logger.info("reading nested lists")
         for nl in nestl:
@@ -254,10 +245,10 @@ class mol(mpiobject):
 
     def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
-        :Parameters:
-            - fname        : the filename to be written
-            - ftype="mfpx" : the parser type that is used to writen the file
-            - **kwargs     : all options of the parser are passed by the kwargs
+        Parameters:
+            fname        : the filename to be written
+            ftype="mfpx" : the parser type that is used to writen the file
+            **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if self.mpi_rank == 0:
             if ftype is None:
@@ -296,15 +287,15 @@ class mol(mpiobject):
     def pymol(self, **kwargs):
         self.view(program='pymol', fmt='mfpx', **kwargs)
 
-    ##### addons ##################################
+    ##### addons ####################################################################################
 
     def addon(self, addmod, **kwargs):
         """
         add an addon module to this object
 
-        :Parameters:
-
-            - addmol: string name of the addon module
+        Args:
+            addmol (string): string name of the addon module
+            **kwargs: further keyword arguments passed on to the instantiator of the addon
         """
         if addmod in self.loaded_addons:
             return
@@ -347,16 +338,17 @@ class mol(mpiobject):
         self.loaded_addons.append(addmod)
         return
 
-    ##### connectivity ########################
+    ##### connectivity ########################################################################################
 
-    @staticmethod
-    def check_conn(conn):
+    def check_conn(self, conn=None):
         """
         checks if connectivity is not broken
 
-        :Parameters:
-            - conn (list): list of lists holding the connectivity
+        Parameters:
+            conn (list): list of lists holding the connectivity (if None self.conn is tested)
         """
+        if conn == None:
+            conn = self.conn
         for i, c in enumerate(conn):
             for j in c:
                 if i not in conn[j]: return False
@@ -366,9 +358,9 @@ class mol(mpiobject):
         """
         detects the connectivity of the system, based on covalent radii.
 
-        :Parameters:
-            - tresh  (float): additive treshhold
-            - remove_duplicates  (bool): flag for the detection of duplicates
+        Parameters:
+            tresh  (float): additive treshhold
+            remove_duplicates  (bool): flag for the detection of duplicates
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -412,6 +404,9 @@ class mol(mpiobject):
             self.detect_conn(tresh = tresh)
         else:
             self.set_conn(conn)
+        if self.use_pconn:
+            # we had a pconn and redid the conn --> need to reconstruct the pconn
+            self.add_pconn()
         return
 
     def report_conn(self):
@@ -426,6 +421,101 @@ class mol(mpiobject):
                 d = self.get_neighb_dist(i,j)
                 self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
+    
+    def add_pconn(self):
+        """ generate the pconn from the exisiting conn
+            The pconn contains the image index of the bonded neighbor
+            pconn is really needed only for small unit cells (usually topologies) where vertices
+            can be bonded to itself (next image) or multiple times to the same vertex in different images.
+            """
+        self.use_pconn= True
+        self.pconn = []
+        for i,c in enumerate(self.conn):
+            atoms_pconn = []
+            atoms_image = []
+            for ji, j in enumerate(c):
+                # If an atom or vertex is connected to another one multiple times (in an image), this
+                # will be visible in the self.conn attribute, where the same neighbour will be listed
+                # multiple times.
+                # Sometimes, the distances are a bit different from each other, and in this case, we
+                # have to increase the threshold, until the get_distvec function will find all imgis.
+                n_conns = c.count(j)
+                t = 0.01
+                while True:
+                    d,r,imgi = self.get_distvec(i,j,thresh=t)
+                    t += 0.01
+                    if n_conns == len(imgi):
+                        break
+                if len(imgi) == 1:
+                    # only one neighbor .. all is fine
+                    atoms_pconn.append(images[imgi[0]])
+                    atoms_image.append(imgi[0])
+                else:
+                    # we need to assign an image to each connection
+                    # if an atom is connected to another atom twice this means it must be another
+                    # image
+                    for ii in imgi:
+                        # test if this image is not used for this atom .. then we can use it
+                        if atoms_image.count(ii)==0:
+                            atoms_image.append(ii)
+                            atoms_pconn.append(images[ii])
+                        else:
+                            # ok, we have this image already
+                            use_it = True
+                            for k, iii in enumerate(atoms_image):
+                                if (iii == ii) and (c[k] == j): use_it=False
+                            if use_it:
+                                atoms_image.append(ii)
+                                atoms_pconn.append(images[ii])
+            self.pconn.append(atoms_pconn)
+        return
+    
+    def check_need_pconn(self):
+        """
+        check whether pconn is needed or not
+        """
+        pconn_needed = False
+        for i,c in enumerate(self.conn):
+            # if atom/vertex bonded to itself we need pconn
+            if i in c: pconn_needed = True
+            # check if a neigbor appears twice
+            for j in c:
+                if c.count(j) > 1:
+                    pconn_needed = True
+            if pconn_needed: break
+        return pconn_needed
+    
+    def omit_pconn(self):
+        """
+        Omit the pconn (if there is one) if this is acceptable
+        """
+        if not self.use_pconn: return
+        if not self.check_need_pconn():
+            # ok we do not need ot and can discard it
+            self.pconn = []
+            self.use_pconn = False
+        return
+    
+    def make_topo(self):
+        """
+        Convert this mol obejct to be a topo object.
+        This means a pconn will be generated and written to file as well
+        """
+        if self.is_topo: return
+        self.is_topo = True
+        if self.check_need_pconn():
+            self.add_pconn()
+        return
+    
+    def unmake_topo(self):
+        """
+        Convert a topo object back to a "normal" mol object
+        """
+        if not self.is_topo: return
+        self.is_topo = True
+        self.omit_pconn()
+        return
+    
 
     ###  periodic systems .. cell manipulation ############
     
@@ -437,11 +527,12 @@ class mol(mpiobject):
     def make_supercell(self,supercell):
         ''' Extends the periodic system in all directions by the factors given in the
             supercell upon preserving the connectivity of the initial system
-            :Parameters:
-                - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
+            
+            Parameters:
+                supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
         # HACK
-        if mol.use_pconn:
-            xyz,conn,pconn = self.make_supercell_pconn(supercell)
+        if self.use_pconn:
+            xyz,conn,pconn = self._make_supercell_pconn(supercell)
             return xyz,conn,pconn
         # END HACK
         self.supercell = tuple(supercell)
@@ -515,7 +606,7 @@ class mol(mpiobject):
         return xyz,conn
 
 
-    def make_supercell_pconn(self, supercell):
+    def _make_supercell_pconn(self, supercell):
         """ old make_supercell from topo object 
         """
         self.supercell = tuple(supercell)
@@ -588,59 +679,159 @@ class mol(mpiobject):
         return xyz,conn,pconn
 
 
-    def wrap_in_box(self, thresh=SMALL_DIST):
-        ''' In case atoms are outside the box defined by the cell,
-            this routine finds and shifts them into the box'''
-        if not self.periodic: return
-        # puts all atoms into the box again
-        frac_xyz = self.get_frac_xyz()
-        # now add 1 where the frac coord is negative and subtract where it is larger then 1
-        frac_xyz += np.where(np.less(frac_xyz, 0.0), 1.0, 0.0)
-        frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0), 1.0, 0.0)
-        # convert back
-        self.set_xyz_from_frac(frac_xyz)
-        if self.__class__.__name__=='topo':
+    def apply_pbc(self, xyz=None, fixidx=0):
+        ''' 
+        apply pbc to the atoms of the system or some external positions
+        Note: If pconn is used it is ivalid after this operation and will be reconstructed.
+        
+        Args:
+            xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
+            fixidx (int) : for an external system the atom to which all should be referred to can be given
+            
+        Returns:
+            xyz, in case xyz is not None (wrapped coordinates are returned) otherwise None is returned
+        '''
+        if not self.periodic:
+            return xyz
+        if xyz is None:
+            # apply to structure itself (does not return anything)
+            if self.bcond <= 2:
+                cell_abc = self.cellparams[:3]
+                self.xyz[:,:] -= cell_abc*np.around(self.xyz/cell_abc)
+            elif self.bcond == 3:
+                frac = self.get_frac_xyz()
+                self.xyz[:,:] -= np.dot(np.around(frac),self.cell)
+            if self.use_pconn:
+                # we need to reconstruct pconn in this case
+                self.add_pconn()
+            return
+        else:
+            # apply to xyz
+            a = xyz[:,:] - xyz[fixidx,:]
+            if self.bcond <= 2:
+                cell_abc = self.cellparams[:3]
+                xyz[:,:] -= cell_abc*np.around(a/cell_abc)
+            elif self.bcond == 3:
+                frac = np.dot(a, self.inv_cell)
+                xyz[:,:] -= np.dot(np.around(frac),self.cell)
+        if self.use_pconn:
             self.add_pconn()
+        return xyz
+
+    # legacy name just to keep compat
+    def wrap_in_box(self):
+        """
+        legacy method maps on apply_pbc
+        """
+        self.apply_pbc()
+        return
+    
+    def get_cell(self):
+        ''' return unit cell information (cell vectors) '''
+        return self.cell
+
+    def get_cellparams(self):
+        ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
+        return self.cellparams
+
+    def set_bcond(self):
+        """
+        sets the boundary conditions. 2 for cubic and orthorombic systems,
+        3 for triclinic systems
+        """
+        if list(self.cellparams[3:]) == [90.0,90.0,90.0]:
+            self.bcond = 2
+            if self.cellparams[0] == self.cellparams[1] == self.cellparams[2]:
+                self.bcond = 1
+        else:
+            self.bcond = 3
         return
 
-    def unwrap_fragments(self, fragments):
-        if not self.periodic: return
-        for f in fragments:
-            xyz = self.xyz[f]
-            xyz = self.pbc(xyz,0)
-            self.xyz[f] = xyz
+    def get_bcond(self):
+        """
+        returns the boundary conditions
+        """
+        return self.bcond
+
+    def set_cell(self,cell,cell_only = True):
+        ''' set unit cell using cell vectors and assign cellparams
+        Parameters:
+            cell: cell vectors (3,3)
+            cell_only (bool)  : if false, also the coordinates are changed
+                                  in respect to new cell
+
+        '''
+        assert np.shape(cell) == (3,3)
+        if cell_only == False: 
+            frac_xyz = self.get_frac_from_xyz()
+        self.periodic = True
+        self.cell = cell
+        self.cellparams = unit_cell.abc_from_vectors(self.cell)
+        self.inv_cell = np.linalg.inv(self.cell)
+        self.images_cellvec = np.dot(images, self.cell)
+        self.set_bcond()
+        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
         return
 
-    def get_frac_xyz(self):
-        ''' Returns the fractional atomic coordinates'''
-        if not self.periodic: return None
-        cell_inv = np.linalg.inv(self.cell)
-        return np.dot(self.xyz, cell_inv)
+    def set_cellparams(self,cellparams, cell_only = True):
+        ''' set unit cell using cell parameters and assign cell vectors
+        Parameters:
+            cellparams: vector (6)
+            cell_only (bool)  : if false, also the coordinates are changed
+                                  in respect to new cell
+        '''
+        assert len(list(cellparams)) == 6
+        cell = unit_cell.vectors_from_abc(cellparams)
+        self.set_cell(cell, cell_only=cell_only)
+        return
+    
+    ### rewrite on set_cell ???
+    def scale_cell(self, scale):
+        ''' scales the cell by a given factor
+        
+        Parameters:
+            scale: either single float or an array of len 3'''
+            
+        cell = self.get_cell()
+        cell *= scale
+        self.set_cell(cell, cell_only=False)
+        return
 
-    def get_frac_from_real(self,real_xyz):
-        ''' same as get_frac_xyz, but uses input xyz coordinates
-        :Parameters:
-            - real_xyz: the xyz coordinates for which the fractional coordinates are retrieved'''
+    def get_frac_from_xyz(self, xyz=None):
+        ''' Returns the fractional atomic coordinates
+        
+        Parameters:
+            xyz=None (array): optional external coordinates
+        '''
         if not self.periodic: return None
+        if xyz is None:
+            xyz = self.xyz
         cell_inv = np.linalg.inv(self.cell)
-        return np.dot(real_xyz, cell_inv)
+        return np.dot(xyz, cell_inv)
 
-    def get_real_from_frac(self,frac_xyz):
-        ''' returns real coordinates from an array of fractional coordinates using the current cell info '''
+    def get_xyz_from_frac(self,frac_xyz):
+        ''' returns real coordinates from an array of fractional coordinates using the current cell info 
+        
+        Args:
+            frac_xyz (array): fractional coords to be converted to xyz
+        '''
         return np.dot(np.array(frac_xyz),self.cell)
 
     def set_xyz_from_frac(self, frac_xyz):
         ''' Sets atomic coordinates based on input fractional coordinates
-        Parameter:
-            - '''
+        
+        Args:
+            - frac_xyz (array): fractional coords to be converted to xyz
+        '''
         if not self.periodic: return
-        self.xyz = np.dot(frac_xyz,self.cell)#
+        assert frac_xyz.shape == (self.natoms, 3)
+        self.xyz = np.dot(frac_xyz,self.cell)
 
     def get_image(self,xyz, img):
         ''' returns the xyz coordinates of a set of coordinates in a specific cell
-        :Parameters:
-            - xyz   : xyz coordinates for which the image coordinates are to be retrieved
-            - img   : descriptor of the image, either an "images" integer (see molsys.util.images)
+        Parameters:
+            xyz   : xyz coordinates for which the image coordinates are to be retrieved
+            img   : descriptor of the image, either an "images" integer (see molsys.util.images)
                       or the unit direction vector, e.g. [1,-1,0]'''
         xyz = np.array(xyz)
         try:
@@ -650,22 +841,6 @@ class mol(mpiobject):
             dispvec = np.sum(self.cell*np.array(images[img])[:,np.newaxis],axis=0)
         return xyz + dispvec
 
-    ### rewrite on set_cell ???
-    def scale_cell(self, scale):
-        ''' scales the cell by a given fraction (0.1 ^= 10%)
-        :Parameters:
-            - scale: either single float or list (3,) of floats for x,y,z'''
-        if scale is None:
-            scale = [1,1,1]
-        if not hasattr(scale, '__iter__'):
-            scale = [scale,scale,scale]
-        self.cellparams *= np.hstack([scale,[1,1,1]])
-        frac_xyz = self.get_frac_xyz()
-        self.cell *= np.array(scale)[:,np.newaxis]
-        self.images_cellvec = np.dot(images, self.cell)
-        self.set_xyz_from_frac(frac_xyz)
-        self.inv_cell = np.linalg.inv(self.cell)
-        return
 
     ###  system manipulations ##########################################
 
@@ -675,12 +850,12 @@ class mol(mpiobject):
 
     def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
         ''' adds a  nonperiodic mol object to the current one ... self can be both
-            :Parameters:
-                - other        (mol): an instance of the to-be-inserted mol instance
-                - translate=None    : (3,) numpy array as shift vector for the other mol
-                - rotate=None       : (3,) rotation triple to apply to the other mol object before insertion
-                - scale=None (float): scaling factor for other mol object coodinates
-                - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
+            Parameters:
+                other        (mol)      : an instance of the to-be-inserted mol instance
+                translate (numpy.ndarry): numpy array as shift vector for the other mol
+                rotate (numpy.ndarry)   : rotation triple to apply to the other mol object before insertion
+                scale (float)           : scaling factor for other mol object coodinates
+                roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
@@ -718,11 +893,13 @@ class mol(mpiobject):
         return
 
     def add_bond(self,a1,a2):
-        """One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
+        """
+        One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
         is cross-updated by appending. (no sorting)
-        :Parameter:
-            -a1(int): index of atom1, python-like (starts with 0)
-            -a2(int): index of atom2, python-like (starts with 0)"""
+        
+        Parameter:
+            a1 (int): index of atom1, python-like (starts with 0)
+            a2 (int): index of atom2, python-like (starts with 0)"""
         if hasattr(a1,"__iter__"): a1=a1[0] #in case a singleton is passed
         if hasattr(a2,"__iter__"): a2=a2[0] #in case a singleton is passed
         self.conn[a1].append(a2)
@@ -730,16 +907,18 @@ class mol(mpiobject):
         return
 
     def add_bonds(self,lista1,lista2):
-        """Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
+        """ 
+        Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
         Each atom of list 1 is connected to each atom of list 2.
         This is rarely wanted unless (at least) one of the lists has got only one atom.
         In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
         Each atom of the "long" list is connected to the atom of the "short" one.
         If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
         between atom of list 1 and atom of list 2.
-        :Paramters:
-            -lista1(iterable of int): iterable 1 of atom indices
-            -lista2(iterable of int): iterable 2 of atom indices"""
+        
+        Paramters:
+            lista1(iterable of int): iterable 1 of atom indices
+            lista2(iterable of int): iterable 2 of atom indices"""
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
         if not hasattr(lista2,'__iter__'): lista2 = [lista2]
         for a1 in lista1:
@@ -748,7 +927,8 @@ class mol(mpiobject):
         return
 
     def add_shortest_bonds(self,lista1,lista2):
-        """Adds bonds between atoms from list1 and list2 (same length!) to connect
+        """
+        Adds bonds between atoms from list1 and list2 (same length!) to connect
         the shortest pairs
         
         in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
@@ -780,7 +960,8 @@ class mol(mpiobject):
     ###  molecular manipulations #######################################
 
     def delete_atoms(self,bads):
-        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        ''' 
+        deletes an atom and its connections and fixes broken indices of all other atoms '''
         if hasattr(bads, '__iter__'):
             if len(bads) >= 2:
                 self.bads = bads
@@ -878,8 +1059,8 @@ class mol(mpiobject):
         """
         returns the center of mass of the mol object.
 
-        :Parameters:
-            - idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
+        Parameters:
+            idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
         if hasattr(self,'masstype') == False: self.set_real_mass()
         #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
@@ -893,46 +1074,10 @@ class mol(mpiobject):
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
-        xyz = self.pbc(xyz, 0)
-#        if self.periodic:
-#            fix = xyz[0,:]
-#            a = xyz[1:,:] - fix
-#            if self.bcond <= 2:
-#                cell_abc = self.cellparams[:3]
-#                xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
-#            elif self.bcond == 3:
-#                frac = np.dot(a, self.inv_cell)
-#                xyz[1:,:] -= np.dot(np.around(frac),self.cell)
+        xyz = self.apply_pbc(xyz, 0)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
 
-    def map2image(self,xyz):
-        if self.periodic == False: return xyz
-        fix = xyz[0]
-        a = xyz[1:,:] - fix
-        if self.bcond <= 2:
-            cell_abc = self.cellparams[:3]
-            xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
-        elif self.bcond == 3:
-            frac = np.dot(a, self.inv_cell)
-            xyz[1:,:] -= np.dot(np.around(frac),self.cell)
-        return xyz
-
-    def pbc(self, xyz=None, fixidx = 0):
-        """
-        Compute periodic boundary conditions in an arbitrary (triclinic) cell
-        """
-        if xyz is None: xyz = self.xyz
-        if self.periodic:
-            fix = xyz[fixidx,:]
-            a = xyz[:,:] - fix
-            if self.bcond <= 2:
-                cell_abc = self.cellparams[:3]
-                xyz[:,:] -= cell_abc*np.around(a/cell_abc)
-            elif self.bcond == 3:
-                frac = np.dot(a, self.inv_cell)
-                xyz[:,:] -= np.dot(np.around(frac),self.cell)
-        return xyz
 
     def new_mol_by_index(self, idx):
         """
@@ -1135,16 +1280,29 @@ class mol(mpiobject):
         self.natoms = natoms
         return
 
-    def get_xyz(self):
-        ''' returns the xyz Coordinates '''
-        return self.xyz
+    def get_xyz(self, idx=None):
+        ''' returns the xyz Coordinates 
+        
+        Args:
+            idx=None (list): optional list of indices
+        '''
+        if idx is None:
+            return self.xyz
+        else:
+            return self.xyz[idx]
 
-    def set_xyz(self,xyz):
+    def set_xyz(self,xyz, idx=None):
         ''' set the real xyz coordinates
-        :Parameters:
-            - xyz: coordinates to be set'''
-        assert np.shape(xyz) == (self.natoms,3)
-        self.xyz = xyz
+        Args:
+            xyz (array): coordinates to be set
+            idx=None (list): optional list of indicies
+        '''
+        if idx is None:
+            assert xyz.shape == (self.natoms,3)
+            self.xyz = xyz
+        else:
+            assert xyz.shape == (len(idx), 3)
+            self.xyz[idx] = xyz
         return
 
     def get_sumformula(self):
@@ -1210,69 +1368,6 @@ class mol(mpiobject):
             - atypes: list of elements to be set'''
         assert len(atypes) == self.natoms
         self.atypes = atypes
-
-    def get_cell(self):
-        ''' return unit cell information (cell vectors) '''
-        return self.cell
-
-    def get_cellparams(self):
-        ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
-        return self.cellparams
-
-    def set_bcond(self):
-        """
-        sets the boundary conditions. 2 for cubic and orthorombic systems,
-        3 for triclinic systems
-        """
-        if list(self.cellparams[3:]) == [90.0,90.0,90.0]:
-            self.bcond = 2
-            if self.cellparams[0] == self.cellparams[1] == self.cellparams[2]:
-                self.bcond = 1
-        else:
-            self.bcond = 3
-        return
-
-    def get_bcond(self):
-        """
-        returns the boundary conditions
-        """
-        return self.bcond
-
-    def set_cell(self,cell,cell_only = True):
-        ''' set unit cell using cell vectors and assign cellparams
-        :Parameters:
-            - cell: cell vectors (3,3)
-            - cell_only (bool)  : if false, also the coordinates are changed
-                                  in respect to new cell
-
-        '''
-        assert np.shape(cell) == (3,3)
-        if cell_only == False: frac_xyz = self.get_frac_xyz()
-        self.periodic = True
-        self.cell = cell
-        self.cellparams = unit_cell.abc_from_vectors(self.cell)
-        self.inv_cell = np.linalg.inv(self.cell)
-        self.images_cellvec = np.dot(images, self.cell)
-        self.set_bcond()
-        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
-        if not hasattr(self, "supercell"): self.supercell = [1,1,1]
-
-    def set_cellparams(self,cellparams, cell_only = True):
-        ''' set unit cell using cell parameters and assign cell vectors
-        :Parameters:
-            - cellparams: vector (6)
-            - cell_only (bool)  : if false, also the coordinates are changed
-                                  in respect to new cell
-        '''
-        assert len(list(cellparams)) == 6
-        if cell_only == False: frac_xyz = self.get_frac_xyz()
-        self.periodic = True
-        self.cellparams = cellparams
-        self.cell = unit_cell.vectors_from_abc(self.cellparams)
-        self.inv_cell = np.linalg.inv(self.cell)
-        self.images_cellvec = np.dot(images, self.cell)
-        self.set_bcond()
-        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
 
     def get_fragtypes(self):
         ''' return all fragment types '''
