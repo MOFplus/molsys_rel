@@ -10,26 +10,33 @@ from __future__ import print_function
 
 import sys
 
+    
+# load a global comm and general info on MPI for logger and other things
+# Note that all classes are derived from mpiobject and use theri own communicator
+#      which can be different from the world comm
+try:
+    from mpi4py import MPI
+    wcomm = MPI.COMM_WORLD
+    rank = MPI.COMM_WORLD.Get_rank()
+    size = MPI.COMM_WORLD.Get_size()
+    err = None
+except ImportError as e:
+    wcomm = None
+    size = 1
+    rank = 0
+    err = e
+
 # overload print function in parallel case
 try:
     import __builtin__
 except ImportError:
     import builtins as __builtin__
 def print(*args, **kwargs):
-    if mpi_rank == 0:
+    if rank == 0:
         return __builtin__.print(*args, **kwargs)
     else:
         return
-try:
-    from mpi4py import MPI
-    mpi_comm = MPI.COMM_WORLD
-    mpi_rank = MPI.COMM_WORLD.Get_rank()
-    mpi_size = MPI.COMM_WORLD.Get_size()
-except ImportError as e:
-    mpi_comm = None
-    mpi_size = 1
-    mpi_rank = 0
-    mpi_err = e
+
 
 
 class mpiobject(object):

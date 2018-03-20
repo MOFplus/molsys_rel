@@ -33,6 +33,7 @@ from .util import images
 from .fileIO import formats
 
 from . import mpiobject
+from . import molsys_mpi
 from . import addon
 
 # set up logging using a logger
@@ -48,8 +49,8 @@ from . import addon
 import logging
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
-if mpiobject.mpi_size > 1:
-    logger_file_name = "molsys.%d.log" % mpiobject.mpi_rank
+if molsys_mpi.size > 1:
+    logger_file_name = "molsys.%d.log" % molsys_mpi.rank
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
@@ -58,16 +59,16 @@ fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
-if mpiobject.mpi_rank == 0:
+if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
     #shandler.setLevel(logging.INFO)
     shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
     
-if mpiobject.mpi_comm == None:
+if molsys_mpi.wcomm == None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
-    logger.error(mpiobject.mpi_err)
+    logger.error(molsys_mpi.err)
 
 # overload print function in parallel case
 try:
@@ -85,7 +86,7 @@ np.set_printoptions(threshold=20000,precision=5)
 SMALL_DIST = 1.0e-3
 
 
-class mol(mpiobject.mpiobject):
+class mol(mpiobject):
     """mol class, the basis for any atomistic (or atomistic-like,
     e.g. topo) representation."""
 
