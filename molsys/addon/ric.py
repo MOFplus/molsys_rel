@@ -97,7 +97,7 @@ class ric(base,RedIntCoords):
         self.add_eckart()
         self._mol.set_real_mass()
         self.setup(masses = np.array(self._mol.get_mass()))
-        self.report_rics("rics.dat")
+#        self.report_rics("rics.dat")
         return
     
     def add_lin_bend_mod(self, indices, lindict={}):
@@ -211,6 +211,7 @@ class ric(base,RedIntCoords):
         :Returns:
             - dih(list): list of indices of the dihedral
         """
+        if len(ind) == 0: return np.array([])
         if type(ind[0]) == int:
             return np.array(ind)[0,5,6,7].tolist()
         else:
