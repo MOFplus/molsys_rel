@@ -66,7 +66,7 @@ try:
 except ImportError:
     import builtins as __builtin__
 def print(*args, **kwargs):
-    if mpiobject.mpi_rank == 0:
+    if molsys_mpi.rank == 0:
         return __builtin__.print(*args, **kwargs)
     else:
         return
@@ -770,7 +770,8 @@ class mol(mpiobject):
         self.inv_cell = np.linalg.inv(self.cell)
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
-        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
+        if cell_only == False:
+            self.set_xyz_from_frac(frac_xyz)
         return
 
     def set_cellparams(self,cellparams, cell_only = True):
@@ -792,7 +793,7 @@ class mol(mpiobject):
         Parameters:
             scale: either single float or an array of len 3'''
             
-        cell = self.get_cell()
+        cell = copy.copy(self.get_cell()) ## not copying the get_cell results in side effect error
         cell *= scale
         self.set_cell(cell, cell_only=False)
         return
@@ -808,6 +809,10 @@ class mol(mpiobject):
             xyz = self.xyz
         cell_inv = np.linalg.inv(self.cell)
         return np.dot(xyz, cell_inv)
+
+    def get_frac_xyz(self):
+        ''' returns fractional coordinates of the mol object   '''
+        return self.get_frac_from_xyz()
 
     def get_xyz_from_frac(self,frac_xyz):
         ''' returns real coordinates from an array of fractional coordinates using the current cell info 
@@ -826,6 +831,7 @@ class mol(mpiobject):
         if not self.periodic: return
         assert frac_xyz.shape == (self.natoms, 3)
         self.xyz = np.dot(frac_xyz,self.cell)
+        return
 
     def get_image(self,xyz, img):
         ''' returns the xyz coordinates of a set of coordinates in a specific cell
@@ -848,7 +854,7 @@ class mol(mpiobject):
         ''' returns a copy of the whole mol object'''
         return copy.deepcopy(self)
 
-    def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
+    def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None,rotmat=None):
         ''' adds a  nonperiodic mol object to the current one ... self can be both
             Parameters:
                 other        (mol)      : an instance of the to-be-inserted mol instance
@@ -862,16 +868,19 @@ class mol(mpiobject):
                 return
         other_xyz = other.xyz.copy()
         # NOTE: it is important ot keep the order of operations
-        #       1) scale
-        #       2) rotate by euler angles
-        #       3) rotate by orientation triple
-        #       4) translate
+        #       1 ) scale
+        #       2 ) rotate by euler angles
+        #       2a) rotate by rotmat
+        #       3 ) rotate by orientation triple
+        #       4 ) translate
         if scale    is not None:
             other_xyz *= np.array(scale)
         if roteuler is not None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
         if rotate is not None:
             other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
+        if rotmat is not None:
+            other_xyz = np.dot(rotmat,other_xyz.T).T
         if translate is not None:
             other_xyz += translate
         if self.natoms==0:
@@ -1261,6 +1270,7 @@ class mol(mpiobject):
         else:
             self.xyz = xyz
         self.conn.append([])
+        if self.use_pconn: self.pconn.append([])
         return self.natoms -1
 
     def add_conn(self, anum1, anum2):
@@ -1268,6 +1278,19 @@ class mol(mpiobject):
             BEWARE, does not do any checks '''
         self.conn[anum1].append(anum2)
         self.conn[anum2].append(anum1)
+        return
+    def remove_conn(self,i,j):
+        """remove a bond between two atoms
+
+        removes the connectivity entry between two atoms
+        BEWARE, does not do any checks
+
+        Arguments:
+            i {int} -- atom index 
+            j {int} -- atom index 
+        """
+        self.conn[i].remove(j)
+        self.conn[j].remove(i)
         return
 
     def get_natoms(self):
