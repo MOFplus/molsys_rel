@@ -23,6 +23,7 @@ from .util import images
 from .fileIO import formats
 
 from . import mpiobject
+from . import molsys_mpi
 from . import addon
 
 # set up logging using a logger
@@ -32,14 +33,14 @@ from . import addon
 # NOTE: this needs to be done once only here for the root logger molsys
 # any other module can use either this logger or a child logger
 # no need to redo this config in the other modules!
-# NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the
+# NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the 
 #        master node writes INFO to stdout
 # TBI: colored logging https://stackoverflow.com/a/384125
 import logging
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
-if mpiobject.mpi_size > 1:
-    logger_file_name = "molsys.%d.log" % mpiobject.mpi_rank
+if molsys_mpi.size > 1:
+    logger_file_name = "molsys.%d.log" % molsys_mpi.rank
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
@@ -48,16 +49,16 @@ fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
-if mpiobject.mpi_rank == 0:
+if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
     #shandler.setLevel(logging.INFO)
     shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
-
-if mpiobject.mpi_comm == None:
+    
+if molsys_mpi.wcomm == None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
-    logger.error(mpiobject.mpi_err)
+    logger.error(molsys_mpi.err)
 
 # overload print function in parallel case
 try:
@@ -65,7 +66,7 @@ try:
 except ImportError:
     import builtins as __builtin__
 def print(*args, **kwargs):
-    if mpiobject.mpi_rank == 0:
+    if molsys_mpi.rank == 0:
         return __builtin__.print(*args, **kwargs)
     else:
         return
@@ -75,7 +76,7 @@ np.set_printoptions(threshold=20000,precision=5)
 SMALL_DIST = 1.0e-3
 
 
-class mol(mpiobject.mpiobject):
+class mol(mpiobject):
     """mol class, the basis for any atomistic (or atomistic-like,
     e.g. topo) representation."""
 
@@ -145,7 +146,7 @@ class mol(mpiobject.mpiobject):
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return
-
+    
     @classmethod
     def fromFile(cls, fname, ftype=None, **kwargs):
         ''' reader for the mol class, reading from a file
@@ -158,7 +159,7 @@ class mol(mpiobject.mpiobject):
         m = cls()
         m.read(fname, ftype, **kwargs)
         return m
-
+    
     @classmethod
     def fromString(cls, istring, ftype='mfpx', **kwargs):
         ''' generic reader for the mol class, reading from a string
@@ -199,7 +200,7 @@ class mol(mpiobject.mpiobject):
         m = cls()
         logger.info('creating mol object from a pymatgen structure object')
         cell = structure.lattice.matrix
-        fracs = []
+        fracs = [] 
         elems = []
         for j, site in enumerate(structure.sites):
             elems.append(site.specie.symbol.lower())
@@ -214,14 +215,14 @@ class mol(mpiobject.mpiobject):
         m.set_empty_conn()
         m.detect_conn()
         return m
-
-
+        
+    
     @classmethod
     def fromArray(cls, arr, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
-        :Parameters:
-            - arr         : the array to be read
-            - **kwargs    : all options of the parser are passed by the kwargs
+        Parameters:
+            arr         : the array to be read
+            **kwargs    : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         m = cls()
         logger.info("reading array")
@@ -232,9 +233,9 @@ class mol(mpiobject.mpiobject):
     @classmethod
     def fromNestedList(cls, nestl, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
-        :Parameters:
-            - arr         : the array to be read
-            - **kwargs    : all options of the parser are passed by the kwargs
+        Parameters:
+            arr         : the array to be read
+            **kwargs    : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         logger.info("reading nested lists")
         for nl in nestl:
@@ -244,10 +245,10 @@ class mol(mpiobject.mpiobject):
 
     def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
-        :Parameters:
-            - fname        : the filename to be written
-            - ftype="mfpx" : the parser type that is used to writen the file
-            - **kwargs     : all options of the parser are passed by the kwargs
+        Parameters:
+            fname        : the filename to be written
+            ftype="mfpx" : the parser type that is used to writen the file
+            **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if self.mpi_rank == 0:
             if ftype is None:
@@ -280,7 +281,7 @@ class mol(mpiobject.mpiobject):
                 os.remove(_tmpfname)
                 logger.info("temporary file "+_tmpfname+" removed")
         return
-
+    
     def molden(self, **kwargs):
         self.view(program='moldenx', fmt='mfpx', **kwargs)
     def pymol(self, **kwargs):
@@ -343,8 +344,8 @@ class mol(mpiobject.mpiobject):
         """
         checks if connectivity is not broken
 
-        Args:
-            conn (list): list of lists holding the connectivity (default=None, check own )
+        Parameters:
+            conn (list): list of lists holding the connectivity (if None self.conn is tested)
         """
         if conn == None:
             conn = self.conn
@@ -357,9 +358,9 @@ class mol(mpiobject.mpiobject):
         """
         detects the connectivity of the system, based on covalent radii.
 
-        Args:
-            tresh (float): additive treshhold
-            remove_duplicates (bool): flag for the detection of duplicates
+        Parameters:
+            tresh  (float): additive treshhold
+            remove_duplicates  (bool): flag for the detection of duplicates
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -522,12 +523,11 @@ class mol(mpiobject.mpiobject):
     #    currently if pconn is used we just call the old method from topo.py ... a lot of redundant things could 
     #    could be removed and all should be merged into one method at some point
     #
-
+    
     def make_supercell(self,supercell):
         ''' Extends the periodic system in all directions by the factors given in the
             supercell upon preserving the connectivity of the initial system
-            Can be used for systems with and without pconn
-            Args:
+            Parameters:
                 supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
         # HACK
         if self.use_pconn:
@@ -606,8 +606,7 @@ class mol(mpiobject.mpiobject):
 
 
     def _make_supercell_pconn(self, supercell):
-        """ old make_supercell from topo object
-        called automatically when pconn exists
+        """ old make_supercell from topo object 
         """
         self.supercell = tuple(supercell)
         logger.info('Generating %i x %i x %i supercell' % self.supercell)
@@ -678,8 +677,11 @@ class mol(mpiobject.mpiobject):
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn,pconn
 
+
     def apply_pbc(self, xyz=None, fixidx=0):
-        ''' apply pbc to the atoms of the system or some external positions
+        ''' 
+        apply pbc to the atoms of the system or some external positions
+        Note: If pconn is used it is ivalid after this operation and will be reconstructed.
         
         Args:
             xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
@@ -696,7 +698,7 @@ class mol(mpiobject.mpiobject):
                 cell_abc = self.cellparams[:3]
                 self.xyz[:,:] -= cell_abc*np.around(self.xyz/cell_abc)
             elif self.bcond == 3:
-                frac = self.get_frac_from_xyz()
+                frac = self.get_frac_xyz()
                 self.xyz[:,:] -= np.dot(np.around(frac),self.cell)
             if self.use_pconn:
                 # we need to reconstruct pconn in this case
@@ -711,6 +713,8 @@ class mol(mpiobject.mpiobject):
             elif self.bcond == 3:
                 frac = np.dot(a, self.inv_cell)
                 xyz[:,:] -= np.dot(np.around(frac),self.cell)
+        if self.use_pconn:
+            self.add_pconn()
         return xyz
 
     # legacy name just to keep compat
@@ -718,12 +722,12 @@ class mol(mpiobject.mpiobject):
         """
         legacy method maps on apply_pbc
         """
-        self.appy_pbc()
+        self.apply_pbc()
         return
     
     def get_cell(self):
         ''' return unit cell information (cell vectors) '''
-        return copy.copy(self.cell)
+        return self.cell
 
     def get_cellparams(self):
         ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
@@ -757,14 +761,16 @@ class mol(mpiobject.mpiobject):
 
         '''
         assert np.shape(cell) == (3,3)
-        if cell_only == False: frac_xyz = self.get_frac_from_xyz()
+        if cell_only == False: 
+            frac_xyz = self.get_frac_from_xyz()
         self.periodic = True
         self.cell = cell
         self.cellparams = unit_cell.abc_from_vectors(self.cell)
         self.inv_cell = np.linalg.inv(self.cell)
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
-        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
+        if cell_only == False:
+            self.set_xyz_from_frac(frac_xyz)
         return
 
     def set_cellparams(self,cellparams, cell_only = True):
@@ -786,7 +792,7 @@ class mol(mpiobject.mpiobject):
         Parameters:
             scale: either single float or an array of len 3'''
             
-        cell = self.get_cell()
+        cell = copy.copy(self.get_cell()) ## not copying the get_cell results in side effect error
         cell *= scale
         self.set_cell(cell, cell_only=False)
         return
@@ -802,6 +808,10 @@ class mol(mpiobject.mpiobject):
             xyz = self.xyz
         cell_inv = np.linalg.inv(self.cell)
         return np.dot(xyz, cell_inv)
+
+    def get_frac_xyz(self):
+        ''' returns fractional coordinates of the mol object   '''
+        return self.get_frac_from_xyz()
 
     def get_xyz_from_frac(self,frac_xyz):
         ''' returns real coordinates from an array of fractional coordinates using the current cell info 
@@ -820,6 +830,7 @@ class mol(mpiobject.mpiobject):
         if not self.periodic: return
         assert frac_xyz.shape == (self.natoms, 3)
         self.xyz = np.dot(frac_xyz,self.cell)
+        return
 
     def get_image(self,xyz, img):
         ''' returns the xyz coordinates of a set of coordinates in a specific cell
@@ -842,30 +853,33 @@ class mol(mpiobject.mpiobject):
         ''' returns a copy of the whole mol object'''
         return copy.deepcopy(self)
 
-    def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
+    def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None,rotmat=None):
         ''' adds a  nonperiodic mol object to the current one ... self can be both
-            :Parameters:
-                - other        (mol): an instance of the to-be-inserted mol instance
-                - translate=None    : (3,) numpy array as shift vector for the other mol
-                - rotate=None       : (3,) rotation triple to apply to the other mol object before insertion
-                - scale=None (float): scaling factor for other mol object coodinates
-                - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
+            Parameters:
+                other        (mol)      : an instance of the to-be-inserted mol instance
+                translate (numpy.ndarry): numpy array as shift vector for the other mol
+                rotate (numpy.ndarry)   : rotation triple to apply to the other mol object before insertion
+                scale (float)           : scaling factor for other mol object coodinates
+                roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
                 return
         other_xyz = other.xyz.copy()
         # NOTE: it is important ot keep the order of operations
-        #       1) scale
-        #       2) rotate by euler angles
-        #       3) rotate by orientation triple
-        #       4) translate
+        #       1 ) scale
+        #       2 ) rotate by euler angles
+        #       2a) rotate by rotmat
+        #       3 ) rotate by orientation triple
+        #       4 ) translate
         if scale    is not None:
             other_xyz *= np.array(scale)
         if roteuler is not None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
         if rotate is not None:
             other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
+        if rotmat is not None:
+            other_xyz = np.dot(rotmat,other_xyz.T).T
         if translate is not None:
             other_xyz += translate
         if self.natoms==0:
@@ -887,11 +901,13 @@ class mol(mpiobject.mpiobject):
         return
 
     def add_bond(self,a1,a2):
-        """One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
+        """
+        One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
         is cross-updated by appending. (no sorting)
-        :Parameter:
-            -a1(int): index of atom1, python-like (starts with 0)
-            -a2(int): index of atom2, python-like (starts with 0)"""
+        
+        Parameter:
+            a1 (int): index of atom1, python-like (starts with 0)
+            a2 (int): index of atom2, python-like (starts with 0)"""
         if hasattr(a1,"__iter__"): a1=a1[0] #in case a singleton is passed
         if hasattr(a2,"__iter__"): a2=a2[0] #in case a singleton is passed
         self.conn[a1].append(a2)
@@ -899,16 +915,18 @@ class mol(mpiobject.mpiobject):
         return
 
     def add_bonds(self,lista1,lista2):
-        """Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
+        """ 
+        Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
         Each atom of list 1 is connected to each atom of list 2.
         This is rarely wanted unless (at least) one of the lists has got only one atom.
         In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
         Each atom of the "long" list is connected to the atom of the "short" one.
         If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
         between atom of list 1 and atom of list 2.
-        :Paramters:
-            -lista1(iterable of int): iterable 1 of atom indices
-            -lista2(iterable of int): iterable 2 of atom indices"""
+        
+        Paramters:
+            lista1(iterable of int): iterable 1 of atom indices
+            lista2(iterable of int): iterable 2 of atom indices"""
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
         if not hasattr(lista2,'__iter__'): lista2 = [lista2]
         for a1 in lista1:
@@ -917,9 +935,10 @@ class mol(mpiobject.mpiobject):
         return
 
     def add_shortest_bonds(self,lista1,lista2):
-        """Adds bonds between atoms from list1 and list2 (same length!) to connect
+        """
+        Adds bonds between atoms from list1 and list2 (same length!) to connect
         the shortest pairs
-
+        
         in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
         is used"""
         assert len(lista1) == len(lista2), "only for lists of same length: %dx != %d " % (len(lista1), len(lista2))
@@ -943,13 +962,14 @@ class mol(mpiobject.mpiobject):
                     dmat[e1,e2] = self.get_distvec(a1,a2)[0]
             a1which, a2which = hungarian(dmat)
             for i in range(dim):
-                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
+                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])            
         return
 
     ###  molecular manipulations #######################################
 
     def delete_atoms(self,bads):
-        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        ''' 
+        deletes an atom and its connections and fixes broken indices of all other atoms '''
         if hasattr(bads, '__iter__'):
             if len(bads) >= 2:
                 self.bads = bads
@@ -1014,11 +1034,11 @@ class mol(mpiobject.mpiobject):
         self.delete_atoms(badlist)
         #for i in badlist[::-1]: self.delete_atom(i)
         return
-
+    
     def randomize_coordinates(self,maxdr=1.0):
         xyz = self.get_xyz()
         xyz += np.random.uniform(-maxdr,maxdr,xyz.shape)
-        self.set_xyz(self.pbc(xyz))
+        self.set_xyz(self.pbc(xyz))        
 
     def translate(self, vec):
         self.xyz += vec
@@ -1047,8 +1067,8 @@ class mol(mpiobject.mpiobject):
         """
         returns the center of mass of the mol object.
 
-        :Parameters:
-            - idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
+        Parameters:
+            idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
         if hasattr(self,'masstype') == False: self.set_real_mass()
         #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
@@ -1063,15 +1083,6 @@ class mol(mpiobject.mpiobject):
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
         xyz = self.apply_pbc(xyz, 0)
-#        if self.periodic:
-#            fix = xyz[0,:]
-#            a = xyz[1:,:] - fix
-#            if self.bcond <= 2:
-#                cell_abc = self.cellparams[:3]
-#                xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
-#            elif self.bcond == 3:
-#                frac = np.dot(a, self.inv_cell)
-#                xyz[1:,:] -= np.dot(np.around(frac),self.cell)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
 
@@ -1258,6 +1269,7 @@ class mol(mpiobject.mpiobject):
         else:
             self.xyz = xyz
         self.conn.append([])
+        if self.use_pconn: self.pconn.append([])
         return self.natoms -1
 
     def add_conn(self, anum1, anum2):
@@ -1265,6 +1277,19 @@ class mol(mpiobject.mpiobject):
             BEWARE, does not do any checks '''
         self.conn[anum1].append(anum2)
         self.conn[anum2].append(anum1)
+        return
+    def remove_conn(self,i,j):
+        """remove a bond between two atoms
+
+        removes the connectivity entry between two atoms
+        BEWARE, does not do any checks
+
+        Arguments:
+            i {int} -- atom index 
+            j {int} -- atom index 
+        """
+        self.conn[i].remove(j)
+        self.conn[j].remove(i)
         return
 
     def get_natoms(self):
@@ -1453,7 +1478,7 @@ class mol(mpiobject.mpiobject):
         for i in range(self.natoms):
             self.conn.append([])
         return
-
+        
     def get_conn_as_tab(self, pconn_flag=None):
         """
         gets the connectivity as a table of bonds with shape (nbonds, 2)
@@ -1477,7 +1502,7 @@ class mol(mpiobject.mpiobject):
                     if j > i:
                         ctab.append([i,j])
         return ctab
-
+        
     def set_ctab_from_conn(self, pconn_flag=None):
         if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
         if pconn_flag:
@@ -1497,7 +1522,7 @@ class mol(mpiobject.mpiobject):
             self.conn[i].append(j)
             self.conn[j].append(i)
         return
-
+        
     def set_unit_mass(self):
         """
         sets the mass for every atom to one

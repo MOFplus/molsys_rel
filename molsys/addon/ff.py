@@ -943,11 +943,12 @@ class ff(base):
         self.ref_systems = {}
         for ref in self.scan_ref:
             if self._mol.mpi_rank == 0:
-                ref_mol = self.api.get_FFref_graph(ref, mol=True)
+                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
             else:
-                ref_mol = None
+                ref_mol_str = None
             if self._mol.mpi_size > 1:
-                ref_mol = self._mol.mpi_comm.bcast(ref_mol, root=0)
+                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
+            ref_mol = molsys.mol.fromString(ref_mol_str)
             ref_mol.addon("fragments")
             ref_mol.fragments.make_frag_graph()
             if plot:

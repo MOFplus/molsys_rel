@@ -2,6 +2,7 @@
 from collections import OrderedDict
 
 number = {
+        'x12':0,
         'x': 0,
         'h':1,
         'he':2,
