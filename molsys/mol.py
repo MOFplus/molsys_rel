@@ -696,7 +696,7 @@ class mol(mpiobject.mpiobject):
                 cell_abc = self.cellparams[:3]
                 self.xyz[:,:] -= cell_abc*np.around(self.xyz/cell_abc)
             elif self.bcond == 3:
-                frac = self.get_frac_xyz()
+                frac = self.get_frac_from_xyz()
                 self.xyz[:,:] -= np.dot(np.around(frac),self.cell)
             if self.use_pconn:
                 # we need to reconstruct pconn in this case
@@ -723,7 +723,7 @@ class mol(mpiobject.mpiobject):
     
     def get_cell(self):
         ''' return unit cell information (cell vectors) '''
-        return self.cell
+        return copy.copy(self.cell)
 
     def get_cellparams(self):
         ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
@@ -757,7 +757,7 @@ class mol(mpiobject.mpiobject):
 
         '''
         assert np.shape(cell) == (3,3)
-        if cell_only == False: frac_xyz = self.get_frac_xyz()
+        if cell_only == False: frac_xyz = self.get_frac_from_xyz()
         self.periodic = True
         self.cell = cell
         self.cellparams = unit_cell.abc_from_vectors(self.cell)
@@ -788,7 +788,7 @@ class mol(mpiobject.mpiobject):
             
         cell = self.get_cell()
         cell *= scale
-        self.set_call(cell, cell_only=False)
+        self.set_cell(cell, cell_only=False)
         return
 
     def get_frac_from_xyz(self, xyz=None):
@@ -1062,7 +1062,7 @@ class mol(mpiobject.mpiobject):
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
-        xyz = self.pbc(xyz, 0)
+        xyz = self.apply_pbc(xyz, 0)
 #        if self.periodic:
 #            fix = xyz[0,:]
 #            a = xyz[1:,:] - fix

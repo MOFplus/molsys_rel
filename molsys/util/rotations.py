@@ -166,3 +166,53 @@ def align_pax(xyz,masses=None):
     eigorder = numpy.argsort(eigval)
     rotmat = eigvec[:,eigorder] #  sort the column vectors in the order of the eigenvalues to have largest on x, second largest on y, ... 
     return apply_mat(rotmat,xyz)
+
+
+def rec_walk_bond(m,ind,inds):
+    for i,c in enumerate(m.conn[ind]):
+        if inds.count(c) == 0:
+            inds.append(c)
+            inds = rec_walk_bond(m,c,inds)
+        else:
+            pass
+    return inds
+
+def rotate_around_bond(m,atom1,atom2,degrees=5.0):
+    """Rotates the xyz coordinates by n degrees around the distance vector between two atoms
+    
+    let the situation be X-1-2-3-4-Y, either X,1 or Y,4 will be rotated accordingly 
+    
+    
+    Arguments:
+        mol {molsys.mol} -- the mol obect to apply the operation
+        atom1 {integer} -- atom index 1
+        atom2 {integer} -- atom index 2
+    
+    Keyword Arguments:
+        degrees {float} -- rotation in degrees (default: {5.0})
+    """
+    ### detect the atoms that are subject to the rotation 
+    ### rhs
+    #import pdb;  pdb.set_trace()
+    inds = sorted(rec_walk_bond(m,atom1,[atom2]))
+    #print inds
+    xyz = m.xyz
+    xyz1 = xyz[atom1,:]
+    xyz2 = xyz[atom2,:]
+    vect = (xyz2-xyz1)
+    vect /=  numpy.linalg.norm(vect)
+    a,n1,n2,n3 = numpy.deg2rad(degrees),vect[0],vect[1],vect[2]
+    ### formula from wikipedia https://de.wikipedia.org/wiki/Drehmatrix
+    R= numpy.array([[n1*n1*(1-cos(a))+   cos(a), n1*n2*(1-cos(a))-n3*sin(a) , n1*n3*(1-cos(a))+n2*sin(a)],
+                    [n2*n1*(1-cos(a))+n3*sin(a), n2*n2*(1-cos(a))+   cos(a) , n2*n3*(1-cos(a))-n1*sin(a)],
+                    [n3*n1*(1-cos(a))-n2*sin(a), n3*n2*(1-cos(a))+n1*sin(a) , n3*n3*(1-cos(a))+   cos(a)]])
+    xyz[inds,:] = numpy.dot(xyz[inds,:] - xyz[atom2,:],R)+xyz[atom2,:]
+    m.xyz = xyz
+    return xyz
+
+
+
+
+
+
+

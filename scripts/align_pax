@@ -3,7 +3,8 @@
 
 ########################################################################
 #
-#  Script to convert different structure file formats based on molsys
+#  Script to align a structure onto its principle axes - mainly intended
+#  for visualization purposes
 #
 #########################################################################
 
@@ -25,6 +26,9 @@ if len(sys.argv) == 3:
 
 m = mol()
 m.read(fi, ftype = fi_type)
+
+### check here whether the structure is a bb already! in this case do not change anything bb related
+
 m.addon('bb')
 m.center_point = 'com'
 m.bb.center()

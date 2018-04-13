@@ -52,7 +52,10 @@ class DataReference:
         for key in data:
             value = data[key]
             if type(value) is dict:
-                group = h5file.create_group(key)
+                try:
+                    group = h5file.create_group(key)
+                except:
+                    group = h5file[key]
                 self.build_rec_dataset(value, group, exists_warning=exists_warning)
             else:
                 h5file.create_dataset(key, data=value)

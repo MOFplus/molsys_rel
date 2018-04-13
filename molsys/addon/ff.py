@@ -304,7 +304,7 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.map2image(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms])
         apex_1 = xyz[0]
         apex_2 = xyz[1]
         return np.linalg.norm(apex_1-apex_2)
@@ -315,7 +315,7 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.map2image(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms])
         apex_1 = xyz[0]
         apex_2 = xyz[2]
         central = xyz[1]
@@ -354,7 +354,7 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.map2image(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms])
         apex1 = xyz[0]
         apex2 = xyz[3]
         central1 = xyz[1]

@@ -10,7 +10,7 @@ from .fileIO import formats
 from .mol import mpiobject
 from .mol import mol
 from .topo import topo
-
+mpiobject = mpiobject.mpiobject
 from . import addon
 
 __all__=["mol", "topo", "mpiobject"]
