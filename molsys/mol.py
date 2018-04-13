@@ -33,7 +33,7 @@ from . import addon
 # NOTE: this needs to be done once only here for the root logger molsys
 # any other module can use either this logger or a child logger
 # no need to redo this config in the other modules!
-# NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the 
+# NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the
 #        master node writes INFO to stdout
 # TBI: colored logging https://stackoverflow.com/a/384125
 import logging
@@ -55,7 +55,7 @@ if molsys_mpi.rank == 0:
     shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
-    
+
 if molsys_mpi.wcomm == None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
     logger.error(molsys_mpi.err)
@@ -146,7 +146,7 @@ class mol(mpiobject):
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return
-    
+
     @classmethod
     def fromFile(cls, fname, ftype=None, **kwargs):
         ''' reader for the mol class, reading from a file
@@ -159,7 +159,7 @@ class mol(mpiobject):
         m = cls()
         m.read(fname, ftype, **kwargs)
         return m
-    
+
     @classmethod
     def fromString(cls, istring, ftype='mfpx', **kwargs):
         ''' generic reader for the mol class, reading from a string
@@ -200,7 +200,7 @@ class mol(mpiobject):
         m = cls()
         logger.info('creating mol object from a pymatgen structure object')
         cell = structure.lattice.matrix
-        fracs = [] 
+        fracs = []
         elems = []
         for j, site in enumerate(structure.sites):
             elems.append(site.specie.symbol.lower())
@@ -215,8 +215,8 @@ class mol(mpiobject):
         m.set_empty_conn()
         m.detect_conn()
         return m
-        
-    
+
+
     @classmethod
     def fromArray(cls, arr, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
@@ -281,7 +281,7 @@ class mol(mpiobject):
                 os.remove(_tmpfname)
                 logger.info("temporary file "+_tmpfname+" removed")
         return
-    
+
     def molden(self, **kwargs):
         self.view(program='moldenx', fmt='mfpx', **kwargs)
     def pymol(self, **kwargs):
@@ -344,8 +344,8 @@ class mol(mpiobject):
         """
         checks if connectivity is not broken
 
-        Parameters:
-            conn (list): list of lists holding the connectivity (if None self.conn is tested)
+        Args:
+            conn (list): list of lists holding the connectivity (default=None, check own )
         """
         if conn == None:
             conn = self.conn
@@ -358,9 +358,9 @@ class mol(mpiobject):
         """
         detects the connectivity of the system, based on covalent radii.
 
-        Parameters:
-            tresh  (float): additive treshhold
-            remove_duplicates  (bool): flag for the detection of duplicates
+        Args:
+            tresh (float): additive treshhold
+            remove_duplicates (bool): flag for the detection of duplicates
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -523,12 +523,12 @@ class mol(mpiobject):
     #    currently if pconn is used we just call the old method from topo.py ... a lot of redundant things could 
     #    could be removed and all should be merged into one method at some point
     #
-    
+
     def make_supercell(self,supercell):
         ''' Extends the periodic system in all directions by the factors given in the
             supercell upon preserving the connectivity of the initial system
-            
-            Parameters:
+            Can be used for systems with and without pconn
+            Args:
                 supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
         # HACK
         if self.use_pconn:
@@ -607,7 +607,8 @@ class mol(mpiobject):
 
 
     def _make_supercell_pconn(self, supercell):
-        """ old make_supercell from topo object 
+        """ old make_supercell from topo object
+        called automatically when pconn exists
         """
         self.supercell = tuple(supercell)
         logger.info('Generating %i x %i x %i supercell' % self.supercell)
@@ -677,7 +678,6 @@ class mol(mpiobject):
         self.atypes*=ntot
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn,pconn
-
 
     def apply_pbc(self, xyz=None, fixidx=0):
         ''' 
@@ -933,7 +933,7 @@ class mol(mpiobject):
         """
         Adds bonds between atoms from list1 and list2 (same length!) to connect
         the shortest pairs
-        
+
         in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
         is used"""
         assert len(lista1) == len(lista2), "only for lists of same length: %dx != %d " % (len(lista1), len(lista2))
@@ -957,7 +957,7 @@ class mol(mpiobject):
                     dmat[e1,e2] = self.get_distvec(a1,a2)[0]
             a1which, a2which = hungarian(dmat)
             for i in range(dim):
-                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])            
+                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
         return
 
     ###  molecular manipulations #######################################
@@ -1029,11 +1029,11 @@ class mol(mpiobject):
         self.delete_atoms(badlist)
         #for i in badlist[::-1]: self.delete_atom(i)
         return
-    
+
     def randomize_coordinates(self,maxdr=1.0):
         xyz = self.get_xyz()
         xyz += np.random.uniform(-maxdr,maxdr,xyz.shape)
-        self.set_xyz(self.pbc(xyz))        
+        self.set_xyz(self.pbc(xyz))
 
     def translate(self, vec):
         self.xyz += vec
@@ -1459,7 +1459,7 @@ class mol(mpiobject):
         for i in range(self.natoms):
             self.conn.append([])
         return
-        
+
     def get_conn_as_tab(self, pconn_flag=None):
         """
         gets the connectivity as a table of bonds with shape (nbonds, 2)
@@ -1483,7 +1483,7 @@ class mol(mpiobject):
                     if j > i:
                         ctab.append([i,j])
         return ctab
-        
+
     def set_ctab_from_conn(self, pconn_flag=None):
         if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
         if pconn_flag:
@@ -1503,7 +1503,7 @@ class mol(mpiobject):
             self.conn[i].append(j)
             self.conn[j].append(i)
         return
-        
+
     def set_unit_mass(self):
         """
         sets the mass for every atom to one
