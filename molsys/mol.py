@@ -66,7 +66,7 @@ try:
 except ImportError:
     import builtins as __builtin__
 def print(*args, **kwargs):
-    if mpiobject.mpi_rank == 0:
+    if molsys_mpi.rank == 0:
         return __builtin__.print(*args, **kwargs)
     else:
         return
@@ -770,7 +770,8 @@ class mol(mpiobject):
         self.inv_cell = np.linalg.inv(self.cell)
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
-        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
+        if cell_only == False:
+            self.set_xyz_from_frac(frac_xyz)
         return
 
     def set_cellparams(self,cellparams, cell_only = True):
@@ -786,15 +787,15 @@ class mol(mpiobject):
         return
     
     ### rewrite on set_cell ???
-    def scale_cell(self, scale):
+    def scale_cell(self, scale, cell_only=False):
         ''' scales the cell by a given factor
         
         Parameters:
             scale: either single float or an array of len 3'''
             
-        cell = self.get_cell()
+        cell = self.get_cell().copy()
         cell *= scale
-        self.set_cell(cell, cell_only=False)
+        self.set_cell(cell, cell_only=cell_only)
         return
 
     def get_frac_from_xyz(self, xyz=None):
@@ -826,6 +827,8 @@ class mol(mpiobject):
         if not self.periodic: return
         assert frac_xyz.shape == (self.natoms, 3)
         self.xyz = np.dot(frac_xyz,self.cell)
+        print("done")
+        return
 
     def get_image(self,xyz, img):
         ''' returns the xyz coordinates of a set of coordinates in a specific cell
