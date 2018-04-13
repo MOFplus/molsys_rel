@@ -11,7 +11,6 @@ from .molsys_mpi import mpiobject
 from . import molsys_mpi
 from .mol import mol
 from .topo import topo
-mpiobject = mpiobject.mpiobject
 from . import addon
 
 #from . import addon
