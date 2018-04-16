@@ -1276,7 +1276,7 @@ class ff(base):
             if partype == 'mm3':
                 fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f\n' % ('angle',atype1,atype2,atype3,vals[0],vals[1]))
             elif partype == 'fourier':
-                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f %18.10f %18.10f\n' % ('strbnd',atype1,atype2,atype3,vals[0],vals[1],vals[2],vals[3],vals[4]))
+                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f %18.10f %18.10f\n' % ('fourier',atype1,atype2,atype3,vals[0],vals[1],vals[2],vals[3],vals[4]))
             elif partype == 'strbnd':
                 fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f\n' % ('strbnd',atype1,atype2,atype3,vals[0],vals[1],vals[2]))
             else:
