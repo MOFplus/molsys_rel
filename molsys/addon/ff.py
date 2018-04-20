@@ -854,8 +854,37 @@ class ff(base):
         Forces the paramters in the variables dictionary to be wriiten in the internal
         data structures
         """
+        if hasattr(self, 'do_not_varnames2par'): return
         self.par.variables(self.par.variables.keys())
+        return
 
+    def remove_pars(self,identifier=[]):
+        """Remove Variables to write the numbers to the fpar file
+        
+        Based on any identifier, variables can be deleted from the dictionary
+        Identifiers can be regular expressions
+        Usage:
+            ff.remove_pars(['d'])  -- removes all dihedral variables
+            ff.remove_pars(['a10'])  -- removes all entries of angle 10, e.g. a10_0 & a10_1
+            ff.remove_pars(['b*0'])  -- removes all entries of angle 10, e.g. a10_0 & a10_1
+
+        Keyword Arguments:
+            identifier {list of strings} -- [description] (default: {[]})
+        """
+        import re
+        for ident in identifier:
+            re_ident = re.compile(ident)
+            for k in self.par.variables.keys():
+                if k.count(ident) != 0:
+                    del self.par.variables[k]
+                    continue
+                # check regexp
+                re_result = re.search(re_ident,k)
+                if re_result is None: continue
+                if re_result.span()[-1] != 0:  #span[1] is zero if the regexp was not found
+                    del self.par.variables[k]
+                    continue
+        return
 
     def setup_pair_potentials(self):
         """
