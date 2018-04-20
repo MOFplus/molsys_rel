@@ -866,10 +866,10 @@ class ff(base):
         Usage:
             ff.remove_pars(['d'])  -- removes all dihedral variables
             ff.remove_pars(['a10'])  -- removes all entries of angle 10, e.g. a10_0 & a10_1
-            ff.remove_pars(['b*0'])  -- removes all entries of angle 10, e.g. a10_0 & a10_1
+            ff.remove_pars(['b*_0'])  -- removes all bond entries zero e.g. b1_0 & b5_0, but keeps b1_1 and b5_1
 
         Keyword Arguments:
-            identifier {list of strings} -- [description] (default: {[]})
+            identifier {list of strings} -- string identifiers, can be regexp (default: {[]})
         """
         import re
         for ident in identifier:
