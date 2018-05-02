@@ -679,14 +679,14 @@ class mol(mpiobject):
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn,pconn
 
-    def apply_pbc(self, xyz=None, fixidx=0):
+    def apply_pbc(self, xyz=None, fixidx=-1):
         ''' 
         apply pbc to the atoms of the system or some external positions
         Note: If pconn is used it is ivalid after this operation and will be reconstructed.
         
         Args:
             xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
-            fixidx (int) : for an external system the atom to which all should be referred to can be given
+            fixidx (int) : for an external system the origin can be defined. default=-1 which meas that coordinates are not shifted
             
         Returns:
             xyz, in case xyz is not None (wrapped coordinates are returned) otherwise None is returned
@@ -707,7 +707,10 @@ class mol(mpiobject):
             return
         else:
             # apply to xyz
-            a = xyz[:,:] - xyz[fixidx,:]
+            if fixidx != -1:
+                a = xyz[:,:] - xyz[fixidx,:]
+            else:
+                a = xyz[:,:]
             if self.bcond <= 2:
                 cell_abc = self.cellparams[:3]
                 xyz[:,:] -= cell_abc*np.around(a/cell_abc)
@@ -798,6 +801,9 @@ class mol(mpiobject):
         self.set_cell(cell, cell_only=cell_only)
         return
 
+    def get_frac_xyz(self,xyz=None):
+        return self.get_frac_from_xyz(xyz=xyz)
+    
     def get_frac_from_xyz(self, xyz=None):
         ''' Returns the fractional atomic coordinates
         
