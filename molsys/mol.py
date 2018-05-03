@@ -148,9 +148,9 @@ class mol(mpiobject):
         return
 
     @classmethod
-    def fromFile(cls, fname, ftype=None, **kwargs):
+    def from_file(cls, fname, ftype=None, **kwargs):
         ''' reader for the mol class, reading from a file
-        :Parameters:
+        Parameters:
             - fname(str): path to the file (filename included)
             - ftype=None (or str): the parser type that is used to read the file
                 if None: assigned by read as mfpx (default)
@@ -161,9 +161,9 @@ class mol(mpiobject):
         return m
 
     @classmethod
-    def fromString(cls, istring, ftype='mfpx', **kwargs):
+    def from_string(cls, istring, ftype='mfpx', **kwargs):
         ''' generic reader for the mol class, reading from a string
-        :Parameters:
+        Parameters:
             - string       : the string to be read
             - ftype="mfpx" : the parser type that is used to read the file
             - **kwargs     : all options of the parser are passed by the kwargs
@@ -179,7 +179,7 @@ class mol(mpiobject):
         return m
 
     @classmethod
-    def fromAbinit(cls, elems, xyz, cell, frac = False):
+    def from_abinit(cls, elems, xyz, cell, frac = False):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
         m.natoms = len(elems)
@@ -196,7 +196,7 @@ class mol(mpiobject):
         return m
 
     @classmethod
-    def fromPymatgen(cls, structure):
+    def from_pymatgen(cls, structure):
         m = cls()
         logger.info('creating mol object from a pymatgen structure object')
         cell = structure.lattice.matrix
@@ -218,7 +218,7 @@ class mol(mpiobject):
 
 
     @classmethod
-    def fromArray(cls, arr, **kwargs):
+    def from_array(cls, arr, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
         Parameters:
             arr         : the array to be read
@@ -231,7 +231,7 @@ class mol(mpiobject):
         return m
 
     @classmethod
-    def fromNestedList(cls, nestl, **kwargs):
+    def from_nested_list(cls, nestl, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
         Parameters:
             arr         : the array to be read
@@ -845,11 +845,13 @@ class mol(mpiobject):
         return xyz + dispvec
 
 
-    ###  system manipulations ##########################################
+    ###  add mol objects and copy ##########################################
 
-    def copy(self):
-        ''' returns a copy of the whole mol object'''
-        return copy.deepcopy(self)
+    # TODO: this might not work anymore because of the mpi communicator
+    #       is it needed?
+    #def copy(self):
+    #    ''' returns a copy of the whole mol object'''
+    #    return copy.deepcopy(self)
 
     def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None,rotmat=None):
         ''' adds a  nonperiodic mol object to the current one ... self can be both
@@ -859,6 +861,7 @@ class mol(mpiobject):
                 rotate (numpy.ndarry)   : rotation triple to apply to the other mol object before insertion
                 scale (float)           : scaling factor for other mol object coodinates
                 roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
+        assert not self.use_pconn, "This method can not be used with pconn!"
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
@@ -898,38 +901,105 @@ class mol(mpiobject):
         #self.fragnumbers += list(np.array(other.fragnumbers)+start_fragnumber)
         return
 
-    def add_bond(self,a1,a2):
+    def new_mol_by_index(self, idx):
         """
-        One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
-        is cross-updated by appending. (no sorting)
-        
-        Parameter:
-            a1 (int): index of atom1, python-like (starts with 0)
-            a2 (int): index of atom2, python-like (starts with 0)"""
-        if hasattr(a1,"__iter__"): a1=a1[0] #in case a singleton is passed
-        if hasattr(a2,"__iter__"): a2=a2[0] #in case a singleton is passed
-        self.conn[a1].append(a2)
-        self.conn[a2].append(a1)
-        return
+        Creates a new mol object which consists of the atoms specified in thfe argument.
 
-    def add_bonds(self,lista1,lista2):
+        Args:
+            idx (list) : list of indices to be extracted as a new mol object
+        """
+        assert not self.use_pconn, "This method can not be used with pconn!"
+        m = mol()
+        m.set_natoms(len(idx))
+        d = {}
+        elems = []
+        xyz = []
+        atypes = []
+        for n,i in enumerate(idx):
+            d[i] = n
+            elems.append(self.elems[i])
+            xyz.append(self.xyz[i,:])
+            atypes.append(self.atypes[i])
+        m.set_elems(elems)
+        m.set_xyz(np.array(xyz))
+        m.set_atypes(atypes)
+        conn = []
+        for i in idx:
+            this_conn = []
+            for j in self.conn[i]:
+                try:
+                    this_conn.append(d[j])
+                except KeyError:
+                    pass
+            conn.append(this_conn)
+        m.set_conn(conn)
+        # handle periodic boundary conditions
+        if type(self.cell) != type(None):
+            m.set_cell(self.cell)
+            m.periodic = True
+            """ ###SOURCE OF BUG, YET NOT STUDIED
+            stop = False
+            while not stop:
+                stop = True
+                for i, conns in enumerate(m.conn):
+                    for j in conns:
+                        d, r, imgi = m.get_distvec(i, j)
+                        if imgi != [13]:
+                            stop = False
+                            for ik, k in enumerate(self.cell):
+                                m.xyz[j] += k * images[imgi][0][ik]
+                            break
+            """
+            ### it SEEMS to work now without the while loop, NO WARRANTY (RA+MD)
+            for i, conns in enumerate(m.conn):
+                for j in conns:
+                    d, r, imgi = m.get_distvec(i, j)
+                    if imgi != [13]:
+                        for ik, k in enumerate(self.cell):
+                            m.xyz[j] += k * images[imgi][0][ik]
+                        break
+            m.cell = None
+            m.periodic = False
+        return m
+
+    ##### add and delete atoms and bonds ###########################################################
+
+
+    def add_bonds(self, lista1, lista2, many2many=False):
         """ 
-        Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
+        add bonds/edges/connections to a mol object between exisiting atoms/vertices        
+
+        If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
+        between atom of list 1 and atom of list 2.
+        For many2many == False the length of lista1 and lista2 must be equal
+
+        
+        For many2many = True a Many-to-many connectivity is used:
+        Sets NxM  bonds, where N and M is the number of atoms per each list.
         Each atom of list 1 is connected to each atom of list 2.
         This is rarely wanted unless (at least) one of the lists has got only one atom.
         In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
         Each atom of the "long" list is connected to the atom of the "short" one.
-        If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
-        between atom of list 1 and atom of list 2.
         
-        Paramters:
+        Args:
             lista1(iterable of int): iterable 1 of atom indices
-            lista2(iterable of int): iterable 2 of atom indices"""
+            lista2(iterable of int): iterable 2 of atom indices
+            many2many (boolean):     switch to many2many mode            
+            """
+        assert not self.use_pconn
+        if many2many == False:
+            assert len(lista1)==lista2
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
-        if not hasattr(lista2,'__iter__'): lista2 = [lista2]
-        for a1 in lista1:
-            for a2 in lista2:
-                self.add_bond(a1,a2)
+        if not hasattr(lista2,'__iter__'): lista2 = [lista2]:
+        if many2many:
+            for a1 in lista1:
+                for a2 in lista2:
+                    self.conn[a1].append(a2)
+                    self.conn[a2].append(a1)
+        else:
+            for a1,a2 in zip(lista1, lista2):
+                    self.conn[a1].append(a2)
+                    self.conn[a2].append(a1)                
         return
 
     def add_shortest_bonds(self,lista1,lista2):
@@ -938,7 +1008,14 @@ class mol(mpiobject):
         the shortest pairs
 
         in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
-        is used"""
+        is used
+        
+        Args:
+            lista1 (list) : list of atoms
+            lista2 (list) : list of atoms
+        
+        """
+        assert not self.use_pconn
         assert len(lista1) == len(lista2), "only for lists of same length: %dx != %d " % (len(lista1), len(lista2))
         if len(lista1) < 3:
             a11, a12 = lista1
@@ -963,7 +1040,31 @@ class mol(mpiobject):
                 self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
         return
 
-    ###  molecular manipulations #######################################
+    def add_atom(self, elem, atype, xyz):
+        """
+        add a ato/vertex to the system (unconnected)
+        
+        Args:
+            elem (string):    element symbol
+            atype (string):   atom type string
+            xyz (ndarry [3]): coordinates
+            
+        TBI: what to do woth fragment types etc?
+        """
+        assert type(elem) == str
+        assert type(atype)== str
+        assert np.shape(xyz) == (3,)
+        self.natoms += 1
+        self.elems.append(elem)
+        self.atypes.append(atype)
+        xyz.shape = (1,3)
+        if isinstance(self.xyz, np.ndarray):
+            self.xyz = np.concatenate((self.xyz, xyz))
+        else:
+            self.xyz = xyz
+        self.conn.append([])
+        if self.use_pconn: self.pconn.append([])
+        return self.natoms -1
 
     def delete_atoms(self,bads):
         ''' 
@@ -1022,8 +1123,8 @@ class mol(mpiobject):
 
     def remove_dummies(self,labels=['x','xx']):
         ''' removes atoms by atom labels
-        :Parameters:
-            - labels (list): atom labels to be removed'''
+        Args:
+            labels (list): atom labels to be removed'''
         badlist = []
         for i,e in enumerate(self.elems):
             if labels.count(e) != 0:
@@ -1032,6 +1133,40 @@ class mol(mpiobject):
         self.delete_atoms(badlist)
         #for i in badlist[::-1]: self.delete_atom(i)
         return
+
+    def remove_overlapping_atoms(self, thresh=SMALL_DIST):
+        """
+        remove atoms/vertices which are closer than thresh
+        
+        Note that it is unpredictable which atom is removed from the overlapping pair.         
+        
+        Args:
+            thresh : distance threshold
+        """
+        badlist = []
+        for i in range(self.natoms):
+            for j in range(i+1, self.natoms):
+                d,r,imgi=self.get_distvec(i,j)
+                if d < thresh:
+                    badlist.append(j)
+        new_xyz = []
+        new_elems = []
+        new_atypes = []
+        for i in range(self.natoms):
+            if not badlist.count(i):
+                new_xyz.append(self.xyz[i].tolist())
+                new_elems.append(self.elems[i])
+                new_atypes.append(self.atypes[i])
+        self.xyz = np.array(new_xyz, "d")
+        self.elems = new_elems
+        self.natoms = len(self.elems)
+        self.atypes = new_atypes
+        return
+
+
+
+    ##### manipulate geomtry #######################################################
+
 
     def randomize_coordinates(self,maxdr=1.0):
         xyz = self.get_xyz()
@@ -1060,87 +1195,6 @@ class mol(mpiobject):
         center = self.get_com()
         self.translate(-center)
         return
-
-    def get_com(self, idx = None, xyz = None):
-        """
-        returns the center of mass of the mol object.
-
-        Parameters:
-            idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
-        """
-        if hasattr(self,'masstype') == False: self.set_real_mass()
-        #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
-        #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
-        if xyz is not None:
-            amass = np.array(self.amass)[idx]
-        elif idx is None:
-            if self.periodic: return None
-            xyz = self.get_xyz()
-            amass = np.array(self.amass)
-        else:
-            xyz = self.get_xyz()[idx]
-            amass = np.array(self.amass)[idx]
-        xyz = self.apply_pbc(xyz, 0)
-        center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
-        return center
-
-
-    def new_mol_by_index(self, idx):
-        """
-        Creates a new mol object which consists of the atoms specified in the argument.
-        """
-        m = mol()
-        m.set_natoms(len(idx))
-        d = {}
-        elems = []
-        xyz = []
-        atypes = []
-        for n,i in enumerate(idx):
-            d[i] = n
-            elems.append(self.elems[i])
-            xyz.append(self.xyz[i,:])
-            atypes.append(self.atypes[i])
-        m.set_elems(elems)
-        m.set_xyz(np.array(xyz))
-        m.set_atypes(atypes)
-        conn = []
-        for i in idx:
-            this_conn = []
-            for j in self.conn[i]:
-                try:
-                    this_conn.append(d[j])
-                except KeyError:
-                    pass
-            conn.append(this_conn)
-        m.set_conn(conn)
-        # handle periodic boundary conditions
-        if type(self.cell) != type(None):
-            m.set_cell(self.cell)
-            m.periodic = True
-            """ ###SOURCE OF BUG, YET NOT STUDIED
-            stop = False
-            while not stop:
-                stop = True
-                for i, conns in enumerate(m.conn):
-                    for j in conns:
-                        d, r, imgi = m.get_distvec(i, j)
-                        if imgi != [13]:
-                            stop = False
-                            for ik, k in enumerate(self.cell):
-                                m.xyz[j] += k * images[imgi][0][ik]
-                            break
-            """
-            ### it SEEMS to work now without the while loop, NO WARRANTY (RA+MD)
-            for i, conns in enumerate(m.conn):
-                for j in conns:
-                    d, r, imgi = m.get_distvec(i, j)
-                    if imgi != [13]:
-                        for ik, k in enumerate(self.cell):
-                            m.xyz[j] += k * images[imgi][0][ik]
-                        break
-            m.cell = None
-            m.periodic = False
-        return m
 
 
     ##### distance measurements #####################
@@ -1252,43 +1306,30 @@ class mol(mpiobject):
             closest=[0]
         return d, r, closest
 
-
-    ### get and set methods ###
-    def add_atom(self, elem, atype, xyz):
-        assert type(elem) == str
-        assert type(atype)== str
-        assert np.shape(xyz) == (3,)
-        self.natoms += 1
-        self.elems.append(elem)
-        self.atypes.append(atype)
-        xyz.shape = (1,3)
-        if isinstance(self.xyz, np.ndarray):
-            self.xyz = np.concatenate((self.xyz, xyz))
-        else:
-            self.xyz = xyz
-        self.conn.append([])
-        if self.use_pconn: self.pconn.append([])
-        return self.natoms -1
-
-    def add_conn(self, anum1, anum2):
-        ''' add a bond between two atoms
-            BEWARE, does not do any checks '''
-        self.conn[anum1].append(anum2)
-        self.conn[anum2].append(anum1)
-        return
-    def remove_conn(self,i,j):
-        """remove a bond between two atoms
-
-        removes the connectivity entry between two atoms
-        BEWARE, does not do any checks
-
-        Arguments:
-            i {int} -- atom index 
-            j {int} -- atom index 
+    def get_com(self, idx = None, xyz = None):
         """
-        self.conn[i].remove(j)
-        self.conn[j].remove(i)
-        return
+        returns the center of mass of the mol object.
+
+        Parameters:
+            idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
+        """
+        if hasattr(self,'masstype') == False: self.set_real_mass()
+        #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
+        #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
+        if xyz is not None:
+            amass = np.array(self.amass)[idx]
+        elif idx is None:
+            if self.periodic: return None
+            xyz = self.get_xyz()
+            amass = np.array(self.amass)
+        else:
+            xyz = self.get_xyz()[idx]
+            amass = np.array(self.amass)[idx]
+        xyz = self.apply_pbc(xyz, 0)
+        center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+        return center
+
+    ###### get/set  core datastructures ###########################
 
     def get_natoms(self):
         ''' returns the number of Atoms '''
