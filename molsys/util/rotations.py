@@ -182,11 +182,11 @@ def align_bond_to(m,bond,align_xyz):
     m.set_xyz(rotate_by_triple(m.xyz,o.x % 1.0))
     return o
 
-def rec_walk_bond(m,ind,inds):
+def rec_walk_bond(m,ind,inds=[]):
     for i,c in enumerate(m.conn[ind]):
         if inds.count(c) == 0:
             inds.append(c)
-            inds = rec_walk_bond(m,c,inds)
+            inds = rec_walk_bond(m,c,inds=inds)
         else:
             pass
     return inds
