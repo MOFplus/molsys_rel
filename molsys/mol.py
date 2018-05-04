@@ -110,7 +110,7 @@ class mol(mpiobject):
 
     #####  I/O stuff ######################################################################################
 
-    def set_logger_level(self,level='INFO'):
+    def set_logger_level(self,level='WARNING'):
         if level=='INFO':
             logger.setLevel(logging.INFO)
         if level=='WARNING':
@@ -123,10 +123,10 @@ class mol(mpiobject):
 
     def read(self, fname, ftype=None, **kwargs):
         ''' generic reader for the mol class
-        :Parameters:
-            - fname        : the filename to be read
-            - ftype="mfpx" : the parser type that is used to read the file
-            - **kwargs     : all options of the parser are passed by the kwargs
+        Parameters:
+            fname        : the filename to be read
+            ftype="mfpx" : the parser type that is used to read the file
+            **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if ftype is None:
             fsplit = fname.rsplit('.',1)[-1]
@@ -151,10 +151,10 @@ class mol(mpiobject):
     def from_file(cls, fname, ftype=None, **kwargs):
         ''' reader for the mol class, reading from a file
         Parameters:
-            - fname(str): path to the file (filename included)
-            - ftype=None (or str): the parser type that is used to read the file
+            fname(str): path to the file (filename included)
+            ftype=None (or str): the parser type that is used to read the file
                 if None: assigned by read as mfpx (default)
-            - **kwargs     : all options of the parser are passed by the kwargs
+            **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         m = cls()
         m.read(fname, ftype, **kwargs)
@@ -164,9 +164,9 @@ class mol(mpiobject):
     def from_string(cls, istring, ftype='mfpx', **kwargs):
         ''' generic reader for the mol class, reading from a string
         Parameters:
-            - string       : the string to be read
-            - ftype="mfpx" : the parser type that is used to read the file
-            - **kwargs     : all options of the parser are passed by the kwargs
+            string       : the string to be read
+            ftype="mfpx" : the parser type that is used to read the file
+            **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         m = cls()
         logger.info("reading string as %s" % str(ftype))
@@ -1046,6 +1046,21 @@ class mol(mpiobject):
                 self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
         return
 
+    def delete_bond(self, i, j):
+        """delete bond between atom i and j
+
+        Args:
+            i (int): atom 1
+            j (int): atom 2
+
+        """
+        assert not self.use_pconn
+        idx1 = self.conn[i].index(j)
+        idx2 = self.conn[j].index(i)
+        self.conn[i].remove(j)
+        self.conn[j].remove(i)
+        return
+
     def add_atom(self, elem, atype, xyz):
         """
         add a ato/vertex to the system (unconnected)
@@ -1070,7 +1085,29 @@ class mol(mpiobject):
             self.xyz = xyz
         self.conn.append([])
         if self.use_pconn: self.pconn.append([])
-        return self.natoms -1
+        return self.natoms-1
+
+    def insert_atom(self,elem, atype, i, j, xyz=None):
+        """Inserts an atom in a bond netween i and j
+
+        Adds the atom at position between i and j or at xyz if given
+        
+        Args:
+            elem (str): element
+            atype (str): atomtype
+            i (integer): atom 1
+            j (integer): atom 2
+            xyz (ndarray[3]): optional xyz position
+        """
+        if xyz is None:
+            d, r, img = self.get_distvec(i,j)
+            new_xyz = self.xyz[i] + 0.5* r[0]
+        else:
+            new_xyz = xyz
+        new_atom = self.add_atom(elem, atype, new_xyz)
+        self.delete_bond(i, j)
+        self.add_bonds([i,j],[new_atom,new_atom])
+        return
 
     def delete_atoms(self,bads):
         ''' 
@@ -1175,6 +1212,9 @@ class mol(mpiobject):
 
 
     def randomize_coordinates(self,maxdr=1.0):
+        """randomizes existing  coordinates
+            maxdr (float, optional): Defaults to 1.0. maximum displacement
+        """
         xyz = self.get_xyz()
         xyz += np.random.uniform(-maxdr,maxdr,xyz.shape)
         self.set_xyz(self.pbc(xyz))

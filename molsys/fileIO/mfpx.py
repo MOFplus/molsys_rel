@@ -84,6 +84,9 @@ def write(mol, fname, fullcell = True):
     f = open(fname, 'w')
     if mol.is_topo:
         ftype = 'topo'
+        if mol.use_pconn == False:
+            # this is a topo object but without valid pconn. for writing we need to generate it
+            mol.add_pconn()
     else:
         ftype = 'xyz'
     f.write('# type %s\n' % ftype)
