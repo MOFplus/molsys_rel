@@ -1066,7 +1066,7 @@ class ff(base):
                     self._mol.graph.filter_graph(idx)
                     asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
                     ### check for atfixes and change atype accordingly, the atfix number has to be referred to its index in the azone
-                    if ref_dic[ref][4] != None:
+                    if ref_dic[ref][4] != None and type(ref_dic[ref][4]) != str:
                         atfix = ref_dic[ref][4]
                         for s in asubs:
                             for idx, at in atfix.items():
