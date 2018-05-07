@@ -57,6 +57,8 @@ except ImportError:
 import logging
 import pdb
 logger = logging.getLogger("molsys.ff")
+#logger.setLevel(logging.INFO)
+#import pdb; pdb.set_trace()
 
 if mpi_comm == None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
@@ -525,14 +527,54 @@ class ff(base):
                             self.parind[ic][i] = full_parname_list
         self.check_consistency()
 
+    @timer("assign multi parameters")
+    def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}):
+        """
+        Method to orchestrate the parameter assignment fo the curent system using multiple force fields
+        defined in FFs by getting the corresponding data from the webAPI.
+
+        Args:
+            FFs (list): list of strings containing the names of the FFs which should be assigned. Priority
+                is defined by the ordering of the list
+
+        Keyword Args:
+            refsysname (string): if set this is a refsystem leading to special
+                treatment of nonidentified params; defaults to None
+            equivs (dict): dictionary holding information on equivalences,
+                needed for parameterization processes in order to "downgrade" atomtpyes, defaults to
+                {}
+            azone (list): list of indices defining the active zone, defaults to []
+            special_atypes (dict): dict of special atypes, if empty special atypes from
+                mofplus are requested, defaults to {}
+
+        """
+        for i, ff in enumerate(FFs):
+            # first element
+            if i == 0: 
+                self.assign_params(ff, refsysname = refsysname,equivs = equivs, azone = azone, 
+                        special_atypes = special_atypes, consecutive = True, ricdetect = True)
+            # last element
+            elif i == len(FFs)-1:
+                self.par.FF = ff
+                self.assign_params(ff, refsysname = refsysname, equivs = equivs, azone = azone, 
+                        special_atypes = special_atypes, consecutive = False, ricdetect = False)
+            # in between
+            else:
+                self.par.FF = ff
+                self.assign_params(ff, refsysname = refsysname, equivs = equivs, azone = azone, 
+                        special_atypes = special_atypes,consecutive = True, ricdetect = False)
+        return
+
+
                 
     @timer("assign parameter")
-    def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, plot=False):
+    def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
+            plot=False, consecutive=False, ricdetect=True):
         """
-        method to orchestrate the parameter assignment for this system using a force field defined with
+        Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
 
-        :Parameter:
+        Args:
 
             - FF        :    [string] name of the force field to be used in the parameter search
             - verbose   :    [integer, optional] print info on assignement process to logger;
@@ -567,10 +609,11 @@ class ff(base):
                 special_atypes = None
             if self._mol.mpi_size > 1:
                 special_atypes = self._mol.mpi_comm.bcast(special_atypes, root = 0)
-        with self.timer("find rics"):
-            self.ric.find_rics(specials = special_atypes)
-            self._init_data()
-            self._init_pardata(FF)
+        if ricdetect==True:
+            with self.timer("find rics"):
+                self.ric.find_rics(specials = special_atypes)
+                self._init_data()
+                self._init_pardata(FF)
         # as a first step we need to generate the fragment graph
         self.timer.start("fragment graph")
         self._mol.addon("fragments")
@@ -648,10 +691,11 @@ class ff(base):
                     if i in curr_equi_par.keys():
                         at, ft = curr_equi_par[i].split("@")
                         self.aftypes[i] = aftype(at,ft)
-        if refsysname:
-            self.fixup_refsysparams()
-        else:
-            self.check_consistency()
+        if consecutive==False:
+            if refsysname:
+                self.fixup_refsysparams()
+            else:
+                self.check_consistency()
         self.timer.write_logger(logger.info)
         return
 
@@ -987,7 +1031,7 @@ class ff(base):
                 # now we have to search for the active space
                 # first construct the atomistic graph for the sub in the real system if 
                 # an active zone is defined
-                if ref_dic[ref][2] != None:
+                if ref_dic[ref][2] != None and type(ref_dic[ref][2]) != str:
                     idx = self.fragments.frags2atoms(subs_flat)
                     self._mol.graph.filter_graph(idx)
                     asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
