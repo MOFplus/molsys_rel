@@ -614,22 +614,22 @@ class ff(base):
                 self.ric.find_rics(specials = special_atypes)
                 self._init_data()
                 self._init_pardata(FF)
-        # as a first step we need to generate the fragment graph
-        self.timer.start("fragment graph")
-        self._mol.addon("fragments")
-        self.fragments = self._mol.fragments
-        self.fragments.make_frag_graph()
-        if plot:
-            self.fragments.plot_frag_graph(plot, ptype="png", vsize=20, fsize=20, size=1200)
-        # create full atomistic graph
-        self._mol.graph.make_graph()
-        self.timer.stop()
-        # now make a private list of atom types including the fragment name
-        self.timer.start("make atypes")
-        self.aftypes = []
-        for i, a in enumerate(self._mol.get_atypes()):
-            self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
-        self.timer.stop()
+            # as a first step we need to generate the fragment graph
+            self.timer.start("fragment graph")
+            self._mol.addon("fragments")
+            self.fragments = self._mol.fragments
+            self.fragments.make_frag_graph()
+            if plot:
+                self.fragments.plot_frag_graph(plot, ptype="png", vsize=20, fsize=20, size=1200)
+            # create full atomistic graph
+            self._mol.graph.make_graph()
+            self.timer.stop()
+            # now make a private list of atom types including the fragment name
+            self.timer.start("make atypes")
+            self.aftypes = []
+            for i, a in enumerate(self._mol.get_atypes()):
+                self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
+            self.timer.stop()
         # detect refsystems
         self.find_refsystems(plot=plot)
         with self.timer("parameter assignement loop"):
