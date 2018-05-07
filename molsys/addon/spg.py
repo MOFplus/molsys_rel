@@ -26,6 +26,7 @@ from molsys.util import spacegroups
 import molsys
 import sys
 import numpy as np
+import copy
 
 import logging
 logger = logging.getLogger("molsys.spg")
@@ -349,3 +350,71 @@ class spg:
         if match == False:
             logger.info("No symmetry found")
             raise ValueError("No symmetry found")
+
+    def get_frac_match(frac, sym, thresh=5e-6, eps=1e-8):
+        """retrieve equivalent 
+        
+        [description]
+        
+        Arguments:
+            frac {(N,3) numpy array of floats} -- 
+            sym  {(N,3) numpy array of floats} -- 
+        
+        Keyword Arguments:
+            thresh {[type]} -- [description] (default: {5e-6})
+            eps {[type]} -- [description] (default: {1e-8})
+        
+        Returns:
+            [type] -- [description]
+        """
+        symperm = []
+        x = frac[np.newaxis,:]-sym[:,np.newaxis]
+        whereint = np.where(np.isclose(np.round(x), x, atol=eps))
+        x[whereint] = np.round(x[whereint]) + eps
+        x -= np.floor(x) ### np.round does not work! [?RA]
+        symperm = np.where((x<thresh).all(axis=-1))[-1]
+        return symperm
+
+    def generate_symmetry_dataset(self,eps=1e-13):
+        """
+            Set up the data necessary to exploit symmetry within weaver.
+            transformations in the end contains a set of rotations and translations
+            for every vertex.
+
+        """
+        self.dataset = spglib.get_symmetry_dataset(self.spgcell)
+        self.RT = [(r, t) for r, t in zip(self.dataset['rotations'], self.dataset['translations'])]
+        self.R = self.dataset['rotations']
+        self.T = self.dataset['translations']
+        equiv = self.dataset['equivalent_atoms'].tolist()
+        equiv_set = list(set(equiv))
+        base_indices = [equiv.index(i) for i in equiv_set]
+        derived_indices = [[i for i,e in enumerate(equiv) if ((e == j) and (i != -1))] for j in equiv_set]
+        
+        transformations = {}
+        frac = copy.copy(self.spgcell[1])
+        for ie,e in enumerate(equiv_set):
+            exyz = frac[e]
+            M_exyz = (numpy.dot(self.R,exyz)+self.T) #% 1.0
+            for id,d in enumerate(derived_indices[ie]):
+                dxyz  = frac[d]
+                distvects = M_exyz-dxyz
+                whereint = np.where(np.isclose(np.round(distvects), distvects, atol=eps))
+                distvects[whereint] = np.round(distvects[whereint]) + eps
+                distvects -= numpy.floor(distvects)
+                
+                dists = numpy.linalg.norm(distvects,axis=1)
+                idx_dmin  = [i for i,dist in enumerate(dists) if dist < 1e-5][0]
+                #idx_dmin = numpy.argmin(dists)
+                if dists[idx_dmin] > 1e-8:
+                    #import pdb; pdb.set_trace()
+                    raise ValueError('no transformation found! for %i ' % (d,))
+                #print id,d,numpy.min(dists), numpy.argmin(dists)
+                transformations[d] = self.RT[idx_dmin]
+        self.transformations = transformations
+        self.equiv = equiv
+        self.equiv_set = equiv_set
+        self.base_indices = base_indices
+        self.derived_indices = derived_indices
+        
+        return transformations

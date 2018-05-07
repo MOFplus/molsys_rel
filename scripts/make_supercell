@@ -14,13 +14,17 @@ import molsys.mol as mol
 
 
 fi = sys.argv[1]
-fo = sys.argv[2]
 fi_type = fi.split('.')[-1]
-fo_type = fo.split('.')[-1]
+fo = fi.split('.')[0]+'_'+sys.argv[2]+'.mfpx'
+fo_type = fi_type
 
 
 m = mol()
 m.read(fi, ftype = fi_type)
+
+scell = map(int,sys.argv[2])
+m.make_supercell(scell)
+
 if fi_type == 'xyz':
     m.detect_conn(remove_duplicates = True)
     m.set_nofrags()

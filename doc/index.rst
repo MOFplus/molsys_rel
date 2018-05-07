@@ -16,6 +16,7 @@ It is used by other projects within the CMC group such as PYDLPOLY, WEAVER, FFGE
    :numbered:
    :caption: User Documentation
 
+   user_quickstart
    user_addon
    user_util
 

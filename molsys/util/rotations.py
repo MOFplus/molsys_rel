@@ -166,3 +166,100 @@ def align_pax(xyz,masses=None):
     eigorder = numpy.argsort(eigval)
     rotmat = eigvec[:,eigorder] #  sort the column vectors in the order of the eigenvalues to have largest on x, second largest on y, ... 
     return apply_mat(rotmat,xyz)
+
+def align_bond_to(m,bond,align_xyz):
+    """ (JK) align a bond to match the direction of the vector given by 'align_xyz' 
+    bond (list of integers, len()=2) """
+    dxyz = m.xyz[bond[1]] - m.xyz[bond[0]]
+    import scipy.optimize as opt
+    def pen(rot,x1,x2):
+        x2t = x2.copy()
+        x2t = rotate_by_triple(x2t,rot%1.0)
+        ''' calculate the angle between the vecotrs and return it'''
+        return numpy.arccos(numpy.dot(x1,x2t)/numpy.linalg.norm(x1)/numpy.linalg.norm(x2t))**2.0
+    t0 = numpy.array([0.5,0.5,0.5])
+    o = opt.minimize(pen,t0,args=(dxyz,align_xyz),method='SLSQP',)
+    m.set_xyz(rotate_by_triple(m.xyz,o.x % 1.0))
+    return o
+
+def rec_walk_bond(m,ind,inds=[]):
+    for i,c in enumerate(m.conn[ind]):
+        if inds.count(c) == 0:
+            inds.append(c)
+            inds = rec_walk_bond(m,c,inds=inds)
+        else:
+            pass
+    return inds
+
+def rotate_around_bond(m,atom1,atom2,degrees=5.0):
+    """Rotates the xyz coordinates by n degrees around the distance vector between two atoms
+    
+    let the situation be X-1-2-3-4-Y, either X,1 or Y,4 will be rotated accordingly 
+    
+    
+    Arguments:
+        mol {molsys.mol} -- the mol obect to apply the operation
+        atom1 {integer} -- atom index 1
+        atom2 {integer} -- atom index 2
+    
+    Keyword Arguments:
+        degrees {float} -- rotation in degrees (default: {5.0})
+    """
+    ### detect the atoms that are subject to the rotation 
+    ### rhs
+    #import pdb;  pdb.set_trace()
+    inds = sorted(rec_walk_bond(m,atom1,[atom2]))
+    #print inds
+    xyz = m.xyz
+    xyz1 = xyz[atom1,:]
+    xyz2 = xyz[atom2,:]
+    vect = (xyz2-xyz1)
+    vect /=  numpy.linalg.norm(vect)
+    a,n1,n2,n3 = numpy.deg2rad(degrees),vect[0],vect[1],vect[2]
+    ### formula from wikipedia https://de.wikipedia.org/wiki/Drehmatrix
+    R= numpy.array([[n1*n1*(1-cos(a))+   cos(a), n1*n2*(1-cos(a))-n3*sin(a) , n1*n3*(1-cos(a))+n2*sin(a)],
+                    [n2*n1*(1-cos(a))+n3*sin(a), n2*n2*(1-cos(a))+   cos(a) , n2*n3*(1-cos(a))-n1*sin(a)],
+                    [n3*n1*(1-cos(a))-n2*sin(a), n3*n2*(1-cos(a))+n1*sin(a) , n3*n3*(1-cos(a))+   cos(a)]])
+    xyz[inds,:] = numpy.dot(xyz[inds,:] - xyz[atom2,:],R)+xyz[atom2,:]
+    m.xyz = xyz
+    return xyz
+
+def rotate_around_vector(m,vector,origin=[0.0,0.0,0.0],degrees=5.0):
+    """(JK) Rotates the xyz coordinates by n degrees around any given vector
+    
+    Arguments:
+        m {molsys.mol} -- the mol obect to apply the operation
+        vector {numpy.ndarray(3,)} -- direction vector along which to apply the rotation
+    
+    Keyword Arguments:
+        origin {numpy.ndarray(3,)} -- origin of the rotation vector, defaults to cartesian origin 
+        degrees {float} -- rotation in degrees (default: {5.0})
+    """
+    ### detect the atoms that are subject to the rotation 
+    ### rhs
+    #import pdb;  pdb.set_trace()
+    origin = numpy.array(origin)
+    vect = vector
+    vect /=  numpy.linalg.norm(vect)
+    a,n1,n2,n3 = numpy.deg2rad(degrees),vect[0],vect[1],vect[2]
+    ### formula from wikipedia https://de.wikipedia.org/wiki/Drehmatrix
+    R= numpy.array([[n1*n1*(1-cos(a))+   cos(a), n1*n2*(1-cos(a))-n3*sin(a) , n1*n3*(1-cos(a))+n2*sin(a)],
+                    [n2*n1*(1-cos(a))+n3*sin(a), n2*n2*(1-cos(a))+   cos(a) , n2*n3*(1-cos(a))-n1*sin(a)],
+                    [n3*n1*(1-cos(a))-n2*sin(a), n3*n2*(1-cos(a))+n1*sin(a) , n3*n3*(1-cos(a))+   cos(a)]])
+    m.xyz -= origin
+    m.xyz = numpy.dot(m.xyz,R)
+    m.xyz += origin
+    return 
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -306,7 +306,7 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.map2image(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms])
         apex_1 = xyz[0]
         apex_2 = xyz[1]
         return np.linalg.norm(apex_1-apex_2)
@@ -317,7 +317,7 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.map2image(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms])
         apex_1 = xyz[0]
         apex_2 = xyz[2]
         central = xyz[1]
@@ -356,7 +356,7 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.map2image(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms])
         apex1 = xyz[0]
         apex2 = xyz[3]
         central1 = xyz[1]
@@ -898,8 +898,37 @@ class ff(base):
         Forces the paramters in the variables dictionary to be wriiten in the internal
         data structures
         """
+        if hasattr(self, 'do_not_varnames2par'): return
         self.par.variables(self.par.variables.keys())
+        return
 
+    def remove_pars(self,identifier=[]):
+        """Remove Variables to write the numbers to the fpar file
+        
+        Based on any identifier, variables can be deleted from the dictionary
+        Identifiers can be regular expressions
+        Usage:
+            ff.remove_pars(['d'])  -- removes all dihedral variables
+            ff.remove_pars(['a10'])  -- removes all entries of angle 10, e.g. a10_0 & a10_1
+            ff.remove_pars(['b*_0'])  -- removes all bond entries zero e.g. b1_0 & b5_0, but keeps b1_1 and b5_1
+
+        Keyword Arguments:
+            identifier {list of strings} -- string identifiers, can be regexp (default: {[]})
+        """
+        import re
+        for ident in identifier:
+            re_ident = re.compile(ident)
+            for k in self.par.variables.keys():
+                if k.count(ident) != 0:
+                    del self.par.variables[k]
+                    continue
+                # check regexp
+                re_result = re.search(re_ident,k)
+                if re_result is None: continue
+                if re_result.span()[-1] != 0:  #span[1] is zero if the regexp was not found
+                    del self.par.variables[k]
+                    continue
+        return
 
     def setup_pair_potentials(self):
         """
@@ -987,11 +1016,12 @@ class ff(base):
         self.ref_systems = {}
         for ref in self.scan_ref:
             if self._mol.mpi_rank == 0:
-                ref_mol = self.api.get_FFref_graph(ref, mol=True)
+                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
             else:
-                ref_mol = None
+                ref_mol_str = None
             if self._mol.mpi_size > 1:
-                ref_mol = self._mol.mpi_comm.bcast(ref_mol, root=0)
+                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
+            ref_mol = molsys.mol.fromString(ref_mol_str)
             ref_mol.addon("fragments")
             ref_mol.fragments.make_frag_graph()
             if plot:
@@ -1318,6 +1348,8 @@ class ff(base):
             partype,vals = par['ang'][angle]
             if partype == 'mm3':
                 fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f\n' % ('angle',atype1,atype2,atype3,vals[0],vals[1]))
+            elif partype == 'fourier':
+                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f %18.10f %18.10f\n' % ('fourier',atype1,atype2,atype3,vals[0],vals[1],vals[2],vals[3],vals[4]))
             elif partype == 'strbnd':
                 fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f\n' % ('strbnd',atype1,atype2,atype3,vals[0],vals[1],vals[2]))
             else:
@@ -1330,6 +1362,8 @@ class ff(base):
             partype,vals = par['dih'][torsion]
             if partype == 'cos3':
                 fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f   %18.10f\n' % ('torsion',atype1,atype2,atype3,atype4,vals[0],vals[1],vals[2]))
+            elif partype == 'cos4':
+                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f   %18.10f   %18.10f\n' % ('torsion',atype1,atype2,atype3,atype4,vals[0],vals[1],vals[2],vals[3]))
             else:
                 raise IOError('partype %s not yet implemented' % partype)
         

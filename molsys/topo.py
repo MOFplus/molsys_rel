@@ -79,157 +79,160 @@ class topo(mol):
 
     ###### helper functions #######################
 
-    def get_distvec2(self, i, j,exclude_self=True):
-        """ vector from i to j
-        This is a tricky bit, because it is needed also for distance detection in the blueprint
-        where there can be small cell params wrt to the vertex distances.
-        In other words: i can be bonded to j multiple times (each in a different image)
-        and i and j could be the same!! """
-        leni = True
-        lenj = True
-        try:
-            l=len(i)
-            if l > 1:
-                ri = np.array(i)
-            else:
-                leni = False
-                ri = self.xyz[i]
-        except:
-            ri = self.xyz[i]
-        try:
-            l=len(j)
-            if l > 1:
-                rj = np.array(j)
-            else:
-                rj = self.xyz[j]
-        except:
-            rj = self.xyz[j]
-            lenj = False
-        if 1:
-            all_rj = rj + self.images_cellvec
-            all_r = all_rj - ri
-            all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
-            d_sort = np.argsort(all_d)
-            if exclude_self and (np.linalg.norm(ri-rj) <= 0.001):
-                d_sort = d_sort[1:]
-            closest = d_sort[0]
-            closest=[closest]
-            if (abs(all_d[closest[0]]-all_d[d_sort[1]]) < SMALL_DIST):
-                for k in d_sort[1:]:
-                    if (abs(all_d[d_sort[0]]-all_d[k]) < SMALL_DIST):
-                        closest.append(k)
-            d = all_d[closest[0]]
-            r = all_r[closest[0]]
-        return d, r, closest
+#RS
+# looks like this is not used anymore ...
+
+#    def get_distvec2(self, i, j,exclude_self=True):
+#        """ vector from i to j
+#        This is a tricky bit, because it is needed also for distance detection in the blueprint
+#        where there can be small cell params wrt to the vertex distances.
+#        In other words: i can be bonded to j multiple times (each in a different image)
+#        and i and j could be the same!! """
+#        leni = True
+#        lenj = True
+#        try:
+#            l=len(i)
+#            if l > 1:
+#                ri = np.array(i)
+#            else:
+#                leni = False
+#                ri = self.xyz[i]
+#        except:
+#            ri = self.xyz[i]
+#        try:
+#            l=len(j)
+#            if l > 1:
+#                rj = np.array(j)
+#            else:
+#                rj = self.xyz[j]
+#        except:
+#            rj = self.xyz[j]
+#            lenj = False
+#        if 1:
+#            all_rj = rj + self.images_cellvec
+#            all_r = all_rj - ri
+#            all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+#            d_sort = np.argsort(all_d)
+#            if exclude_self and (np.linalg.norm(ri-rj) <= 0.001):
+#                d_sort = d_sort[1:]
+#            closest = d_sort[0]
+#            closest=[closest]
+#            if (abs(all_d[closest[0]]-all_d[d_sort[1]]) < SMALL_DIST):
+#                for k in d_sort[1:]:
+#                    if (abs(all_d[d_sort[0]]-all_d[k]) < SMALL_DIST):
+#                        closest.append(k)
+#            d = all_d[closest[0]]
+#            r = all_r[closest[0]]
+#        return d, r, closest
 
     # thes following functions rely on an exisiting connectivity conn (and pconn)
 
-    def get_neighb_coords(self, i, ci):
-        """ returns coordinates of atom bonded to i which is ci'th in bond list """
-        j = self.conn[i][ci]
-        rj = self.xyz[j].copy()
-        if self.periodic:
-            if self.use_pconn:
-                img = self.pconn[i][ci]
-                rj += np.dot(img, self.cell)
-            else:
-                all_rj = rj + self.images_cellvec
-                all_r = all_rj - self.xyz[i]
-                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
-                closest = np.argsort(all_d)[0]
-                return all_rj[closest]
-        return rj
-
-    def get_neighb_dist(self, i, ci):
-        """ returns coordinates of atom bonded to i which is ci'th in bond list """
-        ri = self.xyz[i]
-        j = self.conn[i][ci]
-        rj = self.xyz[j].copy()
-        if self.periodic:
-            if self.use_pconn:
-                img = self.pconn[i][ci]
-                rj += np.dot(img, self.cell)
-            else:
-                all_rj = rj + self.images_cellvec
-                all_r = all_rj - self.xyz[i]
-                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
-                closest = np.argsort(all_d)[0]
-                return all_rj[closest]
-        dr = ri-rj
-        d = np.sqrt(np.sum(dr*dr))
-        return d
+#    def get_neighb_coords(self, i, ci):
+#        """ returns coordinates of atom bonded to i which is ci'th in bond list """
+#        j = self.conn[i][ci]
+#        rj = self.xyz[j].copy()
+#        if self.periodic:
+#            if self.use_pconn:
+#                img = self.pconn[i][ci]
+#                rj += np.dot(img, self.cell)
+#            else:
+#                all_rj = rj + self.images_cellvec
+#                all_r = all_rj - self.xyz[i]
+#                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+#                closest = np.argsort(all_d)[0]
+#                return all_rj[closest]
+#        return rj
+#
+#    def get_neighb_dist(self, i, ci):
+#        """ returns coordinates of atom bonded to i which is ci'th in bond list """
+#        ri = self.xyz[i]
+#        j = self.conn[i][ci]
+#        rj = self.xyz[j].copy()
+#        if self.periodic:
+#            if self.use_pconn:
+#                img = self.pconn[i][ci]
+#                rj += np.dot(img, self.cell)
+#            else:
+#                all_rj = rj + self.images_cellvec
+#                all_r = all_rj - self.xyz[i]
+#                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+#                closest = np.argsort(all_d)[0]
+#                return all_rj[closest]
+#        dr = ri-rj
+#        d = np.sqrt(np.sum(dr*dr))
+#        return d
 
     ######## manipulations in particular for blueprints
 
-    def make_supercell(self, supercell):
-        self.supercell = tuple(supercell)
-        logger.info('Generating %i x %i x %i supercell' % self.supercell)
-        img = [np.array(i) for i in images.tolist()]
-        ntot = np.prod(supercell)
-        nat = copy.deepcopy(self.natoms)
-        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
-        pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
-        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
-        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
-        elems = copy.deepcopy(self.elems)
-        left,right,front,back,bot,top =  [],[],[],[],[],[]
-        neighs = [[] for i in range(6)]
-        iii = []
-        for iz in range(nz):
-            for iy in range(ny):
-                for ix in range(nx):
-                    ixyz = ix+nx*iy+nx*ny*iz
-                    iii.append(ixyz)
-                    if ix == 0   : left.append(ixyz)
-                    if ix == nx-1: right.append(ixyz)
-                    if iy == 0   : bot.append(ixyz)
-                    if iy == ny-1: top.append(ixyz)
-                    if iz == 0   : front.append(ixyz)
-                    if iz == nz-1: back.append(ixyz)
-        for iz in range(nz):
-            for iy in range(ny):
-                for ix in range(nx):
-                    ixyz = ix+nx*iy+nx*ny*iz
-                    dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
-                    xyz[ixyz] += dispvect
-
-                    i = copy.copy(ixyz)
-                    for cc in range(len(conn[i])):
-                        for c in range(len(conn[i][cc])):
-                            if (img[13] == pconn[i][cc][c]).all():
-                                #conn[i][cc][c] += ixyz*nat
-                                conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
-                                pconn[i][cc][c] = np.array([0,0,0])
-                            else:
-                                px,py,pz     = pconn[i][cc][c][0],pconn[i][cc][c][1],pconn[i][cc][c][2]
-                                #print(px,py,pz)
-                                iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
-                                iixyz= iix+nx*iiy+nx*ny*iiz
-                                conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
-                                pconn[i][cc][c] = np.array([0,0,0])
-                                if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
-                                if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
-                                if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
-                                if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
-                                if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
-                                if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
-                                #print(px,py,pz)
-        self.conn, self.pconn, self.xyz = [],[],[]
-        for cc in conn:
-            for c in cc:
-                self.conn.append(c)
-        for pp in pconn:
-            for p in pp:
-                self.pconn.append(p)
-        self.natoms = nat*ntot
-        self.xyz = np.array(xyz).reshape(nat*ntot,3)
-        self.cellparams[0:3] *= np.array(self.supercell)
-        self.cell *= np.array(self.supercell)[:,np.newaxis]
-        self.inv_cell = np.linalg.inv(self.cell)
-        self.elems *= ntot
-        self.atypes*=ntot
-        self.images_cellvec = np.dot(images, self.cell)
-        return xyz,conn,pconn
+#    def make_supercell(self, supercell):
+#        self.supercell = tuple(supercell)
+#        logger.info('Generating %i x %i x %i supercell' % self.supercell)
+#        img = [np.array(i) for i in images.tolist()]
+#        ntot = np.prod(supercell)
+#        nat = copy.deepcopy(self.natoms)
+#        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
+#        pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
+#        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
+#        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
+#        elems = copy.deepcopy(self.elems)
+#        left,right,front,back,bot,top =  [],[],[],[],[],[]
+#        neighs = [[] for i in range(6)]
+#        iii = []
+#        for iz in range(nz):
+#            for iy in range(ny):
+#                for ix in range(nx):
+#                    ixyz = ix+nx*iy+nx*ny*iz
+#                    iii.append(ixyz)
+#                    if ix == 0   : left.append(ixyz)
+#                    if ix == nx-1: right.append(ixyz)
+#                    if iy == 0   : bot.append(ixyz)
+#                    if iy == ny-1: top.append(ixyz)
+#                    if iz == 0   : front.append(ixyz)
+#                    if iz == nz-1: back.append(ixyz)
+#        for iz in range(nz):
+#            for iy in range(ny):
+#                for ix in range(nx):
+#                    ixyz = ix+nx*iy+nx*ny*iz
+#                    dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
+#                    xyz[ixyz] += dispvect
+#
+#                    i = copy.copy(ixyz)
+#                    for cc in range(len(conn[i])):
+#                        for c in range(len(conn[i][cc])):
+#                            if (img[13] == pconn[i][cc][c]).all():
+#                                #conn[i][cc][c] += ixyz*nat
+#                                conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
+#                                pconn[i][cc][c] = np.array([0,0,0])
+#                            else:
+#                                px,py,pz     = pconn[i][cc][c][0],pconn[i][cc][c][1],pconn[i][cc][c][2]
+#                                #print(px,py,pz)
+#                                iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
+#                                iixyz= iix+nx*iiy+nx*ny*iiz
+#                                conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
+#                                pconn[i][cc][c] = np.array([0,0,0])
+#                                if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
+#                                if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
+#                                if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
+#                                if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
+#                                if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
+#                                if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
+#                                #print(px,py,pz)
+#        self.conn, self.pconn, self.xyz = [],[],[]
+#        for cc in conn:
+#            for c in cc:
+#                self.conn.append(c)
+#        for pp in pconn:
+#            for p in pp:
+#                self.pconn.append(p)
+#        self.natoms = nat*ntot
+#        self.xyz = np.array(xyz).reshape(nat*ntot,3)
+#        self.cellparams[0:3] *= np.array(self.supercell)
+#        self.cell *= np.array(self.supercell)[:,np.newaxis]
+#        self.inv_cell = np.linalg.inv(self.cell)
+#        self.elems *= ntot
+#        self.atypes*=ntot
+#        self.images_cellvec = np.dot(images, self.cell)
+#        return xyz,conn,pconn
 
     ######### connectivity things #################################
 

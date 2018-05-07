@@ -2,29 +2,19 @@
 ### overload print in parallel case (needs to be the first line) [RS] ###
 from __future__ import print_function
 
-import string as st
+#import string as st
 import numpy as np
-from scipy.optimize import linear_sum_assignment as hungarian
-import types
+#from scipy.optimize import linear_sum_assignment as hungarian
+#import types
 import copy
 import string
 import os
-import sys
+#import sys
 import subprocess
 try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-try:
-    from mpi4py import MPI
-    mpi_comm = MPI.COMM_WORLD
-    mpi_rank = MPI.COMM_WORLD.Get_rank()
-    mpi_size = MPI.COMM_WORLD.Get_size()
-except ImportError as e:
-    mpi_comm = None
-    mpi_size = 1
-    mpi_rank = 0
-    mpi_err = e
 
 from .util import unit_cell
 from .util import elems as elements
@@ -32,6 +22,8 @@ from .util import rotations
 from .util import images
 from .fileIO import formats
 
+from . import mpiobject
+from . import molsys_mpi
 from . import addon
 
 # set up logging using a logger
@@ -41,14 +33,14 @@ from . import addon
 # NOTE: this needs to be done once only here for the root logger molsys
 # any other module can use either this logger or a child logger
 # no need to redo this config in the other modules!
-# NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the 
+# NOTE2: in a parallel run all DEBUG is written by all nodes whereas only the
 #        master node writes INFO to stdout
 # TBI: colored logging https://stackoverflow.com/a/384125
 import logging
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
-if mpi_size > 1:
-    logger_file_name = "molsys.%d.log" % mpi_rank
+if molsys_mpi.size > 1:
+    logger_file_name = "molsys.%d.log" % molsys_mpi.rank
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
@@ -57,16 +49,16 @@ fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
-if mpi_rank == 0:
+if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
     #shandler.setLevel(logging.INFO)
     shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
-    
-if mpi_comm == None:
+
+if molsys_mpi.wcomm == None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
-    logger.error(mpi_err)
+    logger.error(molsys_mpi.err)
 
 # overload print function in parallel case
 try:
@@ -74,92 +66,15 @@ try:
 except ImportError:
     import builtins as __builtin__
 def print(*args, **kwargs):
-    if mpi_rank == 0:
+    if molsys_mpi.rank == 0:
         return __builtin__.print(*args, **kwargs)
     else:
         return
 
 
-
 np.set_printoptions(threshold=20000,precision=5)
-
 SMALL_DIST = 1.0e-3
 
-class mpiobject(object):
-    """Basic class to handle parallel attributes
-    
-    :Parameters:
-    - mpi_comm(obj): Intracomm object for parallelization
-    - out(str): output file name. If None: stdout
-    """
-    def __init__(self, mpi_comm = None, out = None):
-        if mpi_comm is None:
-            try:
-                self.mpi_comm = MPI.COMM_WORLD
-            except NameError:
-                self.mpi_comm = None
-        else:
-            self.mpi_comm = mpi_comm
-        try:
-            self.mpi_rank = self.mpi_comm.Get_rank()
-            self.mpi_size = self.mpi_comm.Get_size()
-        except AttributeError:
-            self.mpi_rank = 0
-            self.mpi_size = 1
-        if out is None:
-            self.out = sys.stdout
-        elif type(out) == file:
-            assert out.mode == 'w'
-            self.out = out
-        else:
-            self.out = open(out, "w")
-
-    def pprint(self, *args, **kwargs):
-        """Parallel print function"""
-        if self.is_master:
-            __builtin__.print(*args, file=self.out, **kwargs)
-            self.out.flush()
-
-    @property
-    def is_master(self):
-        """
-        The mpi process with global rank 0 is always the master rank.
-        This methods returns True if the current process has rank 0, else
-        False
-        """
-        return self.mpi_rank == 0
-
-
-    def __getstate__(self):
-        """Get state for pickle and pickle-based method (e.g. copy.deepcopy)
-        Meant for python3 forward-compatibility.
-        Files (and standard output/error as well) are _io.TextIOWrapper
-        in python3, and thus they are not pickle-able. A dedicated method for
-        files is needed.
-        An example: https://docs.python.org/2.0/lib/pickle-example.html
-
-        N.B.: experimental for "out" != sys.stdout
-        """
-        newone = type(self)()
-        newdict = newone.__dict__
-        newdict.update(self.__dict__)
-        newdict["out.name"] = newdict["out"].name
-        newdict["out.mode"] = newdict["out"].mode
-        newdict["out.encoding"] = newdict["out"].encoding
-        del newdict["out"]
-        return newdict
-
-    def __setstate__(self, stored_dict):
-        """Set state for pickle and pickle-based method (e.g. copy.deepcopy)
-        For python3 forward-compatibility
-        Whatever comes out of getstate, goes int setstate.
-        https://stackoverflow.com/a/41754104
-
-        N.B.: experimental for "out" != sys.stdout
-        """
-        if stored_dict["out.name"] == '<stdout>':
-            stored_dict["out"] = sys.stdout
-        self.__dict__ = stored_dict
 
 class mol(mpiobject):
     """mol class, the basis for any atomistic (or atomistic-like,
@@ -185,9 +100,15 @@ class mol(mpiobject):
         self.weight=1
         self.loaded_addons =  []
         self.set_logger_level()
+        # defaults
+        self.is_topo = False # this flag replaces the old topo object derived from mol
+        self.use_pconn = False # extra flag .. we could have topos that do not need pconn
+        self.pconn = []
+        self.ptab  = []
+        self.supercell=[1,1,1]
         return
 
-    #####  I/O stuff ############################
+    #####  I/O stuff ######################################################################################
 
     def set_logger_level(self,level='INFO'):
         if level=='INFO':
@@ -225,7 +146,7 @@ class mol(mpiobject):
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return
-    
+
     @classmethod
     def fromFile(cls, fname, ftype=None, **kwargs):
         ''' reader for the mol class, reading from a file
@@ -238,7 +159,7 @@ class mol(mpiobject):
         m = cls()
         m.read(fname, ftype, **kwargs)
         return m
-    
+
     @classmethod
     def fromString(cls, istring, ftype='mfpx', **kwargs):
         ''' generic reader for the mol class, reading from a string
@@ -279,7 +200,7 @@ class mol(mpiobject):
         m = cls()
         logger.info('creating mol object from a pymatgen structure object')
         cell = structure.lattice.matrix
-        fracs = [] 
+        fracs = []
         elems = []
         for j, site in enumerate(structure.sites):
             elems.append(site.specie.symbol.lower())
@@ -294,40 +215,40 @@ class mol(mpiobject):
         m.set_empty_conn()
         m.detect_conn()
         return m
-        
-    
+
+
     @classmethod
     def fromArray(cls, arr, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
-        :Parameters:
-            - arr         : the array to be read
-            - **kwargs    : all options of the parser are passed by the kwargs
+        Parameters:
+            arr         : the array to be read
+            **kwargs    : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         m = cls()
         logger.info("reading array")
-        assert arr.shape[1] == 3, "Wrong array dimension (second must be 3): %s" % (a.shape,)
+        assert arr.shape[1] == 3, "Wrong array dimension (second must be 3): %s" % (arr.shape,)
         formats.read['array'](m,arr,**kwargs)
         return m
 
     @classmethod
     def fromNestedList(cls, nestl, **kwargs):
         ''' generic reader for the mol class, reading from a Nx3 array
-        :Parameters:
-            - arr         : the array to be read
-            - **kwargs    : all options of the parser are passed by the kwargs
+        Parameters:
+            arr         : the array to be read
+            **kwargs    : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         logger.info("reading nested lists")
         for nl in nestl:
-            assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (a.shape,)
+            assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (arr.shape,)
         arr = np.array(nestl)
         return cls.fromArray(arr, **kwargs)
 
     def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
-        :Parameters:
-            - fname        : the filename to be written
-            - ftype="mfpx" : the parser type that is used to writen the file
-            - **kwargs     : all options of the parser are passed by the kwargs
+        Parameters:
+            fname        : the filename to be written
+            ftype="mfpx" : the parser type that is used to writen the file
+            **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if self.mpi_rank == 0:
             if ftype is None:
@@ -360,21 +281,21 @@ class mol(mpiobject):
                 os.remove(_tmpfname)
                 logger.info("temporary file "+_tmpfname+" removed")
         return
-    
+
     def molden(self, **kwargs):
         self.view(program='moldenx', fmt='mfpx', **kwargs)
     def pymol(self, **kwargs):
         self.view(program='pymol', fmt='mfpx', **kwargs)
 
-    ##### addons ##################################
+    ##### addons ####################################################################################
 
     def addon(self, addmod, **kwargs):
         """
         add an addon module to this object
 
-        :Parameters:
-
-            - addmol: string name of the addon module
+        Args:
+            addmol (string): string name of the addon module
+            **kwargs: further keyword arguments passed on to the instantiator of the addon
         """
         if addmod in self.loaded_addons:
             return
@@ -417,17 +338,17 @@ class mol(mpiobject):
         self.loaded_addons.append(addmod)
         return
 
-    ##### connectivity ########################
+    ##### connectivity ########################################################################################
 
-    @staticmethod
-    def check_conn(conn):
+    def check_conn(self, conn=None):
         """
         checks if connectivity is not broken
 
-        :Parameters:
-            - conn (list): list of lists holding the connectivity
+        Args:
+            conn (list): list of lists holding the connectivity (default=None, check own )
         """
-        natoms = len(conn)
+        if conn == None:
+            conn = self.conn
         for i, c in enumerate(conn):
             for j in c:
                 if i not in conn[j]: return False
@@ -437,9 +358,9 @@ class mol(mpiobject):
         """
         detects the connectivity of the system, based on covalent radii.
 
-        :Parameters:
-            - tresh  (float): additive treshhold
-            - remove_duplicates  (bool): flag for the detection of duplicates
+        Args:
+            tresh (float): additive treshhold
+            remove_duplicates (bool): flag for the detection of duplicates
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -459,7 +380,7 @@ class mol(mpiobject):
                     frac = np.dot(a, self.inv_cell)
                     frac -= np.around(frac)
                     a = np.dot(frac, self.cell)
-            dist = ((a**2).sum(axis=1))**0.5 # distances from i to all other atoms
+            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
             conn_local = []
             if remove_duplicates == True:
                 for j in range(i,natoms):
@@ -483,6 +404,9 @@ class mol(mpiobject):
             self.detect_conn(tresh = tresh)
         else:
             self.set_conn(conn)
+        if self.use_pconn:
+            # we had a pconn and redid the conn --> need to reconstruct the pconn
+            self.add_pconn()
         return
 
     def report_conn(self):
@@ -497,14 +421,120 @@ class mol(mpiobject):
                 d = self.get_neighb_dist(i,j)
                 self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
+    
+    def add_pconn(self):
+        """ generate the pconn from the exisiting conn
+            The pconn contains the image index of the bonded neighbor
+            pconn is really needed only for small unit cells (usually topologies) where vertices
+            can be bonded to itself (next image) or multiple times to the same vertex in different images.
+            """
+        self.use_pconn= True
+        self.pconn = []
+        for i,c in enumerate(self.conn):
+            atoms_pconn = []
+            atoms_image = []
+            for ji, j in enumerate(c):
+                # If an atom or vertex is connected to another one multiple times (in an image), this
+                # will be visible in the self.conn attribute, where the same neighbour will be listed
+                # multiple times.
+                # Sometimes, the distances are a bit different from each other, and in this case, we
+                # have to increase the threshold, until the get_distvec function will find all imgis.
+                n_conns = c.count(j)
+                t = 0.01
+                while True:
+                    d,r,imgi = self.get_distvec(i,j,thresh=t)
+                    t += 0.01
+                    if n_conns == len(imgi):
+                        break
+                if len(imgi) == 1:
+                    # only one neighbor .. all is fine
+                    atoms_pconn.append(images[imgi[0]])
+                    atoms_image.append(imgi[0])
+                else:
+                    # we need to assign an image to each connection
+                    # if an atom is connected to another atom twice this means it must be another
+                    # image
+                    for ii in imgi:
+                        # test if this image is not used for this atom .. then we can use it
+                        if atoms_image.count(ii)==0:
+                            atoms_image.append(ii)
+                            atoms_pconn.append(images[ii])
+                        else:
+                            # ok, we have this image already
+                            use_it = True
+                            for k, iii in enumerate(atoms_image):
+                                if (iii == ii) and (c[k] == j): use_it=False
+                            if use_it:
+                                atoms_image.append(ii)
+                                atoms_pconn.append(images[ii])
+            self.pconn.append(atoms_pconn)
+        return
+    
+    def check_need_pconn(self):
+        """
+        check whether pconn is needed or not
+        """
+        pconn_needed = False
+        for i,c in enumerate(self.conn):
+            # if atom/vertex bonded to itself we need pconn
+            if i in c: pconn_needed = True
+            # check if a neigbor appears twice
+            for j in c:
+                if c.count(j) > 1:
+                    pconn_needed = True
+            if pconn_needed: break
+        return pconn_needed
+    
+    def omit_pconn(self):
+        """
+        Omit the pconn (if there is one) if this is acceptable
+        """
+        if not self.use_pconn: return
+        if not self.check_need_pconn():
+            # ok we do not need ot and can discard it
+            self.pconn = []
+            self.use_pconn = False
+        return
+    
+    def make_topo(self):
+        """
+        Convert this mol obejct to be a topo object.
+        This means a pconn will be generated and written to file as well
+        """
+        if self.is_topo: return
+        self.is_topo = True
+        if self.check_need_pconn():
+            self.add_pconn()
+        return
+    
+    def unmake_topo(self):
+        """
+        Convert a topo object back to a "normal" mol object
+        """
+        if not self.is_topo: return
+        self.is_topo = True
+        self.omit_pconn()
+        return
+    
 
     ###  periodic systems .. cell manipulation ############
+    
+    #RS  Fix this
+    #    currently if pconn is used we just call the old method from topo.py ... a lot of redundant things could 
+    #    could be removed and all should be merged into one method at some point
+    #
 
     def make_supercell(self,supercell):
         ''' Extends the periodic system in all directions by the factors given in the
             supercell upon preserving the connectivity of the initial system
-            :Parameters:
-                - supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
+            Can be used for systems with and without pconn
+            Args:
+                supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
+        # HACK
+        if self.use_pconn:
+            xyz,conn,pconn = self._make_supercell_pconn(supercell)
+            return xyz,conn,pconn
+        # END HACK
         self.supercell = tuple(supercell)
         ntot = np.prod(self.supercell)
         conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
@@ -575,59 +605,242 @@ class mol(mpiobject):
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn
 
-    def wrap_in_box(self, thresh=SMALL_DIST):
-        ''' In case atoms are outside the box defined by the cell,
-            this routine finds and shifts them into the box'''
-        if not self.periodic: return
-        # puts all atoms into the box again
-        frac_xyz = self.get_frac_xyz()
-        # now add 1 where the frac coord is negative and subtract where it is larger then 1
-        frac_xyz += np.where(np.less(frac_xyz, 0.0), 1.0, 0.0)
-        frac_xyz -= np.where(np.greater_equal(frac_xyz, 1.0), 1.0, 0.0)
-        # convert back
-        self.set_xyz_from_frac(frac_xyz)
-        if self.__class__.__name__=='topo':
+
+    def _make_supercell_pconn(self, supercell):
+        """ old make_supercell from topo object
+        called automatically when pconn exists
+        """
+        self.supercell = tuple(supercell)
+        logger.info('Generating %i x %i x %i supercell' % self.supercell)
+        img = [np.array(i) for i in images.tolist()]
+        ntot = np.prod(supercell)
+        nat = copy.deepcopy(self.natoms)
+        nx,ny,nz = self.supercell[0],self.supercell[1],self.supercell[2]
+        pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
+        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
+        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
+        elems = copy.deepcopy(self.elems)
+        left,right,front,back,bot,top =  [],[],[],[],[],[]
+        neighs = [[] for i in range(6)]
+        iii = []
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    iii.append(ixyz)
+                    if ix == 0   : left.append(ixyz)
+                    if ix == nx-1: right.append(ixyz)
+                    if iy == 0   : bot.append(ixyz)
+                    if iy == ny-1: top.append(ixyz)
+                    if iz == 0   : front.append(ixyz)
+                    if iz == nz-1: back.append(ixyz)
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
+                    xyz[ixyz] += dispvect
+
+                    i = copy.copy(ixyz)
+                    for cc in range(len(conn[i])):
+                        for c in range(len(conn[i][cc])):
+                            if (img[13] == pconn[i][cc][c]).all():
+                                #conn[i][cc][c] += ixyz*nat
+                                conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
+                                pconn[i][cc][c] = np.array([0,0,0])
+                            else:
+                                px,py,pz     = pconn[i][cc][c][0],pconn[i][cc][c][1],pconn[i][cc][c][2]
+                                #print(px,py,pz)
+                                iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
+                                iixyz= iix+nx*iiy+nx*ny*iiz
+                                conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
+                                pconn[i][cc][c] = np.array([0,0,0])
+                                if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
+                                if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
+                                if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
+                                if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
+                                if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
+                                if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
+                                #print(px,py,pz)
+        self.conn, self.pconn, self.xyz = [],[],[]
+        for cc in conn:
+            for c in cc:
+                self.conn.append(c)
+        for pp in pconn:
+            for p in pp:
+                self.pconn.append(p)
+        self.natoms = nat*ntot
+        self.xyz = np.array(xyz).reshape(nat*ntot,3)
+        self.cellparams[0:3] *= np.array(self.supercell)
+        self.cell *= np.array(self.supercell)[:,np.newaxis]
+        self.inv_cell = np.linalg.inv(self.cell)
+        self.elems *= ntot
+        self.atypes*=ntot
+        self.images_cellvec = np.dot(images, self.cell)
+        return xyz,conn,pconn
+
+    def apply_pbc(self, xyz=None, fixidx=-1):
+        ''' 
+        apply pbc to the atoms of the system or some external positions
+        Note: If pconn is used it is ivalid after this operation and will be reconstructed.
+        
+        Args:
+            xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
+            fixidx (int) : for an external system the origin can be defined. default=-1 which meas that coordinates are not shifted
+            
+        Returns:
+            xyz, in case xyz is not None (wrapped coordinates are returned) otherwise None is returned
+        '''
+        if not self.periodic:
+            return xyz
+        if xyz is None:
+            # apply to structure itself (does not return anything)
+            if self.bcond <= 2:
+                cell_abc = self.cellparams[:3]
+                self.xyz[:,:] -= cell_abc*np.around(self.xyz/cell_abc)
+            elif self.bcond == 3:
+                frac = self.get_frac_xyz()
+                self.xyz[:,:] -= np.dot(np.around(frac),self.cell)
+            if self.use_pconn:
+                # we need to reconstruct pconn in this case
+                self.add_pconn()
+            return
+        else:
+            # apply to xyz
+            if fixidx != -1:
+                a = xyz[:,:] - xyz[fixidx,:]
+            else:
+                a = xyz[:,:]
+            if self.bcond <= 2:
+                cell_abc = self.cellparams[:3]
+                xyz[:,:] -= cell_abc*np.around(a/cell_abc)
+            elif self.bcond == 3:
+                frac = np.dot(a, self.inv_cell)
+                xyz[:,:] -= np.dot(np.around(frac),self.cell)
+        if self.use_pconn:
             self.add_pconn()
+        return xyz
+
+    # legacy name just to keep compat
+    def wrap_in_box(self):
+        """
+        legacy method maps on apply_pbc
+        """
+        self.apply_pbc()
+        return
+    
+    def get_cell(self):
+        ''' return unit cell information (cell vectors) '''
+        return self.cell
+
+    def get_cellparams(self):
+        ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
+        return self.cellparams
+
+    def set_bcond(self):
+        """
+        sets the boundary conditions. 2 for cubic and orthorombic systems,
+        3 for triclinic systems
+        """
+        if list(self.cellparams[3:]) == [90.0,90.0,90.0]:
+            self.bcond = 2
+            if self.cellparams[0] == self.cellparams[1] == self.cellparams[2]:
+                self.bcond = 1
+        else:
+            self.bcond = 3
         return
 
-    def unwrap_fragments(self, fragments):
-        if not self.periodic: return
-        for f in fragments:
-            xyz = self.xyz[f]
-            xyz = self.pbc(xyz,0)
-            self.xyz[f] = xyz
+    def get_bcond(self):
+        """
+        returns the boundary conditions
+        """
+        return self.bcond
+
+    def set_cell(self,cell,cell_only = True):
+        ''' set unit cell using cell vectors and assign cellparams
+        Parameters:
+            cell: cell vectors (3,3)
+            cell_only (bool)  : if false, also the coordinates are changed
+                                  in respect to new cell
+
+        '''
+        assert np.shape(cell) == (3,3)
+        if cell_only == False: 
+            frac_xyz = self.get_frac_from_xyz()
+        self.periodic = True
+        self.cell = cell
+        self.cellparams = unit_cell.abc_from_vectors(self.cell)
+        self.inv_cell = np.linalg.inv(self.cell)
+        self.images_cellvec = np.dot(images, self.cell)
+        self.set_bcond()
+        if cell_only == False:
+            self.set_xyz_from_frac(frac_xyz)
         return
 
-    def get_frac_xyz(self):
-        ''' Returns the fractional atomic coordinates'''
-        if not self.periodic: return None
-        cell_inv = np.linalg.inv(self.cell)
-        return np.dot(self.xyz, cell_inv)
+    def set_cellparams(self,cellparams, cell_only = True):
+        ''' set unit cell using cell parameters and assign cell vectors
+        Parameters:
+            cellparams: vector (6)
+            cell_only (bool)  : if false, also the coordinates are changed
+                                  in respect to new cell
+        '''
+        assert len(list(cellparams)) == 6
+        cell = unit_cell.vectors_from_abc(cellparams)
+        self.set_cell(cell, cell_only=cell_only)
+        return
+    
+    ### rewrite on set_cell ???
+    def scale_cell(self, scale, cell_only=False):
+        ''' scales the cell by a given factor
+        
+        Parameters:
+            scale: either single float or an array of len 3'''
+            
+        cell = self.get_cell().copy()
+        cell *= scale
+        self.set_cell(cell, cell_only=cell_only)
+        return
 
-    def get_frac_from_real(self,real_xyz):
-        ''' same as get_frac_xyz, but uses input xyz coordinates
-        :Parameters:
-            - real_xyz: the xyz coordinates for which the fractional coordinates are retrieved'''
+    def get_frac_xyz(self,xyz=None):
+        return self.get_frac_from_xyz(xyz=xyz)
+    
+    def get_frac_from_xyz(self, xyz=None):
+        ''' Returns the fractional atomic coordinates
+        
+        Parameters:
+            xyz=None (array): optional external coordinates
+        '''
         if not self.periodic: return None
+        if xyz is None:
+            xyz = self.xyz
         cell_inv = np.linalg.inv(self.cell)
-        return np.dot(real_xyz, cell_inv)
+        return np.dot(xyz, cell_inv)
 
-    def get_real_from_frac(self,frac_xyz):
-        ''' returns real coordinates from an array of fractional coordinates using the current cell info '''
+    def get_xyz_from_frac(self,frac_xyz):
+        ''' returns real coordinates from an array of fractional coordinates using the current cell info 
+        
+        Args:
+            frac_xyz (array): fractional coords to be converted to xyz
+        '''
         return np.dot(np.array(frac_xyz),self.cell)
 
     def set_xyz_from_frac(self, frac_xyz):
         ''' Sets atomic coordinates based on input fractional coordinates
-        Parameter:
-            - '''
+        
+        Args:
+            - frac_xyz (array): fractional coords to be converted to xyz
+        '''
         if not self.periodic: return
-        self.xyz = np.dot(frac_xyz,self.cell)#
+        assert frac_xyz.shape == (self.natoms, 3)
+        self.xyz = np.dot(frac_xyz,self.cell)
+        print("done")
+        return
 
     def get_image(self,xyz, img):
         ''' returns the xyz coordinates of a set of coordinates in a specific cell
-        :Parameters:
-            - xyz   : xyz coordinates for which the image coordinates are to be retrieved
-            - img   : descriptor of the image, either an "images" integer (see molsys.util.images)
+        Parameters:
+            xyz   : xyz coordinates for which the image coordinates are to be retrieved
+            img   : descriptor of the image, either an "images" integer (see molsys.util.images)
                       or the unit direction vector, e.g. [1,-1,0]'''
         xyz = np.array(xyz)
         try:
@@ -637,22 +850,6 @@ class mol(mpiobject):
             dispvec = np.sum(self.cell*np.array(images[img])[:,np.newaxis],axis=0)
         return xyz + dispvec
 
-    ### rewrite on set_cell ???
-    def scale_cell(self, scale):
-        ''' scales the cell by a given fraction (0.1 ^= 10%)
-        :Parameters:
-            - scale: either single float or list (3,) of floats for x,y,z'''
-        if scale is None:
-            scale = [1,1,1]
-        if not hasattr(scale, '__iter__'):
-            scale = [scale,scale,scale]
-        self.cellparams *= np.hstack([scale,[1,1,1]])
-        frac_xyz = self.get_frac_xyz()
-        self.cell *= np.array(scale)[:,np.newaxis]
-        self.images_cellvec = np.dot(images, self.cell)
-        self.set_xyz_from_frac(frac_xyz)
-        self.inv_cell = np.linalg.inv(self.cell)
-        return
 
     ###  system manipulations ##########################################
 
@@ -660,30 +857,33 @@ class mol(mpiobject):
         ''' returns a copy of the whole mol object'''
         return copy.deepcopy(self)
 
-    def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None):
+    def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None,rotmat=None):
         ''' adds a  nonperiodic mol object to the current one ... self can be both
-            :Parameters:
-                - other        (mol): an instance of the to-be-inserted mol instance
-                - translate=None    : (3,) numpy array as shift vector for the other mol
-                - rotate=None       : (3,) rotation triple to apply to the other mol object before insertion
-                - scale=None (float): scaling factor for other mol object coodinates
-                - roteuler=None     : (3,) euler angles to apply a rotation prior to insertion'''
+            Parameters:
+                other        (mol)      : an instance of the to-be-inserted mol instance
+                translate (numpy.ndarry): numpy array as shift vector for the other mol
+                rotate (numpy.ndarry)   : rotation triple to apply to the other mol object before insertion
+                scale (float)           : scaling factor for other mol object coodinates
+                roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
                 return
         other_xyz = other.xyz.copy()
         # NOTE: it is important ot keep the order of operations
-        #       1) scale
-        #       2) rotate by euler angles
-        #       3) rotate by orientation triple
-        #       4) translate
+        #       1 ) scale
+        #       2 ) rotate by euler angles
+        #       2a) rotate by rotmat
+        #       3 ) rotate by orientation triple
+        #       4 ) translate
         if scale    is not None:
             other_xyz *= np.array(scale)
         if roteuler is not None:
             other_xyz = rotations.rotate_by_euler(other_xyz, roteuler)
         if rotate is not None:
             other_xyz = rotations.rotate_by_triple(other_xyz, rotate)
+        if rotmat is not None:
+            other_xyz = np.dot(rotmat,other_xyz.T).T
         if translate is not None:
             other_xyz += translate
         if self.natoms==0:
@@ -705,11 +905,13 @@ class mol(mpiobject):
         return
 
     def add_bond(self,a1,a2):
-        """One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
+        """
+        One-to-one connectivity: sets 1 bond between atom a1 and atom a2. Connectivity of both atoms
         is cross-updated by appending. (no sorting)
-        :Parameter:
-            -a1(int): index of atom1, python-like (starts with 0)
-            -a2(int): index of atom2, python-like (starts with 0)"""
+        
+        Parameter:
+            a1 (int): index of atom1, python-like (starts with 0)
+            a2 (int): index of atom2, python-like (starts with 0)"""
         if hasattr(a1,"__iter__"): a1=a1[0] #in case a singleton is passed
         if hasattr(a2,"__iter__"): a2=a2[0] #in case a singleton is passed
         self.conn[a1].append(a2)
@@ -717,16 +919,18 @@ class mol(mpiobject):
         return
 
     def add_bonds(self,lista1,lista2):
-        """Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
+        """ 
+        Many-to-many connectivity: Sets NxM  bonds, where N and M is the number of atoms per each list.
         Each atom of list 1 is connected to each atom of list 2.
         This is rarely wanted unless (at least) one of the lists has got only one atom.
         In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
         Each atom of the "long" list is connected to the atom of the "short" one.
         If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
         between atom of list 1 and atom of list 2.
-        :Paramters:
-            -lista1(iterable of int): iterable 1 of atom indices
-            -lista2(iterable of int): iterable 2 of atom indices"""
+        
+        Paramters:
+            lista1(iterable of int): iterable 1 of atom indices
+            lista2(iterable of int): iterable 2 of atom indices"""
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
         if not hasattr(lista2,'__iter__'): lista2 = [lista2]
         for a1 in lista1:
@@ -734,42 +938,42 @@ class mol(mpiobject):
                 self.add_bond(a1,a2)
         return
 
-    def add_naive_hungarian_bonds(self,lista1,lista2):
-        """Valid only in the 2x2 case, four times faster than standard hungarian method"""
-        assert len(lista1) == len(lista2) == 2,\
-            "only for 2x2 case, here: %dx%d case" % (len(lista1), len(lista2))
-        a11, a12 = lista1
-        a21, a22 = lista2
-        d0 = self.get_distvec(a11,a21)
-        d1 = self.get_distvec(a11,a22)
-        if d1 > d0: #straight
-            self.add_bond(a11,a21)
-            self.add_bond(a12,a22)
-        else: #cross
-            self.add_bond(a11,a22)
-            self.add_bond(a12,a21)
-        return
+    def add_shortest_bonds(self,lista1,lista2):
+        """
+        Adds bonds between atoms from list1 and list2 (same length!) to connect
+        the shortest pairs
 
-    def add_standard_hungarian_bonds(self,lista1,lista2):
-        dim = len(lista1)
-        assert dim == len(lista2),\
-            "only for NxN case (same number of atoms), here: %dx%d case" % (len(lista1), len(lista2))
-        dmat = np.zeros([dim,dim])
-        for e1,a1 in enumerate(lista1):
-            for e2,a2 in enumerate(lista2):
-                dmat[e1,e2] = self.get_distvec(a1,a2)[0]
-        a1which, a2which = hungarian(dmat)
-        for i in range(dim):
-            self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
+        in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
+        is used"""
+        assert len(lista1) == len(lista2), "only for lists of same length: %dx != %d " % (len(lista1), len(lista2))
+        if len(lista1) < 3:
+            a11, a12 = lista1
+            a21, a22 = lista2
+            d0 = self.get_distvec(a11,a21)
+            d1 = self.get_distvec(a11,a22)
+            if d1 > d0: #straight
+                self.add_bond(a11,a21)
+                self.add_bond(a12,a22)
+            else: #cross
+                self.add_bond(a11,a22)
+                self.add_bond(a12,a21)
+        else:
+            from scipy.optimize import linear_sum_assignment as hungarian
+            dim = len(lista1)
+            dmat = np.zeros([dim,dim])
+            for e1,a1 in enumerate(lista1):
+                for e2,a2 in enumerate(lista2):
+                    dmat[e1,e2] = self.get_distvec(a1,a2)[0]
+            a1which, a2which = hungarian(dmat)
+            for i in range(dim):
+                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
         return
-
-    def add_advanced_hungarian_bonds(self,lista1,lista2):
-        raise NotImplementedError
 
     ###  molecular manipulations #######################################
 
     def delete_atoms(self,bads):
-        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        ''' 
+        deletes an atom and its connections and fixes broken indices of all other atoms '''
         if hasattr(bads, '__iter__'):
             if len(bads) >= 2:
                 self.bads = bads
@@ -834,11 +1038,11 @@ class mol(mpiobject):
         self.delete_atoms(badlist)
         #for i in badlist[::-1]: self.delete_atom(i)
         return
-    
+
     def randomize_coordinates(self,maxdr=1.0):
         xyz = self.get_xyz()
         xyz += np.random.uniform(-maxdr,maxdr,xyz.shape)
-        self.set_xyz(self.pbc(xyz))        
+        self.set_xyz(self.pbc(xyz))
 
     def translate(self, vec):
         self.xyz += vec
@@ -867,8 +1071,8 @@ class mol(mpiobject):
         """
         returns the center of mass of the mol object.
 
-        :Parameters:
-            - idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
+        Parameters:
+            idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
         if hasattr(self,'masstype') == False: self.set_real_mass()
         #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
@@ -882,46 +1086,10 @@ class mol(mpiobject):
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
-        xyz = self.pbc(xyz, 0)
-#        if self.periodic:
-#            fix = xyz[0,:]
-#            a = xyz[1:,:] - fix
-#            if self.bcond <= 2:
-#                cell_abc = self.cellparams[:3]
-#                xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
-#            elif self.bcond == 3:
-#                frac = np.dot(a, self.inv_cell)
-#                xyz[1:,:] -= np.dot(np.around(frac),self.cell)
+        xyz = self.apply_pbc(xyz, 0)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
 
-    def map2image(self,xyz):
-        if self.periodic == False: return xyz
-        fix = xyz[0]
-        a = xyz[1:,:] - fix
-        if self.bcond <= 2:
-            cell_abc = self.cellparams[:3]
-            xyz[1:,:] -= cell_abc*np.around(a/cell_abc)
-        elif self.bcond == 3:
-            frac = np.dot(a, self.inv_cell)
-            xyz[1:,:] -= np.dot(np.around(frac),self.cell)
-        return xyz
-
-    def pbc(self, xyz=None, fixidx = 0):
-        """
-        Compute periodic boundary conditions in an arbitrary (triclinic) cell
-        """
-        if xyz is None: xyz = self.xyz
-        if self.periodic:
-            fix = xyz[fixidx,:]
-            a = xyz[:,:] - fix
-            if self.bcond <= 2:
-                cell_abc = self.cellparams[:3]
-                xyz[:,:] -= cell_abc*np.around(a/cell_abc)
-            elif self.bcond == 3:
-                frac = np.dot(a, self.inv_cell)
-                xyz[:,:] -= np.dot(np.around(frac),self.cell)
-        return xyz
 
     def new_mol_by_index(self, idx):
         """
@@ -1028,11 +1196,15 @@ class mol(mpiobject):
         j = self.conn[i][ci]
         rj = self.xyz[j].copy()
         if self.periodic:
-            all_rj = rj + self.images_cellvec
-            all_r = all_rj - self.xyz[i]
-            all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
-            closest = np.argsort(all_d)[0]
-            return all_rj[closest]
+            if self.use_pconn:
+                img = self.pconn[i][ci]
+                rj += np.dot(img, self.cell)
+            else:
+                all_rj = rj + self.images_cellvec
+                all_r = all_rj - self.xyz[i]
+                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+                closest = np.argsort(all_d)[0]
+                return all_rj[closest]
         return rj
 
     def get_neighb_dist(self, i, ci):
@@ -1044,11 +1216,15 @@ class mol(mpiobject):
         j = self.conn[i][ci]
         rj = self.xyz[j].copy()
         if self.periodic:
-            all_rj = rj + self.images_cellvec
-            all_r = all_rj - self.xyz[i]
-            all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
-            closest = np.argsort(all_d)[0]
-            return all_rj[closest]
+            if self.use_pconn:
+                img = self.pconn[i][ci]
+                rj += np.dot(img, self.cell)
+            else:
+                all_rj = rj + self.images_cellvec
+                all_r = all_rj - self.xyz[i]
+                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+                closest = np.argsort(all_d)[0]
+                return all_rj[closest]
         dr = ri-rj
         d = np.sqrt(np.sum(dr*dr))
         return d
@@ -1097,6 +1273,7 @@ class mol(mpiobject):
         else:
             self.xyz = xyz
         self.conn.append([])
+        if self.use_pconn: self.pconn.append([])
         return self.natoms -1
 
     def add_conn(self, anum1, anum2):
@@ -1104,6 +1281,19 @@ class mol(mpiobject):
             BEWARE, does not do any checks '''
         self.conn[anum1].append(anum2)
         self.conn[anum2].append(anum1)
+        return
+    def remove_conn(self,i,j):
+        """remove a bond between two atoms
+
+        removes the connectivity entry between two atoms
+        BEWARE, does not do any checks
+
+        Arguments:
+            i {int} -- atom index 
+            j {int} -- atom index 
+        """
+        self.conn[i].remove(j)
+        self.conn[j].remove(i)
         return
 
     def get_natoms(self):
@@ -1116,16 +1306,29 @@ class mol(mpiobject):
         self.natoms = natoms
         return
 
-    def get_xyz(self):
-        ''' returns the xyz Coordinates '''
-        return self.xyz
+    def get_xyz(self, idx=None):
+        ''' returns the xyz Coordinates 
+        
+        Args:
+            idx=None (list): optional list of indices
+        '''
+        if idx is None:
+            return self.xyz
+        else:
+            return self.xyz[idx]
 
-    def set_xyz(self,xyz):
+    def set_xyz(self,xyz, idx=None):
         ''' set the real xyz coordinates
-        :Parameters:
-            - xyz: coordinates to be set'''
-        assert np.shape(xyz) == (self.natoms,3)
-        self.xyz = xyz
+        Args:
+            xyz (array): coordinates to be set
+            idx=None (list): optional list of indicies
+        '''
+        if idx is None:
+            assert xyz.shape == (self.natoms,3)
+            self.xyz = xyz
+        else:
+            assert xyz.shape == (len(idx), 3)
+            self.xyz[idx] = xyz
         return
 
     def get_sumformula(self):
@@ -1191,69 +1394,6 @@ class mol(mpiobject):
             - atypes: list of elements to be set'''
         assert len(atypes) == self.natoms
         self.atypes = atypes
-
-    def get_cell(self):
-        ''' return unit cell information (cell vectors) '''
-        return self.cell
-
-    def get_cellparams(self):
-        ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
-        return self.cellparams
-
-    def set_bcond(self):
-        """
-        sets the boundary conditions. 2 for cubic and orthorombic systems,
-        3 for triclinic systems
-        """
-        if list(self.cellparams[3:]) == [90.0,90.0,90.0]:
-            self.bcond = 2
-            if self.cellparams[0] == self.cellparams[1] == self.cellparams[2]:
-                self.bcond = 1
-        else:
-            self.bcond = 3
-        return
-
-    def get_bcond(self):
-        """
-        returns the boundary conditions
-        """
-        return self.bcond
-
-    def set_cell(self,cell,cell_only = True):
-        ''' set unit cell using cell vectors and assign cellparams
-        :Parameters:
-            - cell: cell vectors (3,3)
-            - cell_only (bool)  : if false, also the coordinates are changed
-                                  in respect to new cell
-
-        '''
-        assert np.shape(cell) == (3,3)
-        if cell_only == False: frac_xyz = self.get_frac_xyz()
-        self.periodic = True
-        self.cell = cell
-        self.cellparams = unit_cell.abc_from_vectors(self.cell)
-        self.inv_cell = np.linalg.inv(self.cell)
-        self.images_cellvec = np.dot(images, self.cell)
-        self.set_bcond()
-        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
-        if not hasattr(self, "supercell"): self.supercell = [1,1,1]
-
-    def set_cellparams(self,cellparams, cell_only = True):
-        ''' set unit cell using cell parameters and assign cell vectors
-        :Parameters:
-            - cellparams: vector (6)
-            - cell_only (bool)  : if false, also the coordinates are changed
-                                  in respect to new cell
-        '''
-        assert len(list(cellparams)) == 6
-        if cell_only == False: frac_xyz = self.get_frac_xyz()
-        self.periodic = True
-        self.cellparams = cellparams
-        self.cell = unit_cell.vectors_from_abc(self.cellparams)
-        self.inv_cell = np.linalg.inv(self.cell)
-        self.images_cellvec = np.dot(images, self.cell)
-        self.set_bcond()
-        if cell_only == False: self.set_xyz_from_frac(frac_xyz)
 
     def get_fragtypes(self):
         ''' return all fragment types '''
