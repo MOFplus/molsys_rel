@@ -36,7 +36,7 @@ def write(mol,fname, name=''):
     mol.wrap_in_box()
     frac_xyz = mol.get_frac_xyz()
     for i in range(mol.natoms):
-        f.write(" %s  %s %12.6f  %12.6f  %12.6f \n" % (string.upper(mol.elems[i]),string.upper(mol.elems[i]),\
+        f.write(" %s  %s %12.6f  %12.6f  %12.6f \n" % (mol.elems[i].title(),mol.elems[i].title(),\
             frac_xyz[i,0],frac_xyz[i,1],frac_xyz[i,2],))
     f.write("  \n")
     f.write("#END  \n")
