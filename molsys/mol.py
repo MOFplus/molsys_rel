@@ -993,7 +993,6 @@ class mol(mpiobject):
             lista2(iterable of int): iterable 2 of atom indices
             many2many (boolean):     switch to many2many mode            
             """
-        assert not self.use_pconn
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
         if not hasattr(lista2,'__iter__'): lista2 = [lista2]
         if many2many == False:
@@ -1003,10 +1002,20 @@ class mol(mpiobject):
                 for a2 in lista2:
                     self.conn[a1].append(a2)
                     self.conn[a2].append(a1)
+                     if self.use_pconn:
+                        d,v,imgi = self.get_distvec(a1,a2)
+                        self.pconn[a1].append(images[imgi])
+                        d,v,imgi = self.get_distvec(a2,a1)
+                        self.pconn[a2].append(images[imgi])                
         else:
             for a1,a2 in zip(lista1, lista2):
                     self.conn[a1].append(a2)
-                    self.conn[a2].append(a1)                
+                    self.conn[a2].append(a1)
+                    if self.use_pconn:
+                        d,v,imgi = self.get_distvec(a1,a2)
+                        self.pconn[a1].append(images[imgi])
+                        d,v,imgi = self.get_distvec(a2,a1)
+                        self.pconn[a2].append(images[imgi])                
         return
 
     def add_shortest_bonds(self,lista1,lista2):
@@ -1055,11 +1064,13 @@ class mol(mpiobject):
             j (int): atom 2
 
         """
-        assert not self.use_pconn
-        idx1 = self.conn[i].index(j)
-        idx2 = self.conn[j].index(i)
-        self.conn[i].remove(j)
-        self.conn[j].remove(i)
+        idxj = self.conn[i].index(j)
+        idxi = self.conn[j].index(i)
+        self.conn[i].remove(idxj)
+        self.conn[j].remove(idxi)
+        if self.use_pconn:
+            self.pconn[i].pop(idxj)
+            self.pconn[j].pop(idxi)            
         return
 
     def add_atom(self, elem, atype, xyz):
@@ -1125,6 +1136,8 @@ class mol(mpiobject):
                 self.atypes = np.take(self.atypes,self.goods)
                 self.elems  = np.take(self.elems, self.goods)
                 self.conn   = np.take(self.conn,  self.goods)
+                if self.use_pconn:
+                    self.pconn = np.take(self.pconn,  self.goods)
                 self.natoms = len(self.elems)
                 self.conn =[ [j-self.offset[j] for j in self.conn[i] if j not in bads] for i in range(self.natoms) ]
                 self.xyz    = self.xyz[self.goods]
@@ -1136,20 +1149,30 @@ class mol(mpiobject):
             self.delete_atom(bads)
 
     def delete_atom(self,bad):
-        ''' deletes an atom and its connections and fixes broken indices of all other atoms '''
+        """deletes an atom and its connections and fixes broken indices of all other atoms
+        
+        Args:
+            bad (integer): atom index to remove
+        """
         new_xyz = []
         new_elems = []
         new_atypes = []
         new_conn = []
+        new_pconn = []
         for i in range(self.natoms):
             if i != bad:
                 new_xyz.append(self.xyz[i].tolist())
                 new_elems.append(self.elems[i])
                 new_atypes.append(self.atypes[i])
                 new_conn.append(self.conn[i])
+                if self.use_pconn:
+                    new_pconn.append(self.pconn[i])
                 for j in range(len(new_conn[-1])):
                     if new_conn[-1].count(bad) != 0:
-                        new_conn[-1].pop(new_conn[-1].index(bad))
+                        idx = new_conn[-1].index(bad)
+                        new_conn[-1].pop(idx)
+                        if self.use_pconn:
+                            new_pconn[-1].pop(idx)
         self.xyz = np.array(new_xyz, "d")
         self.elems = new_elems
         self.natoms = len(self.elems)
@@ -1163,6 +1186,7 @@ class mol(mpiobject):
                 if new_conn[i][j] >= bad:
                     new_conn[i][j]=new_conn[i][j]-1
         self.conn = new_conn
+        self.pconn = new_pconn
         return
 
     def remove_dummies(self,labels=['x','xx']):
@@ -1193,18 +1217,7 @@ class mol(mpiobject):
                 d,r,imgi=self.get_distvec(i,j)
                 if d < thresh:
                     badlist.append(j)
-        new_xyz = []
-        new_elems = []
-        new_atypes = []
-        for i in range(self.natoms):
-            if not badlist.count(i):
-                new_xyz.append(self.xyz[i].tolist())
-                new_elems.append(self.elems[i])
-                new_atypes.append(self.atypes[i])
-        self.xyz = np.array(new_xyz, "d")
-        self.elems = new_elems
-        self.natoms = len(self.elems)
-        self.atypes = new_atypes
+        self.delete_atoms(badlist)
         return
 
 
