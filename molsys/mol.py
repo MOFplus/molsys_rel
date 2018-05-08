@@ -419,6 +419,7 @@ class mol(mpiobject):
             self.pprint("atom %3d   %2s coordination number: %3d" % (i, self.elems[i], len(conn)))
             for j in range(len(conn)):
                 d = self.get_neighb_dist(i,j)
+                print(d, 20*'#')
                 self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
     
@@ -993,10 +994,10 @@ class mol(mpiobject):
             many2many (boolean):     switch to many2many mode            
             """
         assert not self.use_pconn
-        if many2many == False:
-            assert len(lista1)==lista2
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
-        if not hasattr(lista2,'__iter__'): lista2 = [lista2]:
+        if not hasattr(lista2,'__iter__'): lista2 = [lista2]
+        if many2many == False:
+            assert len(lista1)==len(lista2)
         if many2many:
             for a1 in lista1:
                 for a2 in lista2:
@@ -1302,7 +1303,7 @@ class mol(mpiobject):
         return rj
 
     def get_neighb_dist(self, i, ci):
-        """ returns coordinates of atom bonded to i which is ci'th in bond list
+        """ returns the distance of atom bonded to i which is ci'th in bond list
         :Parameters:
             - i  :  index of the base atom
             - ci :  index of the conn entry of the ith atom"""
@@ -1318,7 +1319,7 @@ class mol(mpiobject):
                 all_r = all_rj - self.xyz[i]
                 all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
                 closest = np.argsort(all_d)[0]
-                return all_rj[closest]
+                return all_d[closest]
         dr = ri-rj
         d = np.sqrt(np.sum(dr*dr))
         return d
