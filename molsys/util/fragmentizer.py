@@ -141,7 +141,7 @@ class fragmentizer:
             mstr = []
         if mpi_size > 1:
             mstr = mpi_comm.bcast(mstr, root=0)
-        m = molsys.mol.fromString(mstr)
+        m = molsys.mol.from_string(mstr)
         m.addon("graph")
         m.graph.make_graph()
         self.fragments[fname] = m

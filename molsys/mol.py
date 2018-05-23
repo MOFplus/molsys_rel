@@ -1002,7 +1002,7 @@ class mol(mpiobject):
                 for a2 in lista2:
                     self.conn[a1].append(a2)
                     self.conn[a2].append(a1)
-                     if self.use_pconn:
+                    if self.use_pconn:
                         d,v,imgi = self.get_distvec(a1,a2)
                         self.pconn[a1].append(images[imgi])
                         d,v,imgi = self.get_distvec(a2,a1)
@@ -1231,7 +1231,7 @@ class mol(mpiobject):
         """
         xyz = self.get_xyz()
         xyz += np.random.uniform(-maxdr,maxdr,xyz.shape)
-        self.set_xyz(self.pbc(xyz))
+        self.set_xyz(self.apply_pbc(xyz))
 
     def translate(self, vec):
         self.xyz += vec
