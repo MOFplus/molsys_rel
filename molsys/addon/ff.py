@@ -1318,7 +1318,7 @@ class ff(base):
         f.close()
         return
 
-    def write_key(self,fname,atype_map=False,atype_addendum=''):
+    def write_key(self,fname,atype_map=False,atype_addendum='',write_default_header=True):
         '''
         author: Julian
         try to write a key file from the data available in the class
@@ -1326,6 +1326,33 @@ class ff(base):
         '''
         a = atype_addendum
         fkey=open(fname, 'w')
+        if write_default_header == True:
+            fkey.write(
+'''
+version        2.0
+parameters     none
+
+
+bondunit       71.94
+angleunit      0.02191418
+strbndunit     2.51118
+opbendunit     0.02191418
+torsionunit    0.5
+vdwtype        exp6_damped
+vdwdampfact    0.25
+radiusrule     arithmetic
+radiustype     r-min
+radiussize     radius
+epsilonrule    geometric
+a-expterm      184000.0
+b-expterm      12.0
+c-expterm      2.25
+
+bondtype       mixmorse_bde
+strbndtype     mmff
+opbendtype     mmff
+chargetype     gaussian
+		''')
         par = self.par
         #syntax of keyfile:
         # red name [atypes] [params] 
