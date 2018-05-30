@@ -103,7 +103,6 @@ def read_trajfile(mol,f):
     counter  = 0
     found    = False
     ### get how many cylces are in the file
-    import pdb; pdb.set_trace()
     for i_t, traj in enumerate(trajfiles):
         print 'reading %s (%d/%d)' % (traj,i_t+1,len(trajfiles))
         f = open(traj,'r')
