@@ -36,7 +36,7 @@ class graph:
         in other words the vertex property is the element plus the coordination number
 
         """
-        if idx == None: idx = range(self._mol.natoms)
+        if idx is None: idx = range(self._mol.natoms)
         self.molg = Graph(directed=False)
         # now add vertices
         self.molg.vp.type = self.molg.new_vertex_property("string")

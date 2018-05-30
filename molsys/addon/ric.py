@@ -231,7 +231,7 @@ class ric(base,RedIntCoords):
             for i,r in enumerate(rics[k]):
                 buffer+= ("%4d %3d %5s " % (count,i,k)+len(r)*" %4d")  % tuple(r)+"\n"
                 count += 1
-        if file == None:
+        if file is None:
             print(buffer)
         else:
             with open(file, "w") as f:

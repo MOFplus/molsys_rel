@@ -43,7 +43,7 @@ class fragments:
                 logger.error("atom %d (%s) is not in fragment" % (i, self._mol.atypes[i]))
                 self.setup=False
             else:
-                if self.fraglist[fn] == None:
+                if self.fraglist[fn] is None:
                     # set name of fragment
                     self.fraglist[fn] = ft
                 else:
@@ -122,7 +122,7 @@ class fragments:
             if reset_atypes:
                 for i in range(self._mol.natoms):
                     f = self._mol.fragnumbers[i]
-                    if self.rev_fraglist[f] == None:
+                    if self.rev_fraglist[f] is None:
                         ft = self.fraglist[f]
                     else:
                         ft = self.rev_fraglist[f]

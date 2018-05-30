@@ -178,7 +178,7 @@ class fragmentizer:
             if all(v in vtype for v in self.frag_vtypes[fname]):
                 scan_frag.append(fname)
                 scan_prio.append(self.frag_prio[fname])
-                if self.fragments[fname] == None:
+                if self.fragments[fname] is None:
                     # not read in yet
                     if self.source == "file":
                         self.read_frag(fname)
@@ -245,7 +245,7 @@ class fragmentizer:
             if ft == "0":
                 return False
             else:
-                if fraglist[fn] == None:
+                if fraglist[fn] is None:
                     # set name of fragment
                     fraglist[fn] = ft
                 else:

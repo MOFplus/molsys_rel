@@ -205,7 +205,7 @@ class spg:
         """
         assert self.spgcell != None
         new_spgcell = spglib.find_primitive(self.spgcell)
-        if new_spgcell == None:
+        if new_spgcell is None:
             logger.error("Search for primitive cell failed with symprec %f" % self.symprec)
             return
         print(new_spgcell[0])
