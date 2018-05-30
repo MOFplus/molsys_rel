@@ -138,8 +138,11 @@ class mol(mpiobject):
         try:
             f = open(fname, "r")
         except IOError:
-            fname += "."+ftype
-            f = open(fname, "r")
+            try:
+                f = open(fname+'.'+ftype, "r")
+            except:
+                f = fname
+                pass ## in this case, parse the filename
         if ftype in formats.read:
             formats.read[ftype](self,f,**kwargs)
         else:
