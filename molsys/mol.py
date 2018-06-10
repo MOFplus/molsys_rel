@@ -56,7 +56,7 @@ if molsys_mpi.rank == 0:
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
 
-if molsys_mpi.wcomm == None:
+if molsys_mpi.wcomm is None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
     logger.error(molsys_mpi.err)
 
@@ -350,7 +350,7 @@ class mol(mpiobject):
         Args:
             conn (list): list of lists holding the connectivity (default=None, check own )
         """
-        if conn == None:
+        if conn is None:
             conn = self.conn
         for i, c in enumerate(conn):
             for j in c:

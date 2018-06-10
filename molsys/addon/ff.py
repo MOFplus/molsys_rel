@@ -60,7 +60,7 @@ logger = logging.getLogger("molsys.ff")
 #logger.setLevel(logging.INFO)
 #import pdb; pdb.set_trace()
 
-if mpi_comm == None:
+if mpi_comm is None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
     logger.error(mpi_err)
 
@@ -450,9 +450,9 @@ class ff(base):
         """
         # make data structures . call after ric has been filled with data either in assign or after read
         # these are the relevant datastructures that need to be filled by one or the other way.
-        if cha == None:
+        if cha is None:
             cha = [ic([i]) for i in range(self._mol.natoms)]
-        if vdw == None:
+        if vdw is None:
             vdw = [ic([i]) for i in range(self._mol.natoms)]
         self.ric_type = {
                 "cha": cha,
@@ -513,7 +513,7 @@ class ff(base):
         with self.timer("parameter assignement loop"):
             for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                 for i, r in enumerate(self.ric_type[ic]):
-                    if self.parind[ic][i] == None:
+                    if self.parind[ic][i] is None:
                         full_parname_list = []
                         aft_list = self.get_parname_sort(r,ic)
                         parname  = tuple(aft_list)
@@ -594,9 +594,9 @@ class ff(base):
         self.refsysname = refsysname
         self.equivs = equivs
         self.active_zone = azone
-        if self.refsysname == None and len(self.equivs.keys()) > 0:
+        if self.refsysname is None and len(self.equivs.keys()) > 0:
             raise IOError("Equiv feature can only used together with a defined refsysname")
-        if self.refsysname == None and len(self.active_zone) > 0:
+        if self.refsysname is None and len(self.active_zone) > 0:
             raise IOError("Azone feature can only used together with a defined refsysname")
         with self.timer("connect to DB"):
             ### init api
@@ -650,7 +650,7 @@ class ff(base):
                 for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                     if verbose>0: logger.info(" ### Params for %s ###" % ic)
                     for i, r in enumerate(self.ric_type[ic]):
-                        if self.parind[ic][i] == None:
+                        if self.parind[ic][i] is None:
                             if ((self.atoms_in_subsys(r, curr_fraglist)) and (self.atoms_in_active(r, curr_atomlist))):
                                 # no params yet and in current refsystem => check for params
                                 full_parname_list = []
@@ -708,7 +708,7 @@ class ff(base):
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             unknown_par = []
             for i, p in enumerate(self.ric_type[ic]):
-                if self.parind[ic][i] == None:
+                if self.parind[ic][i] is None:
                     parname = self.get_parname_sort(p,ic)
                     if not parname in unknown_par:
                         unknown_par.append(parname)
@@ -750,7 +750,7 @@ class ff(base):
             par = self.par[ic]
             parind = self.parind[ic]
             for i, p in enumerate(ric):
-                if parind[i] == None:
+                if parind[i] is None:
                     if ic == "cha" and i not in self.active_zone:
                         self.active_zone.append(i)
                     # not sure if we should sort here or not ... maybe not?
@@ -1120,7 +1120,7 @@ class ff(base):
         Returns:
             bool: True or False
         """
-        if subsys == None: return True
+        if subsys is None: return True
         return any(a in subsys for a in alist)
 
     def get_parname(self, alist):
@@ -1208,7 +1208,7 @@ class ff(base):
             -parname(str): parname
             -params(list): list of the corresponding parameters
         """
-        if aft_list == None: return (), None
+        if aft_list is None: return (), None
         ic_perm = {"bnd": ((0,1), (1,0)),
                    "ang": ((0,1,2), (2,1,0)),
                    "dih": ((0,1,2,3),(3,2,1,0)),
@@ -1719,7 +1719,7 @@ chargetype     gaussian\n\n''')
         assert type(FF)      == str
         from mofplus import FF_api
         self.api = FF_api()
-        if dbrefname == None: dbrefname = refname
+        if dbrefname is None: dbrefname = refname
         if atfix is not None:
             fixes = {}
             for i, at in enumerate(self._mol.atypes):

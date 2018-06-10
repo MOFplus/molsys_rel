@@ -147,6 +147,23 @@ class fragmentizer:
         self.fragments[fname] = m
         return
 
+    def read_frags_from_API(self,fnames):
+        """
+        API call on master only ... broadcsted to other nodes 
+        """
+        if mpi_rank == 0:
+            mstr = self.api.get_FFfrags(fnames, out = "str")
+        else:
+            mstr = {}
+        if mpi_size > 1:
+            mstr = mpi_comm.bcast(mstr, root=0)
+        for name,lines in mstr.items():
+            m = molsys.mol.from_string(lines)
+            m.addon("graph")
+            m.graph.make_graph()
+            self.fragments[name] = m
+        return
+
     def __call__(self, mol, man = False, plot=False):
         """
         tries to assign all fragmnets in the catalog to the mol object
@@ -173,19 +190,23 @@ class fragmentizer:
         # scan for relevant fragments
         scan_frag = []
         scan_prio = []
+        tmpnames = []
         for fname in self.fragments.keys():
             # check if all vtypes in frag appear in the systems vtype
             if all(v in vtype for v in self.frag_vtypes[fname]):
                 scan_frag.append(fname)
                 scan_prio.append(self.frag_prio[fname])
-                if self.fragments[fname] == None:
+                if self.fragments[fname] is None:
                     # not read in yet
                     if self.source == "file":
                         self.read_frag(fname)
                     elif self.source == "mofp":
-                        self.read_frag_from_API(fname)
+                        tmpnames.append(fname)
+                        #self.read_frag_from_API(fname)
                     else:
                         raise ValueError("unknwon source for fragments")
+        if self.source == "mofp":
+            self.read_frags_from_API(tmpnames)
         # now sort according to prio
         sorted_scan_frag = [scan_frag[i] for i in numpy.argsort(scan_prio)]
         sorted_scan_frag.reverse()
@@ -245,7 +266,7 @@ class fragmentizer:
             if ft == "0":
                 return False
             else:
-                if fraglist[fn] == None:
+                if fraglist[fn] is None:
                     # set name of fragment
                     fraglist[fn] = ft
                 else:

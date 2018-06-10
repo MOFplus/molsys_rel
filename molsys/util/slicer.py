@@ -46,7 +46,7 @@ class slicer:
         """
         hkl = np.array(hkl)
         assert hkl.shape == (3,)
-        if dist == None:
+        if dist is None:
             dist=1.0
         cell = self.mol.get_cell()
         vect = np.dot(cell, hkl)

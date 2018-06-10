@@ -1130,7 +1130,7 @@ class topo(mol):
     def calc_colpen_orient(self, vert):
         ### BROKEN ???
         # this is a HACK ... works only for vertices with two colors
-        # if self.colpen_orientrule == None ignore
+        # if self.colpen_orientrule is None ignore
         # if not use the number to be added to scal
         if self.colpen_orientrule[vert] != None:
             col0_edges = []
@@ -1143,7 +1143,7 @@ class topo(mol):
 
     def calc_colpen_orient_from_bcolor(self, vert, bcolor):
         # this is a HACK ... works only for vertices with two colors
-        # if self.colpen_orientrule == None ignore
+        # if self.colpen_orientrule is None ignore
         # if not use the number to be added to scal
         if self.colpen_orientrule[vert] != None:
             col0_edges = []
