@@ -1323,9 +1323,11 @@ class ff(base):
         author: Julian
         try to write a key file from the data available in the class
         needs then to be merged manually in case there is only a partial system
+        #### !!!! EQUIVALENCES ARE MISSING !!!! ####
         '''
         a = atype_addendum
         fkey=open(fname, 'w')
+        par = self.par
         if write_default_header == True:
             fkey.write(
 '''
@@ -1351,9 +1353,15 @@ c-expterm      2.25
 bondtype       mixmorse_bde
 strbndtype     mmff
 opbendtype     mmff
-chargetype     gaussian
-		''')
-        par = self.par
+chargetype     gaussian\n\n''')
+            # still in the indentation of write_default_header
+            # we need also atom definitions, get unique atype list from 'cha' dictionary
+            for i,k in enumerate(par['cha'].keys()):
+                atype = k.split('(')[-1].split(')')[0]
+                elem = atype.split('_')[0][0:-1] ## convention: all atypes have .lt. 10 connections! 
+                                                  # remove only last digit from emenent string
+                fkey.write('atom  %s   %s\n' % (atype, elem))
+            import pdb; pdb.set_trace()
         #syntax of keyfile:
         # red name [atypes] [params] 
         parkeys= self.par.keys() # cha ang dih oop vdw bnd
