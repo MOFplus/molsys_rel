@@ -1014,14 +1014,20 @@ class ff(base):
         # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
         self.timer.start("make ref frag graphs")
         self.ref_systems = {}
+        if self._mol.mpi_rank == 0:
+            ref_mol_strs  = self.api.get_FFrefs_graph(self.scan_ref, out ="str")
+        else:
+            ref_mol_strs = {}
+        if self._mol.mpi_size > 1:
+            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_str, root = 0)
         for ref in self.scan_ref:
-            if self._mol.mpi_rank == 0:
-                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
-            else:
-                ref_mol_str = None
-            if self._mol.mpi_size > 1:
-                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
-            ref_mol = molsys.mol.from_string(ref_mol_str)
+#            if self._mol.mpi_rank == 0:
+#                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
+#            else:
+#                ref_mol_str = None
+#            if self._mol.mpi_size > 1:
+#                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
+            ref_mol = molsys.mol.from_string(ref_mol_strs[ref])
             ref_mol.addon("fragments")
             ref_mol.fragments.make_frag_graph()
             if plot:
