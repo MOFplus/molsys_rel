@@ -55,6 +55,12 @@ def read(mol, f):
         mol.use_pconn = True
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages =\
             txyz.read_body(f,mol.natoms,frags=True, topo = True)
+    elif ftype == 'cromo':
+        mol.is_topo =   True
+        mol.is_cromo =   True
+        mol.use_pconn = True
+        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages, mol.colors =\
+            txyz.read_body(f,mol.natoms,frags=True, topo = True, cromo = True)
     else:
         ftype = 'xyz'
         logger.warning('Unknown mfpx file type specified. Using xyz as default')

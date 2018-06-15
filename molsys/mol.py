@@ -292,53 +292,41 @@ class mol(mpiobject):
 
     ##### addons ####################################################################################
 
-    def addon(self, addmod, **kwargs):
+    def addon(self, addmod, *args, **kwargs):
         """
         add an addon module to this object
+        the adddon will be an instance of the addon class and available as attribute of mol instance
 
         Args:
-            addmol (string): string name of the addon module
-            **kwargs: further keyword arguments passed on to the instantiator of the addon
+            addmod (string): string name of the addon module
+            *args          : positional arguments for the addon instantiator
+            **kwargs       :    keyword arguments for the addon instantiator
         """
+        loaded = False
         if addmod in self.loaded_addons:
+            logger.warning("%s addon is already available as attribute of mol instance!" % addmod)
             return
-        if addmod == "graph":
-            if addon.graph != None:
-                # ok, it is present and imported ...
-                self.graph = addon.graph(self)
-            else:
-                logger.error("graph_tool is not installed! This addon can not be used")
-                return
-        elif addmod  == "fragments":
-            self.fragments = addon.fragments(self)
-        elif addmod  == "bb":
-            self.bb = addon.bb(self)
-        elif addmod  == "zmat":
-            if addon.zmat != None:
-                self.zmat = addon.zmat(self)
-            else:
-                logger.error("pandas/chemcoord is not available! This addon can not be used")
-                return
-        elif addmod  == "spg":
-            if addon.spg != None:
-                self.spg = addon.spg(self)
-            else:
-                logger.error("spglib is not available! This addon can not be used")
-                return
-        elif addmod == "ric":
-            if addon.ric != None:
-                self.ric = addon.ric(self)
-            else:
-                logger.error("ric is not available! This addon can not be used")
-                return
-        elif addmod == "ff":
-            self.ff = addon.ff(self, **kwargs)
-        elif addmod == "molecules":
-            self.molecules = addon.molecules(self)
-        else:
-            logger.error("the addon %s is unknown" % addmod)
-            return
-        self.loaded_addons.append(addmod)
+        if addmod in addon.__all__: ### addon is enabled: try to set it
+            if getattr(addon, addmod) is not None: ### no error raised during addon/__init__.py import
+                try: ### get the addon attribute, initialize it and set as self attribute
+                    addinit = getattr(addon, addmod)(self, *args, **kwargs)
+                    setattr(self, addmod, addinit)
+                except Exception as e: ### unexpected error! bugfix needed or addon used improperly
+                    import traceback
+                    traceback.print_exc()
+                    logger.error("%s addon is not available: something unexpectable went wrong!" % addmod)
+                else: ### kudos! the addon is now available as self.addmod
+                    loaded = True
+                    logger.info("%s addon is now available as attribute of mol instance" % addmod)
+            else: ### error raised during addon/__init__.py import
+                print(addon._errortrace[addmod])
+                logger.error("%s addon is not imported: check addon module" % addmod)
+        else: ### addon in unknown or disabled in addon.__all__
+            logger.error("%s addon is unknown/disabled: check addon.__all__ in addon module" % addmod)
+        if loaded:
+            ### addmod added to loaded_addons (to prevent further adding)
+            self.loaded_addons.append(addmod)
+        #assert addmod in self.loaded_addons, "%s not available" % addmod ### KEEP for testing
         return
 
     ##### connectivity ########################################################################################
