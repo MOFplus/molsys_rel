@@ -23,6 +23,13 @@ import numpy as np
 class slicer:
     
     def __init__(self, mol, orig_atoms=None, cell_factor = 1.5):
+        """Generate a slicer object for a given mol obejct
+        
+        Args:
+            mol (mol object): periodic system to be sliced
+            orig_atoms (list of integers, optional): Defaults to None. COM of these atoms defines the origin of the cell  
+            cell_factor (float, optional): Defaults to 1.5. [description]
+        """
         self.mol = mol
         self.planes = []
         self.stubs = {}
@@ -38,11 +45,24 @@ class slicer:
         return
     
     def set_stub(self, atype, new_elem, new_atype, dist):
+        """set a new stub definition (used when slicing)
+        
+        Args:
+            atype (string): atom type that remains to which a bond has been sliced
+            new_elem (string): Element of the stub
+            new_atype (string): atomtype of the stub
+            dist (float): distance from the remaining element
+        """
         self.stubs[atype] = (new_elem, new_atype, dist)
         return
     
     def set_plane(self, hkl, dist=None, symm=False):
-        """ set a plane by hkl and dist, if symm is true a second plane with dist = -dist is added
+        """set a new plane to cut
+        
+        Args:
+            hkl (list of integers): defines the hkl plane to be sliced
+            dist (float, optional): Defaults to None. distance in multiples of cell params from origin where to cut
+            symm (bool, optional): Defaults to False. if True a second plane at negative dist is applied
         """
         hkl = np.array(hkl)
         assert hkl.shape == (3,)
@@ -56,6 +76,15 @@ class slicer:
         return
     
     def __call__(self, supercell=None, copy=False, orig=[0,0,0], max_dist=2.0):
+        """perform the slicing operation
+            supercell (list of three integers, optional): Defaults to None. size of the supercell of the initial system to be generated before performing the slicing
+            copy (bool, optional): Defaults to False. If True a new mol obejct is generated and returned (by default it is modified)
+            orig (list of integers, optional): Defaults to [0,0,0]. origin in sizes of the initial cell
+            max_dist (float, optional): Defaults to 2.0. maximum distance of a bond for setting a stub
+        
+        Returns:
+            [type]: [description]
+        """
         if copy:
             mol = self.mol.copy()
         else:
