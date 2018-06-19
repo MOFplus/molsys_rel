@@ -38,6 +38,7 @@ def print(*args, **kwargs):
 
 
 import numpy as np
+import uuid
 import molsys
 from molsys.util.timing import timer, Timer
 from molsys.util import elems
@@ -1264,10 +1265,13 @@ class ff(base):
         """
         if self.mpi_rank > 0:
             return
+        # create a random hash to ensure that ric and par file belong together
+        hash = str(uuid.uuid4())
         # dummy dicts to assign a number to the type
         par_types = self.enumerate_types()
         # write the RICs first
         f = open(fname+".ric", "w")
+        f.write("HASH: %s\n" % hash)
         logger.info("Writing RIC to file %s.ric" % fname)
         # should we add a name here in the file? the FF goes to par. keep it simple ...
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
@@ -1295,6 +1299,7 @@ class ff(base):
         else:
             f = open(fname+".par", "w")             
             logger.info("Writing parameter to file %s.par" % fname)
+        f.write("HASH: %s\n" % hash)
         f.write("FF %s\n\n" % self.par.FF)
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             ptyp = par_types[ic]
@@ -1441,6 +1446,7 @@ chargetype     gaussian
             - fit(bool, optional): specify if an fpar file should be read in, 
             holding fitting information, defaults to False
         """
+        hash = None
         fric = open(fname+".ric", "r")
         ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
         ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
@@ -1455,7 +1461,9 @@ chargetype     gaussian
                 stop = True
             sline = line.split()
             if len(sline)> 0:
-                if sline[0] in ric_type:
+                if sline[0] == "HASH:": 
+                    hash = sline[1]
+                elif sline[0] in ric_type:
                     curric = sline[0]
                     curric_len = ric_len[ric_type.index(curric)]
                     assigned.append(curric)
@@ -1526,12 +1534,16 @@ chargetype     gaussian
         else:
             fpar = open(fname+".par", "r")
         stop = False
-        while not stop:
+        found_hash = False
+        while not stop:         
             line = fpar.readline()
             if len(line) == 0:
                 stop = True
             sline = line.split()
             if len(sline)>0:
+                if sline[0] == "HASH:":
+                    found_hash = True
+                    assert sline[1] == hash, "Hashes of ric and par file do not match!"
                 if sline[0][0] == "#": continue 
                 curric = sline[0].split("_")[0]
                 if sline[0]=="FF":
@@ -1588,6 +1600,9 @@ chargetype     gaussian
                     for i,r in enumerate(self.ric_type[curric]):
                         parind[i] = t2ident[r.type]
         fpar.close()
+        # check if both fpar and ric file have hashes
+        if hash is not None and found_hash == False:
+            raise IOError("ric file has a hash, but par has not")
         logger.info("read parameter from file %s.par" % fname)
         ### replace variable names by the current value
         if self.fit: 
