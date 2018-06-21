@@ -15,7 +15,6 @@ def _checkrundir(folder, basename):
     globs = glob.glob("%s%s[0-9]*_%s%s" % (folder, os.sep, basename, os.sep))
     splits = [''.join(g.split("_%s%s" % (basename,os.sep))[:-1]) for g in globs]
     splits = [''.join(s.split("%s%s" % (folder, os.sep))[-1]) for s in splits]
-    print splits
     ints = []
     for split in splits:
         try:

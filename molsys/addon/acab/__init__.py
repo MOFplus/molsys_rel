@@ -487,14 +487,20 @@ class acab(base):
         else:
             return True
     
-    def cycle_loop(self, imax=1e4, alpha=2, use_sym=True,
+    def cycle_loop(self, Nmax=1e4, alpha=2, write=True, use_sym=True,
         use_edge=True, use_vertex=True,
         constr_edge=True, constr_vertex=True):
         """
         cycle model
 
         :Parameters:
-        - imax (int): maximum number of iterations
+        - Nmax (int): maximum number of iterations
+        :Attributes:
+        - N (int): number of iterations
+        :Returns:
+        - N (int): abs(N)=number of solutions
+        if N > 0: EXACT number of solutions (exhaustiveness)
+        if N < 0: MINIMUM number of solutions (there may be others)
         """
         self.cycle_init(alpha=alpha, use_sym=use_sym,
             use_edge=use_edge, use_vertex=use_vertex,
@@ -503,18 +509,19 @@ class acab(base):
             logger.info("KeyboardInterrupt is DISABLED: " \
                 "no worries, cycle handles the exception")
             self.model.setBoolParam('misc/catchctrlc', True)
-            i = 0
-            while i < imax:
-                self.report_step(i)
+            N = 0
+            while N < Nmax:
+                self.report_step(N)
                 if self.cycle_step(): break
-                i += 1
+                N += 1
         except KeyboardInterrupt:
-            i *= -1
-        self.report_cycle(i)
-        if i > 0:
-            N = i
+            N *= -1
+        self.report_cycle(N)
+        if N == Nmax:
+            N *= -1
+        if N > 0:
             self.write_cycle(N)
-        return
+        return N
 
     def report_step(self, i):
         sys.stdout.write("cycle n.: %d\n" % i)
@@ -878,6 +885,9 @@ class acab(base):
                     try:
                         vals = [self.model.getVal(evars[ei,ej,p,c]) for c in crange]
                         val = vals.index(1)
+                    except ValueError:
+                        vals = [round(v) for v in vals]
+                        val = vals.index(1)
                     except Warning:
                         val = "u"
                     ecolors.append(val)
@@ -885,6 +895,9 @@ class acab(base):
                 for ei,ej in etab:
                     try:
                         vals = [self.model.getVal(evars[ei,ej,c]) for c in crange]
+                        val = vals.index(1)
+                    except ValueError:
+                        vals = [round(v) for v in vals]
                         val = vals.index(1)
                     except Warning:
                         val = "u"
@@ -906,6 +919,9 @@ class acab(base):
             for v in rvvars:
                 try:
                     vals = [self.model.getVal(vvars[v,c]) for c in crange]
+                    val = vals.index(1)
+                except ValueError:
+                    vals = [round(v) for v in vals]
                     val = vals.index(1)
                 except Warning:
                     val = "u"
@@ -1290,9 +1306,13 @@ class acab(base):
                 try:
                     val = int(self.model.getVal(var))
                 except Warning: #model may be unsolved
-                    val = "!" #stands for unsolved
+                    val = "?" #stands for unsolved
                 except ValueError:
-                    val = "?"
+                    try:
+                        vals = [round(v) for v in vals]
+                        val = vals.index(1)
+                    except ValueError:
+                        val = "!"
                 print(var,val)
         return
 
@@ -1307,7 +1327,11 @@ class acab(base):
                 except Warning: #model may be unsolved
                     val = "?"
                 except ValueError: #1 is not found!
-                    val = "!"
+                    try:
+                        vals = [round(v) for v in vals]
+                        val = vals.index(1)
+                    except ValueError:
+                        val = "!"
                 print(var,val)
         return
 
@@ -1333,7 +1357,11 @@ class acab(base):
                     except Warning: #model may be unsolved
                         val = "?"
                     except ValueError: #1 is not found!
-                        val = "!"
+                        try:
+                            vals = [round(v) for v in vals]
+                            val = vals.index(1)
+                        except ValueError:
+                            val = "!"
                     print("%d-%d.%d = %s" % (ei,ej,p,val))
             else:
                 for ei,ej in etab:
@@ -1363,7 +1391,11 @@ class acab(base):
                 except Warning:
                     val = "?"
                 except ValueError: #1 is not found!
-                    val = "!"
+                    try:
+                        vals = [round(v) for v in vals]
+                        val = vals.index(1)
+                    except ValueError:
+                        val = "!"
                 print("%d = %s" % (v,val))
         return
 
