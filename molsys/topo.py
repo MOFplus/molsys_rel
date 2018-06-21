@@ -56,9 +56,9 @@ class topo(mol):
         self.use_pconn = True   # flag to use pconn: keeps the image number along with the bond
         self.pconn=[]
         self.ptab= []
-        # extra deafult sfor pyspglib
+        # extra default for pyspglib
         if spg:
-            self.symprec = SMALL_DIST        # precsion in symmetry detection .. pyspglib default of 1.0e-5 seems to be way too small for large systems (in Angstrom)
+            self.symprec = SMALL_DIST        # precision in symmetry detection .. pyspglib default of 1.0e-5 seems to be way too small for large systems (in Angstrom)
             self.nonhydrogen = False  # use only non-hydrogen atoms if True in symmetry detection or any operation
         return
 

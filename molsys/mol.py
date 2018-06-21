@@ -1306,6 +1306,25 @@ class mol(mpiobject):
                 return all_rj[closest]
         return rj
 
+    def get_neighb_coords_(self, i, j, img):
+        """ returns coordinates of atom bonded to i which is ci'th in bond list
+        TBI: merge get_neighb_coords and get_neighb_coords_
+        :Parameters:
+            - i   :  index of base atom
+            - ci  :  index of bond atom
+            - img :  cell image"""
+        rj = self.xyz[j].copy()
+        if self.periodic:
+            if self.use_pconn:
+                rj += np.dot(img, self.cell)
+            else:
+                all_rj = rj + self.images_cellvec
+                all_r = all_rj - self.xyz[i]
+                all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+                closest = np.argsort(all_d)[0]
+                return all_rj[closest]
+        return rj
+
     def get_neighb_dist(self, i, ci):
         """ returns the distance of atom bonded to i which is ci'th in bond list
         :Parameters:
@@ -1538,6 +1557,7 @@ class mol(mpiobject):
         self.fragtypes += fragtypes
         return
 
+    ### CONNECTIVITY ###
     def get_conn(self):
         ''' returns the connectivity of the system '''
         return self.conn
@@ -1611,6 +1631,90 @@ class mol(mpiobject):
             i,j = c
             self.conn[i].append(j)
             self.conn[j].append(i)
+        return
+        
+    ### PERIODIC CONNECTIVITY ###
+    def get_pconn(self):
+        ''' returns the periodic connectivity of the system '''
+        return self.pconn
+
+    def set_pconn(self, pconn, ptab_flag=False):
+        ''' updates the periodic connectivity of the system
+        :Parameters:
+            - pconn    : List of lists describing the periodic connectivity'''
+        self.pconn = pconn
+        if ptab_flag: self.ptab = self.get_pconn_as_tab()
+
+    def get_ptab(self):
+        ''' returns the periodic connectivity table (nbonds, 2)'''
+        return self.ptab
+
+    def set_ptab(self, ptab, pconn_flag=False):
+        ''' updates the periodic connectivity table
+        :Parameters:
+            - ptab  : List of couples describing the periodic connectivity'''
+        self.ptab = ptab
+        if pconn_flag: self.set_pconn_from_tab(ptab)
+
+    def set_empty_pconn(self):
+        """
+        sets an empty list of lists for the periodic connectivity
+        """
+        self.pconn = []
+        for i in range(self.natoms):
+            self.pconn.append([])
+        return
+        
+    def get_pconn_as_tab(self, pconn_flag=None):
+        """
+        gets the periodic connectivity as a table of bonds with shape (nbonds, 2)
+        N.B.: can return ctab AND ptab if self.use_pconn == True
+        """
+        raise ImportError("Use get_conn_as_Tab w/ pconn_flag=True")
+        if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
+        ctab = []
+        ptab = []
+        if pconn_flag:
+            for i in range(self.natoms):
+                ci = self.conn[i]
+                pi = self.pimages[i]
+                for j, pj in zip(ci,pi):
+                    if j > i or (j==i and pj <= 13):
+                        ctab.append([i,j])
+                        ptab.append(pj)
+            return ctab, ptab
+        else:
+            for i, ci in enumerate(self.conn):
+                for j in ci:
+                    if j > i:
+                        ctab.append([i,j])
+        return ctab
+        
+    def set_ptab_from_pconn(self, pconn_flag=None):
+        raise ImportError("Use set_ctab_from_conn w/ pconn_flag=True")
+        if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
+        if pconn_flag:
+            self.ctab, self.ptab = self.get_conn_as_tab(pconn_flag=True)
+        else:
+            self.ctab = self.get_conn_as_tab(pconn_flag=False)
+
+    def set_pconn_from_tab(self, ptab):
+        """
+        sets the periodic connectivity froma table of bonds
+        :Parameters:
+            - ptab   : list of peridioc images per bond (nbonds, 2)
+        """
+        assert hasattr(self, "ctab"), "ctab is needed for the method"
+        #self.set_empty_pconn()
+        conn = self.conn[:]
+        pconn = [[None for ic in c] for c in self.conn]
+        for k,p in enumerate(ptab):
+            i,j = self.ctab[k]
+            ij = self.conn[i].index(j)
+            ji = self.conn[j].index(i)
+            pconn[i][ij] = p
+            pconn[j][ji] = -p 
+        self.pconn = pconn
         return
         
     def set_unit_mass(self):

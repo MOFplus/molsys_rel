@@ -59,14 +59,16 @@ def read(mol, f):
         mol.is_topo =   True
         mol.is_cromo =   True
         mol.use_pconn = True
-        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages, mol.colors =\
+        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages, mol.oconn =\
             txyz.read_body(f,mol.natoms,frags=True, topo = True, cromo = True)
     else:
         ftype = 'xyz'
         logger.warning('Unknown mfpx file type specified. Using xyz as default')
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
                 txyz.read_body(f,mol.natoms,frags=False)
-    mol.set_ctab_from_conn()
+    mol.set_ctab_from_conn(pconn_flag=mol.use_pconn)
+    if ftype == 'cromo':
+        mol.set_otab_from_oconn()
     ### pass bb info
     try:
         line = f.readline().split()

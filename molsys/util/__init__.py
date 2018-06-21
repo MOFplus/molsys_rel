@@ -9,5 +9,6 @@ from molsys.util.images import images
 from molsys.util.atomtyper import atomtyper
 from .fragmentizer import fragmentizer
 from .slicer import slicer
+from . import sysmisc
 
-__all__ = ['unit_cell', 'elems', 'rotations', 'atomtyper', 'images', 'fragmentizer','spacegroups', 'slicer']
+__all__ = ['unit_cell', 'elems', 'rotations', 'atomtyper', 'images', 'fragmentizer','spacegroups', 'slicer', 'sysmisc']

@@ -255,7 +255,7 @@ if [ "${REAL_FILE: -5}" == ".mfpx" ]; then
     else
         grep -v \# $REAL_FILE | awk '{$6="0"; $7=""; $8=""; print}' > $TEMP_FILE && $COMMAND $TEMP_FILE ${@//$REAL_FILE/}
     fi
-elif [ "${REAL_FILE: -4}" == ".xyz" ] || [ "${REAL_FILE: -4}" == ".txyz" ] ; then
+elif [ "${REAL_FILE: -4}" == ".xyz" ] || [ "${REAL_FILE: -5}" == ".txyz" ] ; then
     ### opens xyz or txyz file, even with strings as atomtypes
     ### if the extension is ".xyz" or ".txyz":
     ###     remove the comments, fill 6th column with 0's

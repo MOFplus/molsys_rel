@@ -186,7 +186,7 @@ def read_body(f, natoms, frags = True, topo = False, cromo = False):
         -natoms (int)  : number of atoms in body
         -frags  (bool) : flag to specify if fragment info is in body or not
         -topo   (bool) : flag to specify if pconn info is in body or not
-        -cromo  (bool) : flag to specify if colors info is in body or not
+        -cromo  (bool) : flag to specify if oconn info is in body or not
     """
     elems       = []
     xyz         = []
@@ -196,7 +196,7 @@ def read_body(f, natoms, frags = True, topo = False, cromo = False):
     fragnumbers = []
     pconn       = []
     pimages     = []
-    colors      = []
+    oconn      = []
     if topo: frags=False
     for i in range(natoms):
         lbuffer = f.readline().split()
@@ -217,11 +217,11 @@ def read_body(f, natoms, frags = True, topo = False, cromo = False):
         elif cromo:
             txt = lbuffer[6+offset:]
             a = [[int(j) for j in i.split('/')] for i in txt]
-            c,pc,pim,cl = [i[0]-1 for i in a], [images[i[1]] for i in a], [i[1] for i in a], [i[2] for i in a]
+            c,pc,pim,oc = [i[0]-1 for i in a], [images[i[1]] for i in a], [i[1] for i in a], [i[2] for i in a]
             conn.append(c)
             pconn.append(pc)
             pimages.append(pim)
-            colors.append(cl)
+            oconn.append(oc)
         else:
             txt = lbuffer[6+offset:]
             a = [[int(j) for j in i.split('/')] for i in txt]
@@ -231,7 +231,7 @@ def read_body(f, natoms, frags = True, topo = False, cromo = False):
             pimages.append(pim)
     if topo:
         if cromo:
-            return elems, numpy.array(xyz), atypes, conn, pconn, pimages, colors
+            return elems, numpy.array(xyz), atypes, conn, pconn, pimages, oconn
         else:
 #            return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers, pconn
             return elems, numpy.array(xyz), atypes, conn, pconn, pimages
@@ -279,12 +279,10 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
         atypes = newatypes
         frags = False ### encoded in one column only
     for i in range(mol.natoms):
-        try:
-            line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
+        line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
-        except IndexError:
-            import pdb; pdb.set_trace()
-        if frags == True: line += ("%-16s %5d ") % tuple([fragtypes[i]]+[fragnumbers[i]])
+        if frags == True:
+            line += ("%-16s %5d ") % tuple([fragtypes[i]]+[fragnumbers[i]])
         conn = (numpy.array(cnct[i])+1).tolist()
         if len(conn) != 0:
             if topo:
