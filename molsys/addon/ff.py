@@ -567,7 +567,7 @@ class ff(base):
         self.check_consistency()
 
     @timer("assign multi parameters")
-    def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}, smallring = False):
+    def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}, smallring = False, generic = None):
         """
         Method to orchestrate the parameter assignment fo the curent system using multiple force fields
         defined in FFs by getting the corresponding data from the webAPI.
@@ -596,7 +596,7 @@ class ff(base):
             elif i == len(FFs)-1:
                 self.par.FF = ff
                 self.assign_params(ff, refsysname = refsysname, equivs = equivs, azone = azone, 
-                        special_atypes = special_atypes, consecutive = False, ricdetect = False, smallring=smallring)
+                        special_atypes = special_atypes, consecutive = False, ricdetect = False, smallring=smallring, generic = generic)
             # in between
             else:
                 self.par.FF = ff
@@ -608,7 +608,7 @@ class ff(base):
                 
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
-            plot=False, consecutive=False, ricdetect=True, smallring = False):
+            plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None):
         """
         Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -737,23 +737,49 @@ class ff(base):
             if refsysname:
                 self.fixup_refsysparams()
             else:
-                self.check_consistency()
+                self.check_consistency(generic = generic)
         self.timer.write_logger(logger.info)
         return
 
-    def check_consistency(self):
+    def check_consistency(self, generic = None):
         """
         Method to check the consistency of the assigned parameters, if params are
         missing an AssignmentError is raised.
+
+        Kwargs:
+            generic(str): name of the FF which should be used as source for
+                the generic parameters, defaults to None
         """
+        print (generic)
+        if generic is not None:
+            gen_params = self.api.get_params_from_ref(generic, "generic")["fourbody"]
         complete = True
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             unknown_par = []
             for i, p in enumerate(self.ric_type[ic]):
                 if self.parind[ic][i] is None:
-                    parname = self.get_parname_sort(p,ic)
-                    if not parname in unknown_par:
-                        unknown_par.append(parname)
+                    # if possible we apply here a generic parameter
+                    match = False
+                    if generic is not None and ic == "dih":
+                        aft_list = self.get_parname_equiv(p,ic,"generic")
+                        full_parname_list = []
+                        parname, par_list = self.pick_params(aft_list, ic, p, gen_params)
+                        if par_list != None:
+                            for par in par_list:
+                                sparname = map(str, parname)
+                                full_parname = par[0]+"->("+string.join(sparname,",")+")|generic"
+                                full_parname_list.append(full_parname)
+                                if not full_parname in self.par[ic]:
+                                    logger.info("  added parameter to table: %s" % full_parname)
+                                    self.par[ic][full_parname] = par
+                        if full_parname_list != []:
+                            self.parind[ic][i] = full_parname_list
+                            match = True
+                    # no params found
+                    if match == False:
+                        parname = self.get_parname_sort(p,ic)
+                        if not parname in unknown_par:
+                            unknown_par.append(parname)
             if len(unknown_par) > 0:
                 complete = False
                 for p in unknown_par: logger.error("No params for %3s %s" % (ic, p))
@@ -1266,8 +1292,8 @@ class ff(base):
                    "oop": ((0,1,2,3),(0,1,3,2),(0,2,1,3),(0,2,3,1),(0,3,1,2),(0,3,2,1))}
         if len(aft_list) == 1:
             parname = tuple(aft_list)
-            if parname in pardir[ic]:
-                return parname, pardir[ic][parname]
+            if pardir[ic].index(parname, "wild_ft") >= 0:
+                return parname, pardir[ic].__getitem__(parname, wildcards = True)
             else:
                 return (), None
         else:         
@@ -1283,16 +1309,16 @@ class ff(base):
                 perm = ic_perm[cic]
                 for p in perm:
                     parname = tuple(map(aft_list.__getitem__, p))
-                    if parname in pardir[cic]:
+                    if pardir[cic].index(parname, "wild_ft") >= 0:
                         # if we found a bnd5 or ang5 we have to modify
                         # the name of the parameter
                         if cic == "bnd5" or cic == "ang5":
-                            param = copy.deepcopy(pardir[cic][parname])
+                            param = copy.deepcopy(pardir[cic].__getitem__(parname, wildcards = True))
                             lparname = list(parname)
                             lparname.append("r5")
                             return tuple(lparname), param
                         else:
-                            return parname, pardir[cic][parname]
+                            return parname, pardir[cic].__getitem__(parname, wildcards = True)
             # if we get to this point all permutations gave no result
             return (), None
 
