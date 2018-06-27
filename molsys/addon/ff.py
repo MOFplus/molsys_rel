@@ -311,10 +311,10 @@ class ric:
                                     dihedrals.append(d)
                             elif self.aftypes[a2] in sqp:
                                 # calculate angle a1 a2 a3
-                                if abs(self.get_angle([a1,a2,a3])-180.0) > 2.0: dihedrals.append(d)
+                                if abs(self.get_angle([a1,a2,a3])-180.0) > 10.0: dihedrals.append(d)
                             elif self.aftypes[a3] in sqp:
                                 # calculate angle a2 a3 a4
-                                if abs(self.get_angle([a2,a3,a4])-180.0) > 2.0: dihedrals.append(d)
+                                if abs(self.get_angle([a2,a3,a4])-180.0) > 10.0: dihedrals.append(d)
                             else:
                                 dihedrals.append(d)
         return dihedrals
@@ -806,12 +806,12 @@ class ff(base):
         if hasattr(self, "active_zone") == False:
             self.active_zone = []
         defaults = {
-            "bnd" : ("mm3", 2, "b", ["d","r"]),
-            "ang" : ("mm3", 2, "a", ["d","r"]),
-            "dih" : ("cos3", 3, "d", ["d","d","d"]),
-            "oop" : ("harm", 2, "o", ["d",0.0]),
-            "cha" : ("gaussian", 2, "c", ["d","d"]),
-            "vdw" : ("buck6d", 2, "v", ["d","d"])}
+            "bnd" : ("mm3", 2, "b", ["d","r"], [0.0, 8.0]),
+            "ang" : ("mm3", 2, "a", ["d","r"], [0.0, 2.0]),
+            "dih" : ("cos3", 3, "d", ["d","d","d"], [0.0, 15.0]),
+            "oop" : ("harm", 2, "o", ["d",0.0], [0.0, 1.0]),
+            "cha" : ("gaussian", 2, "c", ["d","d"], [0.0, 2.0]),
+            "vdw" : ("buck6d", 2, "v", ["d","d"], [0.0, 2.0])}
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             count  = 0
             ric = self.ric_type[ic]
@@ -842,7 +842,7 @@ class ff(base):
                                         self.par.variables[vn]=varpar(self.par,name = vn, 
                                                 val = p.value, range = [0.9*p.value, 1.1*p.value])
                                     else:
-                                        self.par.variables[vn]=varpar(self.par,name = vn)
+                                        self.par.variables[vn]=varpar(self.par,name = vn, range = defaults[ic][4])
                                     self.par.variables[vn].pos.append((ic, fullparname, idx))
                             # hack for strbnd
                             if ic == "ang" and strbnd == True:

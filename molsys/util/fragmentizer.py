@@ -230,7 +230,7 @@ class fragmentizer:
         if self.pure_check(mol):
             logger.info("Fragmentation was successful")
             if man == True:
-                atyper = atomtyper.atomtyper(mol)
+                atyper = atomtyper(mol)
                 atyper()
         else:
             if man == True:
