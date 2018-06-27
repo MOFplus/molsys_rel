@@ -750,7 +750,6 @@ class ff(base):
             generic(str): name of the FF which should be used as source for
                 the generic parameters, defaults to None
         """
-        print (generic)
         if generic is not None:
             gen_params = self.api.get_params_from_ref(generic, "generic")["fourbody"]
         complete = True
