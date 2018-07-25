@@ -2,6 +2,48 @@ import numpy
 import string
 
 
+def read(mol,f):
+    stop = False
+    natoms = 0
+    while not stop:
+        line = f.readline()
+        if "ITEM: NUMBER OF ATOMS" in line:
+            natoms = int(string.split(f.readline())[0])
+        elif "ITEM: BOX BOUNDS" in line:
+            cell = numpy.zeros([3,3])
+            cell[0,0] = float(string.split(f.readline())[1])
+            cell[1,1] = float(string.split(f.readline())[1])
+            cell[2,2] = float(string.split(f.readline())[1])
+        elif "ITEM: ATOMS" in line:
+            assert natoms > 0
+            xyz = numpy.zeros([natoms,3])
+            elems = []
+            atypes = []
+            for i in range(natoms): elems.append("c")
+            for i in range(natoms): atypes.append("c")
+            for i in range(natoms):
+                sline = string.split(f.readline())
+                xyz[int(sline[0])-1,0] = float(sline[3])
+                xyz[int(sline[0])-1,1] = float(sline[4])
+                xyz[int(sline[0])-1,2] = float(sline[5])
+                elems[int(sline[0])-1]  = sline[2].lower()
+                atypes[int(sline[0])-1] = sline[1]
+            stop = True
+    mol.natoms = natoms
+    mol.set_cell(cell)
+    mol.elems = elems
+    mol.atypes = atypes
+    mol.xyz = xyz
+    mol.set_nofrags()
+    mol.set_empty_conn()
+    #mol.detect_conn()
+    return
+
+
+
+
+
+
 def write(mol, fname,vel=None):
     '''
     Write lammpstrj to visualize GCMD runs, write lambda into velocities
