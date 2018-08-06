@@ -38,7 +38,7 @@ class molecules(object):
 
         offset = self._mol.natoms -1
         for i in range(nmols):
-            rndxyz = self._mol.get_frac_from_xyz(numpy.random.uniform(0,1,(3,)))
+            rndxyz = self._mol.get_xyz_from_frac(numpy.random.uniform(0,1,(3,)))
             self._mol.add_mol(newmol,translate=rndxyz)
         #self.nmols += nmols
 
