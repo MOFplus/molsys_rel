@@ -79,7 +79,10 @@ def parse_connstring(mol, con_info, new = True):
         else:
             if new:
                 ss = c.split('*') # ss[0] is the dummy neighbors, ss[1] is the connector atom
-                if len(ss) != 2: raise IOError('This is not a proper BB file, convert with script before!')
+                if len(ss) > 2:
+                    raise IOError('This is not a proper BB file, convert with script before!')
+                elif len(ss) < 2: # neighbor == connector
+                    ss *= 2
                 stt = ss[0].split(',')
                 mol.connectors.append(int(ss[1])-1)
                 mol.connectors_type.append(contype_count)
