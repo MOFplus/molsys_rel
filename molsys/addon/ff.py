@@ -38,6 +38,7 @@ def print(*args, **kwargs):
 
 
 import numpy as np
+import uuid
 import molsys
 from molsys.util.timing import timer, Timer
 from molsys.util import elems
@@ -138,7 +139,7 @@ class ric:
         return
         
 
-    def find_rics(self, specials={"linear": [], "sqp":[]}):
+    def find_rics(self, specials={"linear": [], "sqp":[]}, smallring = False):
         """
         Method to find all rics of the system
         """
@@ -146,6 +147,7 @@ class ric:
         self.ang    = self.find_angles()
         self.oop    = self.find_oops()
         self.dih    = self.find_dihedrals(**specials)
+        if smallring: self.check_smallrings()
         self.report()
         self.timer.write_logger(logger.info)
         return
@@ -182,6 +184,23 @@ class ric:
             for a2 in self.conn[a1]:
                 if a2 > a1: bonds.append(ic([a1, a2]))
         return bonds
+
+    def sort_angle(self, idx):
+        """
+        Method used for sorting angles, according to their
+        aftypes.
+        
+        Args:
+            idx (list): list of indices defining an angle
+        
+        Returns:
+            list: sorted list of idx defining the angle
+        """
+        if str(self.aftypes[idx[0]]) > str(self.aftypes[idx[2]]):
+            idx.reverse()
+        elif idx[0] > idx[2] and str(self.aftypes[idx[0]]) == str(self.aftypes[idx[2]]):
+            idx.reverse()
+        return idx
 
     @timer("find angles")
     def find_angles(self):
@@ -292,13 +311,33 @@ class ric:
                                     dihedrals.append(d)
                             elif self.aftypes[a2] in sqp:
                                 # calculate angle a1 a2 a3
-                                if abs(self.get_angle([a1,a2,a3])-180.0) > 2.0: dihedrals.append(d)
+                                if abs(self.get_angle([a1,a2,a3])-180.0) > 10.0: dihedrals.append(d)
                             elif self.aftypes[a3] in sqp:
                                 # calculate angle a2 a3 a4
-                                if abs(self.get_angle([a2,a3,a4])-180.0) > 2.0: dihedrals.append(d)
+                                if abs(self.get_angle([a2,a3,a4])-180.0) > 10.0: dihedrals.append(d)
                             else:
                                 dihedrals.append(d)
         return dihedrals
+
+    @timer("find smallrings")
+    def check_smallrings(self):
+        """
+        Method needed to check if smallrings are present and to mark the
+        corresponding bonds and angles.
+        """
+        for d in self.dih:
+            if d.ring:
+                # bonds are sorted via atom indices
+                self.bnd[self.bnd.index(sorted(d[0:2]))].ring = d.ring
+                self.bnd[self.bnd.index(sorted(d[1:3]))].ring = d.ring
+                self.bnd[self.bnd.index(sorted(d[2:4]))].ring = d.ring
+                # angles are sorted in respect to aftypes, we have to
+                # check both possibilities
+                ang = self.sort_angle(d[0:3])              
+                self.ang[self.ang.index(ang)].ring = d.ring
+                ang = self.sort_angle(d[1:4])
+                self.ang[self.ang.index(ang)].ring = d.ring
+        return
 
     def get_distance(self,atoms):
         """
@@ -528,7 +567,7 @@ class ff(base):
         self.check_consistency()
 
     @timer("assign multi parameters")
-    def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}):
+    def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}, smallring = False, generic = None):
         """
         Method to orchestrate the parameter assignment fo the curent system using multiple force fields
         defined in FFs by getting the corresponding data from the webAPI.
@@ -552,24 +591,24 @@ class ff(base):
             # first element
             if i == 0: 
                 self.assign_params(ff, refsysname = refsysname,equivs = equivs, azone = azone, 
-                        special_atypes = special_atypes, consecutive = True, ricdetect = True)
+                        special_atypes = special_atypes, consecutive = True, ricdetect = True, smallring=smallring)
             # last element
             elif i == len(FFs)-1:
                 self.par.FF = ff
                 self.assign_params(ff, refsysname = refsysname, equivs = equivs, azone = azone, 
-                        special_atypes = special_atypes, consecutive = False, ricdetect = False)
+                        special_atypes = special_atypes, consecutive = False, ricdetect = False, smallring=smallring, generic = generic)
             # in between
             else:
                 self.par.FF = ff
                 self.assign_params(ff, refsysname = refsysname, equivs = equivs, azone = azone, 
-                        special_atypes = special_atypes,consecutive = True, ricdetect = False)
+                        special_atypes = special_atypes,consecutive = True, ricdetect = False, smallring=smallring)
         return
 
 
                 
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
-            plot=False, consecutive=False, ricdetect=True):
+            plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None):
         """
         Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -611,7 +650,7 @@ class ff(base):
                 special_atypes = self._mol.mpi_comm.bcast(special_atypes, root = 0)
         if ricdetect==True:
             with self.timer("find rics"):
-                self.ric.find_rics(specials = special_atypes)
+                self.ric.find_rics(specials = special_atypes, smallring = smallring)
                 self._init_data()
                 self._init_pardata(FF)
             # as a first step we need to generate the fragment graph
@@ -640,7 +679,9 @@ class ff(base):
                 curr_atomlist = self.ref_atomlists[ref]
                 curr_par = {\
                     "bnd" : self.ref_params[ref]["twobody"]["bnd"],\
+                    "bnd5" : self.ref_params[ref]["twobody"]["bnd5"],\
                     "ang" : self.ref_params[ref]["threebody"]["ang"],\
+                    "ang5" : self.ref_params[ref]["threebody"]["ang5"],\
                     "dih" : self.ref_params[ref]["fourbody"]["dih"],\
                     "oop" : self.ref_params[ref]["fourbody"]["oop"],
                     "cha" : self.ref_params[ref]["onebody"]["charge"],
@@ -657,7 +698,8 @@ class ff(base):
                                 aft_list = self.get_parname_equiv(r,ic,ref)
                                 #aft_list = map(lambda a: self.aftypes[a], r)
                                  # generate list of permuted tuples according to ic and look up params
-                                parname, par_list = self.pick_params(aft_list, ic, curr_par[ic])
+                                #parname, par_list = self.pick_params(aft_list, ic, curr_par[ic])
+                                parname, par_list = self.pick_params(aft_list, ic, r, curr_par)
                                 if par_list != None:
                                     if verbose>1 : logger.info(" found parameter for atoms %20s (types %s) -> %s" % (str(r), aft_list, parname))
                                     for par in par_list:
@@ -667,13 +709,13 @@ class ff(base):
                                                 aidx = r[j]
                                                 if ((str(aft) == par[1][0]) and (aidx not in curr_equi_par)):
                                                     curr_equi_par[aidx] = par[1][1]
-                                                    if verbose>1: logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
+                                                    logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
                                         else:
                                             sparname = map(str, parname)
                                             full_parname = par[0]+"->("+string.join(sparname,",")+")|"+ref
                                             full_parname_list.append(full_parname)
                                             if not full_parname in self.par[ic]:
-                                                if verbose>0: logger.info("  added parameter to table: %s" % full_parname)
+                                                logger.info("  added parameter to table: %s" % full_parname)
                                                 self.par[ic][full_parname] = par
                                 else:
                                     if verbose>1 : logger.info(" NO parameter for atoms %20s (types %s) " % (str(r), aft_list))
@@ -695,23 +737,48 @@ class ff(base):
             if refsysname:
                 self.fixup_refsysparams()
             else:
-                self.check_consistency()
+                self.check_consistency(generic = generic)
         self.timer.write_logger(logger.info)
         return
 
-    def check_consistency(self):
+    def check_consistency(self, generic = None):
         """
         Method to check the consistency of the assigned parameters, if params are
         missing an AssignmentError is raised.
+
+        Kwargs:
+            generic(str): name of the FF which should be used as source for
+                the generic parameters, defaults to None
         """
+        if generic is not None:
+            gen_params = self.api.get_params_from_ref(generic, "generic")["fourbody"]
         complete = True
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             unknown_par = []
             for i, p in enumerate(self.ric_type[ic]):
                 if self.parind[ic][i] is None:
-                    parname = self.get_parname_sort(p,ic)
-                    if not parname in unknown_par:
-                        unknown_par.append(parname)
+                    # if possible we apply here a generic parameter
+                    match = False
+                    if generic is not None and ic == "dih":
+                        aft_list = self.get_parname_equiv(p,ic,"generic")
+                        full_parname_list = []
+                        parname, par_list = self.pick_params(aft_list, ic, p, gen_params)
+                        if par_list != None:
+                            for par in par_list:
+                                sparname = map(str, parname)
+                                full_parname = par[0]+"->("+string.join(sparname,",")+")|generic"
+                                full_parname_list.append(full_parname)
+                                if not full_parname in self.par[ic]:
+                                    logger.info("  added parameter to table: %s" % full_parname)
+                                    self.par[ic][full_parname] = par
+                        if full_parname_list != []:
+                            self.parind[ic][i] = full_parname_list
+                            match = True
+                    # no params found
+                    if match == False:
+                        parname = self.get_parname_sort(p,ic)
+                        if not parname in unknown_par:
+                            unknown_par.append(parname)
             if len(unknown_par) > 0:
                 complete = False
                 for p in unknown_par: logger.error("No params for %3s %s" % (ic, p))
@@ -738,12 +805,12 @@ class ff(base):
         if hasattr(self, "active_zone") == False:
             self.active_zone = []
         defaults = {
-            "bnd" : ("mm3", 2, "b", ["d","r"]),
-            "ang" : ("mm3", 2, "a", ["d","r"]),
-            "dih" : ("cos3", 3, "d", ["d","d","d"]),
-            "oop" : ("harm", 2, "o", ["d",0.0]),
-            "cha" : ("gaussian", 2, "c", ["d","d"]),
-            "vdw" : ("buck6d", 2, "v", ["d","d"])}
+            "bnd" : ("mm3", 2, "b", ["d","r"], [0.0, 8.0]),
+            "ang" : ("mm3", 2, "a", ["d","r"], [0.0, 2.0]),
+            "dih" : ("cos3", 3, "d", ["d","d","d"], [0.0, 15.0]),
+            "oop" : ("harm", 2, "o", ["d",0.0], [0.0, 1.0]),
+            "cha" : ("gaussian", 2, "c", ["d","d"], [0.0, 2.0]),
+            "vdw" : ("buck6d", 2, "v", ["d","d"], [0.0, 2.0])}
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             count  = 0
             ric = self.ric_type[ic]
@@ -774,7 +841,7 @@ class ff(base):
                                         self.par.variables[vn]=varpar(self.par,name = vn, 
                                                 val = p.value, range = [0.9*p.value, 1.1*p.value])
                                     else:
-                                        self.par.variables[vn]=varpar(self.par,name = vn)
+                                        self.par.variables[vn]=varpar(self.par,name = vn, range = defaults[ic][4])
                                     self.par.variables[vn].pos.append((ic, fullparname, idx))
                             # hack for strbnd
                             if ic == "ang" and strbnd == True:
@@ -1014,14 +1081,20 @@ class ff(base):
         # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
         self.timer.start("make ref frag graphs")
         self.ref_systems = {}
+        if self._mol.mpi_rank == 0:
+            ref_mol_strs  = self.api.get_FFrefs_graph(self.scan_ref, out ="str")
+        else:
+            ref_mol_strs = {}
+        if self._mol.mpi_size > 1:
+            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_str, root = 0)
         for ref in self.scan_ref:
-            if self._mol.mpi_rank == 0:
-                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
-            else:
-                ref_mol_str = None
-            if self._mol.mpi_size > 1:
-                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
-            ref_mol = molsys.mol.from_string(ref_mol_str)
+#            if self._mol.mpi_rank == 0:
+#                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
+#            else:
+#                ref_mol_str = None
+#            if self._mol.mpi_size > 1:
+#                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
+            ref_mol = molsys.mol.from_string(ref_mol_strs[ref])
             ref_mol.addon("fragments")
             ref_mol.fragments.make_frag_graph()
             if plot:
@@ -1196,7 +1269,8 @@ class ff(base):
         sorted = aftype_sort(aftypes, ic)
         return pot + "->("+string.join(sorted, ",")+")|"+ref
         
-    def pick_params(self,aft_list,ic, pardir):
+
+    def pick_params(self,aft_list,ic,at_list, pardir):
         """
         Hhelper function to pick params from the dictionary pardir using permutations for the given ic
         if len of aft_list == 1 (ic = vdw or cha) no permutations necessary
@@ -1210,21 +1284,40 @@ class ff(base):
         """
         if aft_list is None: return (), None
         ic_perm = {"bnd": ((0,1), (1,0)),
+                   "bnd5": ((0,1), (1,0)),
                    "ang": ((0,1,2), (2,1,0)),
+                   "ang5": ((0,1,2), (2,1,0)),
                    "dih": ((0,1,2,3),(3,2,1,0)),
                    "oop": ((0,1,2,3),(0,1,3,2),(0,2,1,3),(0,2,3,1),(0,3,1,2),(0,3,2,1))}
         if len(aft_list) == 1:
             parname = tuple(aft_list)
-            if parname in pardir:
-                return parname, pardir[parname]
+            if pardir[ic].index(parname, "wild_ft") >= 0:
+                return parname, pardir[ic].__getitem__(parname, wildcards = True)
             else:
                 return (), None
-        else:
-            perm = ic_perm[ic]
-            for p in perm:
-                parname = tuple(map(aft_list.__getitem__, p))
-                if parname in pardir:
-                    return parname, pardir[parname]
+        else:         
+            # we have to check here also for ring specific parameters
+            if ic == "bnd" and at_list.ring == 5:
+                ics = ["bnd5", "bnd"]
+            elif ic == "ang" and at_list.ring == 5:
+                ics = ["ang5", "ang"]
+            else:
+                ics = [ic]
+            # now we have to loop over ics
+            for cic in ics:
+                perm = ic_perm[cic]
+                for p in perm:
+                    parname = tuple(map(aft_list.__getitem__, p))
+                    if pardir[cic].index(parname, "wild_ft") >= 0:
+                        # if we found a bnd5 or ang5 we have to modify
+                        # the name of the parameter
+                        if cic == "bnd5" or cic == "ang5":
+                            param = copy.deepcopy(pardir[cic].__getitem__(parname, wildcards = True))
+                            lparname = list(parname)
+                            lparname.append("r5")
+                            return tuple(lparname), param
+                        else:
+                            return parname, pardir[cic].__getitem__(parname, wildcards = True)
             # if we get to this point all permutations gave no result
             return (), None
 
@@ -1258,10 +1351,13 @@ class ff(base):
         """
         if self.mpi_rank > 0:
             return
+        # create a random hash to ensure that ric and par file belong together
+        hash = str(uuid.uuid4())
         # dummy dicts to assign a number to the type
         par_types = self.enumerate_types()
         # write the RICs first
         f = open(fname+".ric", "w")
+        f.write("HASH: %s\n" % hash)
         logger.info("Writing RIC to file %s.ric" % fname)
         # should we add a name here in the file? the FF goes to par. keep it simple ...
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
@@ -1289,6 +1385,7 @@ class ff(base):
         else:
             f = open(fname+".par", "w")             
             logger.info("Writing parameter to file %s.par" % fname)
+        f.write("HASH: %s\n" % hash)
         f.write("FF %s\n\n" % self.par.FF)
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             ptyp = par_types[ic]
@@ -1443,6 +1540,7 @@ chargetype     gaussian\n\n''')
             - fit(bool, optional): specify if an fpar file should be read in, 
             holding fitting information, defaults to False
         """
+        hash = None
         fric = open(fname+".ric", "r")
         ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
         ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
@@ -1457,7 +1555,9 @@ chargetype     gaussian\n\n''')
                 stop = True
             sline = line.split()
             if len(sline)> 0:
-                if sline[0] in ric_type:
+                if sline[0] == "HASH:": 
+                    hash = sline[1]
+                elif sline[0] in ric_type:
                     curric = sline[0]
                     curric_len = ric_len[ric_type.index(curric)]
                     assigned.append(curric)
@@ -1528,12 +1628,16 @@ chargetype     gaussian\n\n''')
         else:
             fpar = open(fname+".par", "r")
         stop = False
-        while not stop:
+        found_hash = False
+        while not stop:         
             line = fpar.readline()
             if len(line) == 0:
                 stop = True
             sline = line.split()
             if len(sline)>0:
+                if sline[0] == "HASH:":
+                    found_hash = True
+                    assert sline[1] == hash, "Hashes of ric and par file do not match!"
                 if sline[0][0] == "#": continue 
                 curric = sline[0].split("_")[0]
                 if sline[0]=="FF":
@@ -1590,6 +1694,9 @@ chargetype     gaussian\n\n''')
                     for i,r in enumerate(self.ric_type[curric]):
                         parind[i] = t2ident[r.type]
         fpar.close()
+        # check if both fpar and ric file have hashes
+        if hash is not None and found_hash == False:
+            raise IOError("ric file has a hash, but par has not")
         logger.info("read parameter from file %s.par" % fname)
         ### replace variable names by the current value
         if self.fit: 

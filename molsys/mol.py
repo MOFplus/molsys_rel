@@ -182,6 +182,25 @@ class mol(mpiobject):
         return m
 
     @classmethod
+    def from_fileobject(cls, f, ftype='mfpx', **kwargs):
+        ''' generic reader for the mol class, reading from a string
+        Parameters:
+            string       : the string to be read
+            ftype="mfpx" : the parser type that is used to read the file
+            **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        m = cls()
+        logger.info("reading string as %s" % str(ftype))
+        if ftype in formats.read:
+            formats.read[ftype](m,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
+        return m
+
+    
+
+    @classmethod
     def from_abinit(cls, elems, xyz, cell, frac = False):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
@@ -217,6 +236,14 @@ class mol(mpiobject):
         m.set_nofrags()
         m.set_empty_conn()
         m.detect_conn()
+        return m
+
+    @classmethod
+    def from_ff(cls, basename, fit = False):
+        m = cls()
+        m.read(basename)
+        m.addon("ff")
+        m.ff.read(basename, fit = fit)
         return m
 
 

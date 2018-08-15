@@ -14,6 +14,7 @@ read = {
         'freq':freq.read,
         'mol2':mol2.read,
         'aginp':aginp.read,
+        'lammpstrj':lammpstrj.read,
 }
 
 write = {
