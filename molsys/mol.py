@@ -710,7 +710,7 @@ class mol(mpiobject):
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn,pconn
 
-    def apply_pbc(self, xyz=None, fixidx=-1):
+    def apply_pbc(self, xyz=None, fixidx=0):
         ''' 
         apply pbc to the atoms of the system or some external positions
         Note: If pconn is used it is ivalid after this operation and will be reconstructed.
@@ -757,7 +757,7 @@ class mol(mpiobject):
         """
         legacy method maps on apply_pbc
         """
-        self.apply_pbc()
+        self.apply_pbc(-1)
         return
     
     def get_cell(self):
