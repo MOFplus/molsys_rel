@@ -217,8 +217,13 @@ class ric:
                 aa1 = apex_atoms[ia]
                 other_apex_atoms = apex_atoms[ia+1:]
                 for aa2 in other_apex_atoms:
-                    if str(self.aftypes[aa1]) <= str(self.aftypes[aa2]):
+                    if str(self.aftypes[aa1]) < str(self.aftypes[aa2]):
                         angles.append(ic([aa1, ca, aa2]))
+                    elif str(self.aftypes[aa1]) == str(self.aftypes[aa2]):
+                        if aa1 < aa2:
+                            angles.append(ic([aa1, ca, aa2]))
+                        else:
+                            angles.append(ic([aa2, ca, aa1]))
                     else:
                         angles.append(ic([aa2, ca, aa1]))
         return angles
@@ -311,10 +316,12 @@ class ric:
                                     dihedrals.append(d)
                             elif self.aftypes[a2] in sqp:
                                 # calculate angle a1 a2 a3
-                                if abs(self.get_angle([a1,a2,a3])-180.0) > 10.0: dihedrals.append(d)
+                                if abs(self.get_angle([a1,a2,a3])-180.0) > 10.0:
+                                    dihedrals.append(d)
                             elif self.aftypes[a3] in sqp:
                                 # calculate angle a2 a3 a4
-                                if abs(self.get_angle([a2,a3,a4])-180.0) > 10.0: dihedrals.append(d)
+                                if abs(self.get_angle([a2,a3,a4])-180.0) > 10.0:
+                                    dihedrals.append(d)
                             else:
                                 dihedrals.append(d)
         return dihedrals
@@ -345,7 +352,7 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.apply_pbc(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms],fixidx = 0)
         apex_1 = xyz[0]
         apex_2 = xyz[1]
         return np.linalg.norm(apex_1-apex_2)
@@ -356,7 +363,8 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.apply_pbc(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms], fixidx = 0)
+        #xyz = self.xyz[atoms]
         apex_1 = xyz[0]
         apex_2 = xyz[2]
         central = xyz[1]
@@ -395,7 +403,7 @@ class ric:
         :Parameters:
             - atoms (list): list of atomindices
         """
-        xyz = self._mol.apply_pbc(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms], fixidx = 0)
         apex1 = xyz[0]
         apex2 = xyz[3]
         central1 = xyz[1]
