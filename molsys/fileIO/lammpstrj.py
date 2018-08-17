@@ -2,7 +2,7 @@ import numpy
 import string
 
 
-def read(mol,f):
+def read(mol,f,triclinic=False):
     stop = False
     natoms = 0
     while not stop:
@@ -11,9 +11,20 @@ def read(mol,f):
             natoms = int(string.split(f.readline())[0])
         elif "ITEM: BOX BOUNDS" in line:
             cell = numpy.zeros([3,3])
-            cell[0,0] = float(string.split(f.readline())[1])
-            cell[1,1] = float(string.split(f.readline())[1])
-            cell[2,2] = float(string.split(f.readline())[1])
+            if triclinic is not True:
+                cell[0,0] = float(string.split(f.readline())[1])
+                cell[1,1] = float(string.split(f.readline())[1])
+                cell[2,2] = float(string.split(f.readline())[1])
+            else:
+                c1 = [float(x) for x in f.readline().split() if x != '']
+                cell[0,0] = c1[1]-c1[0]
+                cell[0,1] = c1[2]
+                c1 = [float(x) for x in f.readline().split() if x != '']
+                cell[1,1] = c1[1]-c1[0]
+                cell[0,2] = c1[2]
+                c1 = [float(x) for x in f.readline().split() if x != '']
+                cell[2,2] = c1[1]-c1[0]
+                cell[1,2] = c1[2]
         elif "ITEM: ATOMS" in line:
             assert natoms > 0
             xyz = numpy.zeros([natoms,3])
