@@ -757,7 +757,7 @@ class mol(mpiobject):
         """
         legacy method maps on apply_pbc
         """
-        self.apply_pbc(-1)
+        self.apply_pbc(fixidx=-1)
         return
     
     def get_cell(self):
