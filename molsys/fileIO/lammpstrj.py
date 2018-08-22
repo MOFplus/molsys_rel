@@ -2,7 +2,7 @@ import numpy
 import string
 
 
-def read(mol,f,triclinic=False):
+def read(mol,f,triclinic=False,atom_offset=0):
     stop = False
     natoms = 0
     while not stop:
@@ -33,12 +33,13 @@ def read(mol,f,triclinic=False):
             for i in range(natoms): elems.append("c")
             for i in range(natoms): atypes.append("c")
             for i in range(natoms):
-                sline = string.split(f.readline())
-                xyz[int(sline[0])-1,0] = float(sline[3])
-                xyz[int(sline[0])-1,1] = float(sline[4])
-                xyz[int(sline[0])-1,2] = float(sline[5])
-                elems[int(sline[0])-1]  = sline[2].lower()
-                atypes[int(sline[0])-1] = sline[1]
+                sline = string.split(f.readline()) 
+                idx = int(sline[0]) -1 - atom_offset
+                xyz[idx,0] = float(sline[3])
+                xyz[idx,1] = float(sline[4])
+                xyz[idx,2] = float(sline[5])
+                elems[idx]  = sline[2].lower()
+                atypes[idx] = sline[1]
             stop = True
     mol.natoms = natoms
     mol.set_cell(cell)
