@@ -2,6 +2,60 @@ import numpy
 import string
 
 
+def read(mol,f,triclinic=False,atom_offset=0):
+    stop = False
+    natoms = 0
+    while not stop:
+        line = f.readline()
+        if "ITEM: NUMBER OF ATOMS" in line:
+            natoms = int(string.split(f.readline())[0])
+        elif "ITEM: BOX BOUNDS" in line:
+            cell = numpy.zeros([3,3])
+            if triclinic is not True:
+                cell[0,0] = float(string.split(f.readline())[1])
+                cell[1,1] = float(string.split(f.readline())[1])
+                cell[2,2] = float(string.split(f.readline())[1])
+            else:
+                c1 = [float(x) for x in f.readline().split() if x != '']
+                cell[0,0] = c1[1]-c1[0]
+                cell[0,1] = c1[2]
+                c1 = [float(x) for x in f.readline().split() if x != '']
+                cell[1,1] = c1[1]-c1[0]
+                cell[0,2] = c1[2]
+                c1 = [float(x) for x in f.readline().split() if x != '']
+                cell[2,2] = c1[1]-c1[0]
+                cell[1,2] = c1[2]
+        elif "ITEM: ATOMS" in line:
+            assert natoms > 0
+            xyz = numpy.zeros([natoms,3])
+            elems = []
+            atypes = []
+            for i in range(natoms): elems.append("c")
+            for i in range(natoms): atypes.append("c")
+            for i in range(natoms):
+                sline = string.split(f.readline()) 
+                idx = int(sline[0]) -1 - atom_offset
+                xyz[idx,0] = float(sline[3])
+                xyz[idx,1] = float(sline[4])
+                xyz[idx,2] = float(sline[5])
+                elems[idx]  = sline[2].lower()
+                atypes[idx] = sline[1]
+            stop = True
+    mol.natoms = natoms
+    mol.set_cell(cell)
+    mol.elems = elems
+    mol.atypes = atypes
+    mol.xyz = xyz
+    mol.set_nofrags()
+    mol.set_empty_conn()
+    #mol.detect_conn()
+    return
+
+
+
+
+
+
 def write(mol, fname,vel=None):
     '''
     Write lammpstrj to visualize GCMD runs, write lambda into velocities

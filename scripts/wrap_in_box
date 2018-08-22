@@ -14,19 +14,14 @@ import molsys.mol as mol
 
 
 fi = sys.argv[1]
-fo = sys.argv[2]
 fi_type = fi.split('.')[-1]
-fo_type = fo.split('.')[-1]
+fo = fi #.split('.')[0]+'_'+sys.argv[2]+'.mfpx'
+fo_type = fi_type
 
 
 m = mol()
 m.read(fi, ftype = fi_type)
-if fi_type == 'xyz':
-    m.detect_conn(remove_duplicates = True)
-    m.set_nofrags()
+m.wrap_in_box()
 
-if (fo_type == 'txyz' and fi_type=='mfpx' and m.fragtypes.count(-1) == 0): # we ask only if necessary
-    answer = raw_input('mfpx2txyz conversion. Do you want to add the fragment to the atomtype? [y/n, default:n]')
-    if answer == 'y':
-        m.atypes = [i+'@'+j for i,j in zip(m.atypes,m.fragtypes)]
+
 m.write(fo, ftype = fo_type)

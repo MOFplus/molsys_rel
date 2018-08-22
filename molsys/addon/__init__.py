@@ -42,4 +42,4 @@ from .base import base
 from .ff import ff
 from .molecules import molecules
 
-__all__=["graph", "fragments", "bb", "zmat", "spg", "ff", "molecules", "ric" "base"]
+__all__=["graph", "fragments", "bb", "zmat", "spg", "ff", "molecules", "ric", "base"]

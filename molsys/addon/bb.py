@@ -61,11 +61,11 @@ class bb:
         if not linker:
             if self.mol.zflip: logger.warning("zflip only supported for linkers")
             if self.mol.nrot>1: logger.debug("rotations only supported for linkers")
-        if linker: self.rotate_on_z()
         self.mol.label = label
         #self.find_dummies()
         self.center()
         self.extract_connector_xyz()
+        if linker: self.rotate_on_z()
 #        self.hide_dummy_atoms()
         return
 

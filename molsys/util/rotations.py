@@ -251,15 +251,12 @@ def rotate_around_vector(m,vector,origin=[0.0,0.0,0.0],degrees=5.0):
     m.xyz += origin
     return 
 
-
-
-
-
-
-
-
-
-
-
-
-
+def get_spherical_coordinates(xyz):
+    #ptsnew = numpy.hstack((xyz, numpy.zeros(xyz.shape)))
+    ptsnew = numpy.zeros(xyz.shape)
+    xy = xyz[:,0]**2 + xyz[:,1]**2
+    ptsnew[:,0] = numpy.sqrt(xy + xyz[:,2]**2)
+    ptsnew[:,1] = numpy.arctan2(numpy.sqrt(xy), xyz[:,2]) # for elevation angle defined from Z-axis down
+    #ptsnew[:,1] = numpy.arctan2(xyz[:,2], np.sqrt(xy)) # for elevation angle defined from XY-plane up
+    ptsnew[:,2] = numpy.arctan2(xyz[:,1], xyz[:,0])
+    return ptsnew

@@ -138,11 +138,11 @@ class mol(mpiobject):
         try:
             f = open(fname, "r")
         except IOError:
+            logger.warning('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
             try:
                 f = open(fname+'.'+ftype, "r")
             except:
-                f = fname
-                pass ## in this case, parse the filename
+                raise IOError('the file %s does not exist' % (fname,))
         if ftype in formats.read:
             formats.read[ftype](self,f,**kwargs)
         else:
@@ -182,6 +182,25 @@ class mol(mpiobject):
         return m
 
     @classmethod
+    def from_fileobject(cls, f, ftype='mfpx', **kwargs):
+        ''' generic reader for the mol class, reading from a string
+        Parameters:
+            string       : the string to be read
+            ftype="mfpx" : the parser type that is used to read the file
+            **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        m = cls()
+        logger.info("reading string as %s" % str(ftype))
+        if ftype in formats.read:
+            formats.read[ftype](m,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
+        return m
+
+    
+
+    @classmethod
     def from_abinit(cls, elems, xyz, cell, frac = False):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
@@ -217,6 +236,14 @@ class mol(mpiobject):
         m.set_nofrags()
         m.set_empty_conn()
         m.detect_conn()
+        return m
+
+    @classmethod
+    def from_ff(cls, basename, fit = False):
+        m = cls()
+        m.read(basename)
+        m.addon("ff")
+        m.ff.read(basename, fit = fit)
         return m
 
 
@@ -683,7 +710,7 @@ class mol(mpiobject):
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn,pconn
 
-    def apply_pbc(self, xyz=None, fixidx=-1):
+    def apply_pbc(self, xyz=None, fixidx=0):
         ''' 
         apply pbc to the atoms of the system or some external positions
         Note: If pconn is used it is ivalid after this operation and will be reconstructed.
@@ -730,7 +757,7 @@ class mol(mpiobject):
         """
         legacy method maps on apply_pbc
         """
-        self.apply_pbc()
+        self.apply_pbc(fixidx=-1)
         return
     
     def get_cell(self):
@@ -973,7 +1000,10 @@ class mol(mpiobject):
         return m
 
     ##### add and delete atoms and bonds ###########################################################
-
+    
+    def add_bond(self,idx1,idx2):
+        ''' function necessary for legacy reasons! '''
+        self.add_bonds(idx1,idx2)
 
     def add_bonds(self, lista1, lista2, many2many=False):
         """ 
@@ -1042,11 +1072,11 @@ class mol(mpiobject):
             d0 = self.get_distvec(a11,a21)
             d1 = self.get_distvec(a11,a22)
             if d1 > d0: #straight
-                self.add_bond(a11,a21)
-                self.add_bond(a12,a22)
+                self.add_bonds(a11,a21)
+                self.add_bonds(a12,a22)
             else: #cross
-                self.add_bond(a11,a22)
-                self.add_bond(a12,a21)
+                self.add_bonds(a11,a22)
+                self.add_bonds(a12,a21)
         else:
             from scipy.optimize import linear_sum_assignment as hungarian
             dim = len(lista1)
@@ -1259,7 +1289,6 @@ class mol(mpiobject):
         self.translate(-center)
         return
 
-
     ##### distance measurements #####################
 
     def get_distvec(self, i, j, thresh=SMALL_DIST):
@@ -1294,6 +1323,36 @@ class mol(mpiobject):
             r = all_r[closest[0]]
         else:
             if i == j: return
+            r = rj-ri
+            d = np.sqrt(np.sum(r*r))
+            closest=[0]
+        return d, r, closest
+
+    def get_dist(self, ri, rj, thresh=SMALL_DIST):
+        """ vector from i to j
+        This is a tricky bit, because it is needed also for distance detection in the blueprint
+        where there can be small cell params wrt to the vertex distances.
+        In other words: i can be bonded to j multiple times (each in a different image)
+        and i and j could be the same!!
+        :Parameters':
+            - i,j  : the indices of the atoms for which the distance is to be calculated"""
+        if self.periodic:
+            all_rj = rj + self.images_cellvec
+            all_r = all_rj - ri
+            all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+            d_sort = np.argsort(all_d)
+            closest = d_sort[0]
+            closest=[closest]  # THIS IS A BIT OF A HACK BUT WE MAKE IT ALWAYS A LIST ....
+            if (abs(all_d[closest[0]]-all_d[d_sort[1]]) < thresh):
+                # oops ... there is more then one image atom in the same distance
+                #  this means the distance is larger then half the cell width
+                # in this case we have to return a list of distances
+                for k in d_sort[1:]:
+                    if (abs(all_d[d_sort[0]]-all_d[k]) < thresh):
+                        closest.append(k)
+            d = all_d[closest[0]]
+            r = all_r[closest[0]]
+        else:
             r = rj-ri
             d = np.sqrt(np.sum(r*r))
             closest=[0]
