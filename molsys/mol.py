@@ -717,7 +717,7 @@ class mol(mpiobject):
         
         Args:
             xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
-            fixidx (int) : for an external system the origin can be defined. default=-1 which meas that coordinates are not shifted
+            fixidx (int) : for an external system the origin can be defined (all atoms in one image). default=0 which means atom0 is reference, if fixidx=-1 all atoms will be wrapped
             
         Returns:
             xyz, in case xyz is not None (wrapped coordinates are returned) otherwise None is returned
@@ -757,7 +757,7 @@ class mol(mpiobject):
         """
         legacy method maps on apply_pbc
         """
-        self.apply_pbc(fixidx=-1)
+        self.apply_pbc()
         return
     
     def get_cell(self):
@@ -1004,6 +1004,7 @@ class mol(mpiobject):
     def add_bond(self,idx1,idx2):
         ''' function necessary for legacy reasons! '''
         self.add_bonds(idx1,idx2)
+        return
 
     def add_bonds(self, lista1, lista2, many2many=False):
         """ 
@@ -1086,7 +1087,7 @@ class mol(mpiobject):
                     dmat[e1,e2] = self.get_distvec(a1,a2)[0]
             a1which, a2which = hungarian(dmat)
             for i in range(dim):
-                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
+                self.add_bonds(lista1[a1which[i]], lista2[a2which[i]])
         return
 
     def delete_bond(self, i, j):
