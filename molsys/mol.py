@@ -138,11 +138,11 @@ class mol(mpiobject):
         try:
             f = open(fname, "r")
         except IOError:
+            logger.warning('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
             try:
                 f = open(fname+'.'+ftype, "r")
             except:
-                f = fname
-                pass ## in this case, parse the filename
+                raise IOError('the file %s does not exist' % (fname,))
         if ftype in formats.read:
             formats.read[ftype](self,f,**kwargs)
         else:
