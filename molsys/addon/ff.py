@@ -1815,8 +1815,20 @@ chargetype     gaussian\n\n''')
 
     def to_latex(self, refsys, ic, datypes = None):
         """
-        Method to publish parameters as latex tables.
+        Method to publish parameters as latex tables. This method needs pandas installed.
+
+        Args:
+            refsys (str): reference system for which the parameters should
+                be published.
+            ic (str): Internal coordinate for which the parameters should
+                be published
+            datypes (dict, optional): Defaults to None. Dictionary to 
+                convert atomtypes to more readable types.
+        
+        Returns:
+            str: latex code as str
         """
+   
         import pandas as pd
         mdyn2kcal=143.88
         units = {
