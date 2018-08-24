@@ -32,6 +32,7 @@ class slicer:
         """
         self.mol = mol
         self.planes = []
+        self.plane_names = []
         self.stubs = {}
         # calibrate what is the origin of the initial system
         if orig_atoms:
@@ -44,7 +45,7 @@ class slicer:
         self.cell_factor = cell_factor
         return
     
-    def set_stub(self, atype, new_elem, new_atype, dist):
+    def set_stub(self, atype, new_elem, new_atype, dist, plane_name="plane"):
         """set a new stub definition (used when slicing)
         
         Args:
@@ -52,18 +53,20 @@ class slicer:
             new_elem (string): Element of the stub
             new_atype (string): atomtype of the stub
             dist (float): distance from the remaining element
+            plane_name (string, optional): defaults to "plane". Name of plane to use this stub for.
         """
-        self.stubs[atype] = (new_elem, new_atype, dist)
+        self.stubs[atype+"_"+plane_name] = (new_elem, new_atype, dist)
         return
     
-    def set_plane(self, hkl, dist=None, symm=False):
-        """set a new plane to cut
-        
+    def set_plane(self, hkl, name="plane", dist=None, symm=False):
+        """set a plane by hkl and dist, if symm is true a second plane with dist = -dist is added
+
         Args:
-            hkl (list of integers): defines the hkl plane to be sliced
-            dist (float, optional): Defaults to None. distance in multiples of cell params from origin where to cut
-            symm (bool, optional): Defaults to False. if True a second plane at negative dist is applied
-        """
+            hkl (list): hkl indices as a list
+            name (string, optional): Defaults to "plane". name of the plane
+            dist (float, optional): Defaults to None. distance from origin
+            symm (bool, optional): Defaults to False. add another plane at -dist if True
+        """        
         hkl = np.array(hkl)
         assert hkl.shape == (3,)
         if dist is None:
@@ -71,8 +74,10 @@ class slicer:
         cell = self.mol.get_cell()
         vect = np.dot(cell, hkl)
         self.planes.append(vect*dist)
+        self.plane_names.append(name)
         if symm:
             self.planes.append(vect*-dist)
+            self.plane_names.append(name)
         return
     
     def __call__(self, supercell=None, copy=False, orig=[0,0,0], max_dist=2.0):
@@ -96,7 +101,8 @@ class slicer:
         stubs  = []
         xyz = mol.get_xyz() - shift
         periodic = np.array([True,True,True])
-        for p in self.planes:
+        for ip, p in enumerate(self.planes):
+            pname = self.plane_names[ip]
             # run over all planes and find those atoms to be sliced 
             # at the same time detect those to be fixed with a stub
             distp = np.sqrt((p*p).sum())
@@ -116,20 +122,23 @@ class slicer:
                                 dvect = np.sqrt((vect*vect).sum())
                                 vect = vect/dvect
                                 if dvect < max_dist:
-                                    stubs.append((j, vect))
+                                    stubs.append((j, vect, pname))
             # no test which dimension this plane cuts
             periodic = np.logical_and(np.equal(p, 0.0),periodic)
         # now add stubs (only those registered)
+        print self.stubs.keys()
         for s in stubs:
             if s[0] not in delete:
                 at = mol.get_atypes()[s[0]]
-                if at in self.stubs:
-                    sel, sat, sdist = self.stubs[at]
+                stub_name = at+"_"+s[2]
+                print stub_name
+                if stub_name in self.stubs:
+                    sel, sat, sdist = self.stubs[stub_name]
                     # to compute the new position we need sdist times the unit vect plus the overall shift
                     spos = xyz[s[0]]+sdist*s[1]+shift
                     k = mol.add_atom(sel, sat, spos)
                     # print("adding bond between %d %s and %d %s" % (s[0], self.mol.elems[s[0]], k, self.mol.elems[k]))
-                    mol.add_conn(s[0], k)
+                    mol.add_bonds(s[0], k)
         # now all is parsed and we can remove the corresponding atoms
         mol.delete_atoms(delete) 
         # now add an offset to the cell for all nonperiodic dims
