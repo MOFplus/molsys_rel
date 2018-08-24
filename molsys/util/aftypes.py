@@ -12,11 +12,21 @@ Created on Sun Mar 26 18:09:01 2017
 
 # generates the missing rich comparison methods
 from functools import total_ordering
+# import regular expressions module
+import re
 
 @total_ordering
 class aftype(object):
 
     def __init__(self, atype, fragtype):
+        # boolean for * fragtype
+        self._wild_ft = False
+        # boolean for * atype
+        self._wild_at = False
+        # boolean for pure elem atype
+        self._pure = False
+        # boolean for truncated atype
+        self._truncated = False
         self.atype = atype
         self.fragtype = fragtype
         return
@@ -28,12 +38,24 @@ class aftype(object):
     @atype.setter
     def atype(self, at):
         self._atype = at
-        if not "_" in at:
-            self._truncated = True
-            self._atype_trunc = at
+        match = re.search("[0123456789]", at)
+        if at == "*":
+            self._wild_at = True
+        # check for trucated type like c3
+        elif not "_" in at:
+            # check for pure elem type like c
+            if not match:
+                # we have a pure elem type
+                self._pure = True
+                self._atype_pure = at
+                self._atype_trunc = at
+            else:
+                self._truncated = True
+                self._atype_trunc = at
+                self._atype_pure = at[0:match.start()]
         else:
-            self._truncated = False
             self._atype_trunc = at.split("_")[0]
+            self._atype_pure = at[0:match.start()]
         return
 
     @property
@@ -43,16 +65,58 @@ class aftype(object):
     @fragtype.setter
     def fragtype(self, ft):
         self._fragtype = ft
+        if ft == "*":
+            self._wild_ft == True
 
     def __repr__(self):
         return "%s@%s" % (self._atype, self._fragtype)
 
-    def __eq__(self, other):
-        assert type(other) is aftype
+    # comparison methods for all possibilities
+    def full_compare(self,other):
+        return (self._atype == other._atype) and (self._fragtype == other._fragtype)
+
+    def trunc_compare(self, other):
         if self._truncated or other._truncated:
             return (self._atype_trunc == other._atype_trunc) and (self._fragtype == other._fragtype)
         else:
-            return (self._atype == other._atype) and (self._fragtype == other._fragtype)
+            return self.full_compare(other)
+
+    def pure_compare(self,other):
+        if self._pure or other._pure:
+            return (self._atype_pure == other._atype_pure) and (self._fragtype == other._fragtype)
+        else:
+            return self.trunc_compare(other)
+
+    def wildat_compare(self,other):
+        if self._wild_at or other._wild_at:
+            return self._fragtype == other._fragtype
+        else:
+            return self.pure_compare(other)
+    
+    def wildft_compare(self,other):
+        if self.fragtype == "*" or other._wild_ft == "*":
+            if self._wild_at or other._wild_at:
+                return True
+            elif self._pure or other._pure:
+                return self._atype_pure == other._atype_pure
+            elif self._truncated or other._truncated:
+                return self._atype_trunc == other._atype_trunc
+            else:
+                return self._atype == other._atype          
+        else:
+            return self.wildat_compare(other)
+  
+    def __eq__(self,other, level = "full"):
+        if level == "full":
+            return self.full_compare(other)
+        elif level == "trunc":
+            return self.trunc_compare(other)
+        elif level == "pure":
+            return self.pure_compare(other)
+        elif level == "wild_at":
+            return self.wildat_compare(other)
+        elif level == "wild_ft":
+            return self.wildft_compare(other)
 
     def __lt__(self, other):
         assert type(other) is aftype
@@ -106,28 +170,77 @@ class afdict(object):
         self._values = []
         return
 
+    def index(self, key, comp_level = "full"):
+        # we need to write a custom search/index method for the _keys list
+        # since we have to use different comparison leves because of
+        # wildcards
+        # first loop over keys, list of tuples of aftypes
+        for i,k in enumerate(self._keys):
+            # now check if k and key have the same length
+            if len(k) == len(key):
+                # now we have to compare in a second loop each entry of
+                # key and k in respect to self._comp_level
+                for j in range(len(k)):
+                    if not k[j].__eq__(key[j], comp_level):
+                        break
+                    elif j+1 == len(k):
+                        # found it
+                        return i
+        # have not found it
+        return -1
+
+
     def __setitem__(self, key, value):
-        if key in self._keys:
+        # in principle we have to check already here if the given key
+        # contains wildcards, then we have to in pri
+        idx = self.index(key)
+        if idx >= 0:
             raise KeyError("key %s exists in afdict" % str(key))
         self._keys.append(key)
         self._values.append(value)
         return
 
     def appenditem(self, key, item):
-        assert key in self
-        assert type(self[key]) == type(list())
-        self[key].append(item)
+        idx = self.index(key)
+        if idx >= 0:
+            assert type(self._values[idx]) == type(list())
+            self._values[idx].append(item)
+        else:
+            raise KeyError("key %s not in afdict" % str(key))
         return
 
-    def __getitem__(self, key):
-        try:
-            idx = self._keys.index(key)
-        except ValueError:
-            raise KeyError("key %s not in afdict" % str(key))
-        return self._values[idx]
+    def __getitem__(self, key, wildcards = False):
+        if wildcards:
+            idx = self.index(key, "full")
+            if idx >= 0:
+                return self._values[idx]
+            else:
+                idx = self.index(key, "trunc")
+                if idx >= 0:
+                    return self._values[idx]
+                else:
+                    idx = self.index(key, "pure")
+                    if idx >= 0:
+                        return self._values[idx]
+                    else:
+                        idx = self.index(key, "wild_at")
+                        if idx >= 0:
+                            return self._values[idx]
+                        else:
+                            idx = self.index(key, "wild_ft")
+                            if idx >= 0:
+                                return self._values[idx]
+                            else:
+                                raise KeyError("key %s not in afdict" % str(key))
+        else:
+            idx = self.index(key)
+            if idx >= 0:
+                return self._values[idx]
+            else:
+                raise KeyError("key %s not in afdict" % str(key))
 
-    def __contains__(self, item):
-        return item in self._keys
+    def __contains__(self, item, wildcards = False):
+        raise NotImplementedError("Do not use this method -> use index() instead!")
 
     def __repr__(self):
         maxlen = 0
@@ -149,6 +262,7 @@ if __name__ == "__main__":
     b = aftype("c3_c2h1", "ph")
     c = aftype("c3", "ph")
     d = aftype("c3", "co2")
+    e = aftype("*", "*")
 
     print(a == b)
     print(a == c)
@@ -159,7 +273,7 @@ if __name__ == "__main__":
     print(l)
 
     print(aftype_sort(l, "ang"))
-    exit()
+    #exit()
 
     print("tuple comparison")
     t1 = (a,b)
@@ -176,8 +290,8 @@ if __name__ == "__main__":
     afd[(a,d)] = [str((a,d,))]
 
     print(afd[t1])
-    print(afd[t3])
-    print(c,c) in afd
+    #print(afd[t3])
+    #print(c,c) in afd
     afd.appenditem(t1, "test")
 
     print(afd)
