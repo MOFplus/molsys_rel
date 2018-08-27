@@ -260,3 +260,19 @@ def get_spherical_coordinates(xyz):
     #ptsnew[:,1] = numpy.arctan2(xyz[:,2], np.sqrt(xy)) # for elevation angle defined from XY-plane up
     ptsnew[:,2] = numpy.arctan2(xyz[:,1], xyz[:,0])
     return ptsnew
+
+
+def get_rotmat_to_align(vec,target):
+    '''
+        taken from https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d
+    '''
+    v = numpy.cross(vec,target)
+    s = numpy.linalg.norm(v)
+    c = numpy.dot(vec,target)
+    vx = numpy.array([[    0,-v[2], v[1]],
+                      [ v[2],    0,-v[0]],
+                      [-v[1], v[0],    0]])
+
+    R = numpy.eye(3) + vx + numpy.matmul(vx,vx) * (1-c)/(s*s)
+    return R
+

@@ -384,13 +384,14 @@ class mol(mpiobject):
                 if i not in conn[j]: return False
         return True
 
-    def detect_conn(self, tresh = 0.1,remove_duplicates = False):
+    def detect_conn(self, tresh = 0.1,remove_duplicates = False, fixed_dist=False):
         """
         detects the connectivity of the system, based on covalent radii.
 
         Args:
             tresh (float): additive treshhold
             remove_duplicates (bool): flag for the detection of duplicates
+            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance replaces covalent radii (for blueprints use 1.0)
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -419,8 +420,12 @@ class mol(mpiobject):
                         duplicates.append(j)
             else:
                 for j in range(natoms):
-                    if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
-                        conn_local.append(j)
+                    if fixed_dist is None:
+                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
+                            conn_local.append(j)
+                    else:
+                        if i!= j and dist[j] <= fixed_dist+tresh:
+                            conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
         if remove_duplicates:
             if len(duplicates)>0:
