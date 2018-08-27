@@ -391,7 +391,8 @@ class mol(mpiobject):
         Args:
             tresh (float): additive treshhold
             remove_duplicates (bool): flag for the detection of duplicates
-            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance replaces covalent radii (for blueprints use 1.0)
+            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance 
+                replaces covalent radii (for blueprints use 1.0)
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -420,7 +421,7 @@ class mol(mpiobject):
                         duplicates.append(j)
             else:
                 for j in range(natoms):
-                    if fixed_dist is None:
+                    if fixed_dist is False:
                         if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
                             conn_local.append(j)
                     else:
