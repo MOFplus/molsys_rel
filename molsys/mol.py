@@ -384,13 +384,14 @@ class mol(mpiobject):
                 if i not in conn[j]: return False
         return True
 
-    def detect_conn(self, tresh = 0.1,remove_duplicates = False):
+    def detect_conn(self, tresh = 0.1,remove_duplicates = False, fixed_dist=False):
         """
         detects the connectivity of the system, based on covalent radii.
 
         Args:
             tresh (float): additive treshhold
             remove_duplicates (bool): flag for the detection of duplicates
+            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance replaces covalent radii (for blueprints use 1.0)
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -419,8 +420,12 @@ class mol(mpiobject):
                         duplicates.append(j)
             else:
                 for j in range(natoms):
-                    if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
-                        conn_local.append(j)
+                    if fixed_dist is None:
+                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
+                            conn_local.append(j)
+                    else:
+                        if i!= j and dist[j] <= fixed_dist+tresh:
+                            conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
         if remove_duplicates:
             if len(duplicates)>0:
@@ -717,7 +722,7 @@ class mol(mpiobject):
         
         Args:
             xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
-            fixidx (int) : for an external system the origin can be defined. default=-1 which meas that coordinates are not shifted
+            fixidx (int) : for an external system the origin can be defined (all atoms in one image). default=0 which means atom0 is reference, if fixidx=-1 all atoms will be wrapped
             
         Returns:
             xyz, in case xyz is not None (wrapped coordinates are returned) otherwise None is returned
@@ -757,7 +762,7 @@ class mol(mpiobject):
         """
         legacy method maps on apply_pbc
         """
-        self.apply_pbc(fixidx=-1)
+        self.apply_pbc()
         return
     
     def get_cell(self):
@@ -1004,6 +1009,7 @@ class mol(mpiobject):
     def add_bond(self,idx1,idx2):
         ''' function necessary for legacy reasons! '''
         self.add_bonds(idx1,idx2)
+        return
 
     def add_bonds(self, lista1, lista2, many2many=False):
         """ 
@@ -1086,7 +1092,7 @@ class mol(mpiobject):
                     dmat[e1,e2] = self.get_distvec(a1,a2)[0]
             a1which, a2which = hungarian(dmat)
             for i in range(dim):
-                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
+                self.add_bonds(lista1[a1which[i]], lista2[a2which[i]])
         return
 
     def delete_bond(self, i, j):
