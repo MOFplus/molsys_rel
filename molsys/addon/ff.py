@@ -1813,6 +1813,72 @@ chargetype     gaussian\n\n''')
         logger.info("read parameter from file %s" % fname)
         return
 
+    def to_latex(self, refsys, ic, datypes = None):
+        """
+        Method to publish parameters as latex tables. This method needs pandas installed.
+
+        Args:
+            refsys (str): reference system for which the parameters should
+                be published.
+            ic (str): Internal coordinate for which the parameters should
+                be published
+            datypes (dict, optional): Defaults to None. Dictionary to 
+                convert atomtypes to more readable types.
+        
+        Returns:
+            str: latex code as str
+        """
+   
+        import pandas as pd
+        mdyn2kcal=143.88
+        units = {
+            "cha": {},
+            "vdw": {},
+            "bnd": {"$k_b [\si{\kcal\per\mole\per\AA\squared}]$":mdyn2kcal},
+            "bnd5": {"$k_b [\si{\kcal\per\mole\per\AA\squared}]$":mdyn2kcal},
+            "ang": {"$k_a [\si{\kcal\per\mole\per\radian\squared}]$":mdyn2kcal},
+            "ang5": {"$k_a [\si{\kcal\per\mole\per\radian\squared}]$"},
+            "dih": {},
+            "oop": {"$k_o [\si{\kcal\per\mole\per\radian\squared}]$":mdyn2kcal},
+        }
+        potentials = {"cha": {"gaussian": ["$q [e]$", "$sigma [\si{\AA}]$"]},
+                "vdw": {"buck6d": ["\text{$r^0_{ij} [\si{\AA}]$}", "$\epsilon_{ij}$"]},
+                "bnd": {"mm3": ["$k_b [\si{\kcal\per\mole\per\AA\squared}]$", "\text{$r_b^0 [\si{\AA}]$}"]},
+                "bnd5": {"mm3": ["$k_b [\si{\kcal\per\mole\per\AA\squared}]$", "\text{$r_b^0 [\si{\AA}]$}"]},
+                "ang": {"mm3": ["$k_a [\si{\kcal\per\mole\per\radian\squared}]$", "\text{$\phi_a^0 [\si{\degree}]$} "]},
+                "ang5": {"mm3": ["$k_a [\si{\kcal\per\mole\per\radian\squared}]$", "\text{$\phi_a^0 [\si{\degree}]$} "]},
+                "dih": {"cos3": ["\text{$V_1 [\si{\kcal\per\mole}]$}", "\text{$V_2 [\si{\kcal\per\mole}]$}", "\text{$V_3 [\si{\kcal\per\mole}]$}",], 
+                "cos3": ["\text{$V_1 [\si{\kcal\per\mole}]$}", "\text{$V_2 [\si{\kcal\per\mole}]$}", "\text{$V_3 [\si{\kcal\per\mole}]$}","\text{$V_4 [\si{\kcal\per\mole}]$}"]},
+                "oop": {"harm": ["$k_o [\si{\kcal\per\mole\per\radian\squared}]$", "\text{$\gamma^0$ [\si{\degree}]}"]}}
+        sortlist = ["types", "potential",]
+        columnformat = "lcc"
+        d = {"types":[], "potential":[]}
+        for i,l in potentials[ic].items():
+            for j in l: 
+                d[j]=[]
+                sortlist.append(j)
+                columnformat+="S"
+        for k,v in self.par[ic].items():
+            pot, ref, atypes = self.split_parname(k)
+            if pot not in potentials[ic].keys():continue
+            if ref == refsys:
+                if datypes is not None: atypes = map(lambda a: datypes[a],atypes)
+                d["types"].append(string.join(atypes, "-"))
+                d["potential"].append(pot)
+                for i, p in enumerate(v[1]):
+                    ptype = potentials[ic][pot][i]
+                    if ptype in units[ic].keys(): p *= units[ic][ptype]
+                    d[potentials[ic][pot][i]].append(round(p,3))
+        # remove empty columns
+        rkeys = []
+        for k,v in d.items():
+            if len(v)==0: rkeys.append(k)
+        for k in rkeys: 
+            del d[k]
+            sortlist.remove(k)
+        df = pd.DataFrame(data=d)
+        df = df[sortlist]
+        return df.to_latex(escape = False, column_format=columnformat)
 
     
     def upload_params(self, FF, refname, dbrefname = None, azone = True, atfix = None, interactive = True):

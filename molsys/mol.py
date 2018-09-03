@@ -17,6 +17,7 @@ except ImportError:
     from io import StringIO
 
 from .util import unit_cell
+from .util.units import *
 from .util import elems as elements
 from .util import rotations
 from .util import images
@@ -273,6 +274,42 @@ class mol(mpiobject):
         arr = np.array(nestl)
         return cls.fromArray(arr, **kwargs)
 
+    def to_phonopy(self, hessian = None):
+        """
+            Method to create a phonopy object for lattice dynamic calculations.
+
+        Kwargs:
+            hessian (numpy.ndarray, optional): Defaults to None. Hessian matrix of
+                shape (3N,3N) in kcal/mol/A**2.
+        
+        Raises:
+            ImportError: Raises Import Error when phonopy is not installed
+        
+        Returns:
+            [Phonopy]: Return the phonopy object.
+        """
+        try:
+            from phonopy import Phonopy
+            from phonopy.structure.atoms import PhonopyAtoms
+            from phonopy.units import ElkToTHz
+        except:
+            raise ImportError("Phonopy is not available!")
+        assert self.periodic == True; "Requested system is not periodic!"
+        unitcell = PhonopyAtoms(symbols = [i.title() for i in self.get_elems()],
+            cell = self.get_cell(), scaled_positions = self.get_frac_from_xyz())
+        # phonopy is setup by assuming atomic units for the hessian matrix
+        phonon = Phonopy(unitcell, [[1,0,0],[0,1,0],[0,0,1]], factor = ElkToTHz)
+        if hessian is not None:
+            # we convert here the hessian to the phonopy format and  to atomic units
+            hessian *= kcalmol/angstrom**2
+            h2 = np.zeros((self.natoms,self.natoms,3,3), dtype = "double")
+            for i in range(self.natoms):
+                for j in range(self.natoms):
+                    i3,j3 = 3*i, 3*j
+                    h2[i,j,:,:]=hessian[i3:i3+3, j3:j3+3]
+            phonon.set_force_constants(h2)
+        return phonon
+
     def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
         Parameters:
@@ -391,7 +428,8 @@ class mol(mpiobject):
         Args:
             tresh (float): additive treshhold
             remove_duplicates (bool): flag for the detection of duplicates
-            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance replaces covalent radii (for blueprints use 1.0)
+            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance 
+                replaces covalent radii (for blueprints use 1.0)
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -420,7 +458,7 @@ class mol(mpiobject):
                         duplicates.append(j)
             else:
                 for j in range(natoms):
-                    if fixed_dist is None:
+                    if fixed_dist is False:
                         if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
                             conn_local.append(j)
                     else:

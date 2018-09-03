@@ -11,18 +11,14 @@ def read(mol, f, cycle = 0):
     ncycle=0
     fline = f.readline().split()
     natoms = int(fline[0])
-    ### look how many cycles are in 
-#    for line in f.readlines():
-#        sline=line.split()
-#        if len(sline)==1:
-#            if int(sline)==natoms: ncycle+=1
-#    ### now seek to cycle
-#    cycle=range(ncycle)[cycle]
-#    f.seek(natoms*cycle+1)
-#    if len(fline)>1:
-#        cellparams = map(float,fline[1:7])
-#        mol.set_cellparams(cellparams)
-    f.readline()
+    line = f.readline()
+    periodic = False
+    # check for keywords used in extended xyz format
+    # in the moment only the lattice keyword is implemented
+    if "Lattice=" in line:
+        periodic = True
+        lattice = [float(i) for i in line.rsplit('"',1)[0].rsplit('"',1)[-1].split() if i != '']
+        cell = numpy.array(lattice).reshape((3,3))
     xyz = numpy.zeros((natoms, 3))
     elements = []
     atypes = []
@@ -32,6 +28,7 @@ def read(mol, f, cycle = 0):
         atypes.append(line[0].lower())
         xyz[i,:] = list(map(float,line[1:4]))
     mol.natoms = natoms
+    if periodic: mol.set_cell(cell)
     mol.xyz = numpy.array(xyz)
     mol.elems = elements
     mol.atypes = atypes
@@ -48,10 +45,12 @@ def write(mol, fname):
     """
     natoms = mol.natoms 
     f = open(fname,"w")
-#    if mol.periodic:
-#        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n\n" % tuple([mol.natoms]+mol.cellparams))
-#    else:
-    f.write("%d\n\n" % mol.natoms)
+    if mol.periodic:
+        f.write("%d\n" % mol.natoms)
+        f.write('Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n"' % 
+            tuple(mol.cell.ravel()))
+    else:
+        f.write("%d\n\n" % mol.natoms)
     for i in range(natoms):
         f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     f.close()
