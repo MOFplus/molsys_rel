@@ -907,7 +907,7 @@ class mol(mpiobject):
         if not self.periodic: return
         assert frac_xyz.shape == (self.natoms, 3)
         self.xyz = np.dot(frac_xyz,self.cell)
-        print("done")
+        # print("done")
         return
 
     def get_image(self,xyz, img):
