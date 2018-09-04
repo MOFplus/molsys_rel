@@ -145,6 +145,8 @@ def aftype_sort(afl, ic):
         plane = afl[1:]
         plane.sort()
         afl[1:] = plane
+    elif ic == "vdwpr":
+        return aftype_sort(afl, "bnd")
     return afl
 
 class afdict(object):
