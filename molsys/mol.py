@@ -1626,7 +1626,7 @@ class mol(mpiobject):
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         assert len(fragnumbers) == self.natoms
         self.fragnumbers = fragnumbers
-        self.nfrags = sorted(self.fragnumbers)[-1]+1
+        self.nfrags = np.max(self.fragnumbers)+1 
 
     def get_nfrags(self):
         """
@@ -1641,7 +1641,7 @@ class mol(mpiobject):
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         """
         self.fragnumbers += list(np.array(fragnumbers)+self.get_nfrags())
-        self.nfrags = sorted(self.fragnumbers)[-1]  # changed this so they start at 1!
+        self.nfrags = np.max(self.fragnumbers)+1  
         return
 
     def add_fragtypes(self,fragtypes):
