@@ -258,6 +258,7 @@ class conngraph:
                     traceback.print_exc()
                     sys.exit(1)
         else:
+            return isomorphism(molg1, molg2, **kwargs)
             # THIS does not work: WHY? investigate #
             # it is needed w/ different element per vertex (e.g. bipartite case)
             #return isomorphism(molg1, molg2,
@@ -269,7 +270,6 @@ class conngraph:
                 subgraph=False, max_n=1, **kwargs)
             return bool(isom) # is there any isomorphism? True/False
             """
-            return isomorphism(molg1, molg2, **kwargs)
 
     def print_isomorphism(self, iso, vertex=None, edge=None):
         """Print isomorphism as map of indices"""
@@ -1075,7 +1075,7 @@ class topotyper(object):
         return
 
     def compute_colors(self):
-        """ Perform edge coloring """
+        """ Compute edge coloring (TBI: vertex coloring)"""
         try:
             assert self.bbs
         except:
@@ -1267,6 +1267,7 @@ class topotyper(object):
         return
 
     def compute_bbs(self, org_flag="_ORG", ino_flag="_INO"):
+        """Compute building blocks"""
         self.tg_atypes_by_isomorphism()
         cv, ca = self.mg.get_cluster_atoms()
         bbs = []
@@ -1373,7 +1374,8 @@ class topotyper(object):
         #except:
         #    print("no 2-conns")
         #print("============")
-        self.compute_bbs(org_flag=org_flag, ino_flag=ino_flag)
+        if not hasattr(self, "bbs"):
+            self.compute_bbs(org_flag=org_flag, ino_flag=ino_flag)
         if not os.path.exists(foldername):
             os.mkdir(foldername)
         for n, i in enumerate(self.unique_bbs):

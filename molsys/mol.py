@@ -383,7 +383,7 @@ class mol(mpiobject):
             if remove_duplicates == True:
                 for j in range(i,natoms):
                     if i != j and dist[j] < tresh:
-                        logger.warning("atom %i is duplicate of atom %i" % (j,i))
+                        logger.debug("atom %i is duplicate of atom %i" % (j,i))
                         duplicates.append(j)
             else:
                 for j in range(natoms):
@@ -392,7 +392,7 @@ class mol(mpiobject):
             if remove_duplicates == False: conn.append(conn_local)
         if remove_duplicates:
             if len(duplicates)>0:
-                logger.warning("Found %d duplicates" % len(duplicates))
+                logger.warning("Found and merged %d atom duplicates" % len(duplicates))
                 duplicates = list(set(duplicates)) # multiple duplicates are taken once
                 self.natoms -= len(duplicates)
                 self.set_xyz(np.delete(xyz, duplicates,0))
@@ -1537,7 +1537,10 @@ class mol(mpiobject):
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
         xyz = self.apply_pbc(xyz, 0)
-        center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+        if np.sum(amass) > 0.0:
+            center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+        else: #every atom is dummy!
+            center = np.sum(xyz,axis=0)
         return center
 
     def shift_by_com(self, alpha=2, **kwargs):
