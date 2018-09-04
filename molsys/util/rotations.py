@@ -252,7 +252,6 @@ def rotate_around_vector(m,vector,origin=[0.0,0.0,0.0],degrees=5.0):
     return 
 
 def get_spherical_coordinates(xyz):
-    #ptsnew = numpy.hstack((xyz, numpy.zeros(xyz.shape)))
     ptsnew = numpy.zeros(xyz.shape)
     xy = xyz[:,0]**2 + xyz[:,1]**2
     ptsnew[:,0] = numpy.sqrt(xy + xyz[:,2]**2)
@@ -261,6 +260,20 @@ def get_spherical_coordinates(xyz):
     ptsnew[:,2] = numpy.arctan2(xyz[:,1], xyz[:,0])
     return ptsnew
 
+def normalize_angles_to_angle(angles,ref_angle=None):
+    ''' JK
+    shifts a trajectory of spherical coordinates in such a way as to have the reference angle
+    ref_angle to be zero 
+    '''
+    if ref_angle is None:
+        ref_angle = angles[0]
+    new_angles = copy.copy(angles)
+    new_angles -= ref_angle
+    if ref_angle >= 0.0:
+        new_angles[numpy.where(new_angles <= numpy.pi)[0]] += 2.0*numpy.pi
+    else:
+        new_angles[numpy.where(new_angles >= numpy.pi)[0]] -= 2.0*numpy.pi
+    return new_angles
 
 def get_rotmat_to_align(vec,target):
     '''
