@@ -23,6 +23,7 @@ if len(sys.argv) < 2:
              
       mfpx-file : file to be read
       FF name   : name of the force field on MOF+
+      [refsys]  : optional name of the reference system -> do not throw errors for missing paams but prepare fit
       
       Reads your mfpx file as a mol object and assigns parameters
       from MOF+ using the given force field name.
@@ -39,6 +40,10 @@ if len(sys.argv) < 3:
     print "Please specify a FF name"
     exit()
 ff = sys.argv[2]
+if len(sys.argv) == 4:
+    refsys = sys.argv[3]
+else:
+    refsys = None
 
 plot=False
 if len(sys.argv) == 4:
@@ -49,7 +54,7 @@ import molsys
 m = molsys.mol()
 m.read(fname)
 m.addon("ff")
-m.ff.assign_params(ff, plot=plot)
+m.ff.assign_params(ff, plot=plot, refsysname=refsys)
 m.ff.write(froot)
 
 

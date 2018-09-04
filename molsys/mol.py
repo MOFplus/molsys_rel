@@ -15,6 +15,7 @@ except ImportError:
     from io import StringIO
 
 from .util import unit_cell
+from .util.units import *
 from .util import elems as elements
 from .util import rotations
 from .util import images
@@ -144,11 +145,11 @@ class mol(mpiobject):
         try:
             f = open(fname, "r")
         except IOError:
+            logger.warning('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
             try:
                 f = open(fname+'.'+ftype, "r")
             except:
-                f = fname
-                pass ## in this case, parse the filename
+                raise IOError('the file %s does not exist' % (fname,))
         if ftype in formats.read:
             formats.read[ftype](self,f,**kwargs)
         else:
@@ -188,6 +189,25 @@ class mol(mpiobject):
         return m
 
     @classmethod
+    def from_fileobject(cls, f, ftype='mfpx', **kwargs):
+        ''' generic reader for the mol class, reading from a string
+        Parameters:
+            string       : the string to be read
+            ftype="mfpx" : the parser type that is used to read the file
+            **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        m = cls()
+        logger.info("reading string as %s" % str(ftype))
+        if ftype in formats.read:
+            formats.read[ftype](m,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
+        return m
+
+    
+
+    @classmethod
     def from_abinit(cls, elems, xyz, cell, frac = False):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
@@ -225,6 +245,14 @@ class mol(mpiobject):
         m.detect_conn()
         return m
 
+    @classmethod
+    def from_ff(cls, basename, fit = False):
+        m = cls()
+        m.read(basename)
+        m.addon("ff")
+        m.ff.read(basename, fit = fit)
+        return m
+
 
     @classmethod
     def from_array(cls, arr, **kwargs):
@@ -251,6 +279,42 @@ class mol(mpiobject):
             assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (arr.shape,)
         arr = np.array(nestl)
         return cls.fromArray(arr, **kwargs)
+
+    def to_phonopy(self, hessian = None):
+        """
+            Method to create a phonopy object for lattice dynamic calculations.
+
+        Kwargs:
+            hessian (numpy.ndarray, optional): Defaults to None. Hessian matrix of
+                shape (3N,3N) in kcal/mol/A**2.
+        
+        Raises:
+            ImportError: Raises Import Error when phonopy is not installed
+        
+        Returns:
+            [Phonopy]: Return the phonopy object.
+        """
+        try:
+            from phonopy import Phonopy
+            from phonopy.structure.atoms import PhonopyAtoms
+            from phonopy.units import ElkToTHz
+        except:
+            raise ImportError("Phonopy is not available!")
+        assert self.periodic == True; "Requested system is not periodic!"
+        unitcell = PhonopyAtoms(symbols = [i.title() for i in self.get_elems()],
+            cell = self.get_cell(), scaled_positions = self.get_frac_from_xyz())
+        # phonopy is setup by assuming atomic units for the hessian matrix
+        phonon = Phonopy(unitcell, [[1,0,0],[0,1,0],[0,0,1]], factor = ElkToTHz)
+        if hessian is not None:
+            # we convert here the hessian to the phonopy format and  to atomic units
+            hessian *= kcalmol/angstrom**2
+            h2 = np.zeros((self.natoms,self.natoms,3,3), dtype = "double")
+            for i in range(self.natoms):
+                for j in range(self.natoms):
+                    i3,j3 = 3*i, 3*j
+                    h2[i,j,:,:]=hessian[i3:i3+3, j3:j3+3]
+            phonon.set_force_constants(h2)
+        return phonon
 
     def write(self, fname, ftype=None, **kwargs):
         ''' generic writer for the mol class
@@ -352,13 +416,15 @@ class mol(mpiobject):
                 if i not in conn[j]: return False
         return True
 
-    def detect_conn(self, tresh = 0.1,remove_duplicates = False):
+    def detect_conn(self, tresh = 0.1,remove_duplicates = False, fixed_dist=False):
         """
         detects the connectivity of the system, based on covalent radii.
 
         Args:
             tresh (float): additive treshhold
             remove_duplicates (bool): flag for the detection of duplicates
+            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance 
+                replaces covalent radii (for blueprints use 1.0)
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -387,8 +453,12 @@ class mol(mpiobject):
                         duplicates.append(j)
             else:
                 for j in range(natoms):
-                    if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
-                        conn_local.append(j)
+                    if fixed_dist is False:
+                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
+                            conn_local.append(j)
+                    else:
+                        if i!= j and dist[j] <= fixed_dist+tresh:
+                            conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
         if remove_duplicates:
             if len(duplicates)>0:
@@ -679,14 +749,14 @@ class mol(mpiobject):
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn,pconn
 
-    def apply_pbc(self, xyz=None, fixidx=-1):
+    def apply_pbc(self, xyz=None, fixidx=0):
         ''' 
         apply pbc to the atoms of the system or some external positions
         Note: If pconn is used it is ivalid after this operation and will be reconstructed.
         
         Args:
             xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
-            fixidx (int) : for an external system the origin can be defined. default=-1 which meas that coordinates are not shifted
+            fixidx (int) : for an external system the origin can be defined (all atoms in one image). default=0 which means atom0 is reference, if fixidx=-1 all atoms will be wrapped
             
         Returns:
             xyz, in case xyz is not None (wrapped coordinates are returned) otherwise None is returned
@@ -978,7 +1048,11 @@ class mol(mpiobject):
         return m
 
     ##### add and delete atoms and bonds ###########################################################
-
+    
+    def add_bond(self,idx1,idx2):
+        ''' function necessary for legacy reasons! '''
+        self.add_bonds(idx1,idx2)
+        return
 
     def add_bonds(self, lista1, lista2, many2many=False):
         """ 
@@ -1047,11 +1121,11 @@ class mol(mpiobject):
             d0 = self.get_distvec(a11,a21)
             d1 = self.get_distvec(a11,a22)
             if d1 > d0: #straight
-                self.add_bond(a11,a21)
-                self.add_bond(a12,a22)
+                self.add_bonds(a11,a21)
+                self.add_bonds(a12,a22)
             else: #cross
-                self.add_bond(a11,a22)
-                self.add_bond(a12,a21)
+                self.add_bonds(a11,a22)
+                self.add_bonds(a12,a21)
         else:
             from scipy.optimize import linear_sum_assignment as hungarian
             dim = len(lista1)
@@ -1061,7 +1135,7 @@ class mol(mpiobject):
                     dmat[e1,e2] = self.get_distvec(a1,a2)[0]
             a1which, a2which = hungarian(dmat)
             for i in range(dim):
-                self.add_bond(lista1[a1which[i]], lista2[a2which[i]])
+                self.add_bonds(lista1[a1which[i]], lista2[a2which[i]])
         return
 
     def delete_bond(self, i, j):
@@ -1388,7 +1462,6 @@ class mol(mpiobject):
         self.translate(-center)
         return
 
-
     ##### distance measurements #####################
 
     def get_distvec(self, i, j, thresh=SMALL_DIST):
@@ -1423,6 +1496,36 @@ class mol(mpiobject):
             r = all_r[closest[0]]
         else:
             if i == j: return
+            r = rj-ri
+            d = np.sqrt(np.sum(r*r))
+            closest=[0]
+        return d, r, closest
+
+    def get_dist(self, ri, rj, thresh=SMALL_DIST):
+        """ vector from i to j
+        This is a tricky bit, because it is needed also for distance detection in the blueprint
+        where there can be small cell params wrt to the vertex distances.
+        In other words: i can be bonded to j multiple times (each in a different image)
+        and i and j could be the same!!
+        :Parameters':
+            - i,j  : the indices of the atoms for which the distance is to be calculated"""
+        if self.periodic:
+            all_rj = rj + self.images_cellvec
+            all_r = all_rj - ri
+            all_d = np.sqrt(np.add.reduce(all_r*all_r,1))
+            d_sort = np.argsort(all_d)
+            closest = d_sort[0]
+            closest=[closest]  # THIS IS A BIT OF A HACK BUT WE MAKE IT ALWAYS A LIST ....
+            if (abs(all_d[closest[0]]-all_d[d_sort[1]]) < thresh):
+                # oops ... there is more then one image atom in the same distance
+                #  this means the distance is larger then half the cell width
+                # in this case we have to return a list of distances
+                for k in d_sort[1:]:
+                    if (abs(all_d[d_sort[0]]-all_d[k]) < thresh):
+                        closest.append(k)
+            d = all_d[closest[0]]
+            r = all_r[closest[0]]
+        else:
             r = rj-ri
             d = np.sqrt(np.sum(r*r))
             closest=[0]
@@ -1690,7 +1793,7 @@ class mol(mpiobject):
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         assert len(fragnumbers) == self.natoms
         self.fragnumbers = fragnumbers
-        self.nfrags = sorted(self.fragnumbers)[-1]+1
+        self.nfrags = np.max(self.fragnumbers)+1 
 
     def get_nfrags(self):
         """
@@ -1705,7 +1808,7 @@ class mol(mpiobject):
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         """
         self.fragnumbers += list(np.array(fragnumbers)+self.get_nfrags())
-        self.nfrags = sorted(self.fragnumbers)[-1]  # changed this so they start at 1!
+        self.nfrags = np.max(self.fragnumbers)+1  
         return
 
     def add_fragtypes(self,fragtypes):

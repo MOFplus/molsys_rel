@@ -52,7 +52,7 @@ class bb:
 
 
 
-    def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=2, label = None):
+    def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=1, label = None):
         self.mol.specific_conn = specific_conn  # that should be obtained from the file itself ?!!?
         self.mol.linker = linker
         self.mol.name = name
@@ -61,10 +61,10 @@ class bb:
         if not linker:
             if self.mol.zflip: logger.warning("zflip only supported for linkers")
             if self.mol.nrot>1: logger.debug("rotations only supported for linkers")
-        if linker: self.rotate_on_z()
         self.mol.label = label
         #self.find_dummies()
         self.center()
+        if linker: self.rotate_on_z()
         self.extract_connector_xyz()
 #        self.hide_dummy_atoms()
         return

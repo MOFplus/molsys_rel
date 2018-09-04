@@ -38,6 +38,7 @@ def print(*args, **kwargs):
 
 
 import numpy as np
+import uuid
 import molsys
 from molsys.util.timing import timer, Timer
 from molsys.util import elems
@@ -77,8 +78,8 @@ class AssignmentError(Exception):
 
 class ic(list):
     """
-    list that accepts attributes
-    non-existing attributes return None instead of raising an error
+    Class inherited from flist which accepts attributes.
+    Non-existing attributes return None instead of raising an error.
     """
 
     def __init__(self, *args, **kwargs):
@@ -99,12 +100,15 @@ class ic(list):
             
     def to_string(self, width=None, filt=None, inc=0):
         """
-        generate a string represantion of the ic
+        Method to generate a string representation of the ic.
+
+        Kwargs:
+            width (int): Defaults to None. Width of the string representation
+            filt (str): Defaults to None. 
+            inc (int): Defaults to 0.
         
-        :Parameters:
-            - width : None or an integer - width of the field
-            - filt  : None -> no attributes, "all" -> all attributes, list of attributes -> only those in list are printed
-            - inc   : set inc to 1 if you want to add 1 to all values 
+        Returns:
+            str: string representation of the ic
         """
         form = "%d "
         if width: form = "%%%dd " % width
@@ -123,7 +127,10 @@ class ic(list):
 
 class ric:
     """
-    class to detect and keep all the (redundant) internal coordinates of the system
+    Class to detect and keep all the (redundant) internal coordinates of the system.
+
+    Args:
+        mol(molsys.mol): Parent mol object in which the rics should be detected.
     """
 
     def __init__(self, mol):
@@ -138,14 +145,20 @@ class ric:
         return
         
 
-    def find_rics(self, specials={"linear": [], "sqp":[]}):
+    def find_rics(self, specials={"linear": [], "sqp":[]}, smallring = False):
         """
         Method to find all rics of the system
+
+        Kwargs:
+            specials(dict): Defaults to {"linear": [], "sqp":[]}. Dictionary of special atom types.
+                which has to be included in the search.
+            smallring(bool): Defaults to False. If true a smallring check for is performed.
         """
         self.bnd    = self.find_bonds()
         self.ang    = self.find_angles()
         self.oop    = self.find_oops()
         self.dih    = self.find_dihedrals(**specials)
+        if smallring: self.check_smallrings()
         self.report()
         self.timer.write_logger(logger.info)
         return
@@ -153,7 +166,18 @@ class ric:
 
     def set_rics(self, bnd, ang, oop, dih, sanity_test=True):
         """
-        the paramters must be properly sorted lists of ic as if they are supplied by find_rics
+        Method to set the rics from outsided. Args has to be be properly sorted lists of 
+        ic objectos as if they are supplied by find_rics.
+
+        Args:
+            bnd(list): list of all bonds
+            ang(list): list of all angles
+            oop(list): list of all out-of planes
+            dih(list): list of all dihedrals
+
+        Kwargs:
+            sanity_test(bool): Defaults to True. If True a sanity check is performed
+                if the supplied RICs belong to the current system.
         """
         self.bnd = bnd
         self.ang = ang
@@ -167,15 +191,14 @@ class ric:
                 raise ValueError("The rics provided do not match the mol object!")
         return
 
-    # the follwoing code is adapted from pydlpoly/py/assign_FF.py
-    # instead of bond objects we use simpler lists of lists with indices
 
     @timer("find bonds")
     def find_bonds(self):
         """
-        Method to find all bonds of a system
-        :Returns:
-            -bonds(list): list of indices defining all bonds
+        Method to find all bonds of a system.
+        
+        Returns:
+            list: list of internal coordinate objects defining all bonds
         """
         bonds=[]
         for a1 in range(self.natoms):
@@ -183,12 +206,30 @@ class ric:
                 if a2 > a1: bonds.append(ic([a1, a2]))
         return bonds
 
+    def sort_angle(self, idx):
+        """
+        Method used for sorting angles, according to their
+        aftypes.
+        
+        Args:
+            idx (list): list of indices defining an angle
+        
+        Returns:
+            list: sorted list of indeces defining the angle
+        """
+        if str(self.aftypes[idx[0]]) > str(self.aftypes[idx[2]]):
+            idx.reverse()
+        elif idx[0] > idx[2] and str(self.aftypes[idx[0]]) == str(self.aftypes[idx[2]]):
+            idx.reverse()
+        return idx
+
     @timer("find angles")
     def find_angles(self):
         """
         Method to find all angles of a system
-        :Returns:
-            -angles(list): list of indices defining all angles
+
+        Returns:
+            list: list of internal coordinate objects defining all angles
         """
         angles=[]
         for ca in range(self.natoms):
@@ -198,8 +239,13 @@ class ric:
                 aa1 = apex_atoms[ia]
                 other_apex_atoms = apex_atoms[ia+1:]
                 for aa2 in other_apex_atoms:
-                    if str(self.aftypes[aa1]) <= str(self.aftypes[aa2]):
+                    if str(self.aftypes[aa1]) < str(self.aftypes[aa2]):
                         angles.append(ic([aa1, ca, aa2]))
+                    elif str(self.aftypes[aa1]) == str(self.aftypes[aa2]):
+                        if aa1 < aa2:
+                            angles.append(ic([aa1, ca, aa2]))
+                        else:
+                            angles.append(ic([aa2, ca, aa1]))
                     else:
                         angles.append(ic([aa2, ca, aa1]))
         return angles
@@ -208,8 +254,9 @@ class ric:
     def find_oops(self):
         """
         Method to find all oops of a system
-        :Returns:
-            -oops(list): list of indices defining all oops
+        
+        Returns:
+            list: list of internal coordinate objects defining all oops
         """
         oops=[]
         # there are a lot of ways to find oops ...
@@ -228,12 +275,12 @@ class ric:
         """
         Method to find all dihedrals of a system
 
-        Parameters:
-            linear(list): list of linear atom types, defaults to []
-            sqp(list): list of square planar atom types, defaults to []
+        Kwargs:
+            linear(list): Defaults to []. List of linear atom types.
+            sqp(list): Defaults to []. List of square planar atom types.
 
         Returns:
-            dihedrals(list): list of indices defining all dihedrals
+            list: list of internal coordinate objects defining all dihedrals
         """
         dihedrals=[]
         for a2 in range(self.natoms):
@@ -292,32 +339,63 @@ class ric:
                                     dihedrals.append(d)
                             elif self.aftypes[a2] in sqp:
                                 # calculate angle a1 a2 a3
-                                if abs(self.get_angle([a1,a2,a3])-180.0) > 2.0: dihedrals.append(d)
+                                if abs(self.get_angle([a1,a2,a3])-180.0) > 10.0:
+                                    dihedrals.append(d)
                             elif self.aftypes[a3] in sqp:
                                 # calculate angle a2 a3 a4
-                                if abs(self.get_angle([a2,a3,a4])-180.0) > 2.0: dihedrals.append(d)
+                                if abs(self.get_angle([a2,a3,a4])-180.0) > 10.0:
+                                    dihedrals.append(d)
                             else:
                                 dihedrals.append(d)
         return dihedrals
 
+    @timer("find smallrings")
+    def check_smallrings(self):
+        """
+        Method needed to check if smallrings are present and to mark the
+        corresponding bonds and angles.
+        """
+        for d in self.dih:
+            if d.ring:
+                # bonds are sorted via atom indices
+                self.bnd[self.bnd.index(sorted(d[0:2]))].ring = d.ring
+                self.bnd[self.bnd.index(sorted(d[1:3]))].ring = d.ring
+                self.bnd[self.bnd.index(sorted(d[2:4]))].ring = d.ring
+                # angles are sorted in respect to aftypes, we have to
+                # check both possibilities
+                ang = self.sort_angle(d[0:3])              
+                self.ang[self.ang.index(ang)].ring = d.ring
+                ang = self.sort_angle(d[1:4])
+                self.ang[self.ang.index(ang)].ring = d.ring
+        return
+
     def get_distance(self,atoms):
         """
-        Computes distance between two atoms
-        :Parameters:
-            - atoms (list): list of atomindices
+        Computes distance between two atoms.
+        
+        Parameters:
+            atoms (list): list of atomindices
+
+        Returns:
+            float: atom dinstance
         """
-        xyz = self._mol.apply_pbc(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms],fixidx = 0)
         apex_1 = xyz[0]
         apex_2 = xyz[1]
         return np.linalg.norm(apex_1-apex_2)
 
     def get_angle(self,atoms):
         """
-        Computes angle between three atoms
-        :Parameters:
-            - atoms (list): list of atomindices
+        Computes the angle between three atoms
+        
+        Parameters:
+            atoms (list): list of atomindices
+
+        Returns:
+            float: angle in degree
         """
-        xyz = self._mol.apply_pbc(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms], fixidx = 0)
+        #xyz = self.xyz[atoms]
         apex_1 = xyz[0]
         apex_2 = xyz[2]
         central = xyz[1]
@@ -331,10 +409,14 @@ class ric:
 
     def get_multiplicity(self, n1, n2):
         """
-        Routine to estimate m from local topology
-        :Parameters:
-            - n1 (int): number of connections of central atom 1
-            - n2 (int): number of connections of central atom 2
+        Routine to estimate the multiplicity of a dihedral from the local topology
+        
+        Parameters:
+            n1 (int): number of connections of central atom 1
+            n2 (int): number of connections of central atom 2
+        
+        Returns:
+            int: multiplicity
         """
         assert type(n1) == type(n2) == int
         if   set([n1,n2])==set([5,5]): return 4
@@ -353,10 +435,18 @@ class ric:
     def get_dihedral(self, atoms,compute_multiplicity=True):
         """
         Computes dihedral angle between four atoms
-        :Parameters:
-            - atoms (list): list of atomindices
+        
+        Args:
+            atoms (list): list of atomindices
+
+        Kwargs:
+            compute_multiplicity (bool): Defaults to True. If True multiplicity
+                is returned together with the angle.
+
+        Returns:
+            tuple: tuple of angle in degree and mutliplicity
         """
-        xyz = self._mol.apply_pbc(self.xyz[atoms])
+        xyz = self._mol.apply_pbc(self.xyz[atoms], fixidx = 0)
         apex1 = xyz[0]
         apex2 = xyz[3]
         central1 = xyz[1]
@@ -382,15 +472,19 @@ class ric:
 
     def get_oop(self,atoms):
         """
-        Dummy function to the the value of an oop by default to 0.0
-        :Parameters:
-            - atoms (list): list of atomindices
+        Dummy function to compute the value of an oop. It returns always 0.0.
+        
+        Parameters:
+            atoms (list): list of atomindices
+
+        Returns:
+            float: always 0.0 is returned
         """
         return 0.0
 
     def compute_rics(self):
         """
-        Computes the values of the rics and attaches 
+        Computes the values of all rics in the system and attaches 
         them to the corresponding ic
         """
         for b in self.bnd: b.value = self.get_distance(list(b))
@@ -416,15 +510,28 @@ class ric:
 #class ff(molsys.base):
 #class ff(base.base):
 class ff(base):
+    """Class to administrate the FF parameters and to assign them.
+
+    The ff class is used to administrate the assignment of FF parameters
+    following our specific assignment approach and to vary the parameters
+    for FFgen runs.
+    
+    Args:
+        molsys (molsys.mol): mol object for which parameters should be
+            assigned.
+    
+    Kwargs:
+        par(potentials): Defaults to None. External potentials object
+            which should be used in this ff class. Only needed for multistructure
+            fits with FFgen.
+
+    Attr:
+        ric_type()
+        par()
+        par_ind()
+    """
 
     def __init__(self, mol, par = None):
-        """
-        instantiate a ff object which will be attached to the parent mol
-
-        :Parameter:
-
-             - mol : a mol type object (can be a derived type like bb or topo as well)
-        """
         super(ff,self).__init__(mol)
 #        self._mol = mol
         self.timer = Timer()
@@ -446,7 +553,15 @@ class ff(base):
 
     def _init_data(self, cha=None, vdw=None):
         """
-        Method to setup the internal data structres
+        Method to setup the internal data structres.
+
+        Kwargs:
+            cha(list): Defaults to None. If provided the
+                indices in the list are setup as cha internal
+                coordinates.
+            vdw(list): Defaults to None. If provided the
+                indices in the list are setup as vdw internal
+                coordinates.
         """
         # make data structures . call after ric has been filled with data either in assign or after read
         # these are the relevant datastructures that need to be filled by one or the other way.
@@ -469,14 +584,6 @@ class ff(base):
                 "dih": [None]*len(self.ric.dih),
                 "oop": [None]*len(self.ric.oop),
                 }
-#        self.par = {
-#                "cha": {},
-#                "vdw": {},
-#                "bnd": {},
-#                "ang": {},
-#                "dih": {},
-#                "oop": {},
-#                }
         return
 
     def _init_pardata(self, FF=None):
@@ -484,6 +591,7 @@ class ff(base):
             self.par = potentials({
                     "cha": {},
                     "vdw": {},
+                    "vdwpr": {},
                     "bnd": {},
                     "ang": {},
                     "dih": {},
@@ -492,7 +600,7 @@ class ff(base):
             self.par.FF=FF
 
     @timer("assign parameter")
-    def assign_params_offline(self, ref):
+    def assign_params_offline(self, ref, key = False):
         loaded_pots = {'bnd':[],
                 'ang':[],
                 'dih':[],
@@ -506,10 +614,15 @@ class ff(base):
         with self.timer("find rics"):
             self.ric.find_rics(specials = {'linear':[]})
             self._init_data()
+        # check here for assignment based on a ric par file
+        # or on an old key file
         with self.timer("make atypes"):
             self.aftypes = []
             for i, a in enumerate(self._mol.get_atypes()):
-                self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
+                if not key:
+                    self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
+                else:
+                    self.aftypes.append(aftype(a, "leg"))
         with self.timer("parameter assignement loop"):
             for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                 for i, r in enumerate(self.ric_type[ic]):
@@ -525,10 +638,28 @@ class ff(base):
                                 full_parname_list.append(full_parname)
                         if full_parname_list != []:
                             self.parind[ic][i] = full_parname_list
+        # check if all rics have potentials
         self.check_consistency()
+        # check if there are potentials which are not needed -> remove them
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            # make a set
+            badlist = []
+            l = []
+            for i in self.parind[ic]: l+=i
+            s = set(l)
+            for j in self.par[ic].keys():
+                if j not in s:
+                    badlist.append(j)
+            # remove stuff from badlist
+            for i in badlist: 
+                del self.par[ic][i]
+                #logger.warning("")
+            #import pdb; pdb.set_trace()
+
+
 
     @timer("assign multi parameters")
-    def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}):
+    def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}, smallring = False, generic = None):
         """
         Method to orchestrate the parameter assignment fo the curent system using multiple force fields
         defined in FFs by getting the corresponding data from the webAPI.
@@ -552,24 +683,24 @@ class ff(base):
             # first element
             if i == 0: 
                 self.assign_params(ff, refsysname = refsysname,equivs = equivs, azone = azone, 
-                        special_atypes = special_atypes, consecutive = True, ricdetect = True)
+                        special_atypes = special_atypes, consecutive = True, ricdetect = True, smallring=smallring)
             # last element
             elif i == len(FFs)-1:
                 self.par.FF = ff
                 self.assign_params(ff, refsysname = refsysname, equivs = equivs, azone = azone, 
-                        special_atypes = special_atypes, consecutive = False, ricdetect = False)
+                        special_atypes = special_atypes, consecutive = False, ricdetect = False, smallring=smallring, generic = generic)
             # in between
             else:
                 self.par.FF = ff
                 self.assign_params(ff, refsysname = refsysname, equivs = equivs, azone = azone, 
-                        special_atypes = special_atypes,consecutive = True, ricdetect = False)
+                        special_atypes = special_atypes,consecutive = True, ricdetect = False, smallring=smallring)
         return
 
 
                 
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
-            plot=False, consecutive=False, ricdetect=True):
+            plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None):
         """
         Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -611,7 +742,7 @@ class ff(base):
                 special_atypes = self._mol.mpi_comm.bcast(special_atypes, root = 0)
         if ricdetect==True:
             with self.timer("find rics"):
-                self.ric.find_rics(specials = special_atypes)
+                self.ric.find_rics(specials = special_atypes, smallring = smallring)
                 self._init_data()
                 self._init_pardata(FF)
             # as a first step we need to generate the fragment graph
@@ -640,7 +771,9 @@ class ff(base):
                 curr_atomlist = self.ref_atomlists[ref]
                 curr_par = {\
                     "bnd" : self.ref_params[ref]["twobody"]["bnd"],\
+                    "bnd5" : self.ref_params[ref]["twobody"]["bnd5"],\
                     "ang" : self.ref_params[ref]["threebody"]["ang"],\
+                    "ang5" : self.ref_params[ref]["threebody"]["ang5"],\
                     "dih" : self.ref_params[ref]["fourbody"]["dih"],\
                     "oop" : self.ref_params[ref]["fourbody"]["oop"],
                     "cha" : self.ref_params[ref]["onebody"]["charge"],
@@ -657,7 +790,8 @@ class ff(base):
                                 aft_list = self.get_parname_equiv(r,ic,ref)
                                 #aft_list = map(lambda a: self.aftypes[a], r)
                                  # generate list of permuted tuples according to ic and look up params
-                                parname, par_list = self.pick_params(aft_list, ic, curr_par[ic])
+                                #parname, par_list = self.pick_params(aft_list, ic, curr_par[ic])
+                                parname, par_list = self.pick_params(aft_list, ic, r, curr_par)
                                 if par_list != None:
                                     if verbose>1 : logger.info(" found parameter for atoms %20s (types %s) -> %s" % (str(r), aft_list, parname))
                                     for par in par_list:
@@ -667,13 +801,13 @@ class ff(base):
                                                 aidx = r[j]
                                                 if ((str(aft) == par[1][0]) and (aidx not in curr_equi_par)):
                                                     curr_equi_par[aidx] = par[1][1]
-                                                    if verbose>1: logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
+                                                    logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
                                         else:
                                             sparname = map(str, parname)
                                             full_parname = par[0]+"->("+string.join(sparname,",")+")|"+ref
                                             full_parname_list.append(full_parname)
                                             if not full_parname in self.par[ic]:
-                                                if verbose>0: logger.info("  added parameter to table: %s" % full_parname)
+                                                logger.info("  added parameter to table: %s" % full_parname)
                                                 self.par[ic][full_parname] = par
                                 else:
                                     if verbose>1 : logger.info(" NO parameter for atoms %20s (types %s) " % (str(r), aft_list))
@@ -695,23 +829,48 @@ class ff(base):
             if refsysname:
                 self.fixup_refsysparams()
             else:
-                self.check_consistency()
+                self.check_consistency(generic = generic)
         self.timer.write_logger(logger.info)
         return
 
-    def check_consistency(self):
+    def check_consistency(self, generic = None):
         """
         Method to check the consistency of the assigned parameters, if params are
         missing an AssignmentError is raised.
+
+        Kwargs:
+            generic(str): name of the FF which should be used as source for
+                the generic parameters, defaults to None
         """
+        if generic is not None:
+            gen_params = self.api.get_params_from_ref(generic, "generic")["fourbody"]
         complete = True
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             unknown_par = []
             for i, p in enumerate(self.ric_type[ic]):
                 if self.parind[ic][i] is None:
-                    parname = self.get_parname_sort(p,ic)
-                    if not parname in unknown_par:
-                        unknown_par.append(parname)
+                    # if possible we apply here a generic parameter
+                    match = False
+                    if generic is not None and ic == "dih":
+                        aft_list = self.get_parname_equiv(p,ic,"generic")
+                        full_parname_list = []
+                        parname, par_list = self.pick_params(aft_list, ic, p, gen_params)
+                        if par_list != None:
+                            for par in par_list:
+                                sparname = map(str, parname)
+                                full_parname = par[0]+"->("+string.join(sparname,",")+")|generic"
+                                full_parname_list.append(full_parname)
+                                if not full_parname in self.par[ic]:
+                                    logger.info("  added parameter to table: %s" % full_parname)
+                                    self.par[ic][full_parname] = par
+                        if full_parname_list != []:
+                            self.parind[ic][i] = full_parname_list
+                            match = True
+                    # no params found
+                    if match == False:
+                        parname = self.get_parname_sort(p,ic)
+                        if not parname in unknown_par:
+                            unknown_par.append(parname)
             if len(unknown_par) > 0:
                 complete = False
                 for p in unknown_par: logger.error("No params for %3s %s" % (ic, p))
@@ -738,12 +897,12 @@ class ff(base):
         if hasattr(self, "active_zone") == False:
             self.active_zone = []
         defaults = {
-            "bnd" : ("mm3", 2, "b", ["d","r"]),
-            "ang" : ("mm3", 2, "a", ["d","r"]),
-            "dih" : ("cos3", 3, "d", ["d","d","d"]),
-            "oop" : ("harm", 2, "o", ["d",0.0]),
-            "cha" : ("gaussian", 2, "c", ["d","d"]),
-            "vdw" : ("buck6d", 2, "v", ["d","d"])}
+            "bnd" : ("mm3", 2, "b", ["d","r"], [0.0, 8.0]),
+            "ang" : ("mm3", 2, "a", ["d","r"], [0.0, 2.0]),
+            "dih" : ("cos3", 3, "d", ["d","d","d"], [0.0, 15.0]),
+            "oop" : ("harm", 2, "o", ["d",0.0], [0.0, 1.0]),
+            "cha" : ("gaussian", 2, "c", ["d","d"], [0.0, 2.0]),
+            "vdw" : ("buck6d", 2, "v", ["d","d"], [0.0, 2.0])}
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             count  = 0
             ric = self.ric_type[ic]
@@ -774,7 +933,7 @@ class ff(base):
                                         self.par.variables[vn]=varpar(self.par,name = vn, 
                                                 val = p.value, range = [0.9*p.value, 1.1*p.value])
                                     else:
-                                        self.par.variables[vn]=varpar(self.par,name = vn)
+                                        self.par.variables[vn]=varpar(self.par,name = vn, range = defaults[ic][4])
                                     self.par.variables[vn].pos.append((ic, fullparname, idx))
                             # hack for strbnd
                             if ic == "ang" and strbnd == True:
@@ -941,13 +1100,27 @@ class ff(base):
         self.vdwdata = {}
         self.types2numbers = {} #equivalent to self.dlp_types
         types = self.par["vdw"].keys()
+        #print(types)
         for i, t in enumerate(types):
             if t not in self.types2numbers.keys():
                 self.types2numbers[t]=str(i)
         ntypes = len(types)
+        #print (ntypes)
         for i in range(ntypes):
             for j in range(i, ntypes):
                 #TODO check availability of an explicit paramerter
+                if len(self.par["vdwpr"].keys()) > 0:
+                    _,_,ti = self.split_parname(types[i])
+                    _,_,tj = self.split_parname(types[j])
+                    ti =ti[0]
+                    tj = tj[0]
+                    parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
+                    if parname in self.par["vdwpr"].keys():
+                        # got it
+                        par_ij = self.par["vdwpr"][parname]
+                        self.vdwdata[types[i]+":"+types[j]] = par_ij
+                        self.vdwdata[types[j]+":"+types[i]] = par_ij
+                        continue
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]
@@ -972,6 +1145,7 @@ class ff(base):
                 # all combinations are symmetric .. store pairs bith ways
                 self.vdwdata[types[i]+":"+types[j]] = par_ij
                 self.vdwdata[types[j]+":"+types[i]] = par_ij   
+        #import pdb; pdb.set_trace()
         self.pair_potentials_initalized = True
         return
 
@@ -1014,14 +1188,20 @@ class ff(base):
         # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
         self.timer.start("make ref frag graphs")
         self.ref_systems = {}
+        if self._mol.mpi_rank == 0:
+            ref_mol_strs  = self.api.get_FFrefs_graph(self.scan_ref, out ="str")
+        else:
+            ref_mol_strs = {}
+        if self._mol.mpi_size > 1:
+            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_str, root = 0)
         for ref in self.scan_ref:
-            if self._mol.mpi_rank == 0:
-                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
-            else:
-                ref_mol_str = None
-            if self._mol.mpi_size > 1:
-                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
-            ref_mol = molsys.mol.from_string(ref_mol_str)
+#            if self._mol.mpi_rank == 0:
+#                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
+#            else:
+#                ref_mol_str = None
+#            if self._mol.mpi_size > 1:
+#                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
+            ref_mol = molsys.mol.from_string(ref_mol_strs[ref])
             ref_mol.addon("fragments")
             ref_mol.fragments.make_frag_graph()
             if plot:
@@ -1196,7 +1376,8 @@ class ff(base):
         sorted = aftype_sort(aftypes, ic)
         return pot + "->("+string.join(sorted, ",")+")|"+ref
         
-    def pick_params(self,aft_list,ic, pardir):
+
+    def pick_params(self,aft_list,ic,at_list, pardir):
         """
         Hhelper function to pick params from the dictionary pardir using permutations for the given ic
         if len of aft_list == 1 (ic = vdw or cha) no permutations necessary
@@ -1210,21 +1391,40 @@ class ff(base):
         """
         if aft_list is None: return (), None
         ic_perm = {"bnd": ((0,1), (1,0)),
+                   "bnd5": ((0,1), (1,0)),
                    "ang": ((0,1,2), (2,1,0)),
+                   "ang5": ((0,1,2), (2,1,0)),
                    "dih": ((0,1,2,3),(3,2,1,0)),
                    "oop": ((0,1,2,3),(0,1,3,2),(0,2,1,3),(0,2,3,1),(0,3,1,2),(0,3,2,1))}
         if len(aft_list) == 1:
             parname = tuple(aft_list)
-            if parname in pardir:
-                return parname, pardir[parname]
+            if pardir[ic].index(parname, "wild_ft") >= 0:
+                return parname, pardir[ic].__getitem__(parname, wildcards = True)
             else:
                 return (), None
-        else:
-            perm = ic_perm[ic]
-            for p in perm:
-                parname = tuple(map(aft_list.__getitem__, p))
-                if parname in pardir:
-                    return parname, pardir[parname]
+        else:         
+            # we have to check here also for ring specific parameters
+            if ic == "bnd" and at_list.ring == 5:
+                ics = ["bnd5", "bnd"]
+            elif ic == "ang" and at_list.ring == 5:
+                ics = ["ang5", "ang"]
+            else:
+                ics = [ic]
+            # now we have to loop over ics
+            for cic in ics:
+                perm = ic_perm[cic]
+                for p in perm:
+                    parname = tuple(map(aft_list.__getitem__, p))
+                    if pardir[cic].index(parname, "wild_ft") >= 0:
+                        # if we found a bnd5 or ang5 we have to modify
+                        # the name of the parameter
+                        if cic == "bnd5" or cic == "ang5":
+                            param = copy.deepcopy(pardir[cic].__getitem__(parname, wildcards = True))
+                            lparname = list(parname)
+                            lparname.append("r5")
+                            return tuple(lparname), param
+                        else:
+                            return parname, pardir[cic].__getitem__(parname, wildcards = True)
             # if we get to this point all permutations gave no result
             return (), None
 
@@ -1258,10 +1458,13 @@ class ff(base):
         """
         if self.mpi_rank > 0:
             return
+        # create a random hash to ensure that ric and par file belong together
+        hash = str(uuid.uuid4())
         # dummy dicts to assign a number to the type
         par_types = self.enumerate_types()
         # write the RICs first
         f = open(fname+".ric", "w")
+        f.write("HASH: %s\n" % hash)
         logger.info("Writing RIC to file %s.ric" % fname)
         # should we add a name here in the file? the FF goes to par. keep it simple ...
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
@@ -1289,6 +1492,7 @@ class ff(base):
         else:
             f = open(fname+".par", "w")             
             logger.info("Writing parameter to file %s.par" % fname)
+        f.write("HASH: %s\n" % hash)
         f.write("FF %s\n\n" % self.par.FF)
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             ptyp = par_types[ic]
@@ -1323,9 +1527,11 @@ class ff(base):
         author: Julian
         try to write a key file from the data available in the class
         needs then to be merged manually in case there is only a partial system
+        #### !!!! EQUIVALENCES ARE MISSING !!!! ####
         '''
         a = atype_addendum
         fkey=open(fname, 'w')
+        par = self.par
         if write_default_header == True:
             fkey.write(
 '''
@@ -1351,9 +1557,15 @@ c-expterm      2.25
 bondtype       mixmorse_bde
 strbndtype     mmff
 opbendtype     mmff
-chargetype     gaussian
-		''')
-        par = self.par
+chargetype     gaussian\n\n''')
+            # still in the indentation of write_default_header
+            # we need also atom definitions, get unique atype list from 'cha' dictionary
+            for i,k in enumerate(par['cha'].keys()):
+                atype = k.split('(')[-1].split(')')[0]
+                elem = atype.split('_')[0][0:-1] ## convention: all atypes have .lt. 10 connections! 
+                                                  # remove only last digit from emenent string
+                fkey.write('atom  %s   %s\n' % (atype, elem))
+            import pdb; pdb.set_trace()
         #syntax of keyfile:
         # red name [atypes] [params] 
         parkeys= self.par.keys() # cha ang dih oop vdw bnd
@@ -1435,6 +1647,7 @@ chargetype     gaussian
             - fit(bool, optional): specify if an fpar file should be read in, 
             holding fitting information, defaults to False
         """
+        hash = None
         fric = open(fname+".ric", "r")
         ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
         ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
@@ -1449,7 +1662,9 @@ chargetype     gaussian
                 stop = True
             sline = line.split()
             if len(sline)> 0:
-                if sline[0] in ric_type:
+                if sline[0] == "HASH:": 
+                    hash = sline[1]
+                elif sline[0] in ric_type:
                     curric = sline[0]
                     curric_len = ric_len[ric_type.index(curric)]
                     assigned.append(curric)
@@ -1520,12 +1735,16 @@ chargetype     gaussian
         else:
             fpar = open(fname+".par", "r")
         stop = False
-        while not stop:
+        found_hash = False
+        while not stop:         
             line = fpar.readline()
             if len(line) == 0:
                 stop = True
             sline = line.split()
             if len(sline)>0:
+                if sline[0] == "HASH:":
+                    found_hash = True
+                    assert sline[1] == hash, "Hashes of ric and par file do not match!"
                 if sline[0][0] == "#": continue 
                 curric = sline[0].split("_")[0]
                 if sline[0]=="FF":
@@ -1582,6 +1801,9 @@ chargetype     gaussian
                     for i,r in enumerate(self.ric_type[curric]):
                         parind[i] = t2ident[r.type]
         fpar.close()
+        # check if both fpar and ric file have hashes
+        if hash is not None and found_hash == False:
+            raise IOError("ric file has a hash, but par has not")
         logger.info("read parameter from file %s.par" % fname)
         ### replace variable names by the current value
         if self.fit: 
@@ -1689,6 +1911,209 @@ chargetype     gaussian
             self.par.variables()
         logger.info("read parameter from file %s" % fname)
         return
+
+    def to_latex(self, refsys, ic, datypes = None):
+        """
+        Method to publish parameters as latex tables. This method needs pandas installed.
+
+        Args:
+            refsys (str): reference system for which the parameters should
+                be published.
+            ic (str): Internal coordinate for which the parameters should
+                be published
+            datypes (dict, optional): Defaults to None. Dictionary to 
+                convert atomtypes to more readable types.
+        
+        Returns:
+            str: latex code as str
+        """
+   
+        import pandas as pd
+        mdyn2kcal=143.88
+        units = {
+            "cha": {},
+            "vdw": {},
+            "bnd": {"$k_b [\si{\kcal\per\mole\per\AA\squared}]$":mdyn2kcal},
+            "bnd5": {"$k_b [\si{\kcal\per\mole\per\AA\squared}]$":mdyn2kcal},
+            "ang": {"$k_a [\si{\kcal\per\mole\per\radian\squared}]$":mdyn2kcal},
+            "ang5": {"$k_a [\si{\kcal\per\mole\per\radian\squared}]$"},
+            "dih": {},
+            "oop": {"$k_o [\si{\kcal\per\mole\per\radian\squared}]$":mdyn2kcal},
+        }
+        potentials = {"cha": {"gaussian": ["$q [e]$", "$sigma [\si{\AA}]$"]},
+                "vdw": {"buck6d": ["\text{$r^0_{ij} [\si{\AA}]$}", "$\epsilon_{ij}$"]},
+                "bnd": {"mm3": ["$k_b [\si{\kcal\per\mole\per\AA\squared}]$", "\text{$r_b^0 [\si{\AA}]$}"]},
+                "bnd5": {"mm3": ["$k_b [\si{\kcal\per\mole\per\AA\squared}]$", "\text{$r_b^0 [\si{\AA}]$}"]},
+                "ang": {"mm3": ["$k_a [\si{\kcal\per\mole\per\radian\squared}]$", "\text{$\phi_a^0 [\si{\degree}]$} "]},
+                "ang5": {"mm3": ["$k_a [\si{\kcal\per\mole\per\radian\squared}]$", "\text{$\phi_a^0 [\si{\degree}]$} "]},
+                "dih": {"cos3": ["\text{$V_1 [\si{\kcal\per\mole}]$}", "\text{$V_2 [\si{\kcal\per\mole}]$}", "\text{$V_3 [\si{\kcal\per\mole}]$}",], 
+                "cos3": ["\text{$V_1 [\si{\kcal\per\mole}]$}", "\text{$V_2 [\si{\kcal\per\mole}]$}", "\text{$V_3 [\si{\kcal\per\mole}]$}","\text{$V_4 [\si{\kcal\per\mole}]$}"]},
+                "oop": {"harm": ["$k_o [\si{\kcal\per\mole\per\radian\squared}]$", "\text{$\gamma^0$ [\si{\degree}]}"]}}
+        sortlist = ["types", "potential",]
+        columnformat = "lcc"
+        d = {"types":[], "potential":[]}
+        for i,l in potentials[ic].items():
+            for j in l: 
+                d[j]=[]
+                sortlist.append(j)
+                columnformat+="S"
+        for k,v in self.par[ic].items():
+            pot, ref, atypes = self.split_parname(k)
+            if pot not in potentials[ic].keys():continue
+            if ref == refsys:
+                if datypes is not None: atypes = map(lambda a: datypes[a],atypes)
+                d["types"].append(string.join(atypes, "-"))
+                d["potential"].append(pot)
+                for i, p in enumerate(v[1]):
+                    ptype = potentials[ic][pot][i]
+                    if ptype in units[ic].keys(): p *= units[ic][ptype]
+                    d[potentials[ic][pot][i]].append(round(p,3))
+        # remove empty columns
+        rkeys = []
+        for k,v in d.items():
+            if len(v)==0: rkeys.append(k)
+        for k in rkeys: 
+            del d[k]
+            sortlist.remove(k)
+        df = pd.DataFrame(data=d)
+        df = df[sortlist]
+        return df.to_latex(escape = False, column_format=columnformat)
+
+    def assign_params_from_key(self, fname):
+        """
+        Method used to setup an ff addon based on the legacy key file format.
+        
+        Args:
+            fname (str): filename of the key file
+        """
+
+
+        def numberify_list(l, formatcode):
+            if len(formatcode) == 0:
+                return l
+            elif formatcode[0] == "*":
+                if formatcode[1] == "i":
+                    try:
+                        l = map(string.atoi,l)
+                    except ValueError:
+                        print ("Error converting %s to integer!!" % str(l))
+                        raise ValueError
+                elif formatcode[1] == "f":
+                    l = map(string.atoi,l)
+                elif formatcode[1] == "s":
+                    pass
+                else:
+                    raise ValueError, "unknown formatcode %s" % formatcode
+            else:
+                for i in xrange(len(formatcode)):
+                    if formatcode[i] == "i":
+                        try:
+                            l[i] = string.atoi(l[i])
+                        except ValueError:
+                            print ("Error converting %s to integer!!" % str(l[i]))
+                            raise ValueError
+                    if formatcode[i] == "f":
+                        try:
+                            l[i] = string.atof(l[i])
+                        except ValueError:
+                            print ("Error converting %s to float!!" % str(l[i]))
+                            raise ValueError
+                        except IndexError:
+                            print ("Formatcode: %s" % formatcode)
+                            print ("Data      : %s" % str(l))
+                            raise IndexError('Maybe is the last opbend parameter missing? (not sure)')
+                    if formatcode[i] == "o":
+                        # optional float .. need to check if l is long enough ... o must be at the end!!
+                        if (len(l) > i) :
+                            l[i] = string.atof(l[i])
+                        else:
+                            l.append(0.0)
+            return l
+        # idea is to read the stuff first into self.par dictionary and afterwards
+        # assign them
+        # available potential keywords, keyword not yet implemented here are 
+        # commented out
+        pterms = {
+            #"atom"        : (1, "so") , \
+            "vdw"         : (1, "ff", "vdw", "buck6d")    ,\
+            "vdwpr"       : (2, "ff", "vdwpr", "buck6d")    ,\
+            "bond"        : (2,"ffo", "bnd", "mm3")   ,\
+            #"bondq"       : (2,"ffff")   ,\
+            #"bond5"       : (2,"ffo")   ,\
+            #"bond4"       : (2,"ff")   ,\
+            "angle"       : (3, "ff", "ang", "mm3") ,\
+            #"angleq"       : (3, "ffff") ,\
+            #"angle5"      : (3, "ffoo") ,\
+            #"angle4"      : (3, "ffoo") ,\
+            "anglef"      : (3, "ffioo", "ang", "fourier")  ,\
+            #"anglef-2"    : (3, "ff")   ,\
+            "strbnd"      : (3, "fff", "ang", "strbnd") ,\
+            "opbend"      : (4, "fo", "oop", "harm")   ,\
+            "torsion"     : (4, "fffo", "dih", "cos3") ,\
+            #"torsion5"    : (4, "fffo") ,\
+            #"torsion4"    : (4, "fffo") ,\
+            "charge"      : (1, "ff", "cha", "gaussian") ,\
+            #"chargemod"   : (2, "f") ,\
+            #"chargeadd"   : (1, "f") ,\
+            #"molname"     : (1, "*s") ,\
+            #"virtbond"    : (2, "") ,\
+            #"restrain-distance"  : (2, "ff"),\
+            #"restrain-angle"     : (3, "ff"),\
+            #"restrain-torsion"   : (4, "ff"),\
+            }
+        not_implemented = ["equivalent", "chargemod", "bond4", "bond5", 
+            "angle5", "angle4", "restrain-distance","restrain-angle",
+            "restrain-angle",]
+        self._init_pardata()
+        ptnames = pterms.keys()
+        with open(fname, "r") as f:
+            for line in f.readlines():
+                sline = string.split(line)
+                # jump over comments and empty lines
+                if ((len(sline)>0) and (sline[0][0] != "#")):
+                    keyword = sline[0]
+                else:
+                    continue
+                # check for notes
+                if sline.count("!!"):
+                    sline = sline[:sline.index("!!")]
+                # check if keyword is a potential keyword then read it in
+                # ignore setttings at the first place
+                if keyword in not_implemented:
+                    raise NotImplementedError("%s not supported" % keyword)
+                if ptnames.count(keyword):
+                    natoms, formatcode, ic, pot = pterms[keyword]
+                    # we have to get the atomkey and sort it
+                    atomkey = aftype_sort([aftype(i,"leg") for i in sline[1:natoms+1]],ic)
+                    # get actual params from numberify_list, stolen from pydlpoly.ff module
+                    # we need to perform here some checks in order to distinct for example
+                    # mm3 bnd from morse bnd potential
+                    params = numberify_list(sline[natoms+1:], formatcode)
+                    # we need to create a parname we use "leg" for legacy
+                    # as name of the refsys and as framentnames to make it
+                    # easy to use already implemented helper methods
+                    # for the actual assignment
+                    full_parname = pot+"->("+string.join(map(str,atomkey),",")+")|leg"
+                    if ic == "bnd" and params[2] > 0.0: pot = "morse"
+                    if ic == "dih" and params[3] > 0.0: pot = "cos4"
+                    self.par[ic][full_parname] = (pot, numberify_list(sline[natoms+1:], formatcode))
+        # now we have to add the missing parameters for strbnd by looping over the bond and angle pots
+        for k in self.par["ang"].keys():
+            if self.par["ang"][k][0] == "strbnd":
+                pot,ref, aftypes = self.split_parname(k)
+                apot  = "mm3->"+k.split("->")[-1] 
+                spot1 = self.build_parname("bnd", "mm3", "leg", aftypes[:2])
+                spot2 = self.build_parname("bnd", "mm3", "leg", aftypes[1:])
+                s1 = self.par["bnd"][spot1][1][1]
+                s2 = self.par["bnd"][spot2][1][1]
+                a  = self.par["ang"][apot][1][1]
+                pot = ("strbnd", self.par["ang"][k][1]+[s1,s2,a])
+                self.par["ang"][k]=pot                
+        # now perform the actual assignment loop
+        self.assign_params_offline(ref="leg", key = True)
+        return
+
+
 
 
     

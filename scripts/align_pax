@@ -29,9 +29,8 @@ m.read(fi, ftype = fi_type)
 
 ### check here whether the structure is a bb already! in this case do not change anything bb related
 
-m.addon('bb')
-m.center_point = 'com'
-m.bb.center()
+m.center_com()
+
 m.xyz = rotations.align_pax(m.xyz,masses=m.get_mass())
 
 

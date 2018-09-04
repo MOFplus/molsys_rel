@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger("molsys.io")
 
-def write(mol,fname, name=''):
+def write(mol,fname, name='', write_bonds=True):
     """
     Routine, which writes a cif file in P1
     :Parameters:
@@ -40,8 +40,17 @@ def write(mol,fname, name=''):
     mol.wrap_in_box()
     frac_xyz = mol.get_frac_xyz()
     for i in range(mol.natoms):
-        f.write(" %s  %s %12.6f  %12.6f  %12.6f \n" % (mol.elems[i].title(),mol.elems[i].title(),\
+        f.write(" %s%d  %s %12.6f  %12.6f  %12.6f \n" % (mol.elems[i].title(),i,mol.elems[i].title(),\
             frac_xyz[i,0],frac_xyz[i,1],frac_xyz[i,2],))
+    if write_bonds:
+        f.write("loop_  \n")
+        f.write("_geom_bond_atom_site_label_1  \n")
+        f.write("_geom_bond_atom_site_label_2  \n")
+        mol.set_ctab_from_conn()
+        for i,ctab in enumerate(mol.ctab):
+            c1,c2=ctab[0],ctab[1]
+            e1,e2 =mol.elems[c1].title(), mol.elems[c2].title()
+            f.write('%s%d   %s%d \n' % (e1,c1,e2,c2) )
     f.write("  \n")
     f.write("#END  \n")
     f.close()
