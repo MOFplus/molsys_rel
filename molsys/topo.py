@@ -447,6 +447,7 @@ class topo(mol):
             if a connectivity is read via a tinker file there is no pconn present.
             with this metod it is added for the use with weaver2 """
         self.use_pconn= True
+        self.pimages = []
         self.pconn = []
         for i,c in enumerate(self.conn):
             atoms_pconn = []
@@ -488,8 +489,8 @@ class topo(mol):
                             if use_it:
                                 atoms_image.append(ii)
                                 atoms_pconn.append(images[ii])
+            self.pimages.append(atoms_image)
             self.pconn.append(atoms_pconn)
-            #if len(atoms_pconn) != len(c): print("AOSUHDAPUFHPOUFHPWOUFHPOUDHSPUODHASIUDHAUSIDHSD")
         return
 
         # 'na',lower(label),xyz,i,j)

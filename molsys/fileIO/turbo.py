@@ -11,6 +11,7 @@ import string
 from molsys.util.units import angstrom, kcalmol
 
 def read(mol, f, gradient = False, trajectory=False, cycle = -1):
+    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
     if gradient:
         return read_gradfile(mol,f,cycle)
     if trajectory:

@@ -68,6 +68,17 @@ class mpiobject(object):
         else:
             self.out = open(out, "w")
 
+    def __delitem__(self, name):
+        self.__delattr__(name)
+        return 
+
+    def __getitem__(self, name):
+        return self.__getattribute__(name)
+
+    def __setitem__(self, name, value):
+        self.__setattr__(name, value)
+        return
+
     def pprint(self, *args, **kwargs):
         """Parallel print function"""
         if self.is_master:

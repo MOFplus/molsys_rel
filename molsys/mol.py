@@ -2,12 +2,10 @@
 ### overload print in parallel case (needs to be the first line) [RS] ###
 from __future__ import print_function
 
-#import string as st
 import numpy as np
 #from scipy.optimize import linear_sum_assignment as hungarian
 #import types
 import copy
-import string
 import os
 #import sys
 import subprocess
@@ -20,11 +18,15 @@ from .util import unit_cell
 from .util import elems as elements
 from .util import rotations
 from .util import images
+from .util.images import arr2idx, idx2arr, idx2revidx
+from .util.misc import argsorted
+
 from .fileIO import formats
 
 from . import mpiobject
 from . import molsys_mpi
 from . import addon
+from .prop import Property
 
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
@@ -83,6 +85,7 @@ class mol(mpiobject):
     def __init__(self, mpi_comm = None, out = None):
         super(mol,self).__init__(mpi_comm, out)
         self.natoms=0
+        self.nbonds=0
         self.cell=None
         self.cellparams=None
         self.images_cellvec=None
@@ -106,6 +109,9 @@ class mol(mpiobject):
         self.pconn = []
         self.ptab  = []
         self.supercell=[1,1,1]
+        self.aprops = {}
+        self.bprops = {}
+        self._etab = []
         return
 
     #####  I/O stuff ######################################################################################
@@ -124,8 +130,8 @@ class mol(mpiobject):
     def read(self, fname, ftype=None, **kwargs):
         ''' generic reader for the mol class
         Parameters:
-            fname        : the filename to be read
-            ftype="mfpx" : the parser type that is used to read the file
+            fname(str)   : the filename to be read or a generic name
+            ftype(str)   : the parser type that is used to read the file (default: "mfpx")
             **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
         if ftype is None:
@@ -342,6 +348,7 @@ class mol(mpiobject):
             conn = self.conn
         for i, c in enumerate(conn):
             for j in c:
+                logger.debug("%d in conn[%d] == %s? %s" % (i, j, conn[j], i in conn[j]))
                 if i not in conn[j]: return False
         return True
 
@@ -386,6 +393,7 @@ class mol(mpiobject):
         if remove_duplicates:
             if len(duplicates)>0:
                 logger.warning("Found %d duplicates" % len(duplicates))
+                duplicates = list(set(duplicates)) # multiple duplicates are taken once
                 self.natoms -= len(duplicates)
                 self.set_xyz(np.delete(xyz, duplicates,0))
                 self.set_elems(np.delete(elems, duplicates))
@@ -488,14 +496,14 @@ class mol(mpiobject):
             self.use_pconn = False
         return
     
-    def make_topo(self):
+    def make_topo(self, check_flag=True):
         """
         Convert this mol obejct to be a topo object.
         This means a pconn will be generated and written to file as well
         """
         if self.is_topo: return
         self.is_topo = True
-        if self.check_need_pconn():
+        if self.check_need_pconn() and check_flag:
             self.add_pconn()
         return
     
@@ -699,6 +707,7 @@ class mol(mpiobject):
             return
         else:
             # apply to xyz
+            assert xyz.ndim == 2, "number of dimensions must be 2"
             if fixidx != -1:
                 a = xyz[:,:] - xyz[fixidx,:]
             else:
@@ -752,12 +761,12 @@ class mol(mpiobject):
         ''' set unit cell using cell vectors and assign cellparams
         Parameters:
             cell: cell vectors (3,3)
-            cell_only (bool)  : if false, also the coordinates are changed
+            cell_only (bool)  : if False, also the coordinates are changed
                                   in respect to new cell
 
         '''
         assert np.shape(cell) == (3,3)
-        if cell_only == False: 
+        if cell_only is False: 
             frac_xyz = self.get_frac_from_xyz()
         self.periodic = True
         self.cell = cell
@@ -765,7 +774,7 @@ class mol(mpiobject):
         self.inv_cell = np.linalg.inv(self.cell)
         self.images_cellvec = np.dot(images, self.cell)
         self.set_bcond()
-        if cell_only == False:
+        if cell_only is False:
             self.set_xyz_from_frac(frac_xyz)
         return
 
@@ -781,6 +790,13 @@ class mol(mpiobject):
         self.set_cell(cell, cell_only=cell_only)
         return
     
+    def set_empty_cell(self):
+        ''' set empty cell and related attributes'''
+        self.periodic = False
+        self.cell = None
+        self.cellparams = None
+        self.images_cellvec = None
+
     ### rewrite on set_cell ???
     def scale_cell(self, scale, cell_only=False):
         ''' scales the cell by a given factor
@@ -825,7 +841,6 @@ class mol(mpiobject):
         if not self.periodic: return
         assert frac_xyz.shape == (self.natoms, 3)
         self.xyz = np.dot(frac_xyz,self.cell)
-        print("done")
         return
 
     def get_image(self,xyz, img):
@@ -859,7 +874,8 @@ class mol(mpiobject):
                 rotate (numpy.ndarry)   : rotation triple to apply to the other mol object before insertion
                 scale (float)           : scaling factor for other mol object coodinates
                 roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
-        assert not self.use_pconn, "This method can not be used with pconn!"
+        if self.use_pconn:
+            logger.warning("Connectivity may need tinkering with pconn!")
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
@@ -957,6 +973,7 @@ class mol(mpiobject):
                             m.xyz[j] += k * images[imgi][0][ik]
                         break
             m.cell = None
+            m.cellparams = None
             m.periodic = False
         return m
 
@@ -1073,7 +1090,7 @@ class mol(mpiobject):
             atype (string):   atom type string
             xyz (ndarry [3]): coordinates
             
-        TBI: what to do woth fragment types etc?
+        TBI: what to do with fragment types etc?
         """
         assert type(elem) == str
         assert type(atype)== str
@@ -1258,7 +1275,84 @@ class mol(mpiobject):
         self.delete_atoms(badlist)
         return
 
+### property interface #########################################################
 
+    def get_atom_property(self, pname):
+        return self.aprops[pname]
+
+    def set_atom_property(self, pname):
+        self[pname] = Property(pname, self.natoms, "atom")
+        self.aprops[pname] = self[pname]
+        return
+
+    def del_atom_property(self, pname):
+        del self.aprops[pname]
+        del self[pname]
+        return
+
+    def list_atom_properties(self):
+        if not self.aprops:
+            print("No atom property")
+            return
+        print("Atom properties:")
+        for prop in self.aprops:
+            print(prop)
+        return
+
+    def get_bond_property(self, pname):
+        return self.bprops[pname]
+
+    def set_bond_property(self, pname):
+        prop = Property(pname, self.nbonds, "bonds")
+        setattr(self, pname, prop)
+        self.bprops[pname] = getattr(self, pname)
+        return
+
+    def del_bond_property(self, pname):
+        del self.bprops[pname]
+        del self[pname]
+        return
+
+    def list_bond_properties(self):
+        if not self.bprops:
+            print("No bond property")
+            return
+        print("Bond properties:")
+        for prop in self.bprops:
+            print(prop)
+        return
+
+    def get_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            return self.get_atom_property(pname)
+        elif ptype.lower() == "bond":
+            return self.get_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+
+    def set_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            self.set_atom_property(pname)
+        elif ptype.lower() == "bond":
+            self.set_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+        return
+
+    def del_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            self.del_atom_property(pname)
+        elif ptype.lower() == "bond":
+            self.del_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+        return
+
+    def list_properties(self):
+        print("Properties:")
+        self.list_atom_properties()
+        self.list_bond_properties()
+        return
 
     ##### manipulate geomtry #######################################################
 
@@ -1423,7 +1517,7 @@ class mol(mpiobject):
             closest=[0]
         return d, r, closest
 
-    def get_com(self, idx = None, xyz = None):
+    def get_com(self, idx = None, xyz = None, check_periodic=True):
         """
         returns the center of mass of the mol object.
 
@@ -1436,7 +1530,7 @@ class mol(mpiobject):
         if xyz is not None:
             amass = np.array(self.amass)[idx]
         elif idx is None:
-            if self.periodic: return None
+            if self.periodic and check_periodic: return None
             xyz = self.get_xyz()
             amass = np.array(self.amass)
         else:
@@ -1445,6 +1539,22 @@ class mol(mpiobject):
         xyz = self.apply_pbc(xyz, 0)
         center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         return center
+
+    def shift_by_com(self, alpha=2, **kwargs):
+        """
+        shift by center of mass
+        alpha is needed otherwise atom distance is lost for excerpt of former
+        periodic structures (e.g. a block)
+        """
+        ralpha = 1./alpha
+        com = self.get_com(check_periodic=False, **kwargs)
+        if self.periodic:
+            shift = np.dot( np.dot(com, self.inv_cell)%ralpha, self.cell)
+        else: # N.B.: reverse alpha has a different meaning
+            shift = com*ralpha
+        self.xyz -= shift
+        return
+
 
     ###### get/set  core datastructures ###########################
 
@@ -1491,7 +1601,7 @@ class mol(mpiobject):
         unielems = sorted(list(set(self.elems)))
         elemscount = [self.elems.count(i) for i in unielems]
         for i,e in enumerate(unielems):
-            fe = string.upper(e[0])+e[1:]
+            fe = e[0].upper()+e[1:]
             fsum += fe
             fsum += str(elemscount[i])
         return fsum
@@ -1519,7 +1629,7 @@ class mol(mpiobject):
         self.elems = elems
 
     def set_elems_number(self, elems_number):
-        """ set the elemsnts from a list of atomic numbers ""
+        """ set the elements from a list of atomic numbers ""
         :Parameters:
             - elem_number: list of atomic numbers
         """
@@ -1531,7 +1641,7 @@ class mol(mpiobject):
         ''' return the list of atom types '''
         return self.atypes
 
-    # just to make compatibel with pydlpoly standard API
+    # just to make compatible with pydlpoly standard API
     def get_atomtypes(self):
         return self.atypes
 
@@ -1650,14 +1760,14 @@ class mol(mpiobject):
                 pi = self.pimages[i]
                 for j, pj in zip(ci,pi):
                     if j > i or (j==i and pj <= 13):
-                        ctab.append([i,j])
+                        ctab.append((i,j))
                         ptab.append(pj)
             return ctab, ptab
         else:
             for i, ci in enumerate(self.conn):
                 for j in ci:
                     if j > i:
-                        ctab.append([i,j])
+                        ctab.append((i,j))
         return ctab
         
     def set_ctab_from_conn(self, pconn_flag=None):
@@ -1669,7 +1779,7 @@ class mol(mpiobject):
 
     def set_conn_from_tab(self, ctab):
         """
-        sets the connectivity froma table of bonds
+        sets the connectivity from a table of bonds
         :Parameters:
             - ctab   : list of bonds (nbonds, 2)
         """
@@ -1717,7 +1827,8 @@ class mol(mpiobject):
         gets the periodic connectivity as a table of bonds with shape (nbonds, 2)
         N.B.: can return ctab AND ptab if self.use_pconn == True
         """
-        raise ImportError("Use get_conn_as_Tab w/ pconn_flag=True")
+        ### TBI ### [RA]
+        raise NotImplementedError("Use get_conn_as_Tab w/ pconn_flag=True")
         if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
         ctab = []
         ptab = []
@@ -1738,7 +1849,8 @@ class mol(mpiobject):
         return ctab
         
     def set_ptab_from_pconn(self, pconn_flag=None):
-        raise ImportError("Use set_ctab_from_conn w/ pconn_flag=True")
+        raise NotImplementedError("Use set_ctab_from_conn w/ pconn_flag=True")
+        # TBI: see acab for a suggested implementation [RA]
         if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
         if pconn_flag:
             self.ctab, self.ptab = self.get_conn_as_tab(pconn_flag=True)
@@ -1763,7 +1875,108 @@ class mol(mpiobject):
             pconn[j][ji] = -p 
         self.pconn = pconn
         return
+
+    def get_pimages(self):
+        """
+        return the indices of the periodic images of the system
+        """
+        return self.pimages
+
+    def set_pimages(self, pimages, pconn_flag=False):
+        """
+        sets periodic image indices
+        if pconn_flag: set periodic connectivity (arrays) from indices
+        """
+        self.pimages = pimages
+        if pconn_flag:
+            self.pconn =[[idx2arr[j] for j in pimagesi] for pimagesi in pimages]
+        return
+
+    def set_pimages_from_pconn(self, pconn=None):
+        """
+        sets periodic image indices from periodic connectivity (arrays)
+        if pconn is None: get pconn from instance
+        """
+        if pconn is None:
+            pconn = self.pconn
+        self.pimages = [[arr2idx[j] for j in pconni] for pconni in pconn]
+        return
         
+    @property
+    def etab(self):
+        """ edge tab"""
+        return self._etab
+
+    @etab.setter
+    def etab(self, etab):
+        """any time edge tab is set, ctab, (ptab) and etab are sorted"""
+        self._etab = etab
+        self.sort_tabs(etab_flag=False)
+
+    def set_etab_from_tabs(self, ctab=None, ptab=None, sort_flag=True):
+        """set etab from ctab (and ptab). Both can be given or got from mol.
+        if sort_flag: ctab, (ptab) and etab are sorted too."""
+        if ctab is None and ptab is None:
+            ctab = self.ctab
+            ptab = self.ptab
+        elif ctab is None or ptab is None:
+            raise ValueError("ctab and ptab can't both be None")
+        if self.use_pconn:
+            etab_T = zip(*ctab)
+            etab_T.append(ptab)
+            self.etab = zip(*etab_T)
+        else:
+            self.etab = ctab[:]
+        if sort_flag is True: #it sorts ctab, ptab, and etab too
+            self.sort_tabs(etab_flag=False)
+        return
+
+    def set_etab(self, ctab=None, ptab=None, set_tabs=False):
+        """set etab without sorting (sorting is default for etab.setter)"""
+        if ctab is None and ptab is None:
+            ctab = self.ctab
+            ptab = self.ptab
+        elif ctab is None or ptab is None:
+            raise ValueError("ctab and ptab can't both be None")
+        if self.use_pconn:
+            etab = list(zip(ctab, ptab)) # python3 compl.: zip iterator gets exhausted
+        else:
+            etab = ctab
+        self._etab = etab
+
+    def sort_tabs(self, etab_flag=False):
+        """sort ctab, (ptab) and etab according to given convention
+        Convention is the following:
+            1)first ctab atom is lower or equal than the second
+            2)if i and j are equal and there is pconn:
+                revert the image to an index lower than 13 (the current cell)
+        N.B. this sorting is stable.
+        """
+        ctab = self.ctab
+        etab = self.etab
+        if self.use_pconn:
+            ptab = self.ptab
+            for ii,(i,j) in enumerate(ctab):
+                if i > j:
+                    ctab[ii] = ctab[ii][::-1]
+                    ptab[ii] = idx2revidx(ptab[ii])
+                if i == j and ptab[ii] > 13:
+                    ptab[ii] = idx2revidx(ptab[ii])
+        else:
+            for ii,(i,j) in enumerate(ctab):
+                if i > j:
+                    ctab[ii] = ctab[ii][::-1]
+        asorted = argsorted(ctab)
+        self.ctab = [ctab[i] for i in asorted]
+        if self.use_pconn:
+            self.ptab = [ptab[i] for i in asorted]
+        if etab_flag: # it ensures sorted etab and overwrites previous etab
+            self.set_etab_from_tabs(sort_flag=False)
+        elif etab:
+            self._etab = [etab[i] for i in asorted]
+        return
+
+    ### UTILS ##################################################################
     def set_unit_mass(self):
         """
         sets the mass for every atom to one
@@ -1802,12 +2015,14 @@ class mol(mpiobject):
         return
 
     def set_nofrags(self):
-        ''' in case there are no fragment types and numbers, setup the data structure which is needed in some functions '''
+        ''' in case there are no fragment types and numbers, setup the data
+        structure which is needed in some functions '''
         self.set_fragtypes(['-1']*self.natoms)
         self.set_fragnumbers([-1]*self.natoms)
 
     def get_comm(self):
-        """ dummy call ... returns None ... for compatibility with pydlpoly system objects """
+        """ dummy call ... returns None ...
+        for compatibility with pydlpoly system objects """
         return None
 
     def set_weight(self, weight):

@@ -171,7 +171,7 @@ class spg:
             logger.info('detected spacegroup %s %i with symprec=%5.4f' % (symbol, number, self.symprec))
         return (symbol, number)
 
-    def make_P1(self, spgnum=-1, sg_setting=1):
+    def make_P1(self, spgnum=-1, sg_setting=1, onduplicates="replace"):
         """
         to be implemented by Julian from his topo tools
 
@@ -188,7 +188,7 @@ class spg:
         
         #Okay, what i did was to use ASE as:
         try: 
-            from ase.lattice.spacegroup import Spacegroup
+            from ase.spacegroup import Spacegroup
         except:
             logger.error('make_P1 requires ASE (i.e. ase.lattice.spacegroup) to function properly')
             return
@@ -224,16 +224,14 @@ class spg:
         dataset = spglib.get_symmetry_from_database(spgnum)
         #print(dataset)
         
-        #self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
         self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
         
         new_xyz = []
         new_elems = []
         new_atypes = []
         frac_xyz = self.mol.get_frac_xyz()
-        #new_xyz,kinds =self.sg.equivalent_sites(frac_xyz,symprec=self.symprec)
         try:
-            new_xyz,kinds =self.sg.equivalent_sites(frac_xyz,symprec=1.0e-6)
+            new_xyz,kinds = self.sg.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
         except:
             import sys
             logger.error('could not get equivalent sites, '+str(sys.exc_info()[1]))
@@ -481,7 +479,6 @@ class spg:
                 idx_dmin  = [i for i,dist in enumerate(dists) if dist < 1e-5][0]
                 #idx_dmin = numpy.argmin(dists)
                 if dists[idx_dmin] > 1e-8:
-                    #import pdb; pdb.set_trace()
                     raise ValueError('no transformation found! for %i ' % (d,))
                 #print id,d,numpy.min(dists), numpy.argmin(dists)
                 transformations[d] = self.RT[idx_dmin]

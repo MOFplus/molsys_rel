@@ -7,12 +7,13 @@ logger = logging.getLogger("molsys.io")
 
 def read(mol, f):
     """
-    Routine, which reads an mfpx file
+    Read mfpx file
     :Parameters:
         -f   (obj): mfpx file object
         -mol (obj): instance of a molclass
     """
     ### read header ###
+    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
     ftype = 'xyz'
     lbuffer = f.readline().split()
     stop = False
@@ -67,6 +68,7 @@ def read(mol, f):
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
                 txyz.read_body(f,mol.natoms,frags=False)
     mol.set_ctab_from_conn(pconn_flag=mol.use_pconn)
+    mol.set_etab_from_tabs()
     if ftype == 'cromo':
         mol.set_otab_from_oconn()
     ### pass bb info

@@ -3,8 +3,8 @@ import string
 
 def read(mol, arr, use_pconn=False, **kwargs):
     """
-    Routine, which reads a coordinate array
-    :Parameters:
+    Read array as coordinates
+    :Arguments:
         -arr    (ndarray): name of the coordinate array
         -mol        (obj): instance of a molclass
         -use_pconn (bool): True to set empty pconn

@@ -11,6 +11,7 @@ from molsys.util.units import angstrom, kcalmol
 
 def read(mol, f):
     # missing docstring!
+    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
     xyz,elems,eigval,eigvec = [],[],[],[]
     stage,nm_idx = 'Null', -1
     for i,c in enumerate(f.xreadlines()):

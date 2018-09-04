@@ -47,15 +47,19 @@ else:
     Model = pyscipopt.Model
     quicksum = pyscipopt.quicksum
 
+### AUX ###
+from collections import defaultdict
+from itertools import combinations
+from numbers import Number
+import numpy as np
+from math import pi, cos
+
 ### UTIL ###
 from molsys.util.images import arr2idx, idx2arr, idx2revidx
 from molsys.util.sysmisc import _makedirs, _checkrundir
-from collections import defaultdict
-from numbers import Number
 import sys
 import os
 from copy import deepcopy
-import numpy as np
 
 ### LOGGING ###
 import logging
@@ -333,6 +337,101 @@ class acab(base):
                     name = consname
                 )
         if set_vcratios: self.vcratios = vcratios
+
+    def setup_angle_btw_edges(self, color, theta, sense="min", eps=1e-3, sele=None):
+        """
+        Constraint angle between edges to be min/max/close to theta.
+
+        IMPLEMENTATION DETAIL
+        Instead of explicitly allowing the edge pairs with (range of) angle, it
+        forbids the opposite, i.e. edge pairs that do not form/match that angle
+        This is easier wrt. integer programming: if edge j and edge k form a
+        forbidden angle, then the sum of the edge variabes must be 1 or lower,
+        i.e. their colors can't be the same.
+
+        color(int): constraint color (order based on ratio assignment)
+        theta(float): angle btw. 0 and pi
+        sense(str): sense of constraint [TBI: custom tolerances]
+            min:   allowed product btw. edges must be >  cos(theta)
+            max:   allowed product btw. edges must be <  cos(theta)
+            close: allowed product btw. edges must be =~ cos(theta)
+            N.B. theta from 0 to PI and cosine(theta) are antitone mapped,
+                so min(theta) -> max(cos(theta))
+        eps(float): tolerance to sense
+        sele (list of ints or None): selected vertices (if None: all)
+
+        TBI: non-periodic (w/o pconn) version
+        """
+        if sele is None:
+            sele = range(self._mol.natoms)
+        conn = self._mol.conn
+        pconn = self._mol.pconn
+        if theta < 0 or theta > pi:
+            raise TypeError("angle must be btw. 0 and pi")
+        cost = cos(theta)
+        v2e = [[] for i in range(self._mol.natoms)]
+        # compute vectors of selected vertices
+        for i in sele:
+            ic = conn[i]
+            ip = pconn[i]
+            for j,jp in zip(ic,ip):
+                rk = self._mol.xyz[j] - self._mol.xyz[i] + np.dot(self._mol.cell,jp)
+                dk = np.linalg.norm(rk)
+                rk /= dk
+                v2e[i].append(rk)
+        # compute vectors of sele atoms
+        prods = []
+        for v_ in v2e:
+            if v_:
+                v_ = np.array(v_)
+                prod = np.dot(v_,v_.T)
+                prods.append(prod)
+            else:
+                prods.append([])
+        if sense in ("min","max","close"):
+            for i,prod in enumerate(prods):
+                if len(prod):
+                    if sense == "min":
+                        ea, eb = np.where(prod - eps < cost)
+                    if sense == "max":
+                        ea, eb = np.where(prod + eps > cost)
+                    if sense == "close":
+                        ea, eb = np.where(cost - eps < prod < cost + eps)
+                    ew = np.where(ea < eb)
+                    pairs = zip(ea[ew], eb[ew])
+                    range_ = range(prod.shape[0])
+                    # wrong which pairs
+                    wpairs = [
+                        j for j in combinations(range_,2)
+                        if j not in pairs
+                    ]
+                    # N.B. trick: pairs are cumulated in only one list
+                    # Easier to code and to read. They are split later
+                    wpairs_ = sum(wpairs,())
+                    # wrong j conn triplet (i,j,pconn) pairs
+                    jpairs_ = [(i,conn[i][j],pconn[i][j]) for j in wpairs_]
+                    # wrong edge pairs
+                    epairs_ = [
+                        (j,k,arr2idx[p],color) if j < k
+                        else (k,j,arr2idx[-p],color)
+                        for j,k,p in jpairs_
+                    ]
+                    epairs = zip(epairs_[0::2], epairs_[1::2]) # split
+                    # edge variable pairs
+                    evpairs_ = [self.evars[e] for e in epairs_]
+                    evpairs = zip(evpairs_[0::2], evpairs_[1::2]) # split
+                    # constraints (finally!)
+                    for iev,(evj,evk) in enumerate(evpairs):
+                        ej,ek = epairs[iev] # here just for naming
+                        self.model.addCons(
+                            evj+evk <= 1, # i.e. they can't be both of the same color!
+                            name="WrongEdgePairs(%s-%s.%s,%s;%s-%s.%s,%s)" % \
+                                (ej[0],ej[1],ej[2],ej[3],
+                                 ek[0],ek[1],ek[2],ek[3])
+                        )
+        else:
+            raise NotImplementedError("sense \"%s\" not implemented" % sense.__repr__())
+
 
     ############################################################################
     ### MAIN ###
@@ -978,9 +1077,10 @@ class acab(base):
             ecolors = self.ecolors
         etab = self.etab
         ralpha = 1./alpha #reverse alpha
-        calpha = 1-ralpha #one's complement
+        calpha = 1-ralpha #one's complement of reverse alpha
         xyz_a = []
         xyz_c = []
+        new_etab = []
         if self._mol.use_pconn:
             for (ei,ej),p in etab: ### SELECTION TBI
                 xyz_ai = self._mol.xyz[ei]
@@ -1002,24 +1102,40 @@ class acab(base):
             xyz_c1 = calpha*xyz_a + ralpha*xyz_c
             xyz_c2 = ralpha*xyz_a + calpha*xyz_c
             me = self._mol.from_array(np.vstack([xyz_c1,xyz_c2]), use_pconn=self._mol.use_pconn)
-        if hasattr(self._mol,'cell'): me.set_cell(self._mol.cell)
-        if hasattr(self._mol,'supercell'): me.supercell = self._mol.supercell[:]
+        me.is_topo = True
+        if hasattr(self._mol,'cell'):
+            me.set_cell(self._mol.cell)
+        if hasattr(self._mol,'supercell'):
+            me.supercell = self._mol.supercell[:]
+        if self._mol.use_pconn:
+            me.use_pconn = True
         if alpha == 2:
-            me.elems = [ecolor2elem[v] for v in ecolors]
+            me.elems = [ecolor2elem[v] for v in ecolors] # N.B.: no connectivity
+            if self._mol.use_pconn:
+                pimg = me.get_frac_xyz()//1
+                me.xyz -= np.dot(pimg,me.cell)
+                for k,((i,j),p) in enumerate(etab):
+                    newe1 = (i,k),arr2idx[pimg[k]]
+                    newe2 = (j,k),arr2idx[idx2arr[p]-pimg[k]]
+                    new_etab.append(newe1)
+                    new_etab.append(newe2)
+            else:
+                new_etab = etab[:]
         else:
-            me.elems = [ecolor2elem[v] for v in ecolors*2]
-        if alpha != 2:
+            me.elems = [ecolor2elem[v] for v in ecolors*2] # with connectivity
             ctab = [[i,i+me.natoms/2] for i in range(me.natoms/2)]
             me.set_ctab(ctab, conn_flag=True)
             if self._mol.use_pconn:
-                p = me.get_frac_xyz()//1
-                me.xyz -= np.dot(p,me.cell)
-                ptab = [p[i+me.natoms/2]-p[i] for i in range(me.natoms/2)]
+                pimg = me.get_frac_xyz()//1
+                me.xyz -= np.dot(pimg,me.cell)
+                ptab = [pimg[i+me.natoms/2]-pimg[i] for i in range(me.natoms/2)]
                 me.set_ptab(ptab, pconn_flag=True)
-        else:
-            if self._mol.use_pconn:
-                p = me.get_frac_xyz()//1
-                me.xyz -= np.dot(p,me.cell)
+                for k,((i,j),p) in enumerate(etab):
+                    newe1 = (i,k),arr2idx[pimg[k]]
+                    newe2 = (j,k+len(etab)),arr2idx[idx2arr[p]-pimg[k+len(etab)]]
+                    new_etab.append(newe1)
+                    new_etab.append(newe2)
+        me.new_etab = new_etab
         return me
 
     def make_vmol(self, vcolors=None):
@@ -1047,20 +1163,27 @@ class acab(base):
             me = self.make_emol(ecolors=ecolors, alpha=alpha)
             mv = self.make_vmol(vcolors=vcolors)
             m = deepcopy(me)
-            #m.set_ctab_from_conn()
-            m.add_mol(mv)
-            ### connectivity ### (cosmetics)
+            m.add_mol(mv) # N.B.: in THIS EXACT ORDER, otherwise KO connectivity
+            ### connectivity ###
             ne = me.natoms
-            etab = self.etab
             ctab = []
-            for v,((ei,ej),p) in enumerate(etab):
-                ctab += [(v,ei+ne),(v+ne/2,ej+ne)]
-            ctab.extend(m.ctab)
-            m.set_conn_from_tab(ctab)
+            if self._mol.use_pconn:
+                ptab = []
+            if self._mol.use_pconn:
+                for (i,j),p in me.new_etab:
+                    ctab.append((i+ne,j))
+                    ptab.append(idx2arr[p])
+            else:
+                for (i,j),p in me.new_etab:
+                    ctab.append((i+ne,j))
+            m.set_ctab(ctab, conn_flag=True)
+            m.set_ptab(ptab, pconn_flag=True)
         elif self.evars and self.use_edge:
             m = self.make_emol(ecolors=ecolors, alpha=alpha)
         elif self.vvars and self.use_vertex:
             m = self.make_vmol(vcolors=vcolors)
+        else:
+            raise ValueError("something went very wrong!")
         if hasattr(self,'cell'): m.set_cell(self.cell)
         if hasattr(self,'supercell'): m.supercell = self.supercell[:]
         return m
@@ -1498,7 +1621,6 @@ class acab(base):
 
     def assert_loop_alpha(self, alpha):
         assert alpha >= 2, "alpha must be >= 2"
-        assert alpha != 2, "alpha must be != 2 (BUG: TBI!)"
         return
 
     def assert_loop_edge(self, use_edge, constr_edge):
@@ -1537,7 +1659,7 @@ class acab(base):
     def debug_():
         pass
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 header= """
 ********************************************************************************
