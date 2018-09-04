@@ -1,6 +1,7 @@
-import copy
+
 import string
 import numpy
+import copy
 import molsys.mol
 # molecules module
 
@@ -137,11 +138,7 @@ class molecules(object):
             for i in curr_mol:
                 self.whichmol[i] = nmol
             # at this point all molecules found get the type 0 = "xyz"
-            # quick hack to get one type of molecule to run
-            if nmol != 0:
-                self.moltypes.append(1)
-            else:
-                self.moltypes.append(0)
+            self.moltypes.append(0)
             nmol += 1
         # all atoms are assigned
         # if mol.verbose:
