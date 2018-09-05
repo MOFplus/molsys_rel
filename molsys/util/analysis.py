@@ -31,3 +31,55 @@ def _compute_single_orient(mol, atompair, store=True,local_frame=None):
     if local_frame is not None:
         return xm,ym,zm
     return orient
+
+def compute_autocorrelation(x,dt):
+    '''
+    computes the autocorrelation function of a signal x featuring time differences dt
+    '''
+    from molsys.util.rotations import normalize_angles_to_angle
+    def autocorr(x):
+        result = numpy.correlate(x, x, mode='full')
+        return result[result.size/2:]
+    def acf(x, length=None):
+        if length is None:
+            length = x.shape[0]-1
+        return numpy.array([1]+[numpy.corrcoef(x[:-i], x[i:]) for i in range(1, length)])
+    #raw_acf = autocorr(x)
+    t = numpy.linspace((0,x.shape[0]*dt,))
+    nx = len(x)
+    oacf = numpy.zeros(nx)
+    nsamples = numpy.zeros(nx,dtype='int')
+    o0 = 0.0
+    for i in range(1,len(x)):
+        ot = normalize_angles_to_angle(x[i:],ref_angle=x[i-1])
+        nsamples[i:] += 1
+
+    return oacf
+
+def compute_autocorrelation2(x,dt):
+    '''
+    computes the autocorrelation function of a signal x featuring time differences dt
+    '''
+    from molsys.util.rotations import normalize_angles_to_angle
+    t = numpy.linspace((0,x.shape[0]*dt,))
+    nx = len(x)
+    oacf = numpy.zeros(nx)
+    nsamples = numpy.zeros(nx,dtype='int')
+    o0 = 0.0
+    for i in range(1,len(x)):
+        ot = normalize_angles_to_angle(x[i:],ref_angle=x[i-1])
+        nsamples[i:] += 1
+
+    return oacf
+
+def compute_autocorrelation_fft(x,dt):
+    '''
+    computes the autocorrelation function of a signal x featuring time differences dt
+    '''
+    from molsys.util.rotations import normalize_angles_to_angle
+    t = numpy.linspace((0,x.shape[0]*dt,))
+    nx = len(x)
+    t_fft = numpy.fft.fft(x)
+    S = t_fft * numpy.conj(t_fft)
+    acf = numpy.fft.ifft(S)
+    return acf
