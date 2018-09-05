@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 import os
 import sys
 import molsys
@@ -29,7 +30,7 @@ class conngraph:
         self.mol = mol
         self.make_graph()
 
-    def make_graph(self, forbidden = None):
+    def make_graph(self, forbidden = []):
         """ Create a Graph object from a molsys.mol object. """
         self.molg = Graph(directed=False)
         ig = 0
@@ -44,7 +45,7 @@ class conngraph:
             self.molg.vp.coord[ig] = self.mol.xyz[i,:]
             self.molg.vp.elem[ig] = self.mol.elems[i]
             self.molg.vp.midx[ig] = i
-            if type(forbidden) != type(None) and int(ig) in forbidden:
+            if int(ig) in forbidden:
                 self.molg.vp.fix[ig] = 1
             else:
                 self.molg.vp.fix[ig] = 0
@@ -59,6 +60,42 @@ class conngraph:
         # create Backup of the original graph for comparison
         self.keep = Graph(self.molg, directed=False)
         return
+
+    def make_graph_from_morphism(self, morph):
+        """make graph from morphism applied to current graph
+        iold,jold TO BE CHECKED"""
+        mol = copy.deepcopy(self.mol)
+        morpha = morph.get_array()
+        mol.xyz = mol.xyz[morpha]
+        mol.elems = np.array(mol.elems)[morpha].tolist()
+        mol.atypes = np.array(mol.atypes)[morpha].tolist()
+        conn = copy.deepcopy(self.mol.conn)
+        pconn = copy.deepcopy(self.mol.conn)
+        mol.set_empty_conn()
+        mol.set_empty_pconn()
+        for iold,jold in self.mol.ctab:
+            # apply morphism to indices
+            i = morpha[iold]
+            j = morpha[jold]
+            # get ijth position of j in ith conn
+            ij = conn[i].index(j)
+            # pop index corresponding to j from ith conn (and check)
+            assert conn[i].pop(ij) == j
+            # append index to new ith conn
+            mol.conn[i].append(j)
+            # pop image corresponding to j from ith pconn
+            jp = pconn[i].pop(ij)
+            # append image to new ith pconn
+            mol.pconn[i].append(jp)
+            # same story here with switched indices i,j<-j,i
+            ji = conn[j].index(i)
+            assert conn[j].pop(ji) == i
+            mol.conn[j].append(i)
+            ip = pconn[j].pop(ji)
+            mol.pconn[j].append(ip)
+        mol.set_ctab_from_conn(pconn_flag=True)
+        cg = self.__class__(mol) # new conngraph
+        return cg
     
     def cut_to_2core(self):
         """
@@ -169,6 +206,95 @@ class conngraph:
             if graph.vp.filled[n] == False:
                 self.flood_fill(graph, n, return_list)
         return return_list
+
+    def get_automorphisms(self, color=None, **kwargs):
+        """Obtain all automorphisms of conngraph graph
+        An automorphism is an isomorphism of the graph with itself.
+        WARNING: the procedure may be slow, especially for uncolored nets.
+
+        >>> autos_default = tt.tg.get_automorphisms()
+        >>> autos_nocolor = tt.tg.get_automorphisms(color=False)
+        >>> autos_justone = tt.tg.get_automorphisms(color=False, max_n=1)
+        """
+        molg = self.molg
+        if color is None:
+            color = hasattr(molg.ep, "color")
+        if color:
+            return subgraph_isomorphism(molg, molg,
+                vertex_label=(molg.vp.elem, molg.vp.elem),
+                edge_label=(molg.ep.color, molg.ep.color),
+                subgraph=False, **kwargs)
+        else:
+            return subgraph_isomorphism(molg, molg,
+                vertex_label=(molg.vp.elem, molg.vp.elem),
+                subgraph=False, **kwargs)
+
+    def is_isomorphic(self, other, color=None, **kwargs):
+        """Return True if the instance graph is isomorphic to a target graph.
+        Check the existence of at least an isomorphism between the
+        instance conngraph graph and another conngraph graph.
+        
+        >>> tt.tg.is_isomorphic(tt.tg) # trivial
+        True
+        
+        >>> tt.tg.is_isomorphic(tt.mg) # trivial (most of the time)
+        False
+        """
+        molg1, molg2 = self.molg, other.molg
+        if color is None:
+            color = hasattr(molg1.ep, "color") & hasattr(molg2.ep, "color")
+        if color:
+            try:
+                isom = subgraph_isomorphism(molg1, molg2,
+                    vertex_label=(molg1.vp.elem, molg2.vp.elem),
+                    edge_label=(molg1.ep.color, molg2.ep.color),
+                    subgraph=False, max_n=1, **kwargs)
+                return bool(isom) # is there any isomorphism? True/False
+            except KeyError as e:
+                if color is not None: # gentle: not isomorphic w/o colors
+                    return False
+                else: # something went wrong and unexpected
+                    import traceback
+                    traceback.print_exc()
+                    sys.exit(1)
+        else:
+            return isomorphism(molg1, molg2, **kwargs)
+            # THIS does not work: WHY? investigate #
+            # it is needed w/ different element per vertex (e.g. bipartite case)
+            #return isomorphism(molg1, molg2,
+            #    vertex_inv1=molg1.vp.elem, vertex_inv2=molg2.vp.elem)
+            # WHY NOT THE FOLLOWING? ASK or CHECK SOURCE
+            """
+            isom = subgraph_isomorphism(molg1, molg2,
+                vertex_label=(molg1.vp.elem, molg2.vp.elem),
+                subgraph=False, max_n=1, **kwargs)
+            return bool(isom) # is there any isomorphism? True/False
+            """
+
+    def print_isomorphism(self, iso, vertex=None, edge=None):
+        """Print isomorphism as map of indices"""
+        ### TBI: separate RETURN from PRINT! (that's needed for ACAB)
+        if vertex is None and edge is None:
+            vertex = True
+            edge = True
+        molg = self.molg
+        if vertex:
+            vs_ = [iso[v] for v in molg.vertices()]
+            vfd = len(str(len(vs_)-1))
+            vs_f = ["%%%dd" % vfd % v_ for v_ in vs_]
+            print("V:", ' '.join(vs_f))
+        if edge:
+            # TBI?: there should be a faster, more graph_tool-like way
+            es_ = []
+            for e in molg.edges():
+                s,t = e.source(), e.target()
+                s_, t_ = iso[s], iso[t]
+                i_ = molg.edge_index[s_,t_]
+                es_.append(i_)
+            efd = len(str(len(es_)-1))
+            es_f = ["%%%dd" % efd % e_ for e_ in es_]
+            print("E:", ' '.join(es_f))
+        return
     
 class molgraph(conngraph):
     """ This class handles the deconstruction of a MOF structure into a graph. """
@@ -479,8 +605,8 @@ class molgraph(conngraph):
                         ext_bond.append(int(str(j)))
             xyz.append(self.mol.get_com(cidx))
             #xyz.append(self.center(cxyz))
-            if verbose: print("cluster %s consisting of %d atoms is %d times connected" % (str(i), )
-                    len(cluster_atoms), len(ext_bond))
+            if verbose: print("cluster %s consisting of %d atoms is %d times connected" % (str(i),
+                    len(cluster_atoms), len(ext_bond)))
             # now check to which clusters these external bonds belong to
             for ea in ext_bond:
                 for ji, j in enumerate(self.clusters):
@@ -504,7 +630,7 @@ class molgraph(conngraph):
         tm.set_elems(elems)
         tm.set_atypes(tm.natoms*['0'])
         tm.set_cell(self.mol.get_cell())
-        tm.ctab = tm.get_conn_as_tab()
+        tm.ctab = tm.get_conn_as_tab(pconn_flag=False)
         tm.add_pconn()
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
@@ -668,7 +794,7 @@ class topograph(conngraph):
             supercell_size = 2
             while not success:
                 if supercell_size > max_supercell_size:
-                    logger.error("Maximum cell size reached!")
+                    logger.error("Maximum cell size (%s) reached!" % max_supercell_size)
                     raise OverflowError
                 if supercell_size > len(supercells)-1:
                     self.mol = copy.deepcopy(keep)
@@ -892,7 +1018,6 @@ class topograph(conngraph):
             self.mol.delete_atom(v)
         self.mol.add_pconn()
 
-
 class topotyper(object):
     """ Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures. """
   
@@ -922,13 +1047,11 @@ class topotyper(object):
                 if isum > 3: mol.make_supercell(itri)
                 self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
             except OverflowError: ###specific for supercells
-                logger.error("Deconstruction failed!")
-                logger.info("Resize original cell")
+                logger.info("Deconstruction failed! Resize original cell")
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
             except IndexError:
                 isum += 1
-                logger.error("Resizing list is empty!")
-                logger.info("Increase index summation to %i and create new resizing list" % (isum,))
+                logger.info("Resizing list is empty! Increase index summation to %i and create new resizing list" % (isum,))
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum)
             else:
                 self.goodinit = True
@@ -950,6 +1073,72 @@ class topotyper(object):
         vs = self.tg.get_all_vs(max_supercell_size=max_supercell_size)
         self.cs, self.vs = self.tg.get_unique_vd(cs, vs)
         return
+
+    def compute_colors(self):
+        """ Compute edge coloring (TBI: vertex coloring)"""
+        try:
+            assert self.bbs
+        except:
+            self.compute_bbs()
+        logger.info('Perform topological coloring')
+        ### TBI: vertex coloring
+        ### vertices = range(self.tg.mol.natoms) # the clusters
+        ### vertexcolors = np.zeros(len(vertices), dtype=int)
+        """
+        ### PREVIOUS IMPLEMENTATION ###
+        #edges = self.tg.mol.ctab
+        #edgecolors = np.zeros(len(edges), dtype=int)
+        #...
+        #for iedge, edge in enumerate(self.tg.molg.edges()):
+        #    ...
+        #    edgecolors[iedge] = colorsigns[sign]
+        ###############################
+        """
+        colorsigns = {} # color signatures
+        clustsigns = {}
+        self.tg.molg.ep.color = self.tg.molg.new_edge_property("string")
+        for edge in self.tg.molg.edges():
+            s = int(edge.source())
+            t = int(edge.target())
+            # unique block name
+            ubb_v = self.bb2ubb[int(s)]
+            ubb_u = self.bb2ubb[int(t)]
+            # edge order (TBI?: get it from tg.molg source/target)
+            # N.B.: this order CANNOT be solved to keep the reference!
+            if ubb_v > ubb_u:
+                u, v = s, t
+                ubb_u, ubb_v = ubb_v, ubb_u
+            else: # when lower or equal
+                v, u = s, t
+            # cluster atoms
+            clustv = self.mg.clusters[v]
+            clustu = self.mg.clusters[u]
+            # cluster connectivity
+            connv = [
+                [jc for jc in self.mg.mol.conn[ic] if jc in clustu]
+                for ic in clustv
+            ]
+            connu = [
+                [jc for jc in self.mg.mol.conn[ic] if jc in clustv]
+                for ic in clustu
+            ]
+            # cluster connectivity towards each other
+            # TBI?: atom sequence in that direction
+            connv_ = [i for i,ic in enumerate(connv) if ic != []]
+            connu_ = [i for i,ic in enumerate(connu) if ic != []]
+            # connecting atoms == cluster atoms at the frontier of each other
+            clustv_ = [clustv[i] for i in connv_]
+            clustu_ = [clustu[i] for i in connu_]
+            # elements of the connecting atoms
+            # N.B.: sorted for consistency
+            # TBI: choice of elemsequences
+            elemsv = tuple(sorted([self.mg.mol.elems[i] for i in clustv_]))
+            elemsu = tuple(sorted([self.mg.mol.elems[i] for i in clustu_]))
+            sign = (elemsv, elemsu)
+            if sign not in colorsigns:
+                colorsigns[sign] = str(len(colorsigns)) # starting from 0
+                clustsigns[sign] = (ubb_v, ubb_u)
+            self.tg.molg.ep.color[edge] = colorsigns[sign]
 
     def get_net(self):
         """ Connects to mofplus API to compare the cs and vs value to the database, and return the topology. """
@@ -1077,22 +1266,8 @@ class topotyper(object):
         #    #print(i, ai)
         return
 
-    def compute_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
-        """
-        Write the clusters of the molgraph into the folder specified in the parameters.
-        The names of the clusters written out will be those of the atomtypes of the vertices 
-        in the topograph, if they are "vertex" building blocks (i.e. they have more than
-        2 neighbours). If they are "edge" building blocks (they have exactly 2 neighbours), 
-        their name will be the atomtypes of the vertex BBs they are connected to.
-        Additionally, at the end of the filename, a string defined by the parameters org_flag
-        and ino_flag will be appended to denote whether the BB is organic.
-        
-        :Parameters:
-        - foldername: Name of the folder, in which the mfpx files of the building blocks 
-          should be saved.
-        - org_flag: String, which will be added to the filename if the BB is organic.
-        - ino_flag: String, which will be added to the filename if the BB is inorganic.
-        """
+    def compute_bbs(self, org_flag="_ORG", ino_flag="_INO"):
+        """Compute building blocks"""
         self.tg_atypes_by_isomorphism()
         cv, ca = self.mg.get_cluster_atoms()
         bbs = []
@@ -1174,6 +1349,21 @@ class topotyper(object):
         return
 
     def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
+        """
+        Write the clusters of the molgraph into the folder specified in the parameters.
+        The names of the clusters written out will be those of the atomtypes of the vertices
+        in the topograph, if they are "vertex" building blocks (i.e. they have more than
+        2 neighbours). If they are "edge" building blocks (they have exactly 2 neighbours),
+        their name will be the atomtypes of the vertex BBs they are connected to.
+        Additionally, at the end of the filename, a string defined by the parameters org_flag
+        and ino_flag will be appended to denote whether the BB is organic.
+        
+        :Parameters:
+        - foldername: Name of the folder, in which the mfpx files of the building blocks
+          should be saved.
+        - org_flag: String, which will be added to the filename if the BB is organic.
+        - ino_flag: String, which will be added to the filename if the BB is inorganic.
+        """
         # Now write building blocks
         #print("============")
         #print(unique_bbs)
@@ -1184,11 +1374,18 @@ class topotyper(object):
         #except:
         #    print("no 2-conns")
         #print("============")
-        self.compute_bbs(foldername, org_flag=org_flag, ino_flag=ino_flag)
+        if not hasattr(self, "bbs"):
+            self.compute_bbs(org_flag=org_flag, ino_flag=ino_flag)
         if not os.path.exists(foldername):
             os.mkdir(foldername)
         for n, i in enumerate(self.unique_bbs):
             m = self.bbs[i[0]]
+            # set cell for a moment to center block in the cell
+            # otherwise atom distances are lost if block is at the boundary of the cell
+            m.set_cell(self.mg.mol.cell)
+            m.shift_by_com()
+            # reset empty cell
+            m.set_empty_cell()
             m.write(foldername+"/"+self.cluster_names[n]+self.organicity[i[0]]+".mfpx", "mfpx")
         return
         

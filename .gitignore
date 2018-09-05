@@ -4,3 +4,6 @@
 doc/_build/*
 *.so
 *.swp
+*_run/*
+.hypothesis
+__pycache__/*

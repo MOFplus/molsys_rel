@@ -14,6 +14,7 @@ def read(mol, f, topo = False):
         -mol  (obj) : instance of a molclass
         -topo (bool): flag for reading topo information
     """
+    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
     lbuffer = f.readline().split()
     mol.natoms = int(lbuffer[0])
     if len(lbuffer) >1 and lbuffer[1] == "molden": lbuffer = [lbuffer[0]]
@@ -79,7 +80,10 @@ def parse_connstring(mol, con_info, new = True):
         else:
             if new:
                 ss = c.split('*') # ss[0] is the dummy neighbors, ss[1] is the connector atom
-                if len(ss) != 2: raise IOError('This is not a proper BB file, convert with script before!')
+                if len(ss) > 2:
+                    raise IOError('This is not a proper BB file, convert with script before!')
+                elif len(ss) < 2: # neighbor == connector
+                    ss *= 2
                 stt = ss[0].split(',')
                 mol.connectors.append(int(ss[1])-1)
                 mol.connectors_type.append(contype_count)
@@ -178,14 +182,15 @@ def parse_connstring_new(mol, con_info, **kwargs):
     return
 
 
-def read_body(f, natoms, frags = True, topo = False):
+def read_body(f, natoms, frags = True, topo = False, cromo = False):
     """
     Routine, which reads the body of a txyz or a mfpx file
     :Parameters:
         -f      (obj)  : fileobject
         -natoms (int)  : number of atoms in body
         -frags  (bool) : flag to specify if fragment info is in body or not
-        -topo   (bool) : flag to specigy if pconn info is in body or not
+        -topo   (bool) : flag to specify if pconn info is in body or not
+        -cromo  (bool) : flag to specify if oconn info is in body or not
     """
     elems       = []
     xyz         = []
@@ -195,6 +200,7 @@ def read_body(f, natoms, frags = True, topo = False):
     fragnumbers = []
     pconn       = []
     pimages     = []
+    oconn      = []
     if topo: frags=False
     for i in range(natoms):
         lbuffer = f.readline().split()
@@ -210,8 +216,16 @@ def read_body(f, natoms, frags = True, topo = False):
             fragtypes.append('0')
             fragnumbers.append(0)
             offset = 0
-        if topo == False:
+        if not topo:
             conn.append((numpy.array([int(i) for i in lbuffer[6+offset:]])-1).tolist())
+        elif cromo:
+            txt = lbuffer[6+offset:]
+            a = [[int(j) for j in i.split('/')] for i in txt]
+            c,pc,pim,oc = [i[0]-1 for i in a], [images[i[1]] for i in a], [i[1] for i in a], [i[2] for i in a]
+            conn.append(c)
+            pconn.append(pc)
+            pimages.append(pim)
+            oconn.append(oc)
         else:
             txt = lbuffer[6+offset:]
             a = [[int(j) for j in i.split('/')] for i in txt]
@@ -220,8 +234,11 @@ def read_body(f, natoms, frags = True, topo = False):
             pconn.append(pc)
             pimages.append(pim)
     if topo:
-#        return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers, pconn
-        return elems, numpy.array(xyz), atypes, conn, pconn, pimages
+        if cromo:
+            return elems, numpy.array(xyz), atypes, conn, pconn, pimages, oconn
+        else:
+#            return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers, pconn
+            return elems, numpy.array(xyz), atypes, conn, pconn, pimages
     else:
         return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers
 
@@ -266,12 +283,10 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
         atypes = newatypes
         frags = False ### encoded in one column only
     for i in range(mol.natoms):
-        try:
-            line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
+        line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
-        except IndexError:
-            import pdb; pdb.set_trace()
-        if frags == True: line += ("%-16s %5d ") % tuple([fragtypes[i]]+[fragnumbers[i]])
+        if frags == True:
+            line += ("%-16s %5d ") % tuple([fragtypes[i]]+[fragnumbers[i]])
         conn = (numpy.array(cnct[i])+1).tolist()
         if len(conn) != 0:
             if topo:

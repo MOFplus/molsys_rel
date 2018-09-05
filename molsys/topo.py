@@ -56,9 +56,9 @@ class topo(mol):
         self.use_pconn = True   # flag to use pconn: keeps the image number along with the bond
         self.pconn=[]
         self.ptab= []
-        # extra deafult sfor pyspglib
+        # extra default for pyspglib
         if spg:
-            self.symprec = SMALL_DIST        # precsion in symmetry detection .. pyspglib default of 1.0e-5 seems to be way too small for large systems (in Angstrom)
+            self.symprec = SMALL_DIST        # precision in symmetry detection .. pyspglib default of 1.0e-5 seems to be way too small for large systems (in Angstrom)
             self.nonhydrogen = False  # use only non-hydrogen atoms if True in symmetry detection or any operation
         return
 
@@ -447,6 +447,7 @@ class topo(mol):
             if a connectivity is read via a tinker file there is no pconn present.
             with this metod it is added for the use with weaver2 """
         self.use_pconn= True
+        self.pimages = []
         self.pconn = []
         for i,c in enumerate(self.conn):
             atoms_pconn = []
@@ -488,8 +489,8 @@ class topo(mol):
                             if use_it:
                                 atoms_image.append(ii)
                                 atoms_pconn.append(images[ii])
+            self.pimages.append(atoms_image)
             self.pconn.append(atoms_pconn)
-            #if len(atoms_pconn) != len(c): print("AOSUHDAPUFHPOUFHPWOUFHPOUDHSPUODHASIUDHAUSIDHSD")
         return
 
         # 'na',lower(label),xyz,i,j)

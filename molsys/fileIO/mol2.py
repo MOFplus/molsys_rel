@@ -1,6 +1,7 @@
 #### 
 import string
 import numpy
+
 def read(mol, f, delimiter=','):
     """
     Routine, which reads a mol2 formatted file
@@ -9,6 +10,7 @@ def read(mol, f, delimiter=','):
         -mol (obj): instance of a molclass
         -delimiter=',' (str): coordinate delimiter
     """
+    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
     s = f.read().splitlines()
     bonds,atoms=0,0
     mol.xyz,mol.elems,mol.ctab = [],[],[]

@@ -243,6 +243,9 @@ class fragmentizer:
                     if at == "n2_c2" and mol.fragtypes[i] == "-1": 
                         manipulated = True
                         mol.atypes[i] = "n3_m"
+                    elif at == "n3_c1cu1n1" and mol.fragtypes[i] == "nh3": 
+                        manipulated = True
+                        mol.atypes[i] = "n2_m"
                     elif at == "n3_c3" and mol.fragtypes[i] == "-1": 
                         manipulated = True
                         mol.atypes[i] = "n4_m"

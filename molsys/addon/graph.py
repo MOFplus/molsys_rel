@@ -72,7 +72,7 @@ class graph:
 
     def plot_graph(self, fname, g = None, size=1000, fsize=16, vsize=8, ptype = "pdf",method='arf'):
         """
-        plot the grap (needs more tuning options
+        plot the graph (needs more tuning options) [via **kwargs? RA]
 
         :Parameter:
             - fname  : filename (will write filename.pdf)
@@ -109,7 +109,8 @@ class graph:
             output_size=(size, size), output=fname+"."+ptype, bg_color=[1,1,1,1])
         return
 
-    def find_subgraph(self, graph, subg):
+    @staticmethod
+    def find_subgraph(graph, subg):
         """
         use graph_tools subgraph_isomorphism tool to find substructures
 
@@ -181,7 +182,7 @@ class graph:
 
     def util_graph(self, vertices, conn):
         """
-        generate a generate a graph with vertices and connectivity in conn
+        generate a graph with vertices and connectivity in conn
         """
         g = Graph(directed=False)
         # now add vertices
@@ -211,7 +212,4 @@ class graph:
             filter[self.molg.vertex(i)]=True
         self.molg.set_vertex_filter(filter)
         return
-
-
-
 
