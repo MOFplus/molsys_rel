@@ -1,4 +1,4 @@
-import profilehooks
+#import profilehooks
 
 def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
     if key is None:
