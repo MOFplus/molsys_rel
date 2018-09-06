@@ -14,6 +14,7 @@ debug = True
 notice = False
 
 from molsys.addon import base
+from molsys.util.misc import normalize_ratio
 
 try:
     from mpi4py import MPI
@@ -242,7 +243,7 @@ class acab(base):
         ### ratio ###
         nevars = len(evars) / necolors
         crange = range(necolors)
-        ecratio = self.normalize_ratio(ecratio, nevars)
+        ecratio = normalize_ratio(ecratio, nevars)
         etab = self.etab
         ### loop ###
         if self._mol.use_pconn:
@@ -277,7 +278,7 @@ class acab(base):
         ### ratio ###
         nvvars = len(vvars) / nvcolors
         crange = range(nvcolors)
-        vcratio = self.normalize_ratio(vcratio, nvvars)
+        vcratio = normalize_ratio(vcratio, nvvars)
         ### loop ###
         rvvars = range(nvvars) ### == range(self._mol.natoms)
         for c in crange:
@@ -302,7 +303,7 @@ class acab(base):
         for c in crange:
             for v in vertex2edges:
                 v2e = vertex2edges[v]
-                necratio = self.normalize_ratio(ecratio,len(v2e))
+                necratio = normalize_ratio(ecratio,len(v2e))
                 ecratios.append(necratio)
                 consname = "NEdgeColorsPerVertex(%d,%d)=%d" % (v,c,necratio[c])
                 self.model.addCons(
@@ -326,7 +327,7 @@ class acab(base):
         for c in crange:
             for e in edge2vertices:
                 e2v = edge2vertices[e]
-                nvcratio = self.normalize_ratio(vcratio,len(e2v))
+                nvcratio = normalize_ratio(vcratio,len(e2v))
                 vcratios.append(nvcratio)
                 if self._mol.use_pconn:
                     consname = "NVertexColorsPerEdge(%d-%d,%d)=%d" % (e[0],e[1],c,nvcratio[c])
@@ -490,8 +491,8 @@ class acab(base):
         ### "grey" mol setup (=> symmetry space and permutations) ###
         erange = range(len(self.etab))
         vrange = range(self._mol.natoms)
-        ecolors = [maxecolor-1 for i in erange]
-        vcolors = [maxvcolor-1 for i in vrange]
+        ecolors = [maxecolor-1 for i in erange] # last possible "color"
+        vcolors = [maxvcolor-1 for i in vrange] # last possible "color"
         if self.evars and use_edge and self.vvars and use_vertex:
             m = self.make_mol(ecolors=ecolors, vcolors=vcolors)
         elif self.evars and use_edge:
@@ -1216,44 +1217,6 @@ class acab(base):
     def get_etab(self):
         #THIS METHOD SHOULD BE EITHER IN CORE MOLSYS OR IN UTIL... NOT HERE!
         return self.etab
-
-    ### TO BE MOVED? ###
-    def normalize_ratio(self, cratio, total):
-        """
-        return normalized color ratio so that the total number of elements (edges 
-        or vertices) is colored and the actual (float) ratio among colors is
-        close to the given (int) ratio. It implements D'Hondt's quotients
-        internally. Credits: https://github.com/rg3
-        N.B.: in case of "ties", the latter color gets the higher ratio of
-        elements. (this is consistent AND reproducible!)
-        
-        :Parameters:
-         - cratio (list of ints): color ratio
-         - total (int): total number of elements to color with given ratio
-        :Returns:
-         - norm_cratio (list of ints): color ratio normalized wrt. elements
-        """
-        def dhondt_quotient(cratio, subtotal):
-            return float(cratio) / (subtotal + 1)
-        
-        # calculate the quotients matrix (list in this case)
-        dict_cratio = dict(enumerate(cratio))
-        quot = []
-        ret ={} 
-        for p in dict_cratio:
-            ret[p] = 0
-            for s in range(0, total):
-                q = dhondt_quotient(dict_cratio[p], s)
-                quot.append((q, p))
-
-        # sort the quotients by value
-        quot.sort(reverse=True)
-
-        # take the highest quotients with the assigned parties
-        for s in range(0, total):
-            ret[quot[s][1]] += 1
-        norm_cratio = ret.values()
-        return norm_cratio # already ordered
 
     def setup_vertex2edges(self, sort_flag=True):
         """
