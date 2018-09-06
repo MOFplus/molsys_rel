@@ -11,7 +11,6 @@ Created on Mon Jun 11 14:19:27 2018
         contains class acab
 """
 debug = True
-notice = False
 
 from molsys.addon import base
 from molsys.util.misc import normalize_ratio
@@ -47,6 +46,7 @@ except ImportError:
 else:
     Model = pyscipopt.Model
     quicksum = pyscipopt.quicksum
+    quickprod = pyscipopt.quickprod
 
 ### AUX ###
 from collections import defaultdict
@@ -119,13 +119,14 @@ class acab(base):
          - otab: edge color table
         """
         super(acab, self).__init__(mol)
+        logger.info("acab addon generated")
+        # auxiliary: to be available as instance attribute w/o importing
         self.Model = Model
         self.quicksum = quicksum
-        self.set_etab() ### TBI: MUST GO ELSEWHERE... IN MOL INSTANCE
-        logger.info("acab addon generated")
-        if notice:
-            print_header()
-            atexit.register(print_footer)
+        self.quickprod = quickprod
+        # logo and farewells
+        #print_header()
+        #atexit.register(print_footer)
         return
 
     ############################################################################
@@ -244,12 +245,12 @@ class acab(base):
         nevars = len(evars) / necolors
         crange = range(necolors)
         ecratio = normalize_ratio(ecratio, nevars)
-        etab = self.etab
+        etab = self._mol.etab
         ### loop ###
         if self._mol.use_pconn:
             for c in crange:
                 self.model.addCons(
-                    quicksum([evars[ei,ej,p,c] for (ei,ej),p in etab]) == ecratio[c],
+                    quicksum([evars[ei,ej,p,c] for ei,ej,p in etab]) == ecratio[c],
                     name = "NEdgeColors(%d)=%d" % (c,ecratio[c])
                 )
         else:
@@ -489,7 +490,7 @@ class acab(base):
     def cycle_initsym(self, use_sym=True, use_edge=True, use_vertex=True,
             constr_edge=True, constr_vertex=True):
         ### "grey" mol setup (=> symmetry space and permutations) ###
-        erange = range(len(self.etab))
+        erange = range(len(self._mol.etab))
         vrange = range(self._mol.natoms)
         ecolors = [maxecolor-1 for i in erange] # last possible "color"
         vcolors = [maxvcolor-1 for i in vrange] # last possible "color"
@@ -689,10 +690,10 @@ class acab(base):
             ecolors = self.ecolors
         self.assert_ecolors(ecolors)
         evars = self.evars
-        etab = self.etab
+        etab = self._mol.etab
         if self._mol.use_pconn:
             for k,c in enumerate(ecolors):
-                (ei,ej), p = etab[k]
+                ei,ej, p = etab[k]
                 self.model.addCons(
                     evars[ei,ej,p,c] == 1,
                     name = "ValidateEdgeColor(%d-%d.%d)=%d" % (ei,ej,p,c)
@@ -723,10 +724,10 @@ class acab(base):
             ecolors = self.ecolors
         self.assert_ecolors(ecolors)
         evars = self.evars
-        etab = self.etab
+        etab = self._mol.etab
         if self._mol.use_pconn:
             for k,c in enumerate(ecolors):
-                (ei,ej), p = etab[k]
+                ei,ej, p = etab[k]
                 self.model.addCons(
                     evars[ei,ej,p,c] == 0,
                     name = "NegateEdgeColor(%d-%d.%d)=%d" % (ei,ej,p,c)
@@ -758,10 +759,10 @@ class acab(base):
         self.assert_ecolors(ecolors)
         esolution = ''.join([str(c) for c in ecolors])
         evars = self.evars
-        etab = self.etab
+        etab = self._mol.etab
         if self._mol.use_pconn:
             self.model.addCons(
-                quicksum([evars[e[0][0],e[0][1],e[1],ecolors[k]] for k,e in enumerate(etab)]) >= 1,
+                quicksum([evars[e[0],e[1],e[2],ecolors[k]] for k,e in enumerate(etab)]) >= 1,
                 name = "IncludeEdgeSolution(%s)" % esolution
             )
         else:
@@ -789,11 +790,11 @@ class acab(base):
         self.assert_ecolors(ecolors)
         esolution = ''.join([str(c) for c in ecolors])
         evars = self.evars
-        etab = self.etab
+        etab = self._mol.etab
         nevars = len(etab)
         if self._mol.use_pconn:
             self.model.addCons(
-                quicksum([evars[e[0][0],e[0][1],e[1],ecolors[k]] for k,e in enumerate(etab)]) <= nevars - 1,
+                quicksum([evars[e[0],e[1],e[2],ecolors[k]] for k,e in enumerate(etab)]) <= nevars - 1,
                 name = "ExcludeEdgeSolution(%s)" % esolution
             )
         else:
@@ -905,10 +906,10 @@ class acab(base):
         ###TBI: test necolors = 0
         self.assert_ncolors_number(necolors)
         crange = range(necolors)
-        etab = self.etab
+        etab = self._mol.etab
         evars = {} # dict[(3or4)-tuple] = var... inefficient yet clear
         if self._mol.use_pconn: # periodic connectivity, ambiguity
-            for (ei,ej),p in etab:
+            for ei,ej,p in etab:
                 _evars = [] # temp. list for later constraint (q.v.)
                 # add edge variables to model
                 for c in crange:
@@ -979,9 +980,9 @@ class acab(base):
         if evars:
             necolors = self.necolors
             crange = range(necolors)
-            etab = self.etab
+            etab = self._mol.etab
             if self._mol.use_pconn:
-                for (ei,ej),p in etab:
+                for ei,ej,p in etab:
                     try:
                         vals = [self.model.getVal(evars[ei,ej,p,c]) for c in crange]
                         val = vals.index(1)
@@ -1076,14 +1077,14 @@ class acab(base):
             alpha = self.alpha
         if ecolors is None:
             ecolors = self.ecolors
-        etab = self.etab
+        etab = self._mol.etab
         ralpha = 1./alpha #reverse alpha
         calpha = 1-ralpha #one's complement of reverse alpha
         xyz_a = []
         xyz_c = []
         new_etab = []
         if self._mol.use_pconn:
-            for (ei,ej),p in etab: ### SELECTION TBI
+            for ei,ej,p in etab: ### SELECTION TBI
                 xyz_ai = self._mol.xyz[ei]
                 xyz_a.append(xyz_ai)
                 xyz_ci = self._mol.get_neighb_coords_(ei,ej,idx2arr[p])
@@ -1115,7 +1116,7 @@ class acab(base):
             if self._mol.use_pconn:
                 pimg = me.get_frac_xyz()//1
                 me.xyz -= np.dot(pimg,me.cell)
-                for k,((i,j),p) in enumerate(etab):
+                for k,(i,j,p) in enumerate(etab):
                     newe1 = (i,k),arr2idx[pimg[k]]
                     newe2 = (j,k),arr2idx[idx2arr[p]-pimg[k]]
                     new_etab.append(newe1)
@@ -1131,7 +1132,7 @@ class acab(base):
                 me.xyz -= np.dot(pimg,me.cell)
                 ptab = [pimg[i+me.natoms/2]-pimg[i] for i in range(me.natoms/2)]
                 me.set_ptab(ptab, pconn_flag=True)
-                for k,((i,j),p) in enumerate(etab):
+                for k,(i,j,p) in enumerate(etab):
                     newe1 = (i,k),arr2idx[pimg[k]]
                     newe2 = (j,k+len(etab)),arr2idx[idx2arr[p]-pimg[k+len(etab)]]
                     new_etab.append(newe1)
@@ -1201,23 +1202,6 @@ class acab(base):
     ############################################################################
     ### UTILS / MISC ###
     
-    ### TO BE MOVED ###
-    def set_etab(self):
-        #THIS METHOD SHOULD BE EITHER IN CORE MOLSYS OR IN UTIL, DEF.LY NOT HERE
-        ctab = self._mol.ctab
-        if self._mol.use_pconn:
-            ptab = self._mol.ptab
-            etab = list(zip(ctab, ptab)) # python3 compl.: zip iterator gets exhausted
-        else:
-            etab = ctab
-        self.etab = etab
-
-
-    ### TO BE MOVED ###
-    def get_etab(self):
-        #THIS METHOD SHOULD BE EITHER IN CORE MOLSYS OR IN UTIL... NOT HERE!
-        return self.etab
-
     def setup_vertex2edges(self, sort_flag=True):
         """
         setup dictionary from vertices to list of edges
@@ -1257,10 +1241,10 @@ class acab(base):
         edge2vertices = defaultdict(list)
         vvars = self.vvars
         vcrange = range(self.nvcolors)
-        etab = self.etab
+        etab = self._mol.etab
         # loop #
         if self._mol.use_pconn:
-            for (ei,ej),p in etab:
+            for ei,ej,p in etab:
                 edge2vertices[ei,ej,p] = [ei,ej]
         else:
             for ei,ej in etab:
@@ -1310,10 +1294,10 @@ class acab(base):
         vvars = self.vvars
         evars = self.evars # easiest to get etab # TBI: IN MOLSYS
         vcrange = range(self.nvcolors)
-        etab = self.etab
+        etab = self._mol.etab
         # loop #
         if self._mol.use_pconn:
-            for (ei,ej),p in etab:
+            for ei,ej,p in etab:
                 edge2vvars[ei,ej,p] += [vvars[ei,c] for c in vcrange]
                 edge2vvars[ei,ej,p] += [vvars[ej,c] for c in vcrange]
         else:
@@ -1434,9 +1418,9 @@ class acab(base):
         if evars:
             necolors = self.necolors
             crange = range(necolors)
-            etab = self.etab
+            etab = self._mol.etab
             if self._mol.use_pconn:
-                for (ei,ej),p in etab:
+                for ei,ej,p in etab:
                     try:
                         vals = [self.model.getVal(evars[ei,ej,p,c]) for c in crange]
                         val = vals.index(1)
@@ -1565,8 +1549,8 @@ class acab(base):
 
     def assert_ecolors(self, ecolors):
         """check length of edge colors"""
-        assert len(ecolors) == len(self.etab), "length of edge colors and " \
-        "number of edges mismatch: %d vs %d" % (len(ecolors), len(self.etab))
+        assert len(ecolors) == len(self._mol.etab), "length of edge colors and " \
+        "number of edges mismatch: %d vs %d" % (len(ecolors), len(self._mol.etab))
         return
 
     def assert_vcolors(self, vcolors):

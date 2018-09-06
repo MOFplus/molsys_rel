@@ -2017,6 +2017,7 @@ class mol(mpiobject):
     def etab(self, etab):
         """any time edge tab is set, ctab, (ptab) and etab are sorted"""
         self._etab = etab
+        self.nbonds = len(etab)
         self.sort_tabs(etab_flag=False)
 
     def set_etab_from_tabs(self, ctab=None, ptab=None, sort_flag=True):
