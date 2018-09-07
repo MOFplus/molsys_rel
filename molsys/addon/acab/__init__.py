@@ -18,6 +18,7 @@ from molsys.util.misc import normalize_ratio
 from molsys.util.color import ecolor2elem, elem2ecolor, maxecolor
 from molsys.util.color import vcolor2elem, elem2vcolor, maxvcolor
 from molsys.util.color import elematypecolor2string, string2elematypecolor
+from molsys.util.color import make_emol, make_vmol, make_mol
 
 try:
     from mpi4py import MPI
@@ -60,7 +61,7 @@ import numpy as np
 from math import pi, cos
 
 ### UTIL ###
-from molsys.util.images import arr2idx, idx2arr, idx2revidx
+from molsys.util.images import arr2idx
 from molsys.util.sysmisc import _makedirs, _checkrundir
 import sys
 import os
@@ -336,6 +337,7 @@ class acab(base):
     def setup_angle_btw_edges(self, color, theta, sense="min", eps=1e-3, sele=None):
         """
         Constraint angle between edges to be min/max/close to theta.
+        TBI: non-periodic (w/o pconn) version
 
         IMPLEMENTATION DETAIL
         Instead of explicitly allowing the edge pairs with (range of) angle, it
@@ -355,7 +357,6 @@ class acab(base):
         eps(float): tolerance to sense
         sele (list of ints or None): selected vertices (if None: all)
 
-        TBI: non-periodic (w/o pconn) version
         """
         if sele is None:
             sele = range(self._mol.natoms)
@@ -475,12 +476,12 @@ class acab(base):
         self.colors_ = []
         ### init methods ###
         self.cycle_initdir()
-        self.cycle_initsym(use_sym=use_sym,
+        self.cycle_initsym(alpha=alpha, use_sym=use_sym,
             use_edge=use_edge, use_vertex=use_vertex,
             constr_edge=constr_edge, constr_vertex=constr_vertex)
         return
 
-    def cycle_initsym(self, use_sym=True, use_edge=True, use_vertex=True,
+    def cycle_initsym(self, alpha=2, use_sym=True, use_edge=True, use_vertex=True,
             constr_edge=True, constr_vertex=True):
         ### "grey" mol setup (=> symmetry space and permutations) ###
         erange = range(len(self._mol.etab))
@@ -488,11 +489,12 @@ class acab(base):
         ecolors = [maxecolor-1 for i in erange] # last possible "color"
         vcolors = [maxvcolor-1 for i in vrange] # last possible "color"
         if self.evars and use_edge and self.vvars and use_vertex:
-            m = self.make_mol(ecolors=ecolors, vcolors=vcolors)
+            m = make_mol(self._mol, alpha=alpha, ecolors=ecolors, vcolors=vcolors,
+                use_edge=use_edge, use_vertex=use_vertex)
         elif self.evars and use_edge:
-            m = self.make_emol(ecolors=ecolors)
+            m = make_emol(self._mol, alpha=alpha, ecolors=ecolors)
         elif self.vvars and use_vertex:
-            m = self.make_vmol(vcolors=vcolors)
+            m = make_vmol(self._mol, vcolors=vcolors)
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
@@ -505,11 +507,17 @@ class acab(base):
         return
 
     def cycle_initdir(self):
+        """
+        create directory to store structures at the end of the loop
+        \"colors\" and \"pretty\" contains graph-like structures
+        \"colors\" contains useful structures to weave frameworks later
+        \"pretty\" contains just clearer views of these structures (do not use)
+        """
         self.rundir = _checkrundir(".","run")
         self.coldir = "%s%scolors" % (self.rundir, os.sep)
         self.predir = "%s%spretty" % (self.rundir, os.sep)
-        _makedirs(self.coldir) #mfpx, japbc
-        _makedirs(self.predir) #txyz, nopbc
+        _makedirs(self.coldir) #mfpx, w/  pbc, useful
+        _makedirs(self.predir) #txyz, w/o pbc, clearer
         return
 
     def cycle_permute(self, ecolors=None, vcolors=None):
@@ -663,11 +671,12 @@ class acab(base):
 
     def write_structure(self, name, ecolors=None, vcolors=None, alpha=2):
         if ecolors and vcolors:
-            m = self.make_mol(ecolors=ecolors, vcolors=vcolors, alpha=alpha)
+            m = make_mol(self._mol, alpha, ecolors=ecolors, vcolors=vcolors,
+                use_vertex=self.use_vertex, use_edge=self.use_edge)
         elif ecolors:
-            m = self.make_emol(ecolors=ecolors, alpha=alpha)
+            m = make_emol(self._mol, alpha, ecolors=ecolors)
         elif vcolors:
-            m = self.make_vmol(vcolors=vcolors)
+            m = make_vmol(self._mol, vcolors=vcolors)
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
@@ -1060,131 +1069,6 @@ class acab(base):
         pass
 
     ############################################################################
-    ### MAKE ###
-
-    def make_emol(self, ecolors=None, alpha=None):
-        """
-        make mol object out of edge colors
-        """
-        if alpha is None:
-            alpha = self.alpha
-        if ecolors is None:
-            ecolors = self.ecolors
-        etab = self._mol.etab
-        ralpha = 1./alpha #reverse alpha
-        calpha = 1-ralpha #one's complement of reverse alpha
-        xyz_a = []
-        xyz_c = []
-        new_etab = []
-        if self._mol.use_pconn:
-            for ei,ej,p in etab: ### SELECTION TBI
-                xyz_ai = self._mol.xyz[ei]
-                xyz_a.append(xyz_ai)
-                xyz_ci = self._mol.get_neighb_coords_(ei,ej,idx2arr[p])
-                xyz_c.append(xyz_ci)
-        else:
-            for ei,ej in etab: ### SELECTION TBI
-                xyz_ai = self._mol.xyz[ei]
-                xyz_a.append(xyz_ai)
-                xyz_ci =  self._mol.xyz[ej]
-                xyz_c.append(xyz_ci)
-        xyz_a = np.array(xyz_a)
-        xyz_c = np.array(xyz_c)
-        if alpha == 2:
-            xyz_c = ralpha*(xyz_a + xyz_c)
-            me = self._mol.from_array(xyz_c, use_pconn=self._mol.use_pconn)
-        else:
-            xyz_c1 = calpha*xyz_a + ralpha*xyz_c
-            xyz_c2 = ralpha*xyz_a + calpha*xyz_c
-            me = self._mol.from_array(np.vstack([xyz_c1,xyz_c2]), use_pconn=self._mol.use_pconn)
-        me.is_topo = True
-        if hasattr(self._mol,'cell'):
-            me.set_cell(self._mol.cell)
-        if hasattr(self._mol,'supercell'):
-            me.supercell = self._mol.supercell[:]
-        if self._mol.use_pconn:
-            me.use_pconn = True
-        if alpha == 2:
-            me.elems = [ecolor2elem[v] for v in ecolors] # N.B.: no connectivity
-            if self._mol.use_pconn:
-                pimg = me.get_frac_xyz()//1
-                me.xyz -= np.dot(pimg,me.cell)
-                for k,(i,j,p) in enumerate(etab):
-                    newe1 = i,k,arr2idx[pimg[k]]
-                    newe2 = j,k,arr2idx[idx2arr[p]-pimg[k]]
-                    new_etab.append(newe1)
-                    new_etab.append(newe2)
-            else:
-                new_etab = etab[:]
-        else:
-            me.elems = [ecolor2elem[v] for v in ecolors*2] # with connectivity
-            ctab = [[i,i+me.natoms/2] for i in range(me.natoms/2)]
-            me.set_ctab(ctab, conn_flag=True)
-            if self._mol.use_pconn:
-                pimg = me.get_frac_xyz()//1
-                me.xyz -= np.dot(pimg,me.cell)
-                ptab = [pimg[i+me.natoms/2]-pimg[i] for i in range(me.natoms/2)]
-                me.set_ptab(ptab, pconn_flag=True)
-                for k,(i,j,p) in enumerate(etab):
-                    newe1 = i,k,arr2idx[pimg[k]]
-                    newe2 = j,k+len(etab),arr2idx[idx2arr[p]-pimg[k+len(etab)]]
-                    new_etab.append(newe1)
-                    new_etab.append(newe2)
-            else:
-                new_etab = ctab[:]
-        me.new_etab = new_etab
-        return me
-
-    def make_vmol(self, vcolors=None):
-        """
-        make mol object out of vertex colors
-        """
-        if vcolors is None:
-            vcolors = self.vcolors
-        mv = deepcopy(self._mol)
-        for i in range(mv.natoms):
-            mv.atypes[i] = elematypecolor2string(
-                mv.elems[i],
-                mv.atypes[i],
-                vcolors[i]
-            )
-            mv.elems[i] = vcolor2elem[vcolors[i]]
-        if hasattr(self,'cell'): m.set_cell(self.cell)
-        if hasattr(self,'supercell'): m.supercell = self.supercell[:]
-        return mv
-
-    def make_mol(self, ecolors=None, vcolors=None, alpha=None):
-        if alpha is None:
-            alpha = self.alpha
-        if self.evars and self.use_edge and self.vvars and self.use_vertex:
-            me = self.make_emol(ecolors=ecolors, alpha=alpha)
-            mv = self.make_vmol(vcolors=vcolors)
-            m = deepcopy(me)
-            m.add_mol(mv) # N.B.: in THIS EXACT ORDER, otherwise KO connectivity
-            ### connectivity ###
-            ne = me.natoms
-            ctab = []
-            if self._mol.use_pconn:
-                ptab = []
-                for i,j,p in me.new_etab:
-                    ctab.append((i+ne,j))
-                    ptab.append(idx2arr[p])
-            else:
-                for i,j in me.new_etab:
-                    ctab.append((i+ne,j))
-            m.set_ctab(ctab, conn_flag=True)
-            m.set_ptab(ptab, pconn_flag=True)
-        elif self.evars and self.use_edge:
-            m = self.make_emol(ecolors=ecolors, alpha=alpha)
-        elif self.vvars and self.use_vertex:
-            m = self.make_vmol(vcolors=vcolors)
-        else:
-            raise ValueError("something went very wrong!")
-        if hasattr(self,'cell'): m.set_cell(self.cell)
-        if hasattr(self,'supercell'): m.supercell = self.supercell[:]
-        return m
-
-    ############################################################################
     ### READ / WRITE ###
     
     def read_():
@@ -1565,7 +1449,7 @@ class acab(base):
     def debug_():
         pass
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 header= """
 ********************************************************************************

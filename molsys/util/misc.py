@@ -23,11 +23,11 @@ def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
     return argsorted
 
 def normalize_ratio(cratio, total):
-    """
-    return normalized color ratio so that the total number of elements (edges 
-    or vertices) is colored and the actual (float) ratio among colors is
-    close to the given (int) ratio. It implements D'Hondt's quotients
-    internally. Credits: https://github.com/rg3
+    """ TBI: update documentation! this is not only for colors! [RA]
+    return normalized color ratio so that:
+        the total number of elements (edges or vertices) is colored and
+        the actual (float) ratio among colors is close to the given (int) ratio.
+    It implements D'Hondt's quotients internally. Credits: https://github.com/rg3
     N.B.: in case of "ties", the latter color gets the higher ratio of
     elements. (this is consistent AND reproducible!)
     

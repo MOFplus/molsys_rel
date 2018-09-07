@@ -108,6 +108,7 @@ class mol(mpiobject):
         self.is_topo = False # this flag replaces the old topo object derived from mol
         self.use_pconn = False # extra flag .. we could have topos that do not need pconn
         self.pconn = []
+        self.pimages = []
         self.ptab  = []
         self.supercell=[1,1,1]
         self.aprops = {}
