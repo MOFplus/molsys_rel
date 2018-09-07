@@ -15,6 +15,10 @@ debug = True
 from molsys.addon import base
 from molsys.util.misc import normalize_ratio
 
+from molsys.util.color import ecolor2elem, elem2ecolor, maxecolor
+from molsys.util.color import vcolor2elem, elem2vcolor, maxvcolor
+from molsys.util.color import elematypecolor2string, string2elematypecolor
+
 try:
     from mpi4py import MPI
     mpi_comm = MPI.COMM_WORLD
@@ -80,18 +84,6 @@ if mpi_comm is None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
     logger.error(mpi_err)
 
-### COLOR DICTIONARIES ###
-ecolor2elem = [
-    "b" ,"f" ,"n" ,"o" ,"c" ,"he","ne","ge","li","s" ,"cl","p" ,"al","si",
-]
-elem2ecolor = dict(ke[::-1] for ke in enumerate(ecolor2elem))
-maxecolor = len(ecolor2elem)
-vcolor2elem = [
-    "n" ,"o" ,"b" ,"f" ,"c" ,"he","ne","ge","li","s" ,"cl","p" ,"si","al",
-]
-elem2vcolor = dict(kv[::-1] for kv in enumerate(vcolor2elem))
-maxvcolor = len(vcolor2elem)
-
 class acab(base):
     ############################################################################
     ### TODO
@@ -132,24 +124,25 @@ class acab(base):
     ############################################################################
     ### SETUP (setters w/o getters) ###
 
-    def setup_color_connectivity(self, otab=None, oconn=None):
-        """
-        setup edge colors from color table or color connectivity
-        
-        :Parameters:
-        - otab  (list of ints                 =None): edge color table
-        - oconn (nested list of lists of ints=None) : edge color connectivity
-        Provide either otab or oconn. You cannot provide both since one defines
-        the other. otab and oconn can also be left as None (default) so that
-        they are set as empty-list attribute (e.g. [] ).
-        """
-        if otab:
-            self.set_otab(otab)
-        elif oconn:
-            self.set_oconn(oconn)
-        else: # to be set
-            self.otab = []
-            self.oconn = []
+    #def setup_color_connectivity(self, otab=None, oconn=None):
+    #    """
+    #    setup edge colors from color table or color connectivity
+    #    
+    #    :Parameters:
+    #    - otab  (list of ints                 =None): edge color table
+    #    - oconn (nested list of lists of ints=None) : edge color connectivity
+    #    Provide either otab or oconn. You cannot provide both since one defines
+    #    the other. otab and oconn can also be left as None (default) so that
+    #    they are set as empty-list attribute (e.g. [] ).
+    #    """
+    #    pass
+    #    #if otab:
+    #    #    self.set_otab(otab)
+    #    #elif oconn:
+    #    #    self.set_oconn(oconn)
+    #    #else: # to be set
+    #    #    self.otab = []
+    #    #    self.oconn = []
 
     def setup_model(self, verbose=False, ctrlc=True, *args, **kwargs):
         """
@@ -442,8 +435,8 @@ class acab(base):
         self.model.optimize()
         if self.is_optimal_model():
             self.set_colors()
-            if self.evars:
-                self.set_otab(self.ecolors)
+            #if self.evars:
+            #    self.set_otab(self.ecolors)
         return
 
     def free_model(self):
@@ -823,84 +816,84 @@ class acab(base):
 
     ### N.B. otab and oconn are meant to be interfaces! They do not constraint
     ###     variables of the model
-    def set_otab(self, otab, set_oconn=True):
-        self.assert_otab(otab)
-        self._mol.otab = self.otab = otab
-        if set_oconn:
-            self.set_oconn_from_otab(use_otab=False)
+    #def set_otab(self, otab, set_oconn=True):
+    #    self.assert_otab(otab)
+    #    self._mol.otab = self.otab = otab
+    #    if set_oconn:
+    #        self.set_oconn_from_otab(use_otab=False)
 
-    def set_oconn(self, oconn, set_otab=True):
-        self.assert_oconn(oconn)
-        #self.oconn = oconn
-        self._mol.oconn = self.oconn = oconn
-        if set_otab:
-            self.set_otab_from_oconn(use_oconn=False)
+    #def set_oconn(self, oconn, set_otab=True):
+    #    self.assert_oconn(oconn)
+    #    #self.oconn = oconn
+    #    self._mol.oconn = self.oconn = oconn
+    #    if set_otab:
+    #        self.set_otab_from_oconn(use_oconn=False)
 
-    def get_otab(self):
-        return self.otab
+    #def get_otab(self):
+    #    return self.otab
 
-    def get_oconn(self):
-        return self.oconn
+    #def get_oconn(self):
+    #    return self.oconn
 
-    def set_otab_from_oconn(self, oconn=None, use_oconn=False):
-        #check/set oconn
-        if oconn is None:
-            oconn = self.oconn
-        elif use_oconn:
-            self.set_oconn(oconn)
-        pass
+    #def set_otab_from_oconn(self, oconn=None, use_oconn=False):
+    #    #check/set oconn
+    #    if oconn is None:
+    #        oconn = self.oconn
+    #    elif use_oconn:
+    #        self.set_oconn(oconn)
+    #    pass
 
-    def set_oconn_from_otab(self, otab=None, use_otab=False):
-        # WISHLIST: if pconn: FASTER! (thoughts: use array for same-lenght connectivity)
-        #check/set otab
-        if otab is None:
-            otab = self.otab
-        elif use_otab:
-            self.set_otab(otab)
-        # assign locally to be at hands
-        # N.B.: DO NOT modify it! They are python lists
-        conn = self._mol.conn
-        ctab = self._mol.ctab
-        if self._mol.use_pconn:
-            ptab = self._mol.ptab
-            pconn = self._mol.pconn
-            ### image index connectivity (to avoid np.array comparison, arguably faster)
-            iconn = [[arr2idx[j] for j in ic] for ic in pconn]         
-        # init oconn
-        oconn = [[None for j in ic] for ic in conn] # init as nested lists of Nones
-        ### TBI: use etab! ###
-        if self._mol.use_pconn: # periodic connectivity, ambiguity, slower and harder
-            for k,(i,j) in enumerate(ctab):
-                ### i -> j
-                kp = ptab[k] ### image index
-                ji_ = [j_ for j_, ji in enumerate( conn[i]) if ji == j ]
-                jk_ = [j_ for j_, jk in enumerate(iconn[i]) if jk == kp]
-                if ji_ == jk_:
-                    j_ = ji_
-                else:
-                    j_ = set(ji_) & set(jk_) # intersect
-                assert len(j_) == 1, "set of lenght %d, expected lenght is 1" % len(j_)
-                j_ = list(j_)[0]
-                oconn[i][j_] = otab[k]
-                ### j -> i
-                rp = idx2revidx[kp] ### reverse image index (by convention)
-                ij_ = [i_ for i_, ij in enumerate( conn[j]) if ij == i ]
-                ik_ = [i_ for i_, ik in enumerate(iconn[j]) if ik == rp]
-                if ij_ == ik_:
-                    i_ = ij_
-                else:
-                    i_ = set(ij_) & set(ik_) # intersect
-                assert len(i_) == 1, "set of lenght %d, expected lenght is 1" % len(i_)
-                i_ = list(i_)[0]
-                oconn[j][i_] = otab[k]
-        else: # no periodic connectivity, no ambiguity, faster and easier
-            for k,(i,j) in enumerate(ctab):
-                j_ = conn[i].index(j)
-                oconn[i][j_] = otab[k]
-                i_ = conn[j].index(i)
-                oconn[j][i_] = otab[k]
-        self.set_oconn(oconn, set_otab=False)
-        return
+    #def set_oconn_from_otab(self, otab=None, use_otab=False):
+    #    # WISHLIST: if pconn: FASTER! (thoughts: use array for same-lenght connectivity)
+    #    #check/set otab
+    #    if otab is None:
+    #        otab = self.otab
+    #    elif use_otab:
+    #        self.set_otab(otab)
+    #    # assign locally to be at hands
+    #    # N.B.: DO NOT modify it! They are python lists
+    #    conn = self._mol.conn
+    #    ctab = self._mol.ctab
+    #    if self._mol.use_pconn:
+    #        ptab = self._mol.ptab
+    #        pconn = self._mol.pconn
+    #        ### image index connectivity (to avoid np.array comparison, arguably faster)
+    #        iconn = [[arr2idx[j] for j in ic] for ic in pconn]         
+    #    # init oconn
+    #    oconn = [[None for j in ic] for ic in conn] # init as nested lists of Nones
+    #    ### TBI: use etab! ###
+    #    if self._mol.use_pconn: # periodic connectivity, ambiguity, slower and harder
+    #        for k,(i,j) in enumerate(ctab):
+    #            ### i -> j
+    #            kp = ptab[k] ### image index
+    #            ji_ = [j_ for j_, ji in enumerate( conn[i]) if ji == j ]
+    #            jk_ = [j_ for j_, jk in enumerate(iconn[i]) if jk == kp]
+    #            if ji_ == jk_:
+    #                j_ = ji_
+    #            else:
+    #                j_ = set(ji_) & set(jk_) # intersect
+    #            assert len(j_) == 1, "set of lenght %d, expected lenght is 1" % len(j_)
+    #            j_ = list(j_)[0]
+    #            oconn[i][j_] = otab[k]
+    #            ### j -> i
+    #            rp = idx2revidx[kp] ### reverse image index (by convention)
+    #            ij_ = [i_ for i_, ij in enumerate( conn[j]) if ij == i ]
+    #            ik_ = [i_ for i_, ik in enumerate(iconn[j]) if ik == rp]
+    #            if ij_ == ik_:
+    #                i_ = ij_
+    #            else:
+    #                i_ = set(ij_) & set(ik_) # intersect
+    #            assert len(i_) == 1, "set of lenght %d, expected lenght is 1" % len(i_)
+    #            i_ = list(i_)[0]
+    #            oconn[j][i_] = otab[k]
+    #    else: # no periodic connectivity, no ambiguity, faster and easier
+    #        for k,(i,j) in enumerate(ctab):
+    #            j_ = conn[i].index(j)
+    #            oconn[i][j_] = otab[k]
+    #            i_ = conn[j].index(i)
+    #            oconn[j][i_] = otab[k]
+    #    self.set_oconn(oconn, set_otab=False)
+    #    return
 
     def set_edge_vars(self, necolors, set_necolors=True):
         ###TBI: test necolors = 0
@@ -1150,7 +1143,7 @@ class acab(base):
             vcolors = self.vcolors
         mv = deepcopy(self._mol)
         for i in range(mv.natoms):
-            mv.atypes[i] = self.elematypecolor2string(
+            mv.atypes[i] = elematypecolor2string(
                 mv.elems[i],
                 mv.atypes[i],
                 vcolors[i]
@@ -1173,7 +1166,6 @@ class acab(base):
             ctab = []
             if self._mol.use_pconn:
                 ptab = []
-            if self._mol.use_pconn:
                 for i,j,p in me.new_etab:
                     ctab.append((i+ne,j))
                     ptab.append(idx2arr[p])
@@ -1312,34 +1304,6 @@ class acab(base):
                 edge2vvars[ke2v].sort(key=lambda x: x.name)
         self.edge2vvars = dict(edge2vvars)
         return
-
-    ############################################################################
-    ### CONVERT ###
-
-    def elematypecolor2string(self, elem, atype, color):
-        """
-        return formatted string from element, atomtype, and color
-        """
-        return "%s_%s/%s" % (elem, atype, color)
-    def eac2str(self, *args, **kwargs): #nickname
-        return elematypecolor2string(*args, **kwargs)
-
-    def string2elematypecolor(self, st):
-        """
-        return element, atomtype, and color from a given formatted string.
-        Color is after the last slash
-        Element is before the first underscore
-        Atype is everything in the middle
-        """
-        self.assert_eacstr(st)
-        colorsplit = st.split("/")
-        rest, color = colorsplit[:-1], colorsplit[-1]
-        rest = "".join(rest)
-        elemsplit = rest.split("_")
-        elem, atype = elemsplit[0], elemsplit[1:]
-        return elem, atype, color
-    def str2eac(self, *args, **kwargs): #nickname
-        return string2elematypecolor(*args, **kwargs)
 
     ############################################################################
     ### TODO ###
@@ -1488,12 +1452,12 @@ class acab(base):
             "you gave %s and it is %s" % (flag, flag.__class__.__name__)
         return
     
-    def assert_otab_or_oconn(self,otab,oconn):
-        """check otab/oconn arguments"""
-        self.assert_otab(otab)
-        self.assert_oconn(oconn)
-        assert otab is None or oconn is None, "give colors as either color "\
-            "table or color connectivity"
+    #def assert_otab_or_oconn(self,otab,oconn):
+    #    """check otab/oconn arguments"""
+    #    self.assert_otab(otab)
+    #    self.assert_oconn(oconn)
+    #    assert otab is None or oconn is None, "give colors as either color "\
+    #        "table or color connectivity"
     
     def assert_otab(self,otab):
         """check length of color table"""
@@ -1559,13 +1523,6 @@ class acab(base):
         """check length of vertex colors"""
         assert len(vcolors) == self._mol.natoms,"length of vertex colors and " \
         "number of vertex mismatch: %d vs %d" % (len(vcolors), self._mol.natoms)
-        return
-
-    def assert_eacstr(self, st):
-        """check format of element_atomtype/color string"""
-        assert st.index("_"), "string is not well-formatted: no \"_\" found"
-        assert st.rindex("/"), "string is not well-formatted: no \"/\" found"
-        assert st.index("_") < st.rindex("/"), "string is not well-formatted: first \"_\" after last \"/\""
         return
 
     def assert_loop_alpha(self, alpha):
