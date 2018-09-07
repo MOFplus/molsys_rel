@@ -1117,8 +1117,8 @@ class acab(base):
                 pimg = me.get_frac_xyz()//1
                 me.xyz -= np.dot(pimg,me.cell)
                 for k,(i,j,p) in enumerate(etab):
-                    newe1 = (i,k),arr2idx[pimg[k]]
-                    newe2 = (j,k),arr2idx[idx2arr[p]-pimg[k]]
+                    newe1 = i,k,arr2idx[pimg[k]]
+                    newe2 = j,k,arr2idx[idx2arr[p]-pimg[k]]
                     new_etab.append(newe1)
                     new_etab.append(newe2)
             else:
@@ -1133,10 +1133,12 @@ class acab(base):
                 ptab = [pimg[i+me.natoms/2]-pimg[i] for i in range(me.natoms/2)]
                 me.set_ptab(ptab, pconn_flag=True)
                 for k,(i,j,p) in enumerate(etab):
-                    newe1 = (i,k),arr2idx[pimg[k]]
-                    newe2 = (j,k+len(etab)),arr2idx[idx2arr[p]-pimg[k+len(etab)]]
+                    newe1 = i,k,arr2idx[pimg[k]]
+                    newe2 = j,k+len(etab),arr2idx[idx2arr[p]-pimg[k+len(etab)]]
                     new_etab.append(newe1)
                     new_etab.append(newe2)
+            else:
+                new_etab = ctab[:]
         me.new_etab = new_etab
         return me
 
@@ -1172,11 +1174,11 @@ class acab(base):
             if self._mol.use_pconn:
                 ptab = []
             if self._mol.use_pconn:
-                for (i,j),p in me.new_etab:
+                for i,j,p in me.new_etab:
                     ctab.append((i+ne,j))
                     ptab.append(idx2arr[p])
             else:
-                for (i,j),p in me.new_etab:
+                for i,j in me.new_etab:
                     ctab.append((i+ne,j))
             m.set_ctab(ctab, conn_flag=True)
             m.set_ptab(ptab, pconn_flag=True)
