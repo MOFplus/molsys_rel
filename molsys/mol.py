@@ -1971,7 +1971,7 @@ class mol(mpiobject):
             - ptab   : list of peridioc images per bond (nbonds, 2)
         """
         assert hasattr(self, "ctab"), "ctab is needed for the method"
-        #self.set_empty_pconn()
+        self.set_empty_pconn()
         conn = self.conn[:]
         pconn = [[None for ic in c] for c in self.conn]
         for k,p in enumerate(ptab):
@@ -2047,7 +2047,7 @@ class mol(mpiobject):
         elif ctab is None or ptab is None:
             raise ValueError("ctab and ptab can't both be None")
         if self.use_pconn:
-            etab = list(zip(ctab, ptab)) # python3 compl.: zip iterator gets exhausted
+            etab = list(zip(*(zip(*ctab)+[ptab]))) # python3 compl.: zip iterator gets exhausted
         else:
             etab = ctab
         self._etab = etab

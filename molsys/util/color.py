@@ -58,7 +58,7 @@ def make_emol(m, alpha, ecolors=None):
     make mol object out of edge colors
     """
     if ecolors is None:
-        vcolors = [0]*len(m.nbonds)
+        ecolors = [0]*len(m.etab)
     etab = m.etab
     ralpha = 1./alpha #reverse alpha
     calpha = 1-ralpha #one's complement of reverse alpha
@@ -95,6 +95,7 @@ def make_emol(m, alpha, ecolors=None):
         me.use_pconn = True
     if alpha == 2:
         me.elems = [ecolor2elem[v] for v in ecolors] # N.B.: no connectivity
+        me.atypes = [0 for v in ecolors]
         if m.use_pconn:
             pimg = me.get_frac_xyz()//1
             me.xyz -= np.dot(pimg,me.cell)
@@ -107,6 +108,7 @@ def make_emol(m, alpha, ecolors=None):
             new_etab = etab[:]
     else:
         me.elems = [ecolor2elem[v] for v in ecolors*2] # with connectivity
+        me.atypes = [0 for v in ecolors*2]
         ctab = [[i,i+me.natoms/2] for i in range(me.natoms/2)]
         me.set_ctab(ctab, conn_flag=True)
         if m.use_pconn:
@@ -129,7 +131,7 @@ def make_vmol(m, vcolors=None):
     make mol object out of graph vertices
     """
     if vcolors is None:
-        vcolors = [0]*len(m.natoms)
+        vcolors = [0]*m.natoms
     mv = copy.deepcopy(m)
     for i in range(mv.natoms):
         mv.atypes[i] = elematypecolor2string(
@@ -163,8 +165,10 @@ def make_mol(m, alpha, ecolors=None, vcolors=None, use_edge=True, use_vertex=Tru
         else:
             for i,j in mm.new_etab:
                 ctab.append((i+ne,j))
+        ctab += mm.ctab
         mm.set_ctab(ctab, conn_flag=True)
         if m.use_pconn:
+            ptab += mm.ptab
             mm.set_ptab(ptab, pconn_flag=True)
     elif use_edge:
         mm = make_emol(m, alpha, ecolors=ecolors)

@@ -614,66 +614,6 @@ class topo(mol):
         self.set_elems(elems)
         return
 
-    def get_pconn(self):
-        ''' returns the connectivity of the system '''
-        return self.pconn
-
-    def set_pconn(self, pconn, ptab_flag=False):
-        ''' updates the periodic connectivity of the system
-        :Parameters:
-            - pconn    : List of lists describing the pconnectivity'''
-        self.pconn = pconn
-        if ptab_flag: self.ptab = self.get_pconn_as_tab()
-
-    def get_ptab(self):
-        ''' returns the periodic connectivity table (nbonds, 2)'''
-        return self.ptab
-
-    def set_ptab(self, ptab, pconn_flag=False):
-        ''' updates the periodic connectivity table
-        :Parameters:
-            - ptab  : List of couples describing the periodic connectivity'''
-        self.ptab = ptab
-        if pconn_flag: self.set_pconn_from_tab(ptab)
-
-    def set_empty_pconn(self):
-        """
-        sets an empty list of lists for the periodic connectivity
-        """
-        self.pconn = []
-        for i in range(self.natoms):
-            self.pconn.append([])
-        return
-
-    def get_pconn_as_tab(self):
-        """
-        gets the periodic connectivity as a table of bonds with shape (nbonds, 2)
-        """
-        ptab = []
-        for i, ci in enumerate(self.pconn):
-            for j in ci:
-                if j > i:
-                    ptab.append([i,j])
-        return ptab
-
-    def set_ptab_from_pconn(self, pconn):
-        self.ptab = self.get_pconn_as_tab()
-
-    def set_pconn_from_tab(self, ptab):
-        """
-        sets the periodic connectivity froma table of bonds
-        :Parameters:
-            - ptab   : list of bonds (nbonds, 2)
-        """
-        self.set_empty_pconn()
-        for c in self.ctab:
-            i,j = c
-            pj = ptab[j]
-            pi = -pj
-            self.pconn[i].append(pj)
-            self.pconn[j].append(pi)
-        return
-
 ############# Plotting
 
     def plot(self,scell=False,bonds=False,labels=False):

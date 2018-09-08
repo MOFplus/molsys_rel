@@ -632,6 +632,8 @@ class molgraph(conngraph):
         tm.set_cell(self.mol.get_cell())
         tm.ctab = tm.get_conn_as_tab(pconn_flag=False)
         tm.add_pconn()
+        tm.set_ctab_from_conn(pconn_flag=True)
+        tm.set_etab()
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
         if verbose: print(self.threshes)
