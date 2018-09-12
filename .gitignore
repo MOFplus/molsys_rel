@@ -7,3 +7,4 @@ doc/_build/*
 *_run/*
 .hypothesis
 __pycache__/*
+.pytest_cache/*

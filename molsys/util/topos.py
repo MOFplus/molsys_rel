@@ -12,6 +12,9 @@ from mofplus import user_api
 from string import ascii_lowercase
 import itertools
 
+from molsys.util.sysmisc import _checkrundir
+from molsys.util.misc import argsorted
+
 import logging
 logger = logging.getLogger("molsys.topos")
 
@@ -586,7 +589,7 @@ class molgraph(conngraph):
         """
         try:
             assert self.clusters
-        except:
+        except AttributeError:
             self.get_clusters()
         tm = molsys.topo()
         tm.natoms = len(self.clusters)
@@ -1076,8 +1079,22 @@ class topotyper(object):
         self.cs, self.vs = self.tg.get_unique_vd(cs, vs)
         return
 
-    def compute_colors(self):
-        """ Compute edge coloring (TBI: vertex coloring)"""
+    def compute_colors(self, sort_flag=True):
+        """
+        Compute edge coloring (TBI: vertex coloring)
+        
+        sort_flag (bool): if it is True: colors are sorted according to
+            increasing color signature
+
+        >>> import molsys
+        >>> from molsys.util import topos
+        >>> m = molsys.mol.from_file("jast-1") # as example
+        >>> tt = topos.topotyper(m) # may need time
+        >>> tt.compute_colors()
+        >>> from molsys.util.color import make_mol # TBI: colors I/O
+        >>> ecolors = tt.tg.molg.ep.color.a
+        >>> n = make_mol(tt.tg.mol, alpha=3, ecolors=ecolors)
+        """
         try:
             assert self.bbs
         except:
@@ -1098,20 +1115,14 @@ class topotyper(object):
         """
         colorsigns = {} # color signatures
         clustsigns = {}
-        self.tg.molg.ep.color = self.tg.molg.new_edge_property("string")
+        self.tg.molg.ep.color = self.tg.molg.new_edge_property("int")
         for edge in self.tg.molg.edges():
-            s = int(edge.source())
-            t = int(edge.target())
-            # unique block name
-            ubb_v = self.bb2ubb[int(s)]
-            ubb_u = self.bb2ubb[int(t)]
-            # edge order (TBI?: get it from tg.molg source/target)
-            # N.B.: this order CANNOT be solved to keep the reference!
-            if ubb_v > ubb_u:
-                u, v = s, t
-                ubb_u, ubb_v = ubb_v, ubb_u
-            else: # when lower or equal
-                v, u = s, t
+            # u,v are source,target vertex of the edge
+            u = int(edge.source())
+            v = int(edge.target())
+            # unique block names
+            ubbv = self.bb2ubb[int(u)]
+            ubbu = self.bb2ubb[int(v)]
             # cluster atoms
             clustv = self.mg.clusters[v]
             clustu = self.mg.clusters[u]
@@ -1125,22 +1136,30 @@ class topotyper(object):
                 for ic in clustu
             ]
             # cluster connectivity towards each other
-            # TBI?: atom sequence in that direction
+            # TBI: atom sequence in that direction
             connv_ = [i for i,ic in enumerate(connv) if ic != []]
             connu_ = [i for i,ic in enumerate(connu) if ic != []]
             # connecting atoms == cluster atoms at the frontier of each other
             clustv_ = [clustv[i] for i in connv_]
             clustu_ = [clustu[i] for i in connu_]
             # elements of the connecting atoms
-            # N.B.: sorted for consistency
+            # N.B.: sorted for consistency, tupled for hashability as dict key
             # TBI: choice of elemsequences
             elemsv = tuple(sorted([self.mg.mol.elems[i] for i in clustv_]))
             elemsu = tuple(sorted([self.mg.mol.elems[i] for i in clustu_]))
-            sign = (elemsv, elemsu)
+            sign = tuple(sorted([elemsv, elemsu]))
+            # order (int) of occurrence assigned as color to the edge
             if sign not in colorsigns:
-                colorsigns[sign] = str(len(colorsigns)) # starting from 0
-                clustsigns[sign] = (ubb_v, ubb_u)
+                colorsigns[sign] = len(colorsigns) # starting from 0
+                clustsigns[sign] = (ubbv, ubbu)
             self.tg.molg.ep.color[edge] = colorsigns[sign]
+        if sort_flag is True:
+            # sort colors according to color signature lexsorting
+            # invariant wrt. order of occurrence
+            keys, items = zip(*colorsigns.items())
+            sorting_dict = dict(zip(items,argsorted(keys)))
+            self.tg.molg.ep.color.a = [sorting_dict[i] for i in self.tg.molg.ep.color]
+        return
 
     def get_net(self):
         """ Connects to mofplus API to compare the cs and vs value to the database, and return the topology. """
@@ -1269,7 +1288,15 @@ class topotyper(object):
         return
 
     def compute_bbs(self, org_flag="_ORG", ino_flag="_INO"):
-        """Compute building blocks"""
+        """Compute building blocks
+
+        >>> import molsys
+        >>> from molsys.util import topos
+        >>> m = molsys.mol.from_file("jast-1") # as example
+        >>> tt = topo.topotyper(m) # may need time
+        >>> tt.compute_bbs()
+        >>> tt.write_bbs()
+        """
         self.tg_atypes_by_isomorphism()
         cv, ca = self.mg.get_cluster_atoms()
         bbs = []
@@ -1345,12 +1372,13 @@ class topotyper(object):
         self.cluster_names = cluster_names
         self.organicity = organicity
         self.set_atom2bb()
-        self.detect_all_connectors()
-        self.set_conn2bb()
         self.set_bb2ubb()
+        ### BUG HERE ###
+        #self.detect_all_connectors()
+        #self.set_conn2bb()
         return
 
-    def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
+    def write_bbs(self, foldername="bbs", org_flag="_ORG", ino_flag="_INO"):
         """
         Write the clusters of the molgraph into the folder specified in the parameters.
         The names of the clusters written out will be those of the atomtypes of the vertices
@@ -1378,8 +1406,7 @@ class topotyper(object):
         #print("============")
         if not hasattr(self, "bbs"):
             self.compute_bbs(org_flag=org_flag, ino_flag=ino_flag)
-        if not os.path.exists(foldername):
-            os.mkdir(foldername)
+        foldername = _checkrundir(foldername)
         for n, i in enumerate(self.unique_bbs):
             m = self.bbs[i[0]]
             # set cell for a moment to center block in the cell
@@ -1402,44 +1429,45 @@ class topotyper(object):
                 trinat.append(itri)
         return trinat
 
-    def detect_all_connectors(self):
-        ###TBI: RETRIEVE EDGES FROM SELF.TG.MOL.CONN
-        self.edges = set(())
-        self.bb2conn = []
-        self.bb2adj = []
-        self.bb2adjconn = []
-        for ibb in range(self.nbbs):
-            iedges, iledges, idedges, icedges = self.detect_connectors(ibb, return_dict=True)
-            self.edges |= set(iedges)
-            self.bb2conn.append(iledges)
-            self.bb2adj.append(idedges)
-            self.bb2adjconn.append(icedges)
-        self.edges = list(self.edges)
-        self.edges.sort()
-        self.tg.mol.set_ctab(self.edges, conn_flag=True)
-        self.nedges = len(self.edges)
-        return
+    ### BUG HERE, CONNECTIVITY IS CHANGED ###
+    #def detect_all_connectors(self):
+    #    ###TBI: RETRIEVE EDGES FROM SELF.TG.MOL.CONN
+    #    self.edges = set(())
+    #    self.bb2conn = []
+    #    self.bb2adj = []
+    #    self.bb2adjconn = []
+    #    for ibb in range(self.nbbs):
+    #        iedges, iledges, idedges, icedges = self.detect_connectors(ibb, return_dict=True)
+    #        self.edges |= set(iedges)
+    #        self.bb2conn.append(iledges)
+    #        self.bb2adj.append(idedges)
+    #        self.bb2adjconn.append(icedges)
+    #    self.edges = list(self.edges)
+    #    self.edges.sort()
+    #    self.tg.mol.set_ctab(self.edges, conn_flag=True)
+    #    self.nedges = len(self.edges)
+    #    return
 
-    def detect_connectors(self, ibb, return_dict=False):
-        batoms = set(self.mg.clusters[ibb])
-        dedges = {}
-        cedges = {} 
-        ledges = []
-        edges = []
-        for ia in batoms:
-            ic = set(self.mg.mol.conn[ia])
-            ic -= batoms #set difference
-            if ic:
-                ic = int(*ic) #safety: if more than 1, raise error
-                dedges[ia] = ic #computed anyway
-                cedges[self.abb[ic]] = ia
-                ledges.append(ia)
-                iedges = [ibb, self.abb[ic]]
-                iedges.sort()
-                edges.append(tuple(iedges)) #needs tuple
-        if return_dict:
-            return edges, ledges, dedges, cedges
-        return edges, ledges
+    #def detect_connectors(self, ibb, return_dict=False):
+    #    batoms = set(self.mg.clusters[ibb])
+    #    dedges = {}
+    #    cedges = {}
+    #    ledges = []
+    #    edges = []
+    #    for ia in batoms:
+    #        ic = set(self.mg.mol.conn[ia])
+    #        ic -= batoms #set difference
+    #        if ic:
+    #            ic = int(*ic) #safety: if more than 1, raise error
+    #            dedges[ia] = ic #computed anyway
+    #            cedges[self.abb[ic]] = ia
+    #            ledges.append(ia)
+    #            iedges = [ibb, self.abb[ic]]
+    #            iedges.sort()
+    #            edges.append(tuple(iedges)) #needs tuple
+    #    if return_dict:
+    #        return edges, ledges, dedges, cedges
+    #    return edges, ledges
 
     def set_atom2bb(self):
         """from atom index to building block the atom belongs to"""
@@ -1449,13 +1477,14 @@ class topotyper(object):
                 self.abb[ia] = ibb
         return
 
-    def set_conn2bb(self):
-        """from connector index to building block the atom connects"""
-        self.conn2bb = [None]*self.mg.mol.natoms
-        for bba in self.bb2adj:
-            for c,ca in bba.items():
-                self.conn2bb[c] = self.abb[ca]
-        return
+    ### DOES NOT WORK W/O detect_all_connector
+    #def set_conn2bb(self):
+    #    """from connector index to building block the atom connects"""
+    #    self.conn2bb = [None]*self.mg.mol.natoms
+    #    for bba in self.bb2adj:
+    #        for c,ca in bba.items():
+    #            self.conn2bb[c] = self.abb[ca]
+    #    return
 
     def determine_all_color(self, vtype=0, depth=10):
         """determines colors according to element sequences

@@ -1,14 +1,16 @@
 import profilehooks
 
 def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
-    """Return the index that would sort an iterable. (2.7 fashion)
+    """Return the index that would sort a sequence. (python2.7 fashion)
 
     Instead of numpy.argsort, it allows to define optional arguments of sorted
-    cmp (function): custom comparison of two arguments which should return
-        </=/> 0 whether the first argument is considered </=/> the second
+    seq: the sequence to be argsorted
+    cmp (function): custom comparison of two arguments of the sequence which should
+        return negative/zero/positive number whether the first argument is
+        considered lower/equal to/greater than the second
     key (function): function used to extract a comparison key from each list element
     reverse (bool): as if sorting had reverse comparison
-    sort_flag (bool)
+    sort_flag (bool): if True: sort sequence in place as the standard `sort` method
     """
     if key is None:
         argsorted = sorted(

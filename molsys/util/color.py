@@ -53,18 +53,18 @@ def assert_eacstr(st):
 
 # make mol objects out of graph elements (edges and/or vertices) #
 
-def make_emol(m, alpha, ecolors=None):
+def make_emol(m, alpha=2, ecolors=None):
     """
     make mol object out of edge colors
     """
-    if ecolors is None:
-        ecolors = [0]*len(m.etab)
     etab = m.etab
+    if ecolors is None:
+        ecolors = [maxecolor-1]*len(etab)
+    # coordinates #
     ralpha = 1./alpha #reverse alpha
     calpha = 1-ralpha #one's complement of reverse alpha
     xyz_a = []
     xyz_c = []
-    new_etab = []
     if m.use_pconn:
         for ei,ej,p in etab: ### SELECTION TBI
             xyz_ai = m.xyz[ei]
@@ -86,39 +86,45 @@ def make_emol(m, alpha, ecolors=None):
         xyz_c1 = calpha*xyz_a + ralpha*xyz_c
         xyz_c2 = ralpha*xyz_a + calpha*xyz_c
         me = m.from_array(np.vstack([xyz_c1,xyz_c2]), use_pconn=m.use_pconn)
-    me.is_topo = True
+    # attributes #
     if hasattr(m,'cell'):
         me.set_cell(m.cell)
     if hasattr(m,'supercell'):
         me.supercell = m.supercell[:]
+    me.is_topo = True
     if m.use_pconn:
         me.use_pconn = True
+    # elements/atomtypes #
     if alpha == 2:
         me.elems = [ecolor2elem[v] for v in ecolors] # N.B.: no connectivity
         me.atypes = [0 for v in ecolors]
+    else:
+        me.elems = [ecolor2elem[v] for v in list(ecolors)*2] # with connectivity
+        me.atypes = [0 for v in list(ecolors)*2]
+    # connectivity #
+    new_etab = []
+    if alpha == 2:
         if m.use_pconn:
             pimg = me.get_frac_xyz()//1
             me.xyz -= np.dot(pimg,me.cell)
             for k,(i,j,p) in enumerate(etab):
                 newe1 = i,k,arr2idx[pimg[k]]
-                newe2 = j,k,arr2idx[idx2arr[p]-pimg[k]]
+                newe2 = j,k,arr2idx[pimg[k]-idx2arr[p]]
                 new_etab.append(newe1)
                 new_etab.append(newe2)
         else:
             new_etab = etab[:]
     else:
-        me.elems = [ecolor2elem[v] for v in ecolors*2] # with connectivity
-        me.atypes = [0 for v in ecolors*2]
-        ctab = [[i,i+me.natoms/2] for i in range(me.natoms/2)]
+        ctab = [(i,i+me.natoms/2) for i in range(me.natoms/2)]
         me.set_ctab(ctab, conn_flag=True)
         if m.use_pconn:
             pimg = me.get_frac_xyz()//1
             me.xyz -= np.dot(pimg,me.cell)
-            ptab = [pimg[i+me.natoms/2]-pimg[i] for i in range(me.natoms/2)]
+            ptab = [arr2idx[pimg[i+me.natoms/2]-pimg[i]] for i in range(me.natoms/2)]
             me.set_ptab(ptab, pconn_flag=True)
             for k,(i,j,p) in enumerate(etab):
                 newe1 = i,k,arr2idx[pimg[k]]
-                newe2 = j,k+len(etab),arr2idx[idx2arr[p]-pimg[k+len(etab)]]
+                newe2 = j,k+len(etab),arr2idx[pimg[k+len(etab)]-idx2arr[p]]
                 new_etab.append(newe1)
                 new_etab.append(newe2)
         else:
@@ -131,7 +137,7 @@ def make_vmol(m, vcolors=None):
     make mol object out of graph vertices
     """
     if vcolors is None:
-        vcolors = [0]*m.natoms
+        vcolors = [maxvcolor-1]*m.natoms
     mv = copy.deepcopy(m)
     for i in range(mv.natoms):
         mv.atypes[i] = elematypecolor2string(
@@ -144,15 +150,16 @@ def make_vmol(m, vcolors=None):
     if hasattr(m,'supercell'): mv.supercell = m.supercell[:]
     return mv
 
-def make_mol(m, alpha, ecolors=None, vcolors=None, use_edge=True, use_vertex=True):
+def make_mol(m, alpha=2, ecolors=None, vcolors=None, use_edge=True, use_vertex=True):
     """
     make mol object out of graph elements (edges and/or vertices)
     if both edges and vertices, it takes care of the connectivity too
     """
     if use_edge and use_vertex:
-        mm = make_emol(m, alpha, ecolors=ecolors)
-        ne = mm.natoms
+        me = make_emol(m, alpha=alpha, ecolors=ecolors)
+        ne = me.natoms
         mv = make_vmol(m, vcolors=vcolors)
+        mm = copy.deepcopy(me)
         mm.add_mol(mv) # N.B.: in THIS EXACT ORDER, otherwise KO connectivity
         ### connectivity ###
         ctab = []
@@ -161,7 +168,7 @@ def make_mol(m, alpha, ecolors=None, vcolors=None, use_edge=True, use_vertex=Tru
         if m.use_pconn:
             for i,j,p in mm.new_etab:
                 ctab.append((i+ne,j))
-                ptab.append(idx2arr[p])
+                ptab.append(p)
         else:
             for i,j in mm.new_etab:
                 ctab.append((i+ne,j))
@@ -170,8 +177,9 @@ def make_mol(m, alpha, ecolors=None, vcolors=None, use_edge=True, use_vertex=Tru
         if m.use_pconn:
             ptab += mm.ptab
             mm.set_ptab(ptab, pconn_flag=True)
+        mm.sort_tabs(etab_flag=True, conn_flag=True)
     elif use_edge:
-        mm = make_emol(m, alpha, ecolors=ecolors)
+        mm = make_emol(m, alpha=alpha, ecolors=ecolors)
     elif use_vertex:
         mm = m.make_vmol(vcolors=vcolors)
     if hasattr(m,'cell'): mm.set_cell(m.cell)

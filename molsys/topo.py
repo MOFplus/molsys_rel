@@ -442,56 +442,56 @@ class topo(mol):
         self.atypes = new_atypes
         return
 
-    def add_pconn(self):
-        """ with the method detect_conn the connectivity is detected from a distance search
-            if a connectivity is read via a tinker file there is no pconn present.
-            with this metod it is added for the use with weaver2 """
-        self.use_pconn= True
-        self.pimages = []
-        self.pconn = []
-        for i,c in enumerate(self.conn):
-            atoms_pconn = []
-            atoms_image = []
-            for ji, j in enumerate(c):
-                # If an atom or vertex is connected to another one multiple times (in an image), this
-                # will be visible in the self.conn attribute, where the same neighbour will be listed
-                # multiple times.
-                # Sometimes, the distances are a bit different from each other, and in this case, we
-                # have to increase the threshold, until the get_distvec function will find all imgis.
-                n_conns = c.count(j)
-                t = 0.01
-                while True:
-                    d,r,imgi = self.get_distvec(i,j,thresh=t)
-                    t += 0.01
-                    if n_conns == len(imgi):
-                        break
-                if len(imgi) == 1:
-                    # only one neighbor .. all is fine
-                    atoms_pconn.append(images[imgi[0]])
-                    atoms_image.append(imgi[0])
-                else:
-                    # we need to assign an image to each connection
-                    # if an atom is connected to another atom twice this means it must be another
-                    # image
-                    for ii in imgi:
-                        # test if this image is not used for this atom .. then we can use it
-                        if atoms_image.count(ii)==0:
-                            atoms_image.append(ii)
-                            atoms_pconn.append(images[ii])
-                        else:
-                            # ok, we have this image already
-                            use_it = True
-                            #print(c, "=>", j)
-                            #print(atoms_image)
-                            for k, iii in enumerate(atoms_image):
-                                #print('k',k)
-                                if (iii == ii) and (c[k] == j): use_it=False
-                            if use_it:
-                                atoms_image.append(ii)
-                                atoms_pconn.append(images[ii])
-            self.pimages.append(atoms_image)
-            self.pconn.append(atoms_pconn)
-        return
+    #def add_pconn(self):
+    #    """ with the method detect_conn the connectivity is detected from a distance search
+    #        if a connectivity is read via a tinker file there is no pconn present.
+    #        with this metod it is added for the use with weaver2 """
+    #    self.use_pconn= True
+    #    self.pimages = []
+    #    self.pconn = []
+    #    for i,c in enumerate(self.conn):
+    #        atoms_pconn = []
+    #        atoms_image = []
+    #        for ji, j in enumerate(c):
+    #            # If an atom or vertex is connected to another one multiple times (in an image), this
+    #            # will be visible in the self.conn attribute, where the same neighbour will be listed
+    #            # multiple times.
+    #            # Sometimes, the distances are a bit different from each other, and in this case, we
+    #            # have to increase the threshold, until the get_distvec function will find all imgis.
+    #            n_conns = c.count(j)
+    #            t = 0.01
+    #            while True:
+    #                d,r,imgi = self.get_distvec(i,j,thresh=t)
+    #                t += 0.01
+    #                if n_conns == len(imgi):
+    #                    break
+    #            if len(imgi) == 1:
+    #                # only one neighbor .. all is fine
+    #                atoms_pconn.append(images[imgi[0]])
+    #                atoms_image.append(imgi[0])
+    #            else:
+    #                # we need to assign an image to each connection
+    #                # if an atom is connected to another atom twice this means it must be another
+    #                # image
+    #                for ii in imgi:
+    #                    # test if this image is not used for this atom .. then we can use it
+    #                    if atoms_image.count(ii)==0:
+    #                        atoms_image.append(ii)
+    #                        atoms_pconn.append(images[ii])
+    #                    else:
+    #                        # ok, we have this image already
+    #                        use_it = True
+    #                        #print(c, "=>", j)
+    #                        #print(atoms_image)
+    #                        for k, iii in enumerate(atoms_image):
+    #                            #print('k',k)
+    #                            if (iii == ii) and (c[k] == j): use_it=False
+    #                        if use_it:
+    #                            atoms_image.append(ii)
+    #                            atoms_pconn.append(images[ii])
+    #        self.pimages.append(atoms_image)
+    #        self.pconn.append(atoms_pconn)
+    #    return
 
         # 'na',lower(label),xyz,i,j)
     def insert_atom(self, lab, aty, xyz, i, j):

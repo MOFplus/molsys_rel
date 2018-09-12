@@ -513,7 +513,7 @@ class acab(base):
         \"colors\" contains useful structures to weave frameworks later
         \"pretty\" contains just clearer views of these structures (do not use)
         """
-        self.rundir = _checkrundir(".","run")
+        self.rundir = _checkrundir("run")
         self.coldir = "%s%scolors" % (self.rundir, os.sep)
         self.predir = "%s%spretty" % (self.rundir, os.sep)
         _makedirs(self.coldir) #mfpx, w/  pbc, useful
