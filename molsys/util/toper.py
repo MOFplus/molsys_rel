@@ -16,7 +16,7 @@ from molsys.util.sysmisc import _checkrundir
 from molsys.util.misc import argsorted
 
 import logging
-logger = logging.getLogger("molsys.topos")
+logger = logging.getLogger("molsys.toper")
 
 class conngraph:
     """ This is the "conngraph" class
@@ -1087,9 +1087,9 @@ class topotyper(object):
             increasing color signature
 
         >>> import molsys
-        >>> from molsys.util import topos
+        >>> from molsys.util import toper
         >>> m = molsys.mol.from_file("jast-1") # as example
-        >>> tt = topos.topotyper(m) # may need time
+        >>> tt = toper.topotyper(m) # may need time
         >>> tt.compute_colors()
         >>> from molsys.util.color import make_mol # TBI: colors I/O
         >>> ecolors = tt.tg.molg.ep.color.a
@@ -1291,7 +1291,7 @@ class topotyper(object):
         """Compute building blocks
 
         >>> import molsys
-        >>> from molsys.util import topos
+        >>> from molsys.util import toper
         >>> m = molsys.mol.from_file("jast-1") # as example
         >>> tt = topo.topotyper(m) # may need time
         >>> tt.compute_bbs()

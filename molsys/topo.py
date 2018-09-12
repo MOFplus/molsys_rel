@@ -961,7 +961,7 @@ class topo(mol):
         #logger.debug("j_conn: %s" % repr(self.conn[j]) )
         ### set for i
         ### BUG FOR 2x2x2 pcu: a vertex connects twice to the same vertex!!!
-        ### TBI: add pconn for topos
+        ### TBI: add pconn for toper
         j_ind = self.conn[i].index(j)
         i_ind = self.conn[j].index(i)
         #logger.debug("i_ind %6d" % i_ind)

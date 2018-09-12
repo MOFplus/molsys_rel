@@ -106,7 +106,7 @@ class mol(mpiobject):
         self.set_logger_level()
         # defaults
         self.is_topo = False # this flag replaces the old topo object derived from mol
-        self.use_pconn = False # extra flag .. we could have topos that do not need pconn
+        self.use_pconn = False # extra flag .. we could have toper that do not need pconn
         self.pconn = []
         self.pimages = []
         self.ptab  = []
