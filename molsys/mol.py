@@ -959,7 +959,7 @@ class mol(mpiobject):
                 scale (float)           : scaling factor for other mol object coodinates
                 roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
         if self.use_pconn:
-            logger.warning("Adding mols with pconn: periodic connectivity may need tinkering")
+            logger.warning("Add mols with pconn, which may need tinkering")
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")

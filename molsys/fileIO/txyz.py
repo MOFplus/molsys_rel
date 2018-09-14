@@ -14,7 +14,10 @@ def read(mol, f, topo = False):
         -mol  (obj) : instance of a molclass
         -topo (bool): flag for reading topo information
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not readable" % f
     lbuffer = f.readline().split()
     mol.natoms = int(lbuffer[0])
     if len(lbuffer) >1 and lbuffer[1] == "molden": lbuffer = [lbuffer[0]]

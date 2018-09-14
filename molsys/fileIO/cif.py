@@ -13,7 +13,10 @@ def write(mol,fname, name='', write_bonds=True):
         -fname  (str) : name of the cif file
         -mol    (obj) : instance of a molclass
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not readable" % f
     f = open(fname, 'w')
     f.write("data_mofplus.org:%s\n" % name)
     f.write("_symmetry_cell_setting           triclinic \n")
@@ -80,9 +83,9 @@ def read(mol, fname, make_P1=True, detect_conn=True, disorder=None):
     try:
         occ = [format_float(i) for i in cf.GetItemValue("_atom_site_occupancy")]
         if any( [i!=1 for i in occ] ):
-            logger.warning("fractional occupancies in cif file")
             disorder_assembly_full = [i for i in cf.GetItemValue("_atom_site_disorder_assembly")]
             disorder_group_full = [i for i in cf.GetItemValue("_atom_site_disorder_group")]
+            logger.warning("fractional occupancies in cif file")
             select_disorder = [i for i,e in enumerate(disorder_group_full) if e != '.']
             # remove fully occupied positions (data could be polluted)
             disorder_group = [disorder_group_full[i] for i in select_disorder]
@@ -106,7 +109,11 @@ def read(mol, fname, make_P1=True, detect_conn=True, disorder=None):
         disorder = None
         # re-raise only if the error message is different than the following
         # otherwise: go forward! no disorder, everything is fine!
-        if e.message != "Itemname _atom_site_occupancy not in datablock":
+        if e.message not in [
+            "Itemname _atom_site_occupancy not in datablock",
+            "Itemname _atom_site_disorder_assembly not in datablock",
+            "Itemname _atom_site_disorder_group not in datablock"
+        ]:
             raise(e)
 
     elems = [str(i) for i in cf.GetItemValue('_atom_site_type_symbol')]

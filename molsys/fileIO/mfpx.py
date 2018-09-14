@@ -13,7 +13,10 @@ def read(mol, f):
         -mol (obj): instance of a molclass
     """
     ### read header ###
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not readable" % f
     ftype = 'xyz'
     lbuffer = f.readline().split()
     stop = False

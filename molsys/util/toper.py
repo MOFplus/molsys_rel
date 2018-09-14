@@ -97,6 +97,7 @@ class conngraph:
             ip = pconn[j].pop(ji)
             mol.pconn[j].append(ip)
         mol.set_ctab_from_conn(pconn_flag=True)
+        self.mol.set_etab_from_tabs()
         cg = self.__class__(mol) # new conngraph
         return cg
     
@@ -654,6 +655,7 @@ class topograph(conngraph):
         """
         self.mol = mol
         if not allow_2conns:
+            self.mol_2conns = copy.deepcopy(self.mol)
             self.midx_2conns = self.remove_2conns_from_mol()
         self.make_graph()
         return
@@ -676,6 +678,8 @@ class topograph(conngraph):
             self.mol.delete_atom(i)
         # recompute pconn
         self.mol.add_pconn()
+        self.mol.set_ctab_from_conn(pconn_flag=True)
+        self.mol.set_etab_from_tabs()
         return delete_list
     
     def graph2topo(self):
@@ -1022,6 +1026,9 @@ class topograph(conngraph):
             self.molg.remove_vertex(v)
             self.mol.delete_atom(v)
         self.mol.add_pconn()
+        self.mol.set_ctab_from_conn(pconn_flag=True)
+        self.mol.set_etab_from_tabs()
+        return
 
 class topotyper(object):
     """ Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures. """
@@ -1034,7 +1041,7 @@ class topotyper(object):
         - depth (int): maximum level of coordination sequences 
         - isum (int*): summation of indices
         - trip (nested tuples*): resizing list for make_supercell if vertex symbols method overflows
-        * recursive purpose, DO NOT CHANGE
+            * recursive purpose, DO NOT CHANGE
         """
         self.api = None
         #molcopy = copy.deepcopy(mol) #prevents mol pollution if restart ###DOES NOT WORK WITH CIF FILES
@@ -1051,7 +1058,7 @@ class topotyper(object):
                 logger.info("Triplet is: "+str(itri))
                 if isum > 3: mol.make_supercell(itri)
                 self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
-            except OverflowError: ###specific for supercells
+            except OverflowError: # specific for supercells
                 logger.info("Deconstruction failed! Resize original cell")
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
             except IndexError:
@@ -1113,53 +1120,97 @@ class topotyper(object):
         #    edgecolors[iedge] = colorsigns[sign]
         ###############################
         """
+        list2c = self.tg.midx_2conns
+        vertex_bb_list = range(len(self.mg.clusters))
+        for i in reversed(sorted(list2c)):
+            del vertex_bb_list[vertex_bb_list.index(i)]
         colorsigns = {} # color signatures
         clustsigns = {}
         self.tg.molg.ep.color = self.tg.molg.new_edge_property("int")
         for edge in self.tg.molg.edges():
-            # u,v are source,target vertex of the edge
-            u = int(edge.source())
-            v = int(edge.target())
+            # v,u are source,target vertex of the edge
+            v = vertex_bb_list[int(edge.source())]
+            u = vertex_bb_list[int(edge.target())]
             # unique block names
-            ubbv = self.bb2ubb[int(u)]
-            ubbu = self.bb2ubb[int(v)]
-            # cluster atoms
-            clustv = self.mg.clusters[v]
-            clustu = self.mg.clusters[u]
-            # cluster connectivity
-            connv = [
-                [jc for jc in self.mg.mol.conn[ic] if jc in clustu]
-                for ic in clustv
-            ]
-            connu = [
-                [jc for jc in self.mg.mol.conn[ic] if jc in clustv]
-                for ic in clustu
-            ]
-            # cluster connectivity towards each other
-            # TBI: atom sequence in that direction
-            connv_ = [i for i,ic in enumerate(connv) if ic != []]
-            connu_ = [i for i,ic in enumerate(connu) if ic != []]
-            # connecting atoms == cluster atoms at the frontier of each other
-            clustv_ = [clustv[i] for i in connv_]
-            clustu_ = [clustu[i] for i in connu_]
-            # elements of the connecting atoms
-            # N.B.: sorted for consistency, tupled for hashability as dict key
-            # TBI: choice of elemsequences
-            elemsv = tuple(sorted([self.mg.mol.elems[i] for i in clustv_]))
-            elemsu = tuple(sorted([self.mg.mol.elems[i] for i in clustu_]))
-            sign = tuple(sorted([elemsv, elemsu]))
+            ubbv = self.bb2ubb[v]
+            ubbu = self.bb2ubb[u]
+            # signature
+            sign = self.get_color_signature(v, u)
+            if len(sum(sign,())) == 0:
+                # colors are edge midpoints
+                # workaround: since edges are no more stored in tg we use
+                # directly mg. This will be SLOW
+                # TBI: use tg (maybe w/ self.tg.mol_2conns.conn)
+                # cluster atoms
+                clustv = self.mg.clusters[v]
+                clustu = self.mg.clusters[u]
+                ## cluster connectivity
+                connv = [[self.abb[j] for j in self.mg.mol.conn[i]] for i in clustv]
+                connu = [[self.abb[j] for j in self.mg.mol.conn[i]] for i in clustu]
+                allconnv = sum(connv,[])
+                allconnu = sum(connu,[])
+                allconnv_ = [k for k in allconnv if k != v]
+                allconnu_ = [k for k in allconnu if k != u]
+                ## midpoint cluster
+                allconnt = list(set(allconnv_) & set(allconnu_))
+                assert len(allconnt) == 1,\
+                    "only 1 cluster btw. vertex clusters!"
+                t = allconnt[0] # the only one
+                ubbt = self.bb2ubb[t]
+                sign1 = self.get_color_signature(v, t)
+                sign2 = self.get_color_signature(u, t)
+                sign = (ubbt,tuple(sorted([sign1,sign2])))
+                #if sign1 == sign2:
+                #    sign = ubbt ### JUST the cluster type!
+                #else:
+                #    raise NotImplementedError("TBI: edge midpoints w/ orient colors")
             # order (int) of occurrence assigned as color to the edge
             if sign not in colorsigns:
                 colorsigns[sign] = len(colorsigns) # starting from 0
-                clustsigns[sign] = (ubbv, ubbu)
+                #clustsigns[sign] = (ubbv, ubbu)
             self.tg.molg.ep.color[edge] = colorsigns[sign]
         if sort_flag is True:
             # sort colors according to color signature lexsorting
-            # invariant wrt. order of occurrence
+            # it is invariant wrt. order of occurrence
             keys, items = zip(*colorsigns.items())
             sorting_dict = dict(zip(items,argsorted(keys)))
             self.tg.molg.ep.color.a = [sorting_dict[i] for i in self.tg.molg.ep.color]
         return
+
+    def get_color_signature(self, v, u):
+        """
+        Get color signature taking the connecting atoms at the boundary of the blocks
+        TBI: atom sequence going "inside" the block instead of just connecting atoms
+
+        v(int): vertex with index v
+        u(int): vertex with index u
+        """
+        # cluster atoms
+        clustv = self.mg.clusters[v]
+        clustu = self.mg.clusters[u]
+        # cluster connectivity
+        connv = [
+            [jc for jc in self.mg.mol.conn[ic] if jc in clustu]
+            for ic in clustv
+        ]
+        connu = [
+            [jc for jc in self.mg.mol.conn[ic] if jc in clustv]
+            for ic in clustu
+        ]
+        # cluster connectivity towards each other
+        # TBI: atom sequence in that direction
+        connv_ = [i for i,ic in enumerate(connv) if ic != []]
+        connu_ = [i for i,ic in enumerate(connu) if ic != []]
+        # connecting atoms == cluster atoms at the frontier of each other
+        clustv_ = [clustv[i] for i in connv_]
+        clustu_ = [clustu[i] for i in connu_]
+        # elements of the connecting atoms
+        # N.B.: sorted for consistency, tupled for hashability as dict key
+        # TBI: choice of elemsequences
+        elemsv = tuple(sorted([self.mg.mol.elems[i] for i in clustv_]))
+        elemsu = tuple(sorted([self.mg.mol.elems[i] for i in clustu_]))
+        sign = tuple(sorted([elemsv, elemsu]))
+        return sign
 
     def get_net(self):
         """ Connects to mofplus API to compare the cs and vs value to the database, and return the topology. """
@@ -1297,6 +1348,7 @@ class topotyper(object):
         >>> tt.compute_bbs()
         >>> tt.write_bbs()
         """
+        logger.info('Perform topological deconstruction in blocks')
         self.tg_atypes_by_isomorphism()
         cv, ca = self.mg.get_cluster_atoms()
         bbs = []
@@ -1331,6 +1383,7 @@ class topotyper(object):
         cluster_conn = self.mg.cluster_conn()
         neighbour_atypes = []
         unique_2c = []
+        c2ubb = {}
         for i in list2c:
             neighbour_atype = []
             for cc in cluster_conn[i]:
@@ -1343,6 +1396,7 @@ class topotyper(object):
                 neighbour_atypes.append(neighbour_atype)
                 unique_2c.append(i)
                 unique_bbs.append([i])
+                c2ubb[i] = len(unique_bbs)-1
                 cluster_names.append(neighbour_atype[0]+"-"+neighbour_atype[1])
             else:
                 # check for isomorphism
@@ -1353,6 +1407,8 @@ class topotyper(object):
                     if mg.mol.natoms > 1 and mg2.mol.natoms > 1:
                         if isomorphism(mg.molg, mg2.molg):
                             isomorphic_with_any = True
+                            unique_bbs[c2ubb[i2]].append(i)
+                            c2ubb[i] = c2ubb[i2]
                             break
                     else:
                         # this is a workaround, so multiple edge BBs with 1 atom will always be isomorphic...
@@ -1360,6 +1416,7 @@ class topotyper(object):
                 if not isomorphic_with_any:
                     unique_2c.append(i)
                     unique_bbs.append([i])
+                    c2ubb[i] = len(unique_bbs)-1
                     name = neighbour_atype[0]+"-"+neighbour_atype[1]
                     j = 0
                     while name in cluster_names:
@@ -1445,6 +1502,7 @@ class topotyper(object):
     #    self.edges = list(self.edges)
     #    self.edges.sort()
     #    self.tg.mol.set_ctab(self.edges, conn_flag=True)
+    #    self.mol.set_etab_from_tabs()
     #    self.nedges = len(self.edges)
     #    return
 

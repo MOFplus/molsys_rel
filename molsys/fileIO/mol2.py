@@ -10,7 +10,10 @@ def read(mol, f, delimiter=','):
         -mol (obj): instance of a molclass
         -delimiter=',' (str): coordinate delimiter
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not readable" % f
     s = f.read().splitlines()
     bonds,atoms=0,0
     mol.xyz,mol.elems,mol.ctab = [],[],[]
