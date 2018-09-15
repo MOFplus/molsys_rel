@@ -1,6 +1,6 @@
 import numpy
 import string
-
+import molsys.util.unit_cell as unit_cell
 
 def read(mol,f,triclinic=False,atom_offset=0):
     stop = False
@@ -17,14 +17,33 @@ def read(mol,f,triclinic=False,atom_offset=0):
                 cell[2,2] = float(string.split(f.readline())[1])
             else:
                 c1 = [float(x) for x in f.readline().split() if x != '']
-                cell[0,0] = c1[1]-c1[0]
-                cell[0,1] = c1[2]
-                c1 = [float(x) for x in f.readline().split() if x != '']
-                cell[1,1] = c1[1]-c1[0]
-                cell[0,2] = c1[2]
-                c1 = [float(x) for x in f.readline().split() if x != '']
-                cell[2,2] = c1[1]-c1[0]
-                cell[1,2] = c1[2]
+                c2 = [float(x) for x in f.readline().split() if x != '']
+                c3 = [float(x) for x in f.readline().split() if x != '']
+                xy,xz,yz = c1[2]      ,       c2[2],       c3[2]
+                xlo = c1[0] - numpy.min([0.0,xy,xz,xy+xz])
+                xhi = c1[1] - numpy.max([0.0,xy,xz,xy+xz])
+                ylo = c2[0] - numpy.min([0.0,yz])
+                yhi = c2[1] - numpy.max([0.0,yz])
+                zlo,zhi = c3[0],c3[1]
+                lx,ly,lz = xhi-xlo, yhi-ylo, zhi-zlo
+                #lx,ly,lz = c1[2]-c1[1], c2[2]-c2[1], c3[2]-c3[1]
+                #xy,xz,yz = c1[0]      ,       c2[0],       c3[0]
+                a = lx
+                b = numpy.sqrt(ly*ly+xy*xy)
+                c = numpy.sqrt(lz*lz+xz*xz+yz*yz)
+                alpha = numpy.rad2deg(numpy.arccos((xy*xz+ly*yz)/(b*c)))
+                beta  = numpy.rad2deg(numpy.arccos(xz/c))
+                gamma = numpy.rad2deg(numpy.arccos(xy/b))
+                cell = unit_cell.vectors_from_abc([a,b,c,alpha,beta,gamma])
+                #c1 = [float(x) for x in f.readline().split() if x != '']
+                #cell[0,0] = c1[1]-c1[0]
+                #cell[0,1] = c1[2]
+                #c1 = [float(x) for x in f.readline().split() if x != '']
+                #cell[1,1] = c1[1]-c1[0]
+                #cell[0,2] = c1[2]
+                #c1 = [float(x) for x in f.readline().split() if x != '']
+                #cell[2,2] = c1[1]-c1[0]
+                #cell[1,2] = c1[2]
         elif "ITEM: ATOMS" in line:
             assert natoms > 0
             xyz = numpy.zeros([natoms,3])

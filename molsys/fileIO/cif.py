@@ -13,7 +13,7 @@ def write(mol,fname, name='', write_bonds=True):
         -fname  (str) : name of the cif file
         -mol    (obj) : instance of a molclass
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    #assert isinstance(f,file), "No such file with filename: \'%s\'" % f
     f = open(fname, 'w')
     f.write("data_mofplus.org:%s\n" % name)
     f.write("_symmetry_cell_setting           triclinic \n")
