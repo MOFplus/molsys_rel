@@ -171,7 +171,7 @@ class spg:
             logger.info('detected spacegroup %s %i with symprec=%5.4f' % (symbol, number, self.symprec))
         return (symbol, number)
 
-    def make_P1(self, spgnum=-1, sg_setting=1, onduplicates="replace"):
+    def make_P1(self, spgnum=-1, sg_setting=1, onduplicates="replace", conn_thresh=0.1):
         """
         to be implemented by Julian from his topo tools
 
@@ -250,7 +250,7 @@ class spg:
         
         #self.mol.elems  = new_elems
         #self.mol.atypes = new_atypes
-        self.mol.detect_conn(tresh = 0.1,remove_duplicates = True)
+        self.mol.detect_conn(tresh = conn_thresh, remove_duplicates = True)
         return True
 
     def get_primitive_cell(self):

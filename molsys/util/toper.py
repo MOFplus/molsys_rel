@@ -12,7 +12,7 @@ from mofplus import user_api
 from string import ascii_lowercase
 import itertools
 
-from molsys.util.sysmisc import _checkrundir
+from molsys.util.sysmisc import _makedirs, _checkrundir
 from molsys.util.misc import argsorted
 
 import logging
@@ -318,10 +318,6 @@ class molgraph(conngraph):
                 self.molg.ep.Nk[e] = 0
             #print(self.molg.ep.Nk[e])
         return
-
-    def find_cluster_treshold(self):
-        self.find_cluster_threshold()
-        return self.threshes
 
     def find_cluster_threshold(self):
         """
@@ -1435,7 +1431,7 @@ class topotyper(object):
         #self.set_conn2bb()
         return
 
-    def write_bbs(self, foldername="bbs", org_flag="_ORG", ino_flag="_INO"):
+    def write_bbs(self, foldername="bbs", index_run=False, org_flag="_ORG", ino_flag="_INO"):
         """
         Write the clusters of the molgraph into the folder specified in the parameters.
         The names of the clusters written out will be those of the atomtypes of the vertices
@@ -1463,7 +1459,10 @@ class topotyper(object):
         #print("============")
         if not hasattr(self, "bbs"):
             self.compute_bbs(org_flag=org_flag, ino_flag=ino_flag)
-        foldername = _checkrundir(foldername)
+        if index_run:
+            foldername = _checkrundir(foldername)
+        else:
+            _makedirs(foldername)
         for n, i in enumerate(self.unique_bbs):
             m = self.bbs[i[0]]
             # set cell for a moment to center block in the cell
@@ -1473,7 +1472,7 @@ class topotyper(object):
             # reset empty cell
             m.set_empty_cell()
             m.write(foldername+"/"+self.cluster_names[n]+self.organicity[i[0]]+".mfpx", "mfpx")
-        return
+        return foldername
         
 ### AUXILIARY FUNCTIONS ########################################################
     def triplenats_on_sphere(self,trisum, trimin=1):

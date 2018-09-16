@@ -12,4 +12,4 @@ def test_get_net():
     print(tt.get_net())
 
 def test_write_bbs():
-    tt.write_bbs("run")
+    tt.write_bbs("bbs")

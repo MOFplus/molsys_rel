@@ -678,9 +678,9 @@ class mol(mpiobject):
         cell = self.cell * np.array(self.supercell)[:,np.newaxis]
         self.set_cell(cell)
         self.inv_cell = np.linalg.inv(self.cell)
-        self.elems *= ntot
-        self.atypes*=ntot
-        self.fragtypes*=ntot
+        self.elems = list(self.elems)*ntot
+        self.atypes=list(self.atypes)*ntot
+        self.fragtypes=list(self.fragtypes)*ntot
         mfn = max(self.fragnumbers)+1
         nfragnumbers = []
         for i in range(ntot):
@@ -724,7 +724,6 @@ class mol(mpiobject):
                     ixyz = ix+nx*iy+nx*ny*iz
                     dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
                     xyz[ixyz] += dispvect
-
                     i = copy.copy(ixyz)
                     for cc in range(len(conn[i])):
                         for c in range(len(conn[i][cc])):
@@ -746,6 +745,7 @@ class mol(mpiobject):
                                 if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
                                 if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
                                 #print(px,py,pz)
+        self.natoms = nat*ntot
         self.conn, self.pconn, self.xyz = [],[],[]
         for cc in conn:
             for c in cc:
@@ -753,7 +753,6 @@ class mol(mpiobject):
         for pp in pconn:
             for p in pp:
                 self.pconn.append(p)
-        self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
         self.cellparams[0:3] *= np.array(self.supercell)
         self.cell *= np.array(self.supercell)[:,np.newaxis]
@@ -761,6 +760,8 @@ class mol(mpiobject):
         self.elems *= ntot
         self.atypes*=ntot
         self.images_cellvec = np.dot(images, self.cell)
+        self.set_ctab_from_conn(pconn_flag=True)
+        self.set_etab_from_tabs(sort_flag=True)
         return xyz,conn,pconn
 
     def apply_pbc(self, xyz=None, fixidx=0):
@@ -959,7 +960,7 @@ class mol(mpiobject):
                 scale (float)           : scaling factor for other mol object coodinates
                 roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
         if self.use_pconn:
-            logger.warning("Add mols with pconn, which may need tinkering")
+            logger.info("Add mols with pconn, which may need tinkering")
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
@@ -1877,11 +1878,11 @@ class mol(mpiobject):
         if pconn_flag:
             for i in range(self.natoms):
                 ci = self.conn[i]
-                pi = self.pimages[i]
+                pi = self.pconn[i]
                 for j, pj in zip(ci,pi):
-                    if j > i or (j==i and pj <= 13):
+                    if j > i or (j==i and arr2idx[pj] < 13):
                         ctab.append((i,j))
-                        ptab.append(pj)
+                        ptab.append(arr2idx[pj])
             return ctab, ptab
         else:
             for i, ci in enumerate(self.conn):
