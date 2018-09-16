@@ -1,4 +1,4 @@
-import profilehooks
+import itertools
 
 def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
     """Return the index that would sort a sequence. (python2.7 fashion)
@@ -60,3 +60,14 @@ def normalize_ratio(cratio, total):
         ret[quot[s][1]] += 1
     norm_cratio = ret.values()
     return norm_cratio # already ordered
+
+def triplenats_on_sphere(trisum, trimin=1):
+    """returns triplets of natural numbers on a sphere
+    trisum(int):the summation of the triples must be equal to trisum
+    trimin(int):minimum allowed natural per triplet element (default: 1)"""
+    trinat = []
+    for itri in itertools.product(range(trimin, trisum), repeat=3):
+        if sum(itri) == trisum:
+            trinat.append(itri)
+    return trinat
+

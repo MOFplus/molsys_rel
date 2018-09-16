@@ -10,10 +10,9 @@ import numpy as np
 import copy
 from mofplus import user_api
 from string import ascii_lowercase
-import itertools
 
 from molsys.util.sysmisc import _makedirs, _checkrundir
-from molsys.util.misc import argsorted
+from molsys.util.misc import argsorted, triplenats_on_sphere
 
 import logging
 logger = logging.getLogger("molsys.toper")
@@ -1046,7 +1045,7 @@ class topotyper(object):
         self.mg = molgraph(molcopy)
         while not self.goodinit:
             if trip is None:
-                trinat = self.triplenats_on_sphere(isum)
+                trinat = triplenats_on_sphere(isum)
             else:
                 trinat = trip
             try:
@@ -1474,17 +1473,6 @@ class topotyper(object):
             m.write(foldername+"/"+self.cluster_names[n]+self.organicity[i[0]]+".mfpx", "mfpx")
         return foldername
         
-### AUXILIARY FUNCTIONS ########################################################
-    def triplenats_on_sphere(self,trisum, trimin=1):
-        """returns triplets of natural numbers on a sphere
-        trisum(int):the summation of the triples must be equal to trisum
-        trimin(int):minimum allowed natural per triplet element (default: 1)"""
-        trinat = []
-        for itri in itertools.product(range(trimin, trisum), repeat=3):
-            if sum(itri) == trisum:
-                trinat.append(itri)
-        return trinat
-
     ### BUG HERE, CONNECTIVITY IS CHANGED ###
     #def detect_all_connectors(self):
     #    ###TBI: RETRIEVE EDGES FROM SELF.TG.MOL.CONN
