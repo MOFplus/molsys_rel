@@ -1109,18 +1109,21 @@ class ff(base):
         for i in range(ntypes):
             for j in range(i, ntypes):
                 #TODO check availability of an explicit paramerter
-                if len(self.par["vdwpr"].keys()) > 0:
-                    _,_,ti = self.split_parname(types[i])
-                    _,_,tj = self.split_parname(types[j])
-                    ti =ti[0]
-                    tj = tj[0]
-                    parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
-                    if parname in self.par["vdwpr"].keys():
-                        # got it
-                        par_ij = self.par["vdwpr"][parname]
-                        self.vdwdata[types[i]+":"+types[j]] = par_ij
-                        self.vdwdata[types[j]+":"+types[i]] = par_ij
-                        continue
+                try:
+                    if len(self.par["vdwpr"].keys()) > 0:
+                        _,_,ti = self.split_parname(types[i])
+                        _,_,tj = self.split_parname(types[j])
+                        ti =ti[0]
+                        tj = tj[0]
+                        parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
+                        if parname in self.par["vdwpr"].keys():
+                            # got it
+                            par_ij = self.par["vdwpr"][parname]
+                            self.vdwdata[types[i]+":"+types[j]] = par_ij
+                            self.vdwdata[types[j]+":"+types[i]] = par_ij
+                            continue
+                except:
+                    pass
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]

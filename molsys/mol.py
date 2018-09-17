@@ -816,12 +816,30 @@ class mol(mpiobject):
         return
     
     def get_cell(self):
-        ''' return unit cell information (cell vectors) '''
+        """get cell vectors
+        
+        Get the cell vectors as a 3x3 matrix, where the rows are the individual cell vectors
+        
+        Returns:
+            numpy.ndarray: the cell matrix cell[0] or cell[0,:] is the first cell vector
+        """
         return self.cell
 
     def get_cellparams(self):
         ''' return unit cell information (a, b, c, alpha, beta, gamma) '''
         return self.cellparams
+
+    def get_volume(self):
+        """returns volume of the cell
+        
+        Computes the Volume and returns it in cubic Angstroms
+        
+        Returns:
+            float: Volume
+        """
+        cx = self.get_cell()
+        return np.abs(np.dot(cx[0], np.cross(cx[1],cx[2])))
+
 
     def set_bcond(self):
         """
