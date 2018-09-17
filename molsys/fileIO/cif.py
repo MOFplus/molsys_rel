@@ -13,7 +13,10 @@ def write(mol,fname, name='', write_bonds=True):
         -fname  (str) : name of the cif file
         -mol    (obj) : instance of a molclass
     """
-    #assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not readable" % f
     f = open(fname, 'w')
     f.write("data_mofplus.org:%s\n" % name)
     f.write("_symmetry_cell_setting           triclinic \n")
@@ -56,7 +59,7 @@ def write(mol,fname, name='', write_bonds=True):
     f.close()
     return
 
-def read(mol, fname, make_P1=True, detect_conn=True, disorder=None):
+def read(mol, fname, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None):
     """read CIF file
     :Arguments:
     - make_P1(bool): if True: make P1 unit cell from primitive cell
@@ -79,35 +82,56 @@ def read(mol, fname, make_P1=True, detect_conn=True, disorder=None):
     
     try:
         occ = [format_float(i) for i in cf.GetItemValue("_atom_site_occupancy")]
-        if any( [i!=1 for i in occ] ):
-            logger.warning("fractional occupancies in cif file")
-            disorder_assembly_full = [i for i in cf.GetItemValue("_atom_site_disorder_assembly")]
-            disorder_group_full = [i for i in cf.GetItemValue("_atom_site_disorder_group")]
-            select_disorder = [i for i,e in enumerate(disorder_group_full) if e != '.']
-            # remove fully occupied positions (data could be polluted)
-            disorder_group = [disorder_group_full[i] for i in select_disorder]
-            disorder_assembly = [disorder_assembly_full[i] for i in select_disorder]
-            # create disorder list for each disorder assembly
-            if disorder is None: # first sorted as disordered
-                disorder = {}
-                disorder_couple = set(zip(disorder_assembly, disorder_group))
-                disorder_dict = {}
-                for a,g in disorder_couple:
-                    try:
-                        disorder_dict[a].append(g)
-                    except KeyError:
-                        disorder_dict[a] = [g]
-                for a in disorder_dict:
-                    disorder_dict[a].sort()
-                    disorder[a] = disorder_dict[a][0] #take first (default)
-            select = [i for i,e in enumerate(disorder_assembly_full) if i in select_disorder if disorder_group_full[i] == disorder[e]]
-            select += [i for i,e in enumerate(disorder_group_full) if i not in select_disorder]
     except KeyError as e:
-        disorder = None
-        # re-raise only if the error message is different than the following
-        # otherwise: go forward! no disorder, everything is fine!
-        if e.message != "Itemname _atom_site_occupancy not in datablock":
+        if e.message == "Itemname _atom_site_occupancy not in datablock":
+            disorder = None
+        else:
             raise(e)
+    else:
+        if any( [i!=1 for i in occ] ):
+            try:
+                logger.info("fractional occupancies in cif file")
+                mol.occupancy = occ
+                disorder_assembly_full = [i for i in cf.GetItemValue("_atom_site_disorder_assembly")]
+                disorder_group_full = [i for i in cf.GetItemValue("_atom_site_disorder_group")]
+            except KeyError as e:
+                if e.message in [
+                    "Itemname _atom_site_disorder_assembly not in datablock",
+                    "Itemname _atom_site_disorder_group not in datablock"
+                ]:
+                    disorder = None
+                    logger.warning("fractional occupancies: disorder not readable!")
+                else:
+                    raise(e)
+            else:
+                mol.occupancy_assembly = disorder_assembly_full
+                mol.occupancy_group = disorder_group_full
+                select_disorder = [i for i,e in enumerate(disorder_group_full) if e != '.']
+                # remove fully occupied positions (data could be polluted)
+                disorder_group = [disorder_group_full[i] for i in select_disorder]
+                disorder_assembly = [disorder_assembly_full[i] for i in select_disorder]
+                # create disorder list for each disorder assembly
+                if disorder is None: # first sorted as disordered
+                    disorder = {}
+                    disorder_couple = set(zip(disorder_assembly, disorder_group))
+                    disorder_dict = {}
+                    for a,g in disorder_couple:
+                        try:
+                            disorder_dict[a].append(g)
+                        except KeyError:
+                            disorder_dict[a] = [g]
+                    for a in disorder_dict:
+                        disorder_dict[a].sort()
+                        disorder[a] = disorder_dict[a][0] #take first (default)
+                select = [i for i,e in enumerate(disorder_assembly_full) if i in select_disorder if disorder_group_full[i] == disorder[e]]
+                select += [i for i,e in enumerate(disorder_group_full) if i not in select_disorder]
+                if len(select) != sum(occ):
+                    logger.warning(
+                        "%d number of selected atoms is different to %s total occupancy!" % \
+                        (len(select), sum(occ))
+                    )
+        else:
+            disorder = None
 
     elems = [str(i) for i in cf.GetItemValue('_atom_site_type_symbol')]
     elems = [i.lower() for i in elems]
@@ -116,11 +140,14 @@ def read(mol, fname, make_P1=True, detect_conn=True, disorder=None):
     z = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_z')]
 
     if disorder is not None:
-        # select according to given disorder
-        elems = [e for i,e in enumerate(elems) if i in select]
-        x = [e for i,e in enumerate(x) if i in select]
-        y = [e for i,e in enumerate(y) if i in select]
-        z = [e for i,e in enumerate(z) if i in select]
+        if disorder:
+            # select according to given disorder
+            elems = [e for i,e in enumerate(elems) if i in select]
+            x = [e for i,e in enumerate(x) if i in select]
+            y = [e for i,e in enumerate(y) if i in select]
+            z = [e for i,e in enumerate(z) if i in select]
+        else:
+            logger.warning("auto disorder detection failed!")
 
     a = format_float(cf.GetItemValue('_cell_length_a'))
     b = format_float(cf.GetItemValue('_cell_length_b'))
@@ -139,7 +166,7 @@ def read(mol, fname, make_P1=True, detect_conn=True, disorder=None):
     mol.cifdata = cf
     if make_P1: 
         mol.addon('spg')
-        mol.proper_cif = mol.spg.make_P1()
+        mol.proper_cif = mol.spg.make_P1(conn_thresh=conn_thresh)
     if detect_conn:
         mol.detect_conn()
     return

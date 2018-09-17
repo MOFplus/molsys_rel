@@ -11,9 +11,14 @@ Created on Mon Jun 11 14:19:27 2018
         contains class acab
 """
 debug = True
-notice = False
 
 from molsys.addon import base
+from molsys.util.misc import normalize_ratio
+
+from molsys.util.color import ecolor2elem, elem2ecolor, maxecolor
+from molsys.util.color import vcolor2elem, elem2vcolor, maxvcolor
+from molsys.util.color import elematypecolor2string, string2elematypecolor
+from molsys.util.color import make_emol, make_vmol, make_mol
 
 try:
     from mpi4py import MPI
@@ -46,6 +51,7 @@ except ImportError:
 else:
     Model = pyscipopt.Model
     quicksum = pyscipopt.quicksum
+    quickprod = pyscipopt.quickprod
 
 ### AUX ###
 from collections import defaultdict
@@ -55,7 +61,7 @@ import numpy as np
 from math import pi, cos
 
 ### UTIL ###
-from molsys.util.images import arr2idx, idx2arr, idx2revidx
+from molsys.util.images import arr2idx
 from molsys.util.sysmisc import _makedirs, _checkrundir
 import sys
 import os
@@ -78,18 +84,6 @@ import atexit
 if mpi_comm is None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
     logger.error(mpi_err)
-
-### COLOR DICTIONARIES ###
-ecolor2elem = [
-    "b" ,"f" ,"n" ,"o" ,"c" ,"he","ne","ge","li","s" ,"cl","p" ,"al","si",
-]
-elem2ecolor = dict(ke[::-1] for ke in enumerate(ecolor2elem))
-maxecolor = len(ecolor2elem)
-vcolor2elem = [
-    "n" ,"o" ,"b" ,"f" ,"c" ,"he","ne","ge","li","s" ,"cl","p" ,"si","al",
-]
-elem2vcolor = dict(kv[::-1] for kv in enumerate(vcolor2elem))
-maxvcolor = len(vcolor2elem)
 
 class acab(base):
     ############################################################################
@@ -118,36 +112,38 @@ class acab(base):
          - otab: edge color table
         """
         super(acab, self).__init__(mol)
+        logger.info("acab addon generated")
+        # auxiliary: to be available as instance attribute w/o importing
         self.Model = Model
         self.quicksum = quicksum
-        self.set_etab() ### TBI: MUST GO ELSEWHERE... IN MOL INSTANCE
-        logger.info("acab addon generated")
-        if notice:
-            print_header()
-            atexit.register(print_footer)
+        self.quickprod = quickprod
+        # logo and farewells
+        #print_header()
+        #atexit.register(print_footer)
         return
 
     ############################################################################
     ### SETUP (setters w/o getters) ###
 
-    def setup_color_connectivity(self, otab=None, oconn=None):
-        """
-        setup edge colors from color table or color connectivity
-        
-        :Parameters:
-        - otab  (list of ints                 =None): edge color table
-        - oconn (nested list of lists of ints=None) : edge color connectivity
-        Provide either otab or oconn. You cannot provide both since one defines
-        the other. otab and oconn can also be left as None (default) so that
-        they are set as empty-list attribute (e.g. [] ).
-        """
-        if otab:
-            self.set_otab(otab)
-        elif oconn:
-            self.set_oconn(oconn)
-        else: # to be set
-            self.otab = []
-            self.oconn = []
+    #def setup_color_connectivity(self, otab=None, oconn=None):
+    #    """
+    #    setup edge colors from color table or color connectivity
+    #    
+    #    :Parameters:
+    #    - otab  (list of ints                 =None): edge color table
+    #    - oconn (nested list of lists of ints=None) : edge color connectivity
+    #    Provide either otab or oconn. You cannot provide both since one defines
+    #    the other. otab and oconn can also be left as None (default) so that
+    #    they are set as empty-list attribute (e.g. [] ).
+    #    """
+    #    pass
+    #    #if otab:
+    #    #    self.set_otab(otab)
+    #    #elif oconn:
+    #    #    self.set_oconn(oconn)
+    #    #else: # to be set
+    #    #    self.otab = []
+    #    #    self.oconn = []
 
     def setup_model(self, verbose=False, ctrlc=True, *args, **kwargs):
         """
@@ -242,13 +238,13 @@ class acab(base):
         ### ratio ###
         nevars = len(evars) / necolors
         crange = range(necolors)
-        ecratio = self.normalize_ratio(ecratio, nevars)
-        etab = self.etab
+        ecratio = normalize_ratio(ecratio, nevars)
+        etab = self._mol.etab
         ### loop ###
         if self._mol.use_pconn:
             for c in crange:
                 self.model.addCons(
-                    quicksum([evars[ei,ej,p,c] for (ei,ej),p in etab]) == ecratio[c],
+                    quicksum([evars[ei,ej,p,c] for ei,ej,p in etab]) == ecratio[c],
                     name = "NEdgeColors(%d)=%d" % (c,ecratio[c])
                 )
         else:
@@ -277,7 +273,7 @@ class acab(base):
         ### ratio ###
         nvvars = len(vvars) / nvcolors
         crange = range(nvcolors)
-        vcratio = self.normalize_ratio(vcratio, nvvars)
+        vcratio = normalize_ratio(vcratio, nvvars)
         ### loop ###
         rvvars = range(nvvars) ### == range(self._mol.natoms)
         for c in crange:
@@ -302,7 +298,7 @@ class acab(base):
         for c in crange:
             for v in vertex2edges:
                 v2e = vertex2edges[v]
-                necratio = self.normalize_ratio(ecratio,len(v2e))
+                necratio = normalize_ratio(ecratio,len(v2e))
                 ecratios.append(necratio)
                 consname = "NEdgeColorsPerVertex(%d,%d)=%d" % (v,c,necratio[c])
                 self.model.addCons(
@@ -326,7 +322,7 @@ class acab(base):
         for c in crange:
             for e in edge2vertices:
                 e2v = edge2vertices[e]
-                nvcratio = self.normalize_ratio(vcratio,len(e2v))
+                nvcratio = normalize_ratio(vcratio,len(e2v))
                 vcratios.append(nvcratio)
                 if self._mol.use_pconn:
                     consname = "NVertexColorsPerEdge(%d-%d,%d)=%d" % (e[0],e[1],c,nvcratio[c])
@@ -341,6 +337,7 @@ class acab(base):
     def setup_angle_btw_edges(self, color, theta, sense="min", eps=1e-3, sele=None):
         """
         Constraint angle between edges to be min/max/close to theta.
+        TBI: non-periodic (w/o pconn) version
 
         IMPLEMENTATION DETAIL
         Instead of explicitly allowing the edge pairs with (range of) angle, it
@@ -360,7 +357,6 @@ class acab(base):
         eps(float): tolerance to sense
         sele (list of ints or None): selected vertices (if None: all)
 
-        TBI: non-periodic (w/o pconn) version
         """
         if sele is None:
             sele = range(self._mol.natoms)
@@ -440,8 +436,8 @@ class acab(base):
         self.model.optimize()
         if self.is_optimal_model():
             self.set_colors()
-            if self.evars:
-                self.set_otab(self.ecolors)
+            #if self.evars:
+            #    self.set_otab(self.ecolors)
         return
 
     def free_model(self):
@@ -480,24 +476,25 @@ class acab(base):
         self.colors_ = []
         ### init methods ###
         self.cycle_initdir()
-        self.cycle_initsym(use_sym=use_sym,
+        self.cycle_initsym(alpha=alpha, use_sym=use_sym,
             use_edge=use_edge, use_vertex=use_vertex,
             constr_edge=constr_edge, constr_vertex=constr_vertex)
         return
 
-    def cycle_initsym(self, use_sym=True, use_edge=True, use_vertex=True,
+    def cycle_initsym(self, alpha=2, use_sym=True, use_edge=True, use_vertex=True,
             constr_edge=True, constr_vertex=True):
         ### "grey" mol setup (=> symmetry space and permutations) ###
-        erange = range(len(self.etab))
+        erange = range(len(self._mol.etab))
         vrange = range(self._mol.natoms)
-        ecolors = [maxecolor-1 for i in erange]
-        vcolors = [maxvcolor-1 for i in vrange]
+        ecolors = [maxecolor-1 for i in erange] # last possible "color"
+        vcolors = [maxvcolor-1 for i in vrange] # last possible "color"
         if self.evars and use_edge and self.vvars and use_vertex:
-            m = self.make_mol(ecolors=ecolors, vcolors=vcolors)
+            m = make_mol(self._mol, alpha=alpha, ecolors=ecolors, vcolors=vcolors,
+                use_edge=use_edge, use_vertex=use_vertex)
         elif self.evars and use_edge:
-            m = self.make_emol(ecolors=ecolors)
+            m = make_emol(self._mol, alpha=alpha, ecolors=ecolors)
         elif self.vvars and use_vertex:
-            m = self.make_vmol(vcolors=vcolors)
+            m = make_vmol(self._mol, vcolors=vcolors)
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
@@ -510,11 +507,17 @@ class acab(base):
         return
 
     def cycle_initdir(self):
-        self.rundir = _checkrundir(".","run")
+        """
+        create directory to store structures at the end of the loop
+        \"colors\" and \"pretty\" contains graph-like structures
+        \"colors\" contains useful structures to weave frameworks later
+        \"pretty\" contains just clearer views of these structures (do not use)
+        """
+        self.rundir = _checkrundir("run")
         self.coldir = "%s%scolors" % (self.rundir, os.sep)
         self.predir = "%s%spretty" % (self.rundir, os.sep)
-        _makedirs(self.coldir) #mfpx, japbc
-        _makedirs(self.predir) #txyz, nopbc
+        _makedirs(self.coldir) #mfpx, w/  pbc, useful
+        _makedirs(self.predir) #txyz, w/o pbc, clearer
         return
 
     def cycle_permute(self, ecolors=None, vcolors=None):
@@ -668,11 +671,12 @@ class acab(base):
 
     def write_structure(self, name, ecolors=None, vcolors=None, alpha=2):
         if ecolors and vcolors:
-            m = self.make_mol(ecolors=ecolors, vcolors=vcolors, alpha=alpha)
+            m = make_mol(self._mol, alpha, ecolors=ecolors, vcolors=vcolors,
+                use_vertex=self.use_vertex, use_edge=self.use_edge)
         elif ecolors:
-            m = self.make_emol(ecolors=ecolors, alpha=alpha)
+            m = make_emol(self._mol, alpha, ecolors=ecolors)
         elif vcolors:
-            m = self.make_vmol(vcolors=vcolors)
+            m = make_vmol(self._mol, vcolors=vcolors)
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
@@ -688,10 +692,10 @@ class acab(base):
             ecolors = self.ecolors
         self.assert_ecolors(ecolors)
         evars = self.evars
-        etab = self.etab
+        etab = self._mol.etab
         if self._mol.use_pconn:
             for k,c in enumerate(ecolors):
-                (ei,ej), p = etab[k]
+                ei,ej, p = etab[k]
                 self.model.addCons(
                     evars[ei,ej,p,c] == 1,
                     name = "ValidateEdgeColor(%d-%d.%d)=%d" % (ei,ej,p,c)
@@ -722,10 +726,10 @@ class acab(base):
             ecolors = self.ecolors
         self.assert_ecolors(ecolors)
         evars = self.evars
-        etab = self.etab
+        etab = self._mol.etab
         if self._mol.use_pconn:
             for k,c in enumerate(ecolors):
-                (ei,ej), p = etab[k]
+                ei,ej, p = etab[k]
                 self.model.addCons(
                     evars[ei,ej,p,c] == 0,
                     name = "NegateEdgeColor(%d-%d.%d)=%d" % (ei,ej,p,c)
@@ -757,10 +761,10 @@ class acab(base):
         self.assert_ecolors(ecolors)
         esolution = ''.join([str(c) for c in ecolors])
         evars = self.evars
-        etab = self.etab
+        etab = self._mol.etab
         if self._mol.use_pconn:
             self.model.addCons(
-                quicksum([evars[e[0][0],e[0][1],e[1],ecolors[k]] for k,e in enumerate(etab)]) >= 1,
+                quicksum([evars[e[0],e[1],e[2],ecolors[k]] for k,e in enumerate(etab)]) >= 1,
                 name = "IncludeEdgeSolution(%s)" % esolution
             )
         else:
@@ -788,11 +792,11 @@ class acab(base):
         self.assert_ecolors(ecolors)
         esolution = ''.join([str(c) for c in ecolors])
         evars = self.evars
-        etab = self.etab
+        etab = self._mol.etab
         nevars = len(etab)
         if self._mol.use_pconn:
             self.model.addCons(
-                quicksum([evars[e[0][0],e[0][1],e[1],ecolors[k]] for k,e in enumerate(etab)]) <= nevars - 1,
+                quicksum([evars[e[0],e[1],e[2],ecolors[k]] for k,e in enumerate(etab)]) <= nevars - 1,
                 name = "ExcludeEdgeSolution(%s)" % esolution
             )
         else:
@@ -821,93 +825,93 @@ class acab(base):
 
     ### N.B. otab and oconn are meant to be interfaces! They do not constraint
     ###     variables of the model
-    def set_otab(self, otab, set_oconn=True):
-        self.assert_otab(otab)
-        self._mol.otab = self.otab = otab
-        if set_oconn:
-            self.set_oconn_from_otab(use_otab=False)
+    #def set_otab(self, otab, set_oconn=True):
+    #    self.assert_otab(otab)
+    #    self._mol.otab = self.otab = otab
+    #    if set_oconn:
+    #        self.set_oconn_from_otab(use_otab=False)
 
-    def set_oconn(self, oconn, set_otab=True):
-        self.assert_oconn(oconn)
-        #self.oconn = oconn
-        self._mol.oconn = self.oconn = oconn
-        if set_otab:
-            self.set_otab_from_oconn(use_oconn=False)
+    #def set_oconn(self, oconn, set_otab=True):
+    #    self.assert_oconn(oconn)
+    #    #self.oconn = oconn
+    #    self._mol.oconn = self.oconn = oconn
+    #    if set_otab:
+    #        self.set_otab_from_oconn(use_oconn=False)
 
-    def get_otab(self):
-        return self.otab
+    #def get_otab(self):
+    #    return self.otab
 
-    def get_oconn(self):
-        return self.oconn
+    #def get_oconn(self):
+    #    return self.oconn
 
-    def set_otab_from_oconn(self, oconn=None, use_oconn=False):
-        #check/set oconn
-        if oconn is None:
-            oconn = self.oconn
-        elif use_oconn:
-            self.set_oconn(oconn)
-        pass
+    #def set_otab_from_oconn(self, oconn=None, use_oconn=False):
+    #    #check/set oconn
+    #    if oconn is None:
+    #        oconn = self.oconn
+    #    elif use_oconn:
+    #        self.set_oconn(oconn)
+    #    pass
 
-    def set_oconn_from_otab(self, otab=None, use_otab=False):
-        # WISHLIST: if pconn: FASTER! (thoughts: use array for same-lenght connectivity)
-        #check/set otab
-        if otab is None:
-            otab = self.otab
-        elif use_otab:
-            self.set_otab(otab)
-        # assign locally to be at hands
-        # N.B.: DO NOT modify it! They are python lists
-        conn = self._mol.conn
-        ctab = self._mol.ctab
-        if self._mol.use_pconn:
-            ptab = self._mol.ptab
-            pconn = self._mol.pconn
-            ### image index connectivity (to avoid np.array comparison, arguably faster)
-            iconn = [[arr2idx[j] for j in ic] for ic in pconn]         
-        # init oconn
-        oconn = [[None for j in ic] for ic in conn] # init as nested lists of Nones
-        ### TBI: use etab! ###
-        if self._mol.use_pconn: # periodic connectivity, ambiguity, slower and harder
-            for k,(i,j) in enumerate(ctab):
-                ### i -> j
-                kp = ptab[k] ### image index
-                ji_ = [j_ for j_, ji in enumerate( conn[i]) if ji == j ]
-                jk_ = [j_ for j_, jk in enumerate(iconn[i]) if jk == kp]
-                if ji_ == jk_:
-                    j_ = ji_
-                else:
-                    j_ = set(ji_) & set(jk_) # intersect
-                assert len(j_) == 1, "set of lenght %d, expected lenght is 1" % len(j_)
-                j_ = list(j_)[0]
-                oconn[i][j_] = otab[k]
-                ### j -> i
-                rp = idx2revidx[kp] ### reverse image index (by convention)
-                ij_ = [i_ for i_, ij in enumerate( conn[j]) if ij == i ]
-                ik_ = [i_ for i_, ik in enumerate(iconn[j]) if ik == rp]
-                if ij_ == ik_:
-                    i_ = ij_
-                else:
-                    i_ = set(ij_) & set(ik_) # intersect
-                assert len(i_) == 1, "set of lenght %d, expected lenght is 1" % len(i_)
-                i_ = list(i_)[0]
-                oconn[j][i_] = otab[k]
-        else: # no periodic connectivity, no ambiguity, faster and easier
-            for k,(i,j) in enumerate(ctab):
-                j_ = conn[i].index(j)
-                oconn[i][j_] = otab[k]
-                i_ = conn[j].index(i)
-                oconn[j][i_] = otab[k]
-        self.set_oconn(oconn, set_otab=False)
-        return
+    #def set_oconn_from_otab(self, otab=None, use_otab=False):
+    #    # WISHLIST: if pconn: FASTER! (thoughts: use array for same-lenght connectivity)
+    #    #check/set otab
+    #    if otab is None:
+    #        otab = self.otab
+    #    elif use_otab:
+    #        self.set_otab(otab)
+    #    # assign locally to be at hands
+    #    # N.B.: DO NOT modify it! They are python lists
+    #    conn = self._mol.conn
+    #    ctab = self._mol.ctab
+    #    if self._mol.use_pconn:
+    #        ptab = self._mol.ptab
+    #        pconn = self._mol.pconn
+    #        ### image index connectivity (to avoid np.array comparison, arguably faster)
+    #        iconn = [[arr2idx[j] for j in ic] for ic in pconn]         
+    #    # init oconn
+    #    oconn = [[None for j in ic] for ic in conn] # init as nested lists of Nones
+    #    ### TBI: use etab! ###
+    #    if self._mol.use_pconn: # periodic connectivity, ambiguity, slower and harder
+    #        for k,(i,j) in enumerate(ctab):
+    #            ### i -> j
+    #            kp = ptab[k] ### image index
+    #            ji_ = [j_ for j_, ji in enumerate( conn[i]) if ji == j ]
+    #            jk_ = [j_ for j_, jk in enumerate(iconn[i]) if jk == kp]
+    #            if ji_ == jk_:
+    #                j_ = ji_
+    #            else:
+    #                j_ = set(ji_) & set(jk_) # intersect
+    #            assert len(j_) == 1, "set of lenght %d, expected lenght is 1" % len(j_)
+    #            j_ = list(j_)[0]
+    #            oconn[i][j_] = otab[k]
+    #            ### j -> i
+    #            rp = idx2revidx[kp] ### reverse image index (by convention)
+    #            ij_ = [i_ for i_, ij in enumerate( conn[j]) if ij == i ]
+    #            ik_ = [i_ for i_, ik in enumerate(iconn[j]) if ik == rp]
+    #            if ij_ == ik_:
+    #                i_ = ij_
+    #            else:
+    #                i_ = set(ij_) & set(ik_) # intersect
+    #            assert len(i_) == 1, "set of lenght %d, expected lenght is 1" % len(i_)
+    #            i_ = list(i_)[0]
+    #            oconn[j][i_] = otab[k]
+    #    else: # no periodic connectivity, no ambiguity, faster and easier
+    #        for k,(i,j) in enumerate(ctab):
+    #            j_ = conn[i].index(j)
+    #            oconn[i][j_] = otab[k]
+    #            i_ = conn[j].index(i)
+    #            oconn[j][i_] = otab[k]
+    #    self.set_oconn(oconn, set_otab=False)
+    #    return
 
     def set_edge_vars(self, necolors, set_necolors=True):
         ###TBI: test necolors = 0
         self.assert_ncolors_number(necolors)
         crange = range(necolors)
-        etab = self.etab
+        etab = self._mol.etab
         evars = {} # dict[(3or4)-tuple] = var... inefficient yet clear
         if self._mol.use_pconn: # periodic connectivity, ambiguity
-            for (ei,ej),p in etab:
+            for ei,ej,p in etab:
                 _evars = [] # temp. list for later constraint (q.v.)
                 # add edge variables to model
                 for c in crange:
@@ -978,9 +982,9 @@ class acab(base):
         if evars:
             necolors = self.necolors
             crange = range(necolors)
-            etab = self.etab
+            etab = self._mol.etab
             if self._mol.use_pconn:
-                for (ei,ej),p in etab:
+                for ei,ej,p in etab:
                     try:
                         vals = [self.model.getVal(evars[ei,ej,p,c]) for c in crange]
                         val = vals.index(1)
@@ -1065,130 +1069,6 @@ class acab(base):
         pass
 
     ############################################################################
-    ### MAKE ###
-
-    def make_emol(self, ecolors=None, alpha=None):
-        """
-        make mol object out of edge colors
-        """
-        if alpha is None:
-            alpha = self.alpha
-        if ecolors is None:
-            ecolors = self.ecolors
-        etab = self.etab
-        ralpha = 1./alpha #reverse alpha
-        calpha = 1-ralpha #one's complement of reverse alpha
-        xyz_a = []
-        xyz_c = []
-        new_etab = []
-        if self._mol.use_pconn:
-            for (ei,ej),p in etab: ### SELECTION TBI
-                xyz_ai = self._mol.xyz[ei]
-                xyz_a.append(xyz_ai)
-                xyz_ci = self._mol.get_neighb_coords_(ei,ej,idx2arr[p])
-                xyz_c.append(xyz_ci)
-        else:
-            for ei,ej in etab: ### SELECTION TBI
-                xyz_ai = self._mol.xyz[ei]
-                xyz_a.append(xyz_ai)
-                xyz_ci =  self._mol.xyz[ej]
-                xyz_c.append(xyz_ci)
-        xyz_a = np.array(xyz_a)
-        xyz_c = np.array(xyz_c)
-        if alpha == 2:
-            xyz_c = ralpha*(xyz_a + xyz_c)
-            me = self._mol.from_array(xyz_c, use_pconn=self._mol.use_pconn)
-        else:
-            xyz_c1 = calpha*xyz_a + ralpha*xyz_c
-            xyz_c2 = ralpha*xyz_a + calpha*xyz_c
-            me = self._mol.from_array(np.vstack([xyz_c1,xyz_c2]), use_pconn=self._mol.use_pconn)
-        me.is_topo = True
-        if hasattr(self._mol,'cell'):
-            me.set_cell(self._mol.cell)
-        if hasattr(self._mol,'supercell'):
-            me.supercell = self._mol.supercell[:]
-        if self._mol.use_pconn:
-            me.use_pconn = True
-        if alpha == 2:
-            me.elems = [ecolor2elem[v] for v in ecolors] # N.B.: no connectivity
-            if self._mol.use_pconn:
-                pimg = me.get_frac_xyz()//1
-                me.xyz -= np.dot(pimg,me.cell)
-                for k,((i,j),p) in enumerate(etab):
-                    newe1 = (i,k),arr2idx[pimg[k]]
-                    newe2 = (j,k),arr2idx[idx2arr[p]-pimg[k]]
-                    new_etab.append(newe1)
-                    new_etab.append(newe2)
-            else:
-                new_etab = etab[:]
-        else:
-            me.elems = [ecolor2elem[v] for v in ecolors*2] # with connectivity
-            ctab = [[i,i+me.natoms/2] for i in range(me.natoms/2)]
-            me.set_ctab(ctab, conn_flag=True)
-            if self._mol.use_pconn:
-                pimg = me.get_frac_xyz()//1
-                me.xyz -= np.dot(pimg,me.cell)
-                ptab = [pimg[i+me.natoms/2]-pimg[i] for i in range(me.natoms/2)]
-                me.set_ptab(ptab, pconn_flag=True)
-                for k,((i,j),p) in enumerate(etab):
-                    newe1 = (i,k),arr2idx[pimg[k]]
-                    newe2 = (j,k+len(etab)),arr2idx[idx2arr[p]-pimg[k+len(etab)]]
-                    new_etab.append(newe1)
-                    new_etab.append(newe2)
-        me.new_etab = new_etab
-        return me
-
-    def make_vmol(self, vcolors=None):
-        """
-        make mol object out of vertex colors
-        """
-        if vcolors is None:
-            vcolors = self.vcolors
-        mv = deepcopy(self._mol)
-        for i in range(mv.natoms):
-            mv.atypes[i] = self.elematypecolor2string(
-                mv.elems[i],
-                mv.atypes[i],
-                vcolors[i]
-            )
-            mv.elems[i] = vcolor2elem[vcolors[i]]
-        if hasattr(self,'cell'): m.set_cell(self.cell)
-        if hasattr(self,'supercell'): m.supercell = self.supercell[:]
-        return mv
-
-    def make_mol(self, ecolors=None, vcolors=None, alpha=None):
-        if alpha is None:
-            alpha = self.alpha
-        if self.evars and self.use_edge and self.vvars and self.use_vertex:
-            me = self.make_emol(ecolors=ecolors, alpha=alpha)
-            mv = self.make_vmol(vcolors=vcolors)
-            m = deepcopy(me)
-            m.add_mol(mv) # N.B.: in THIS EXACT ORDER, otherwise KO connectivity
-            ### connectivity ###
-            ne = me.natoms
-            ctab = []
-            if self._mol.use_pconn:
-                ptab = []
-            if self._mol.use_pconn:
-                for (i,j),p in me.new_etab:
-                    ctab.append((i+ne,j))
-                    ptab.append(idx2arr[p])
-            else:
-                for (i,j),p in me.new_etab:
-                    ctab.append((i+ne,j))
-            m.set_ctab(ctab, conn_flag=True)
-            m.set_ptab(ptab, pconn_flag=True)
-        elif self.evars and self.use_edge:
-            m = self.make_emol(ecolors=ecolors, alpha=alpha)
-        elif self.vvars and self.use_vertex:
-            m = self.make_vmol(vcolors=vcolors)
-        else:
-            raise ValueError("something went very wrong!")
-        if hasattr(self,'cell'): m.set_cell(self.cell)
-        if hasattr(self,'supercell'): m.supercell = self.supercell[:]
-        return m
-
-    ############################################################################
     ### READ / WRITE ###
     
     def read_():
@@ -1200,61 +1080,6 @@ class acab(base):
     ############################################################################
     ### UTILS / MISC ###
     
-    ### TO BE MOVED ###
-    def set_etab(self):
-        #THIS METHOD SHOULD BE EITHER IN CORE MOLSYS OR IN UTIL, DEF.LY NOT HERE
-        ctab = self._mol.ctab
-        if self._mol.use_pconn:
-            ptab = self._mol.ptab
-            etab = list(zip(ctab, ptab)) # python3 compl.: zip iterator gets exhausted
-        else:
-            etab = ctab
-        self.etab = etab
-
-
-    ### TO BE MOVED ###
-    def get_etab(self):
-        #THIS METHOD SHOULD BE EITHER IN CORE MOLSYS OR IN UTIL... NOT HERE!
-        return self.etab
-
-    ### TO BE MOVED? ###
-    def normalize_ratio(self, cratio, total):
-        """
-        return normalized color ratio so that the total number of elements (edges 
-        or vertices) is colored and the actual (float) ratio among colors is
-        close to the given (int) ratio. It implements D'Hondt's quotients
-        internally. Credits: https://github.com/rg3
-        N.B.: in case of "ties", the latter color gets the higher ratio of
-        elements. (this is consistent AND reproducible!)
-        
-        :Parameters:
-         - cratio (list of ints): color ratio
-         - total (int): total number of elements to color with given ratio
-        :Returns:
-         - norm_cratio (list of ints): color ratio normalized wrt. elements
-        """
-        def dhondt_quotient(cratio, subtotal):
-            return float(cratio) / (subtotal + 1)
-        
-        # calculate the quotients matrix (list in this case)
-        dict_cratio = dict(enumerate(cratio))
-        quot = []
-        ret ={} 
-        for p in dict_cratio:
-            ret[p] = 0
-            for s in range(0, total):
-                q = dhondt_quotient(dict_cratio[p], s)
-                quot.append((q, p))
-
-        # sort the quotients by value
-        quot.sort(reverse=True)
-
-        # take the highest quotients with the assigned parties
-        for s in range(0, total):
-            ret[quot[s][1]] += 1
-        norm_cratio = ret.values()
-        return norm_cratio # already ordered
-
     def setup_vertex2edges(self, sort_flag=True):
         """
         setup dictionary from vertices to list of edges
@@ -1294,10 +1119,10 @@ class acab(base):
         edge2vertices = defaultdict(list)
         vvars = self.vvars
         vcrange = range(self.nvcolors)
-        etab = self.etab
+        etab = self._mol.etab
         # loop #
         if self._mol.use_pconn:
-            for (ei,ej),p in etab:
+            for ei,ej,p in etab:
                 edge2vertices[ei,ej,p] = [ei,ej]
         else:
             for ei,ej in etab:
@@ -1347,10 +1172,10 @@ class acab(base):
         vvars = self.vvars
         evars = self.evars # easiest to get etab # TBI: IN MOLSYS
         vcrange = range(self.nvcolors)
-        etab = self.etab
+        etab = self._mol.etab
         # loop #
         if self._mol.use_pconn:
-            for (ei,ej),p in etab:
+            for ei,ej,p in etab:
                 edge2vvars[ei,ej,p] += [vvars[ei,c] for c in vcrange]
                 edge2vvars[ei,ej,p] += [vvars[ej,c] for c in vcrange]
         else:
@@ -1363,34 +1188,6 @@ class acab(base):
                 edge2vvars[ke2v].sort(key=lambda x: x.name)
         self.edge2vvars = dict(edge2vvars)
         return
-
-    ############################################################################
-    ### CONVERT ###
-
-    def elematypecolor2string(self, elem, atype, color):
-        """
-        return formatted string from element, atomtype, and color
-        """
-        return "%s_%s/%s" % (elem, atype, color)
-    def eac2str(self, *args, **kwargs): #nickname
-        return elematypecolor2string(*args, **kwargs)
-
-    def string2elematypecolor(self, st):
-        """
-        return element, atomtype, and color from a given formatted string.
-        Color is after the last slash
-        Element is before the first underscore
-        Atype is everything in the middle
-        """
-        self.assert_eacstr(st)
-        colorsplit = st.split("/")
-        rest, color = colorsplit[:-1], colorsplit[-1]
-        rest = "".join(rest)
-        elemsplit = rest.split("_")
-        elem, atype = elemsplit[0], elemsplit[1:]
-        return elem, atype, color
-    def str2eac(self, *args, **kwargs): #nickname
-        return string2elematypecolor(*args, **kwargs)
 
     ############################################################################
     ### TODO ###
@@ -1471,9 +1268,9 @@ class acab(base):
         if evars:
             necolors = self.necolors
             crange = range(necolors)
-            etab = self.etab
+            etab = self._mol.etab
             if self._mol.use_pconn:
-                for (ei,ej),p in etab:
+                for ei,ej,p in etab:
                     try:
                         vals = [self.model.getVal(evars[ei,ej,p,c]) for c in crange]
                         val = vals.index(1)
@@ -1539,12 +1336,12 @@ class acab(base):
             "you gave %s and it is %s" % (flag, flag.__class__.__name__)
         return
     
-    def assert_otab_or_oconn(self,otab,oconn):
-        """check otab/oconn arguments"""
-        self.assert_otab(otab)
-        self.assert_oconn(oconn)
-        assert otab is None or oconn is None, "give colors as either color "\
-            "table or color connectivity"
+    #def assert_otab_or_oconn(self,otab,oconn):
+    #    """check otab/oconn arguments"""
+    #    self.assert_otab(otab)
+    #    self.assert_oconn(oconn)
+    #    assert otab is None or oconn is None, "give colors as either color "\
+    #        "table or color connectivity"
     
     def assert_otab(self,otab):
         """check length of color table"""
@@ -1602,21 +1399,14 @@ class acab(base):
 
     def assert_ecolors(self, ecolors):
         """check length of edge colors"""
-        assert len(ecolors) == len(self.etab), "length of edge colors and " \
-        "number of edges mismatch: %d vs %d" % (len(ecolors), len(self.etab))
+        assert len(ecolors) == len(self._mol.etab), "length of edge colors and " \
+        "number of edges mismatch: %d vs %d" % (len(ecolors), len(self._mol.etab))
         return
 
     def assert_vcolors(self, vcolors):
         """check length of vertex colors"""
         assert len(vcolors) == self._mol.natoms,"length of vertex colors and " \
         "number of vertex mismatch: %d vs %d" % (len(vcolors), self._mol.natoms)
-        return
-
-    def assert_eacstr(self, st):
-        """check format of element_atomtype/color string"""
-        assert st.index("_"), "string is not well-formatted: no \"_\" found"
-        assert st.rindex("/"), "string is not well-formatted: no \"/\" found"
-        assert st.index("_") < st.rindex("/"), "string is not well-formatted: first \"_\" after last \"/\""
         return
 
     def assert_loop_alpha(self, alpha):
@@ -1659,7 +1449,7 @@ class acab(base):
     def debug_():
         pass
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 header= """
 ********************************************************************************

@@ -442,56 +442,56 @@ class topo(mol):
         self.atypes = new_atypes
         return
 
-    def add_pconn(self):
-        """ with the method detect_conn the connectivity is detected from a distance search
-            if a connectivity is read via a tinker file there is no pconn present.
-            with this metod it is added for the use with weaver2 """
-        self.use_pconn= True
-        self.pimages = []
-        self.pconn = []
-        for i,c in enumerate(self.conn):
-            atoms_pconn = []
-            atoms_image = []
-            for ji, j in enumerate(c):
-                # If an atom or vertex is connected to another one multiple times (in an image), this
-                # will be visible in the self.conn attribute, where the same neighbour will be listed
-                # multiple times.
-                # Sometimes, the distances are a bit different from each other, and in this case, we
-                # have to increase the threshold, until the get_distvec function will find all imgis.
-                n_conns = c.count(j)
-                t = 0.01
-                while True:
-                    d,r,imgi = self.get_distvec(i,j,thresh=t)
-                    t += 0.01
-                    if n_conns == len(imgi):
-                        break
-                if len(imgi) == 1:
-                    # only one neighbor .. all is fine
-                    atoms_pconn.append(images[imgi[0]])
-                    atoms_image.append(imgi[0])
-                else:
-                    # we need to assign an image to each connection
-                    # if an atom is connected to another atom twice this means it must be another
-                    # image
-                    for ii in imgi:
-                        # test if this image is not used for this atom .. then we can use it
-                        if atoms_image.count(ii)==0:
-                            atoms_image.append(ii)
-                            atoms_pconn.append(images[ii])
-                        else:
-                            # ok, we have this image already
-                            use_it = True
-                            #print(c, "=>", j)
-                            #print(atoms_image)
-                            for k, iii in enumerate(atoms_image):
-                                #print('k',k)
-                                if (iii == ii) and (c[k] == j): use_it=False
-                            if use_it:
-                                atoms_image.append(ii)
-                                atoms_pconn.append(images[ii])
-            self.pimages.append(atoms_image)
-            self.pconn.append(atoms_pconn)
-        return
+    #def add_pconn(self):
+    #    """ with the method detect_conn the connectivity is detected from a distance search
+    #        if a connectivity is read via a tinker file there is no pconn present.
+    #        with this metod it is added for the use with weaver2 """
+    #    self.use_pconn= True
+    #    self.pimages = []
+    #    self.pconn = []
+    #    for i,c in enumerate(self.conn):
+    #        atoms_pconn = []
+    #        atoms_image = []
+    #        for ji, j in enumerate(c):
+    #            # If an atom or vertex is connected to another one multiple times (in an image), this
+    #            # will be visible in the self.conn attribute, where the same neighbour will be listed
+    #            # multiple times.
+    #            # Sometimes, the distances are a bit different from each other, and in this case, we
+    #            # have to increase the threshold, until the get_distvec function will find all imgis.
+    #            n_conns = c.count(j)
+    #            t = 0.01
+    #            while True:
+    #                d,r,imgi = self.get_distvec(i,j,thresh=t)
+    #                t += 0.01
+    #                if n_conns == len(imgi):
+    #                    break
+    #            if len(imgi) == 1:
+    #                # only one neighbor .. all is fine
+    #                atoms_pconn.append(images[imgi[0]])
+    #                atoms_image.append(imgi[0])
+    #            else:
+    #                # we need to assign an image to each connection
+    #                # if an atom is connected to another atom twice this means it must be another
+    #                # image
+    #                for ii in imgi:
+    #                    # test if this image is not used for this atom .. then we can use it
+    #                    if atoms_image.count(ii)==0:
+    #                        atoms_image.append(ii)
+    #                        atoms_pconn.append(images[ii])
+    #                    else:
+    #                        # ok, we have this image already
+    #                        use_it = True
+    #                        #print(c, "=>", j)
+    #                        #print(atoms_image)
+    #                        for k, iii in enumerate(atoms_image):
+    #                            #print('k',k)
+    #                            if (iii == ii) and (c[k] == j): use_it=False
+    #                        if use_it:
+    #                            atoms_image.append(ii)
+    #                            atoms_pconn.append(images[ii])
+    #        self.pimages.append(atoms_image)
+    #        self.pconn.append(atoms_pconn)
+    #    return
 
         # 'na',lower(label),xyz,i,j)
     def insert_atom(self, lab, aty, xyz, i, j):
@@ -612,66 +612,6 @@ class topo(mol):
         for i in range(self.natoms):
             elems.append(elements.topotypes[len(self.conn[i])])
         self.set_elems(elems)
-        return
-
-    def get_pconn(self):
-        ''' returns the connectivity of the system '''
-        return self.pconn
-
-    def set_pconn(self, pconn, ptab_flag=False):
-        ''' updates the periodic connectivity of the system
-        :Parameters:
-            - pconn    : List of lists describing the pconnectivity'''
-        self.pconn = pconn
-        if ptab_flag: self.ptab = self.get_pconn_as_tab()
-
-    def get_ptab(self):
-        ''' returns the periodic connectivity table (nbonds, 2)'''
-        return self.ptab
-
-    def set_ptab(self, ptab, pconn_flag=False):
-        ''' updates the periodic connectivity table
-        :Parameters:
-            - ptab  : List of couples describing the periodic connectivity'''
-        self.ptab = ptab
-        if pconn_flag: self.set_pconn_from_tab(ptab)
-
-    def set_empty_pconn(self):
-        """
-        sets an empty list of lists for the periodic connectivity
-        """
-        self.pconn = []
-        for i in range(self.natoms):
-            self.pconn.append([])
-        return
-
-    def get_pconn_as_tab(self):
-        """
-        gets the periodic connectivity as a table of bonds with shape (nbonds, 2)
-        """
-        ptab = []
-        for i, ci in enumerate(self.pconn):
-            for j in ci:
-                if j > i:
-                    ptab.append([i,j])
-        return ptab
-
-    def set_ptab_from_pconn(self, pconn):
-        self.ptab = self.get_pconn_as_tab()
-
-    def set_pconn_from_tab(self, ptab):
-        """
-        sets the periodic connectivity froma table of bonds
-        :Parameters:
-            - ptab   : list of bonds (nbonds, 2)
-        """
-        self.set_empty_pconn()
-        for c in self.ctab:
-            i,j = c
-            pj = ptab[j]
-            pi = -pj
-            self.pconn[i].append(pj)
-            self.pconn[j].append(pi)
         return
 
 ############# Plotting
@@ -1021,7 +961,7 @@ class topo(mol):
         #logger.debug("j_conn: %s" % repr(self.conn[j]) )
         ### set for i
         ### BUG FOR 2x2x2 pcu: a vertex connects twice to the same vertex!!!
-        ### TBI: add pconn for topos
+        ### TBI: add pconn for toper
         j_ind = self.conn[i].index(j)
         i_ind = self.conn[j].index(i)
         #logger.debug("i_ind %6d" % i_ind)

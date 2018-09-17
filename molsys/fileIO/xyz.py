@@ -8,7 +8,10 @@ def read(mol, f, cycle = 0):
         -f   (obj): xyz file object
         -mol (obj): instance of a molclass
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not readable" % f
     ncycle=0
     fline = f.readline().split()
     natoms = int(fline[0])
