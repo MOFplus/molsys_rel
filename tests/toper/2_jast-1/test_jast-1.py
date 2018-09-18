@@ -13,7 +13,7 @@ def test_compute_parallel_colors():
     m.read(mofpath)
 
     tt = toper.topotyper(m)
-    print(tt.get_net())
+    assert tt.get_net() == ["pcu"]
 
     tt.compute_colors()
     folder = tt.write_bbs("parallel")
@@ -30,7 +30,7 @@ def test_compute_skew_colors():
     m.read(mofpath)
 
     tt = toper.topotyper(m)
-    print(tt.get_net())
+    assert tt.get_net() == ["pcu"]
 
     tt.compute_colors()
     folder = tt.write_bbs("skew")

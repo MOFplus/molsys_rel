@@ -9,7 +9,8 @@ tt = toper.topotyper(m)
 
 @pytest.mark.slow
 def test_get_net():
-    print(tt.get_net())
+    assert tt.get_net() == ["tbo"]
 
 def test_write_bbs():
     tt.write_bbs("bbs")
+    assert len(tt.unique_bbs) == 2
