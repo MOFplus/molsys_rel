@@ -384,6 +384,11 @@ class mol(mpiobject):
                 try: ### get the addon attribute, initialize it and set as self attribute
                     addinit = getattr(addon, addmod)(self, *args, **kwargs)
                     setattr(self, addmod, addinit)
+                except TypeError as e: ### HACK when 'from molsys.addon.addmod import something'
+                    # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
+                    # the 'getattr' to get molsys.addon.ff.ff
+                    addinit = getattr(getattr(addon, addmod),addmod)(self, *args, **kwargs)
+                    setattr(self, addmod, addinit)
                 except Exception as e: ### unexpected error! bugfix needed or addon used improperly
                     import traceback
                     traceback.print_exc()
