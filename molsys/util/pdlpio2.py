@@ -61,6 +61,10 @@ class pdlpio2(mpiobject):
         or the analysis mode. In the analysis mode writing to trajectory data is forbidden.
         In the connected mode one can request appending to a stage. 
         Otherwise a new stage is required.
+
+        NOTE: always use self.open() as a first command in a method that will access the file. it will check if the file
+              is already open and only open if it is not open. in certain cases (e.g. dumping with lammps) the file needs to be 
+              closed before passing to lammps. To make sure the file is connected call open().
         
         Args:
             fname (string): filename (including .pdlp extension)
@@ -132,6 +136,9 @@ class pdlpio2(mpiobject):
                 self.h5file.attrs["version"] = self.file_version
             # this must be ffe mode so we can start generating the system group
             self.write_system()
+            # new file so we write the initital structure to the restart
+            self.add_stage(self.stage)
+            self.write_restart()
         return
         
     def __del__(self):
@@ -230,8 +237,6 @@ class pdlpio2(mpiobject):
         assert OK, "PDLP ERROR: The system in the pdlp file is not equivalent to your actual system. Aborting!"
         return
 
-
-
     def get_mol_from_system(self):
         """ read mol info from system group and generate a mol object 
 
@@ -258,108 +263,132 @@ class pdlpio2(mpiobject):
                 data = None
             elems, atypes, fragtypes, fragnumbers, cnc_table, bcd = self.mpi_comm.bcast(data)
         # generate mol object
+        na = len(elems)
         mol = molsys.mol()
-        mol.set_natoms(len(elems))
+        mol.set_natoms(na)
+        mol.set_elems(elems)
         mol.set_atypes(atypes)
         mol.set_fragnumbers(fragnumbers)
         mol.set_fragtypes(fragtypes)
         mol.set_ctab(cnc_table, conn_flag=True)
         mol.bcond = bcd
+        # now read the restart info that needs to be passed to the mol instance (Note: no velocities etc are read here)
+        if self.is_master:
+            try:
+                rstage = self.h5file[self.restart_stage]
+            except KeyError:
+                self.pprint("PDLP ERROR: The requested restart stage %s does not exist in the file!" % self.restart_stage)
+                raise
+            restart = rstage["restart"]
+            xyz = np.array(restart["xyz"])
+            cell = np.array(restart["cell"])
+        if self.mpi_size>1:
+            if self.is_master:
+                self.mpi_comm.Bcast(xyz)
+                self.mpi_comm.Bcast(cell)
+            else:
+                xyz = np.empty([na, 3], dtype="float64")
+                cell = np.empty([3, 3], dtype="float64")
+                self.mpi_comm.Bcast(xyz)
+                self.mpi_comm.Bcast(cell)
+        mol.set_xyz(xyz)
+        mol.set_cell(cell)
         return mol
 
-
+    def add_stage(self, stage):
+        """add a new stage 
         
-    def set_molecules(self, whichmol, moltypes, molnames):
-        """ whichmol:  integer array of length natoms
-            moltypes:  integer array of length nmols
-            molnames:  list of strings of the length of nmoltypes
+        Args:
+            stage (string): stage name to add
+
+        Returns:
+            (bool) True if it worked and False if the stage already existed
         """
-        if not self.system.keys().count("elems"):
-            raise IOError, "pdlp file does not contain any system info, can't write molecuels data"
-        nmols     = len(moltypes)
-        nmoltypes = len(molnames)
-        self.whichmol = self.system.require_dataset("whichmol", shape=(self.natoms,), dtype="i")
-        self.whichmol[...] = whichmol
-        if "moltypes" in self.system.keys():
-            # entries exist already ... resize if necessary
-            if self.system["moltypes"].shape[0] != nmols:
-                self.system["moltypes"].resize((nmols,))
-            if self.system["molnames"].shape[0] != nmoltypes:
-                self.system["molnames"].resize((nmoltypes,))
-        self.moltypes = self.system.require_dataset("moltypes", shape=(nmols,), maxshape=(None,), dtype="i")
-        self.moltypes[...] = moltypes
-        self.molnames = self.system.require_dataset("molnames", shape=(nmoltypes,), maxshape=(None,), dtype=self.str_dt)
-        self.molnames[...] = molnames
-        return
+        if stage == "system":
+            self.pprint("PDLP ERROR: Stage name system is not allowed!")
+            raise IOError
+        OK = True
+        if self.is_master:
+            if stage in self.h5file.keys():
+                OK = False
+            else:
+                sgroup = self.h5file.create_group(stage)
+                sgroup.create_group("restart")
+        OK = self.mpi_comm.bcast(OK)
+        return OK
 
-    def get_molecules(self):
-        whichmol = list(self.system["whichmol"])
-        moltypes = list(self.system["moltypes"])
-        molnames = list(self.system["molnames"])
-        return whichmol, moltypes, molnames
+    def write_restart(self, stage=None, velocities=False):
+        """write restart info to file
 
-    def has_stage(self, stagename):
-        if self.h5file.keys().count(stagename) > 0:
-            return True
-        else:
-            return False
-        
-    def get_stages(self):
-        return self.stagelist
-        
-    def add_stage(self, stagename, nstep):
-        """ adds a new stage and initalises the groups and datasets needed """
-        if stagename == "system":
-            raise IOError, "A stage should never be named system!"
-        self.rest_nstep= nstep
-        self.stagename = stagename
-        self.stagelist.append(stagename)
-        # add the restart part
-        self.stage     = self.h5file.require_group(self.stagename)
-        self.restart   = self.stage.require_group("restart")
-        if self.pd:
-            self.rest_datasets = {}
-            for d in self.rest_data:
-                self.rest_datasets[d] = self.restart.require_dataset(d, shape=self.data_shapes[d], dtype="float64")
-        self.counter = 0
-        return
-        
-    def add_traj(self, nstep, data, prec="float32", tstep=0.001):
-        """ adds a trajectory group to the current stage and starts to track data (list of names)
-            refering to the directories data_funcs and data_shapes 
-            
-            :Parameters:
-                - nstep (int or list of int) : number of steps before a traj data is written. If it is a list the info is per
-                                 entry in the data list, otherwise for all datasets
-                - data (list of strings) : string keys which should be written to the pdlp file
-                - prec (numpy type specifier) : default = "float32"
-                - tstep (float) : timestep in ps
+        Args:
+            stage (string, optional): Defaults to None. Name of the stage to write restart (must exist). Uses current stage by default
+            velocities (bool, optional): Defaults to False. When True writes also velocities
         """
-        if self.stage.keys().count("traj"):
-            self.pprint("This stage already tracks data! Please generate a new stage first")
-            return
-        # add a group for trajectory information
-        self.traj      = self.stage.require_group("traj")
-        self.traj.attrs["nstep"] = 0
-        self.traj.attrs["tstep"] = tstep
-        if type(nstep) != types.ListType:               #RS NOTE: this is a list now
-            self.traj_nstep = len(data)* [nstep]
-        else:
-            self.traj_nstep = nstep
-        self.traj_frame = len(self.traj_nstep) * [0]
-        self.track_data = data
-        # generate data sets with extendable first dimension
-        self.traj_datasets = {}
-        for i,d in enumerate(self.track_data):
-            if not self.data_funcs.has_key(d):
-                raise IOError, "The data obejct %s is unknown!" % d
-            dshape = list(self.data_shapes[d])
-            self.traj_datasets[d] = self.traj.create_dataset(d,dtype=prec,\
-                                       shape=tuple([0]+dshape),\
-                                       maxshape=tuple([None]+dshape),\
-                                       chunks=tuple([1]+dshape))
-            self.traj_datasets[d].attrs["nstep"] = self.traj_nstep[i]
+        self.open()
+        if stage is None:
+            stage = self.stage
+        OK = True
+        if self.is_master:
+            if stage not in self.h5file.keys():
+                OK = False
+            else:
+                restart = self.h5file[stage+"/restart"]
+                xyz = self.ffe.get_xyz()
+                cell = self.ffe.get_cell()
+                rest_xyz = restart.require_dataset("xyz",shape=xyz.shape, dtype=xyz.dtype)
+                rest_xyz[...] = xyz
+                rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
+                rest_cell[...] = cell
+                if velocities:
+                    vel = self.ffe.get_vel()
+                    rest_vel = restart.require_dataset("vel", shape=vel.shape, dtype=vel.dtype)
+        OK = self.mpi_comm.bcast(OK)
+        if not OK:
+            self.pprint("PDLP ERROR: writing restart to stage %s failed. Stage does not exist" % stage)
+            raise IOError
         return
+
+    def prepare_stage(self, stage, traj_data, traj_nstep, data_nstep=1, prec="float64", tstep=0.001):
+        """prepare a stage for trajectory writing
+        
+        Args:
+            stage (string): name of the stage (must exist)
+            traj_data (list of strings): name of the data to be written
+            traj_nstep (int): frequency in steps to write
+            data_nstep (int or list of ints), optional): Defaults to 1. freq to write each datatype
+            prec (str, optional): Defaults to "float64". precision to use in writing traj data
+            tstep (float, optional): Defaults to 0.001. Timestep in ps
+        """ 
+        self.open()       
+        if type(data_nstep)== type([]):
+            assert len(data_nstep)==len(traj_data)
+        else:
+            data_nstep = len(traj_data)*[data_nstep]
+        OK=True
+        if self.is_master:
+            if stage not in self.h5file.keys():
+                OK = False
+            else:
+                traj = self.h5file.require_group(stage+"/traj")
+                traj.attrs["nstep"] = traj_nstep
+                traj.attrs["tstep"] = tstep
+                for dname,dnstep in zip(traj_data, data_nstep):
+                    assert dname in self.ffe.data_funcs.keys()
+                    data = self.ffe.data_funcs[dname]()
+                    dshape = list(data.shape)
+                    pdlp_data = traj.require_dataset(dname, 
+                                    shape=tuple([1]+dshape),
+                                    maxshape=tuple([None]+dshape),
+                                    chunks=tuple([1]+dshape),
+                                    dtype=prec)
+                    pdlp_data[...] = data
+                    pdlp_data.attrs["nstep"] = dnstep
+        OK = self.mpi_comm.bcast(OK)
+        if not OK:
+            self.pprint("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
+            raise IOError
+        return
+
         
     def __call__(self, force_wrest=False):
         """ this generic routine is called to save restart info to the hdf5 file
@@ -388,11 +417,5 @@ class pdlpio2(mpiobject):
         self.counter += 1
         return
         
-    def read_restart(self, stage, data):
-        """ reads data from restart stage and returns it """
-        stage = self.h5file[stage]
-        restart = stage["restart"]
-        data = restart[data]
-        return numpy.array(data)
             
         
