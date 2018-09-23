@@ -188,10 +188,10 @@ molsys\.util\.timing module
     :undoc-members:
     :show-inheritance:
 
-molsys\.util\.topos module
+molsys\.util\.toper module
 --------------------------
 
-.. automodule:: molsys.util.topos
+.. automodule:: molsys.util.toper
     :members:
     :undoc-members:
     :show-inheritance:

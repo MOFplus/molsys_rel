@@ -12,7 +12,7 @@ def _makedirs(folder):
     except OSError:
         pass
 
-def _checkrundir(folder, basename):
+def _checkrundir(path):
     """Check if numbered basename directory in folder exists; create a new one.
     The function searches for directories in the folder with a starting
     indices (e.g. `0_run` where `0` is the index and `run` the basename).
@@ -21,6 +21,8 @@ def _checkrundir(folder, basename):
     directory with the increased index is created.
     The function is intended for output directories after multiple run in the
     same folder."""
+    folder = os.path.realpath(os.path.dirname(path))
+    basename = os.path.basename(path)
     # find directories
     globs = glob.glob("%s%s[0-9]*_%s%s" % (folder, os.sep, basename, os.sep))
     # split removing basename

@@ -29,6 +29,8 @@ from . import molsys_mpi
 from . import addon
 from .prop import Property
 
+import random
+
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
 # DEBUG/LOG goes to logfile, whereas WARNIGNS/ERRORS go to stdout
@@ -106,8 +108,9 @@ class mol(mpiobject):
         self.set_logger_level()
         # defaults
         self.is_topo = False # this flag replaces the old topo object derived from mol
-        self.use_pconn = False # extra flag .. we could have topos that do not need pconn
+        self.use_pconn = False # extra flag .. we could have toper that do not need pconn
         self.pconn = []
+        self.pimages = []
         self.ptab  = []
         self.supercell=[1,1,1]
         self.aprops = {}
@@ -381,6 +384,11 @@ class mol(mpiobject):
                 try: ### get the addon attribute, initialize it and set as self attribute
                     addinit = getattr(addon, addmod)(self, *args, **kwargs)
                     setattr(self, addmod, addinit)
+                except TypeError as e: ### HACK when 'from molsys.addon.addmod import something'
+                    # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
+                    # the 'getattr' to get molsys.addon.ff.ff
+                    addinit = getattr(getattr(addon, addmod),addmod)(self, *args, **kwargs)
+                    setattr(self, addmod, addinit)
                 except Exception as e: ### unexpected error! bugfix needed or addon used improperly
                     import traceback
                     traceback.print_exc()
@@ -498,8 +506,17 @@ class mol(mpiobject):
             pconn is really needed only for small unit cells (usually topologies) where vertices
             can be bonded to itself (next image) or multiple times to the same vertex in different images.
             """
-        self.use_pconn= True
-        self.pconn = []
+        # N.B. add_pconn is not bullet-proof!
+        # It works pretty always for large frameworks
+        # whereas failing quite often with nets
+        # (and quite always with the smaller ones)
+        # JK+RA proposed FIX [work in progress, needs investigation]
+        #for i in self.conn:
+        #    i.sort()
+        #
+        # END FIX
+        pimages = []
+        pconn = []
         for i,c in enumerate(self.conn):
             atoms_pconn = []
             atoms_image = []
@@ -537,7 +554,11 @@ class mol(mpiobject):
                             if use_it:
                                 atoms_image.append(ii)
                                 atoms_pconn.append(images[ii])
-            self.pconn.append(atoms_pconn)
+            pimages.append(atoms_image)
+            pconn.append(atoms_pconn)
+        self.use_pconn= True
+        self.pimages = pimages
+        self.pconn = pconn
         return
     
     def check_need_pconn(self):
@@ -664,9 +685,9 @@ class mol(mpiobject):
         cell = self.cell * np.array(self.supercell)[:,np.newaxis]
         self.set_cell(cell)
         self.inv_cell = np.linalg.inv(self.cell)
-        self.elems *= ntot
-        self.atypes*=ntot
-        self.fragtypes*=ntot
+        self.elems = list(self.elems)*ntot
+        self.atypes=list(self.atypes)*ntot
+        self.fragtypes=list(self.fragtypes)*ntot
         mfn = max(self.fragnumbers)+1
         nfragnumbers = []
         for i in range(ntot):
@@ -710,7 +731,6 @@ class mol(mpiobject):
                     ixyz = ix+nx*iy+nx*ny*iz
                     dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
                     xyz[ixyz] += dispvect
-
                     i = copy.copy(ixyz)
                     for cc in range(len(conn[i])):
                         for c in range(len(conn[i][cc])):
@@ -732,6 +752,7 @@ class mol(mpiobject):
                                 if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
                                 if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
                                 #print(px,py,pz)
+        self.natoms = nat*ntot
         self.conn, self.pconn, self.xyz = [],[],[]
         for cc in conn:
             for c in cc:
@@ -739,7 +760,6 @@ class mol(mpiobject):
         for pp in pconn:
             for p in pp:
                 self.pconn.append(p)
-        self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
         self.cellparams[0:3] *= np.array(self.supercell)
         self.cell *= np.array(self.supercell)[:,np.newaxis]
@@ -747,6 +767,8 @@ class mol(mpiobject):
         self.elems *= ntot
         self.atypes*=ntot
         self.images_cellvec = np.dot(images, self.cell)
+        self.set_ctab_from_conn(pconn_flag=True)
+        self.set_etab_from_tabs(sort_flag=True)
         return xyz,conn,pconn
 
     def apply_pbc(self, xyz=None, fixidx=0):
@@ -963,7 +985,7 @@ class mol(mpiobject):
                 scale (float)           : scaling factor for other mol object coodinates
                 roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
         if self.use_pconn:
-            logger.warning("Connectivity may need tinkering with pconn!")
+            logger.info("Add mols with pconn, which may need tinkering")
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
@@ -1173,7 +1195,7 @@ class mol(mpiobject):
             self.pconn[j].pop(idxi)            
         return
 
-    def add_atom(self, elem, atype, xyz):
+    def add_atom(self, elem, atype, xyz, fragtype='-1', fragnumber=-1):
         """
         add a ato/vertex to the system (unconnected)
         
@@ -1197,6 +1219,9 @@ class mol(mpiobject):
             self.xyz = xyz
         self.conn.append([])
         if self.use_pconn: self.pconn.append([])
+        if self.fragtypes:
+            self.fragtypes.append(fragtype)
+            self.fragnumbers.append(fragnumber)
         return self.natoms-1
 
     def insert_atom(self,elem, atype, i, j, xyz=None):
@@ -1233,8 +1258,8 @@ class mol(mpiobject):
                 for i in range(self.natoms):
                     if i in bads:
                         offset[i:] += 1
-                self.atypes = np.take(self.atypes, goods)
-                self.elems  = np.take(self.elems, goods)
+                self.atypes = np.take(self.atypes, goods).tolist()
+                self.elems  = np.take(self.elems, goods).tolist()
                 if keep_conn:
                     #works ONLY for edges: ERROR for terminal atoms and TRASH for the rest
                     if self.use_pconn: #must go before setting self.conn
@@ -1366,6 +1391,155 @@ class mol(mpiobject):
                     badlist.append(j)
         self.delete_atoms(badlist)
         return
+
+    def merge_atoms(self, sele=None, parent_index=0, molecules_flag=False):
+        """
+        merge selected atoms
+        sele(list of nested lists of int OR list of int): list of atom indices
+        parent_index(int): index of parent atom in the selection which
+            attributes are taken from (e.g. element, atomtype, etc.)
+        molecules_flag(bool): if True: sele is regrouped accoring to the found
+            molecules (e.g. if you select the COO of different linkers, each
+            COO is merged per se). The same behavior can be reproduced with
+            an appropriate nesting of sele, so consider molecules_flag a
+            convenience flag.
+        """
+        if sele is None: # trivial if molecules_flag=False...
+            sele = [range(self.natoms)]
+        else:
+            if not hasattr(sele[0], '__iter__'): # quick and dirt
+                sele = [sele]
+        assert len(set().union(*sele)) == len(sum(sele,[])),\
+            "multiple occurring atom indices are NOT supported!"
+        if molecules_flag:
+            # atoms are merged per connected components i.e. molecules
+            sele_molecules = []
+            molidx = self.get_separated_molecules()
+            for midx in molidx:
+                for sel in sele:
+                    msel = [i for i in midx if i in sel]
+                    if msel != []:
+                        sele_molecules.append(msel)
+            sele = sele_molecules
+        while True:
+            try:
+                sel = sele.pop(0)
+            except IndexError:
+                return
+            else:
+                xyz = self.xyz[sel].mean(axis=0)
+                parent = sel[parent_index]
+                elem = self.elems[parent]
+                atype = self.atypes[parent]
+                if self.fragtypes:
+                    fragtype = self.fragtypes[parent]
+                    fragnumber = self.fragnumbers[parent]
+                    self.add_atom(elem, atype, xyz, fragtype=fragtype, fragnumber=fragnumber)
+                else:
+                    self.add_atom(elem, atype, xyz)
+                conn_all = sum([self.conn[i] for i in sel],[])
+                conn = set(conn_all) - set(sel)
+                self.conn[-1] = conn
+                for i in conn:
+                    self.conn[i].append(self.natoms-1)
+                if self.use_pconn:
+                    raise NotImplementedError, "TBI! [RA]"
+                    frac_xyz = self.get_frac_xyz()
+                    frac_j = self.frac_xyz[-1]
+                    for i in conn:
+                        frac_i = self.frac_xyz[i]
+                        a = (frac_j - frac_i)%[1,1,1]
+                        xyz_i = self.xyz[i]
+                        self.pconn[i].append()
+                # offset trick (not new: see delete_atoms)
+                # trick must be performed BEFORE delete_atoms!
+                offset = np.zeros(self.natoms, 'int')
+                for i in range(self.natoms):
+                    if i in sel:
+                        offset[i:] += 1
+                # one of the last call, taking care of conn indices!
+                # N.B.: offset must be initialized before delete_atoms
+                self.delete_atoms(sel)
+                # back to the trick
+                for i,s in enumerate(sele):
+                    sele[i] = [j-offset[j] for j in s]
+        return # will never get it, here for clarity
+
+    def get_separated_molecules(self, sele = None):
+        """
+        get lists of indices of atoms which are connected together inside the
+        list and not connected outside the list.
+        same as get islands (see toper) with a native graph-tools algorithm
+
+        :Arguments:
+        sele(list of int): selection list of atom indices
+            if sele is None: find molecules in the whole mol
+            else: find molecules just in the selection, countin non-connected
+                atoms as separated molecules (e.g. if you select just the
+                COO of a paddlewheel you get 4 molecules)
+
+        >>> import molsys
+        >>> m = molsys.mol.from_file("molecules.mfpx")
+        >>> molecules_idx = m.get_separated_molecules()
+        >>> for m_idx in molecules_idx:
+        >>>     m.new_mol_by_idx(m_idx).view()
+        >>> # if in trouble: CTRL+Z and "kill %%"
+        """
+        try:
+            from graph_tool.topology import label_components
+        except ImportError:
+            raise ImportError, "install graph-tool via 'pip install graph-tool'"
+        from molsys.util.toper import molgraph
+        from collections import Counter
+        if sele is None:
+            mg = molgraph(self)
+        else:
+            m = self.new_mol_by_index(sele)
+            mg = molgraph(m)
+        labels = label_components(mg.molg)[0].a.tolist()
+        unique_labels = Counter(labels).keys()
+        if sele is None:
+            molidx = [[j for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
+        else:
+            molidx = [[sele[j] for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
+        return molidx
+
+    def shuffle_atoms(self, sele=None):
+        """
+        shuffle atom indices, debug purpose
+
+        :Arguments:
+        sele(list of int): selection list of atom indices
+            if sele is None: all the atoms are shuffled
+
+        many methods should be INVARIANT wrt. atom sorting
+        N.B.: using numpy array since for readability
+        """
+        if sele is None:
+            sele = range(self.natoms)
+        sele_original = sele[:]
+        random.shuffle(sele)
+        # selection to original dictionary
+        sele2sele_original = dict(zip(sele,sele_original))
+        # coordinates #
+        self.xyz[sele_original] = self.xyz[sele]
+        # elements #
+        elems = np.array(self.elems)
+        elems[sele_original] = elems[sele]
+        self.elems = [str(e) for e in elems.tolist()]
+        # atomtypes #
+        atypes = np.array(self.atypes)
+        atypes[sele_original] = atypes[sele]
+        self.atypes = [str(e) for e in atypes]
+        # connectivity #
+        conn = copy.deepcopy(self.conn)
+        for i,ic in enumerate(conn):
+            ic = [sele2sele_original[j] if j in sele else j for j in ic]
+            conn[i] = ic
+        conn = np.array(conn)
+        conn[sele_original] = conn[sele][:]
+        self.set_conn(conn.tolist())
+        return sele2sele_original
 
 ### property interface #########################################################
 
@@ -1881,11 +2055,11 @@ class mol(mpiobject):
         if pconn_flag:
             for i in range(self.natoms):
                 ci = self.conn[i]
-                pi = self.pimages[i]
+                pi = self.pconn[i]
                 for j, pj in zip(ci,pi):
-                    if j > i or (j==i and pj <= 13):
+                    if j > i or (j==i and arr2idx[pj] < 13):
                         ctab.append((i,j))
-                        ptab.append(pj)
+                        ptab.append(arr2idx[pj])
             return ctab, ptab
         else:
             for i, ci in enumerate(self.conn):
@@ -1988,15 +2162,14 @@ class mol(mpiobject):
             - ptab   : list of peridioc images per bond (nbonds, 2)
         """
         assert hasattr(self, "ctab"), "ctab is needed for the method"
-        #self.set_empty_pconn()
-        conn = self.conn[:]
+        self.set_empty_pconn()
         pconn = [[None for ic in c] for c in self.conn]
         for k,p in enumerate(ptab):
             i,j = self.ctab[k]
             ij = self.conn[i].index(j)
             ji = self.conn[j].index(i)
-            pconn[i][ij] = p
-            pconn[j][ji] = -p 
+            pconn[i][ij] =  idx2arr[p]
+            pconn[j][ji] = -idx2arr[p]
         self.pconn = pconn
         return
 
@@ -2035,9 +2208,10 @@ class mol(mpiobject):
     def etab(self, etab):
         """any time edge tab is set, ctab, (ptab) and etab are sorted"""
         self._etab = etab
+        self.nbonds = len(etab)
         self.sort_tabs(etab_flag=False)
 
-    def set_etab_from_tabs(self, ctab=None, ptab=None, sort_flag=True):
+    def set_etab_from_tabs(self, ctab=None, ptab=None, conn_flag=False, sort_flag=True):
         """set etab from ctab (and ptab). Both can be given or got from mol.
         if sort_flag: ctab, (ptab) and etab are sorted too."""
         if ctab is None and ptab is None:
@@ -2053,6 +2227,9 @@ class mol(mpiobject):
             self.etab = ctab[:]
         if sort_flag is True: #it sorts ctab, ptab, and etab too
             self.sort_tabs(etab_flag=False)
+        if conn_flag is True:
+            self.set_conn_from_tab(self.ctab)
+            self.set_pconn_from_tab(self.ptab)
         return
 
     def set_etab(self, ctab=None, ptab=None, set_tabs=False):
@@ -2063,12 +2240,12 @@ class mol(mpiobject):
         elif ctab is None or ptab is None:
             raise ValueError("ctab and ptab can't both be None")
         if self.use_pconn:
-            etab = list(zip(ctab, ptab)) # python3 compl.: zip iterator gets exhausted
+            etab = list(zip(*(zip(*ctab)+[ptab]))) # python3 compl.: zip iterator gets exhausted
         else:
             etab = ctab
         self._etab = etab
 
-    def sort_tabs(self, etab_flag=False):
+    def sort_tabs(self, etab_flag=False, conn_flag=False):
         """sort ctab, (ptab) and etab according to given convention
         Convention is the following:
             1)first ctab atom is lower or equal than the second
@@ -2083,17 +2260,19 @@ class mol(mpiobject):
             for ii,(i,j) in enumerate(ctab):
                 if i > j:
                     ctab[ii] = ctab[ii][::-1]
-                    ptab[ii] = idx2revidx(ptab[ii])
+                    ptab[ii] = idx2revidx[ptab[ii]]
                 if i == j and ptab[ii] > 13:
-                    ptab[ii] = idx2revidx(ptab[ii])
+                    ptab[ii] = idx2revidx[ptab[ii]]
         else:
             for ii,(i,j) in enumerate(ctab):
                 if i > j:
                     ctab[ii] = ctab[ii][::-1]
         asorted = argsorted(ctab)
-        self.ctab = [ctab[i] for i in asorted]
+        ctab_ = [ctab[i] for i in asorted]
+        self.set_ctab(ctab_, conn_flag=conn_flag)
         if self.use_pconn:
-            self.ptab = [ptab[i] for i in asorted]
+            ptab_ = [ptab[i] for i in asorted]
+            self.set_ptab(ptab_, pconn_flag=conn_flag)
         if etab_flag: # it ensures sorted etab and overwrites previous etab
             self.set_etab_from_tabs(sort_flag=False)
         elif etab:

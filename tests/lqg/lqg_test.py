@@ -135,6 +135,7 @@ class lqg_test(unittest.TestCase):
                 atol = 10**-12)
 
 if __name__ == '__main__':
+    # only aab/pto/qtz/tbo/ths available for this test...
     netname = sys.argv[1]
     suite = unittest.TestSuite()
     suite.addTest(lqg_test("test_cycle_basis",netname))

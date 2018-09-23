@@ -9,7 +9,10 @@ def read(mol, f, delimiter=','):
         -mol (obj): instance of a molclass
         -delimiter=',' (str): coordinate delimiter
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not readable" % f
     splits = f.read().splitlines()
     xyz = [s.split(delimiter) for s in splits]
     mol.natoms = len(xyz)
