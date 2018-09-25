@@ -20,7 +20,6 @@ def test_nets(net, ncolors, maxcycle):
     m.acab.setup_model()
     m.acab.setup_ecratio_per_vertex([2,1])
     m.acab.setup_vcratio_per_edge([1])
-    sele = [i for i,e in enumerate(m.conn) if len(e) == 6]
     N = m.acab.cycle_loop(Nmax=maxcycle, alpha=3, constr_vertex=False, write=False)
     assert N == ncolors, "number of found colors %d must be equal to %d" \
         % (N, ncolors)

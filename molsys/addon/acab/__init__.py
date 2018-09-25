@@ -229,6 +229,7 @@ class acab(base):
 
         TBI: unset ratio with negative integers (convention: -1) and reserve
         the complement of the set elements
+        TBI: select atoms which the setup is applied! [JK feature request]
         """
         if not hasattr(self,"necolors"):
             self.setup_colors(necolors=len(ecratio))
