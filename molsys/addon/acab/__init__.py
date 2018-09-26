@@ -222,7 +222,7 @@ class acab(base):
         self.ecratio = ecratio
         self.vcratio = vcratio
 
-    def setup_ecratio(self, ecratio, set_ecratio=True):
+    def setup_ecratio(self, ecratio, sele=None, set_ecratio=True):
         """
         :Parameters:
         - ecratio (None or list of ints): overall edge   color ratio
@@ -232,6 +232,13 @@ class acab(base):
         """
         if not hasattr(self,"necolors"):
             self.setup_colors(necolors=len(ecratio))
+        #if sele is None:
+        #    etab = self._mol.etab
+        #else:
+        #    try:
+        #        etab = self._mol.etab[sele]
+        #    except TypeError:
+        #        etab = [self._mol.etab[i] for i in sele]
         self.assert_ecratio(ecratio)
         evars = self.evars
         necolors = self.necolors
@@ -256,7 +263,7 @@ class acab(base):
         if set_ecratio: self.ecratio = ecratio
         return
 
-    def setup_vcratio(self, vcratio, set_vcratio=True):
+    def setup_vcratio(self, vcratio, sele=None, set_vcratio=True):
         """
         :Parameters:
         - vcratio (None or list of ints): overall vertex color ratio
@@ -267,6 +274,13 @@ class acab(base):
         """
         if not hasattr(self,"nvcolors"):
             self.setup_colors(nvcolors=len(vcratio))
+        #if sele is None:
+        #    sele = range(self._mol.natoms)
+        #else:
+        #    try:
+        #        sele[0]
+        #    except TypeError:
+        #        sele = [sele]
         self.assert_vcratio(vcratio)
         vvars = self.vvars
         nvcolors = self.nvcolors
@@ -284,10 +298,18 @@ class acab(base):
         if set_vcratio: self.vcratio = vcratio
         return
 
-    def setup_ecratio_per_vertex(self, ecratio, set_ecratios=True):
+    def setup_ecratio_per_vertex(self, ecratio, vsele=None, set_ecratios=True):
         ### TBI: assert no conflict btw. global and local cratio
         if not hasattr(self,"necolors"):
             self.setup_colors(necolors=len(ecratio))
+        if vsele is None:
+            vertices = range(self._mol.natoms)
+        else:
+            vertices = vsele
+            try:
+                vertices[0]
+            except TypeError:
+                vertices = [vertices]
         self.assert_ecratio(ecratio)
         evars = self.evars
         necolors = self.necolors
@@ -296,7 +318,7 @@ class acab(base):
         # loop #
         ecratios = []
         for c in crange:
-            for v in vertex2edges:
+            for v in vertices:
                 v2e = vertex2edges[v]
                 necratio = normalize_ratio(ecratio,len(v2e))
                 ecratios.append(necratio)
@@ -307,12 +329,19 @@ class acab(base):
                 )
         if set_ecratios: self.ecratios = ecratios
 
-    def setup_vcratio_per_edge(self, vcratio, set_vcratios=True):
+    def setup_vcratio_per_edge(self, vcratio, sele=None, set_vcratios=True):
         """
         N.B.: there are always two vertex per edge
         """
         if not hasattr(self,"nvcolors"):
             self.setup_colors(nvcolors=len(vcratio))
+        #if sele is None:
+        #    sele = range(self._mol.natoms)
+        #else:
+        #    try:
+        #        sele[0]
+        #    except TypeError:
+        #        sele = [sele]
         self.assert_vcratio(vcratio)
         vvars = self.vvars
         nvcolors = self.nvcolors
@@ -334,7 +363,7 @@ class acab(base):
                 )
         if set_vcratios: self.vcratios = vcratios
 
-    def setup_angle_btw_edges(self, color, theta, sense="min", eps=1e-3, sele=None):
+    def setup_angle_btw_edges(self, color, theta, sense="min", eps=1e-3, vsele=None):
         """
         Constraint angle between edges to be min/max/close to theta.
         TBI: non-periodic (w/o pconn) version
@@ -358,8 +387,13 @@ class acab(base):
         sele (list of ints or None): selected vertices (if None: all)
 
         """
-        if sele is None:
-            sele = range(self._mol.natoms)
+        if vsele is None:
+            vsele = range(self._mol.natoms)
+        else:
+            try:
+                vsele[0]
+            except TypeError:
+                vsele = [vsele]
         conn = self._mol.conn
         pconn = self._mol.pconn
         if theta < 0 or theta > pi:
@@ -367,7 +401,7 @@ class acab(base):
         cost = cos(theta)
         v2e = [[] for i in range(self._mol.natoms)]
         # compute vectors of selected vertices
-        for i in sele:
+        for i in vsele:
             ic = conn[i]
             ip = pconn[i]
             for j,jp in zip(ic,ip):
