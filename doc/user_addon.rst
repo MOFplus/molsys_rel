@@ -20,4 +20,5 @@ Methods and attributes of the corrsponding addon object are then available under
    :maxdepth: 3
 
    user_addon_ff
+   user_addon_acab
 
