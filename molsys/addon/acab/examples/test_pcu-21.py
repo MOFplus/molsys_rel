@@ -1,5 +1,6 @@
 import pytest
 
+from math import pi
 import molsys
 
 def axial(supercell):
@@ -9,7 +10,7 @@ def axial(supercell):
     m.acab.setup_model()
     m.acab.setup_ecratio_per_vertex([2,1])
     m.acab.setup_vcratio_per_edge([1])
-    m.acab.setup_angle_btw_edges(color=1, theta=3)
+    m.acab.setup_angle_btw_edges(color=1, theta=pi)
     m.acab.cycle_loop(alpha=3, write=False, constr_vertex=False)
 
 def non_axial(supercell):
