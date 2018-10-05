@@ -260,6 +260,20 @@ def get_spherical_coordinates(xyz):
     ptsnew[:,2] = numpy.arctan2(xyz[:,1], xyz[:,0])
     return ptsnew
 
+def get_cartesian_coordinates(sphere):
+    if len(sphere) == 2:
+        theta = numpy.deg2rad(sphere[0])
+        phi   = numpy.deg2rad(sphere[1])
+        r = 1.0
+    if len(sphere) == 3:
+        r     = numpy.deg2rad(sphere[0])
+        theta = numpy.deg2rad(sphere[1])
+        phi   = numpy.deg2rad(sphere[2])
+    x = r * numpy.sin(theta) * numpy.cos(phi)
+    y = r * numpy.sin(theta) * numpy.sin(phi)
+    z = r * numpy.cos(theta)
+    return (numpy.array([x,y,z]))
+
 def normalize_angles_to_angle(angles,ref_angle=None):
     ''' JK
     shifts a trajectory of spherical coordinates in such a way as to have the reference angle
