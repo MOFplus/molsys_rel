@@ -1455,46 +1455,79 @@ __version__ = "2.1.1"
 header= """
 ********************************************************************************
 
-                                 .';ldxO00KKKK0Okdl:'.
-                            ':lxO0kdoc:;;      ;:cldxO0koc,.
-                       .;ok0xl;..            :xxdc.      :dK0.
-                    'lOOo;. .cdd:            OKxd0Kc      cKl               ..
-                 ,o0x:.     OKkkKO'         'KK,.kKc     ,Kd              .',.
-              .l0k:.       .K0  lKK,        oKKKKk.     .00'            .,;'
-            .d0d.          .KK'  dK0.       0KdkKKc     OKxkkl,       .,;,.
-          .dKo. ,xd.        dKO.'lKKO      'KO  OK0    dKc,:loxko,  .,;,.
-         cKx.  'KKk.        .OKK0xl0Ko     oKc  OK0   cKk:'..':lod:,,;,.
-       'OO,    xKK.          .0Kl  '0Kc   .0KdcxK0,  ;K0ooooc,.';,,,;c.
-      cKo      ,0Kd.          'KKc  .dc    .,:clc.  .0KNX0xolc;,'',;cxOl
-     dK:         lK0l.     .   ,xd   :ldxkkOOkxdlc,'O0ok0XKo;,'',;,.':lkk'
-    dK;           .oK0oclx0KO.  ,oOOdc;'         :ok0'  ,c;,'.',:loc..;cdOc
-   oK;.,,,'.        .oOK0ko;.,d0d;.          ....      .,,..',:O0dooo,.'coOo
-  cKl,KK0OKKKOxl;.         ;OO:      .',;,''......;..','...,,'x0NNkooo:..coOd
- .0k '0Kc     kKKK0kdc.  .x0:     ...';,,,..lo....;,,'...','   oOXWOooo:..coOl
- dK'  .dKkc   kKc   ld. ,0k.     .,;;;,...cOO:...;,'...',,.     cOXWOood;.'cdO,
-.Kx     .;o0KKKKc      ;Kd      .','....,xO0O;..;'....,,.        cOXWkooo'.;ckk
-lK,           ;lxOKKO.'Kx      ,;'.....dO0XX0Oollc::coddddl;.     d0NXoooc..cdO;
-kKd                   xK.       ,;,..,kOKXXXXXKK0000KKKKXXK0k;    ,OKWkooo..:lOo
-kKdliclkK0OO00OOkxdollKx      .,'...lO0XXXx..,cok0XXXXXXXXXXOk.   .O0W0ood,.;ckk
-       cOoc..oddkNK0l;:,      ,,.,;xOKXXXXk   ,xl; lXXXXXXXXOk.    x0WKood;.,ckO
-       cOoc..oookWXO,    ',''',;lkOKXXXXXXXo.  ,;,lXXXXXXXX0k,     k0WKood;.,ckO
-       ;Odc..loodNNOc    'cc;cdO0KXXXXXXXXXXXOdxOXXXXXXXXKOd.     .OKW0ood'.;cOx
-       .Oxc,.;dooKW0k    ,xOO0KXXXXXXXXXXXXXXXXXXKOkxOOOko,       :OXWxooo..coOc
-        dOl:..oooxWXOc     ;xOKXXXXXXXXXXXXXXXXXKOc              .k0WKood;.,cxO.
-        'Oxc,.;doo0WKO;      'dO0XXXXXXXXXXXXXXXOx              .x0NXdool..:lOo
-         lOoc..:ooo0WKO:       .oO0XXXXXXXXXXXXKO;             .x0NNxooo..;ckk.
-          dOl:..cooo0WX0o.       .lO0KXXXXXXXXXOx             ,kKNXdooo'.;cxO,
-          .xkl:..:oookNN0k;        .ck0KXXXXXXOk.           .d0XN0oool'.;cxO;
-           .dOoc'.,ooodONXKkc.       .:kOKXX0Oo.          ,d0XNKxooo:..;lxO,
-             cOxc;..:ooodONNK0x:.       ,dOxc.        .,oOKXNKxoool'.'cokx.
-              .xkoc,..:ooookKNNK0Oo:,..          .';lx0KXNXOdoool,..:lxOc
-                :kxoc,..;looook0XNNXKK00kxxddxkO00KXXNXKOdoooo:'.';ldOd.
-                  :kkoc;..';loooooxkO0KXXNNNNNNXXK0Oxdoooooc,..,:ldOd'
-                    ,dkxoc;'..';clooooooooooooooooooool:,...,:ldkkc.
-                      .;dOxdl:;'....',;::ccccc::;;,'...',:codkkc.
-                         .,cxkxdolc:;,,'''....''',,;:lodxkko;.
-                              .;ldkkkxxddddodddddxxkkxo:,.
-                                   .,:ldxkOOOOkxoc;.
+                                                          .k:
+                                                          XMk
+                                                         xMMk
+                                                        :MMMx
+                                                       .WMMMd
+                                                       KMMMMo
+                                                      xMMMMMl
+                                                     :MMMMMM:
+                                                    .WMMMMMM;
+                                                    KMMMMMMM,
+                                                   dMMMMMMMM'
+                           kko;.                  ,MMMMMMMMM.         .:oko
+                          .OOOOOkl.  ...',,;;;:; .NMMMMMMMMM.      .lkOOOOk
+                          .OOOOOOOOo.,kOOOOOOOO, OMMMMMMMMMM .Okdl:'..,cxOk
+                        '' kOOOOOOOOk..xOxo:,'. lMMMMMMMMMMM 'OOOOOOOOo;..;
+                    'cxOOk ,OOOOOOOOOO, .':ldd 'MMMMMMMMMMMW ,OOOOOOOOOOOx'
+                 ,oOOOOOOOd ,OOOOOOOOOOxOOOOO. NMMMMMMMMMMMX .ckOOOOOOOOOOOl
+              'oOOOOOOOOOOOx..dOOOOOOOOOOOOO; kMMMMMMMMMMMMK '; ;OOOOOOOOOOOo
+            ;kOOOOOOOOOOOOOOOl..dOOOOOOOOOOo cMMMMMMMMMMMMM0 :Ox..OOOOOOOOOOO;
+          ;kOOOOOOOOOOOOOOOOOOx ,OOOOOOOOOk..WMMMMMMMMMMMMMk cOOx ,OOOOOOOOOOk
+        'xOOOOOOOOOOOOOOOOOOOO, kOOOOOOOOO, XMMMMMMMMMMMMMMx lOOOc dOOOOOOOOOO'
+       lOOOOOOOOOOOOOOOOOOOOOk..OOOOOOOOOk .0XNWMMMMMMMMMMMd lOOOk ,OOOOOOOOOO;
+     .xOOOOOOOOOOOOOOOOOOOOOd  ,OOOOOOOOOOx;.................kOOOO..OOOOOOOOOO:
+    .kOOOOOOOOOOOOOOOOOOOOOc   ;OOOOOOOOOOOOOOOOOOOkxxdoolloOOOOOO.'OOOOOOOOOO;
+   .OOOOOOOOOOOOOOOOOOOOOOc    'OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO ;OOOOOOOOOO.
+  .kOOOOOOOOOOOOOOOOOOOOOo      OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOx cOOOOOOOOOk
+  xOOOOOOOOOOOOOOOOOOOOOx       lOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOl oOOOOOOOOO:
+ ;OOOOOOOOOOOOOOOOOOOOOO.       .OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOc xOOOOOOOOk
+ kOOOOOOOOOOOOOOOOOOOOOo         ;OOOOOO:     OOOOOOOOOO    lOOO: xOOOOOOOO,
+,OOOOOOOOOOOOOOOOOOOOOO'          lOOOOO,      .kOOOOd.      cOOOl oOOOOOOOl
+lOOOOOOOOOOOOOOOOOOOOOO            lOOOOk,    'dOOOOOOo.    ;OOOOk :OOOOOOx
+xOOOOOOOOOOOOOOOOOOOOOk             cOOOOOOxxkOOOOOOOOOOkxxOOOOOO; .OOOOOO.
+OOOOOOOOOOOOOOOOOOOOOOx              ,kOOOOOOOOOOOOOOOOOOOOOOOOk.   kOOOOc
+OOOOOOOOOOOOOOOOOOOOOOO               .dOOOOOOOOOOOOOOOOOOOOOOo     ;OOOO,
+kOOOOOOOOOOOOOOOOOOOOOO.                oOOOOOOOOOOOOOOOOOOOOc       :OOO'
+oOOOOOOOOOOOOOOOOOOOOOOl                 dOOOOOOOOOOOOOOOOOOl         'xO.
+,OOOOOOOOOOOOOOOOOOOOOOO.                 xOOOOOOOOOOOOOOOOx
+ kOOOOOOOOOOOOOOOOOOOOOOx                 .OOOklcxOOdcoOOOO.
+ :OOOOOOOOOOOOOOOOOOOOOOOx                 oOO;   Ox   cOOc
+  kOOOOOOOOOOOOOOOOOOOOOOOx.               'OOklcxOOdclOOO.
+  .OOOOOOOOOOOOOOOOOOOOOOOOO:               ;kOOOOOOOOOOx'
+   ,OOOOOOOOOOOOOOOOOOOOOOOOOk;               ':odxxdl:.
+    ,OOOOOOOOOOOOOOOOOOOOOOOOOOkc.                                   ..
+     'kOOOOOOOOOOOOOOOOOOOOOOOOOOOx:.                               ,k;
+      .dOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOd:'.                        ;xOx
+        ;OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOxoc;,...          .'cdOOOo
+          cOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOkkkkkOOOOOOOO:
+           .cOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOd.
+              ,dOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOd.
+                .;oOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOx:.
+                    .:okOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOxl,.
+                        ..;coxkOOOOOOOOOOOOOOOOOkdoc;'.
+                                 ....''''.....
+
+
+        .,;;'.              ..oOOOOo;            .';;,.         ..oOOOOOoo.     
+    .oKMMMMMMMNx'       ,lxOOOOOOOOOOk:      :kNMMMMMMM0c      xOOOOOOOOOOOxl'  
+  .0MMMMMMMMMMMMMO    :kOOOx.       ,OO,   oWMMMMMMMMMMMMN;    OOc       cOOOOl
+ oMMMNdc;'..'oMMMMX  dOOOOo         .OO, .XMMMOl;,...:KMMMM;  ;OO:       xOOOOx
+:MMMX         dMMMM,lOOOOk          .Ok  NMMM:        .MMMMO  kOO,     .dOOOx:  
+OMMM:         lMMMM.kOOOOo           O' ,MMMX          MMMMd ;OOOdllodkOkd:.    
+OMMMd,,,,'''''KMMMk xOOOOk           .  ,MMMX,,,,,'''.lMMMW. kOOc      .kOOkc   
+xMMWXNNNNWWWWWMMMN. .OOOOOd.            .MMMNXNNNNWWWWMMMMl 'OOO.       kOOOOx  
+lMM:          cMMl   'kOOOOOd:'.   .,.   MM0           NMX  ;OOx       cOOOOOd  
+lMo            WW      ;dOOOOOOOOOOo.    MX.           dMc   oOO;.  ..lOOOOo,   
+ck             od        .:dkOOxl;       X.            .N.    .lxkOOkkxdl;      
+
+
+						ACAB = ALL COLORS ARE BEAUTIFUL
+			 by Roberto Amabile <roberto d0t amabile at rub d0t de>
+
+  Net coloring + advanced Reverse Topological Approach: R. Amabile, R. Schmid
+			 (C) 2018- Computational Materials Chemistry (Germany).
 
 ********************************************************************************
 """
@@ -1502,8 +1535,9 @@ kKdliclkK0OO00OOkxdollKx      .,'...lO0XXXx..,cok0XXXXXXXXXXOk.   .O0W0ood,.;ckk
 footer="""
 ********************************************************************************
 
-Your ride with ACAB ends here. Houyhnhnm!
+                   Your ride with ACAB ends here. Houyhnhnm!
 
+********************************************************************************
 """
 
 def print_header():
