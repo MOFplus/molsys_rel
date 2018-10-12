@@ -10,8 +10,6 @@ Created on Mon Jun 11 14:19:27 2018
         
         contains class acab
 """
-debug = True
-
 from molsys.addon import base
 from molsys.util.misc import normalize_ratio
 
@@ -145,7 +143,7 @@ class acab(base):
     #    #    self.otab = []
     #    #    self.oconn = []
 
-    def setup_model(self, verbose=False, ctrlc=True, *args, **kwargs):
+    def setup_model(self, verbose=False, debug=True, ctrlc=True, *args, **kwargs):
         """
         initialize the model and its utility attributes
 
@@ -171,6 +169,7 @@ class acab(base):
         self.assert_flag(ctrlc)
         if not verbose:
             self.model.hideOutput()
+        self.debug = debug
         if not ctrlc:
             logger.warning("KeyboardInterrupt is DISABLED: " \
                 "hope you have your own good reasons")
@@ -501,7 +500,7 @@ class acab(base):
             raise TypeError("unconstraint step solutions: infinite loop!")
         m.addon("spg")
         self.permutations = m.spg.generate_symperms()
-        if debug:
+        if self.debug:
             m.atypes = [0 for i in m.atypes]
             m.write("%s%ssym.mfpx" % (self.rundir, os.sep))
             m.write("%s%ssym.txyz" % (self.rundir, os.sep), pbc=False)
