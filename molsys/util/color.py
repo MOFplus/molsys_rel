@@ -53,11 +53,12 @@ def assert_eacstr(st):
 
 # make mol objects out of graph elements (edges and/or vertices) #
 
-def make_emol(m, alpha=2, ecolors=None):
+def make_emol(m, alpha=2, ecolors=None, etab=None):
     """
     make mol object out of edge colors
     """
-    etab = m.etab
+    if etab is None:
+        etab = m.etab
     if ecolors is None:
         ecolors = [maxecolor-1]*len(etab)
     # coordinates #
