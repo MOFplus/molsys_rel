@@ -527,7 +527,6 @@ class acab(base):
         symmetrize the solution of the optimal model in its symmetry solution
         subspace.
         """
-        self.use_sym=False
         if self.use_sym:
             assert hasattr(self,"permutations")
             if ecolors is not None and vcolors is not None:
