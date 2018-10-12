@@ -528,18 +528,34 @@ class acab(base):
         symmetrize the solution of the optimal model in its symmetry solution
         subspace.
         """
-        if ecolors is not None and vcolors is not None:
-            if self.alpha == 2:
-                colors = np.array(ecolors*2 + vcolors)[self.permutations]
-            else:
-                colors = np.array(ecolors + vcolors)[self.permutations]
-        elif ecolors is None:
-            colors = np.array(vcolors)[self.permutations]
-        elif vcolors is None:
-            if self.alpha == 2:
-                colors = np.array(ecolors)[self.permutations]
-            else:
-                colors = np.array(ecolors*2)[self.permutations]
+        self.use_sym=False
+        if self.use_sym:
+            assert hasattr(self,"permutations")
+            if ecolors is not None and vcolors is not None:
+                if self.alpha == 2:
+                    colors = np.array(ecolors*2 + vcolors)[self.permutations]
+                else:
+                    colors = np.array(ecolors + vcolors)[self.permutations]
+            elif ecolors is None:
+                colors = np.array(vcolors)[self.permutations]
+            elif vcolors is None:
+                if self.alpha == 2:
+                    colors = np.array(ecolors)[self.permutations]
+                else:
+                    colors = np.array(ecolors*2)[self.permutations]
+        else:
+            if ecolors is not None and vcolors is not None:
+                if self.alpha == 2:
+                    colors = np.array(ecolors*2 + vcolors)[np.newaxis,:]
+                else:
+                    colors = np.array(ecolors + vcolors)[np.newaxis,:]
+            elif ecolors is None:
+                colors = np.array(vcolors)[np.newaxis,:]
+            elif vcolors is None:
+                if self.alpha == 2:
+                    colors = np.array(ecolors)[np.newaxis,:]
+                else:
+                    colors = np.array(ecolors*2)[np.newaxis,:]
         colors = np.vstack({tuple(row) for row in colors})
         return colors
 
@@ -615,7 +631,8 @@ class acab(base):
             N = 0
             while N < Nmax:
                 self.report_step(N)
-                if self.cycle_step(): break
+                if self.cycle_step():
+                    break
                 N += 1
         except KeyboardInterrupt:
             N *= -1
