@@ -19,11 +19,12 @@ def test_compute_colors(fname, net):
     tt = toper.topotyper(m)
     assert tt.get_net() == [net]
 
-    folder = tt.write_bbs("%s%s%s" % ("colors", os.sep, name))
+    folder = tt.write_bbs("%s%s%s" % ("run", os.sep, name), index_run=True)
     tt.compute_colors()
 
     # TBI: it deserves new methods in topograph or
     # a specific colorgraph class
+    # this is even more urgent if molg graph edges unsorts mol edge tabs
     ecolors = tt.tg.molg.ep.color.a
     n = make_mol(tt.tg.mol, alpha=3, ecolors=ecolors)
     n.write("%s%s%s.mfpx" % (folder, os.sep, name))

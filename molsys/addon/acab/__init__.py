@@ -513,7 +513,6 @@ class acab(base):
         \"colors\" contains useful structures to weave frameworks later
         \"pretty\" contains just clearer views of these structures (do not use)
         """
-        self.rundir = _checkrundir("run")
         self.coldir = "%s%scolors" % (self.rundir, os.sep)
         self.predir = "%s%spretty" % (self.rundir, os.sep)
         _makedirs(self.coldir) #mfpx, w/  pbc, useful
@@ -604,9 +603,10 @@ class acab(base):
         else:
             return True
     
-    def cycle_loop(self, Nmax=1e4, alpha=2, write=True, use_sym=True,
+    def cycle_loop(self, Nmax=1e4, alpha=2, use_sym=True,
         use_edge=True, use_vertex=True,
-        constr_edge=True, constr_vertex=True):
+        constr_edge=True, constr_vertex=True,
+        rundir="run", newrundir=True):
         """
         cycle model
 
@@ -619,6 +619,10 @@ class acab(base):
         if N > 0: EXACT number of solutions (exhaustiveness)
         if N < 0: MINIMUM number of solutions (there may be others)
         """
+        if newrundir:
+            self.rundir = _checkrundir(rundir)
+        else:
+            self.rundir = rundir
         self.cycle_init(alpha=alpha, use_sym=use_sym,
             use_edge=use_edge, use_vertex=use_vertex,
             constr_edge=constr_edge, constr_vertex=constr_vertex)

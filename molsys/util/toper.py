@@ -1149,7 +1149,7 @@ class topotyper(object):
                 ## midpoint cluster
                 allconnt = list(set(allconnv_) & set(allconnu_))
                 assert len(allconnt) == 1,\
-                    "only 1 cluster btw. vertex clusters!"
+                    "only 1 edge must be btw. 2 vertices"
                 t = allconnt[0] # the only one
                 ubbt = self.bb2ubb[t]
                 sign1 = self.get_color_signature(v, t)
@@ -1167,6 +1167,7 @@ class topotyper(object):
         if sort_flag is True:
             # sort colors according to color signature lexsorting
             # it is invariant wrt. order of occurrence
+            # it sorts just the colortypes
             keys, items = zip(*colorsigns.items())
             sorting_dict = dict(zip(items,argsorted(keys)))
             self.tg.molg.ep.color.a = [sorting_dict[i] for i in self.tg.molg.ep.color]
