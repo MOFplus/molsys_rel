@@ -38,6 +38,23 @@ Some addons and utility modules require additional packages to be installed. The
 
 There will soon be a testing framework framework available.
 
+## Building the Documentation
+
+Mandatory dependencies to built the documentation can be obtained via pip:
+```
+pip install Sphinx
+pip install sphinx-rtd-theme
+```
+The Documentation can be compiled by running
+```
+make html
+```
+in the doc folder.
+A Built directory containing
+```
+/built/html/index.html
+```
+was created. It can be opened with the browser of your choice
 
 ## Contributing
 
