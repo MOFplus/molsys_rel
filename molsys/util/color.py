@@ -151,13 +151,13 @@ def make_vmol(m, vcolors=None):
     if hasattr(m,'supercell'): mv.supercell = m.supercell[:]
     return mv
 
-def make_mol(m, alpha=2, ecolors=None, vcolors=None, use_edge=True, use_vertex=True):
+def make_mol(m, alpha=2, ecolors=None, vcolors=None, etab=None, use_edge=True, use_vertex=True):
     """
     make mol object out of graph elements (edges and/or vertices)
     if both edges and vertices, it takes care of the connectivity too
     """
     if use_edge and use_vertex:
-        me = make_emol(m, alpha=alpha, ecolors=ecolors)
+        me = make_emol(m, alpha=alpha, ecolors=ecolors, etab=etab)
         ne = me.natoms
         mv = make_vmol(m, vcolors=vcolors)
         mm = copy.deepcopy(me)
@@ -180,7 +180,7 @@ def make_mol(m, alpha=2, ecolors=None, vcolors=None, use_edge=True, use_vertex=T
             mm.set_ptab(ptab, pconn_flag=True)
         mm.sort_tabs(etab_flag=True, conn_flag=True)
     elif use_edge:
-        mm = make_emol(m, alpha=alpha, ecolors=ecolors)
+        mm = make_emol(m, alpha=alpha, ecolors=ecolors, etab=etab)
     elif use_vertex:
         mm = m.make_vmol(vcolors=vcolors)
     if hasattr(m,'cell'): mm.set_cell(m.cell)
