@@ -32,8 +32,8 @@ def test_nets_loose_axis(net, ncolors, maxcycle):
     m.acab.setup_model()
     m.acab.setup_ecratio_per_vertex([2,1])
     m.acab.setup_vcratio_per_edge([1])
-    sele = [i for i,e in enumerate(m.conn) if len(e) == 6]
-    m.acab.setup_angle_btw_edges(color=1, theta=2.6, sele=sele)
+    vsele = [i for i,e in enumerate(m.conn) if len(e) == 6]
+    m.acab.setup_angle_btw_edges(color=1, theta=2.6, vsele=vsele)
     N = m.acab.cycle_loop(Nmax=maxcycle, alpha=3, constr_vertex=False,
         rundir="run/"+net)
     assert N == ncolors, "number of found colors %d must be equal to %d" \
@@ -46,8 +46,8 @@ def test_nets_strict_axis(net, ncolors, maxcycle):
     m.acab.setup_model()
     m.acab.setup_ecratio_per_vertex([2,1])
     m.acab.setup_vcratio_per_edge([1])
-    sele = [i for i,e in enumerate(m.conn) if len(e) == 6]
-    m.acab.setup_angle_btw_edges(color=1, theta=3, sele=sele)
+    vsele = [i for i,e in enumerate(m.conn) if len(e) == 6]
+    m.acab.setup_angle_btw_edges(color=1, theta=3, vsele=vsele)
     N = m.acab.cycle_loop(Nmax=maxcycle, alpha=3, constr_vertex=False,
         rundir="run/"+net)
     assert N == ncolors, "number of found colors %d must be equal to %d" \

@@ -13,10 +13,6 @@ def write(mol,fname, name='', write_bonds=True):
         -fname  (str) : name of the cif file
         -mol    (obj) : instance of a molclass
     """
-    try:
-        f.readline ### do nothing
-    except AttributeError:
-        raise IOError, "%s is not readable" % f
     f = open(fname, 'w')
     f.write("data_mofplus.org:%s\n" % name)
     f.write("_symmetry_cell_setting           triclinic \n")
