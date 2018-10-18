@@ -166,8 +166,8 @@ class ric:
 
     def set_rics(self, bnd, ang, oop, dih, sanity_test=True):
         """
-        Method to set the rics from outsided. Args has to be be properly sorted lists of 
-        ic objectos as if they are supplied by find_rics.
+        Method to set the rics from outside. Args has to be a properly sorted lists of 
+        ic objects as if they are supplied by find_rics.
 
         Args:
             bnd(list): list of all bonds
@@ -1720,7 +1720,7 @@ class ff(base):
             # pack rics
             ric = self.ric_type[ic]
             n = len(ric)
-            l = len(ric[0])
+            l = len(ric[0])+1
             filt = None
             if ic == "dih":
                 l += 1
@@ -1731,7 +1731,7 @@ class ff(base):
                 # we take only the first index and remove the ptype to lookup in ptyp dictionary
                 pi = parind[i][0]
                 ipi = ptyp[pi.split("->")[1]]
-                line = list(r)
+                line = [ipi]+list(r)
                 # add ring attribute if it is a dihedral
                 if ic=="dih":
                     if r.ring is not None:
@@ -1768,176 +1768,63 @@ class ff(base):
                 ptype, values = par[i]
                 pars[j,:npars[j,0]] = np.array(values)
             data[ic+"_par"] = (ptypes, names, npars, pars)
+            data["FF"] = self.par.FF
         return data
 
     def unpack(self, data):
         """
-        unpack data
+        unpack data using exactly the structure produced in pack
         """
-        """ TBI
-        hash = None
-        fric = open(fname+".ric", "r")
         ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
-        ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
         ric      = {}
-        # read in ric first, store the type as an attribute in the first place
-        stop = False
-        assigned = []
-        while not stop:
-            line = fric.readline()
-            if len(line)==0:
-                # end of ric file
-                stop = True
-            sline = line.split()
-            if len(sline)> 0:
-                if sline[0] == "HASH:": 
-                    hash = sline[1]
-                elif sline[0] in ric_type:
-                    curric = sline[0]
-                    curric_len = ric_len[ric_type.index(curric)]
-                    assigned.append(curric)
-                    nric = int(sline[1])
-                    rlist = []
-                    for i in range(nric):
-                        sline = fric.readline().split()
-                        rtype = int(sline[1])
-                        aind  = map(int, sline[2:curric_len+2])
-                        aind  = np.array(aind)-1
+        for r in ric_type:
+            rdata = data[r]
+            nric = rdata.shape[0]    
+            rlist = []
+            rlen  = rdata.shape[1]
+            if r == "dih":
+                rlen -= 1 # in dih the ring attribute is stored as an additional column
+            for i in xrange(nric):
+                rtype = rdata[i,0]
+                aind  = rdata[i,1:rlen]
+                if r == "dih":
+                    if rdata[i,-1] != 0:
+                        icl = ic(aind, type=rtype, ring=rdata[i,-1])
+                    else:
                         icl = ic(aind, type=rtype)
-                        for attr in sline[curric_len+2:]:
-                            atn,atv = attr.split("=")
-                            icl.__setattr__(atn, int(atv))
-                        rlist.append(icl)
-                    ric[curric] = rlist    
-        fric.close()
-        logger.info("read RIC from file %s.ric" % fname)
+                else:
+                    icl = ic(aind, type=rtype)
+                rlist.append(icl)
+            ric[r] = rlist    
         # now add data to ric object .. it gets only bnd, angl, oop, dih
         self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
         # time to init the data structures .. supply vdw and cha here
         self._init_data(cha=ric["cha"], vdw=ric["vdw"])
         self._init_pardata()
-        # now open and read in the par file
-        if fit:
-            nkeys={}
-            self.fit=True
-            fpar = open(fname+".fpar", "r")
-            # in the fit case we first screen for the variables block and read it ini
-            self.par.attach_variables()
-            #self.variables = varpars()
-            line = fpar.readline()
-            stop = False
-            azone = False
-            vars  = False
-            refsysname = False
-            while not stop:
-                sline = line.split()
-                if len(sline)>0:
-                    if sline[0] == "azone":
-                        self.active_zone = (np.array(map(int, sline[1:]))-1).tolist()
-                        azone = True
-                    elif sline[0] == "variables":
-                        nvar = int(sline[1])
-                        for i in range(nvar):
-                            sline = fpar.readline().split()
-#                            nkey = self.par.variables[sline[0]] = varpar(self.par, sline[0], 
-#                                          val = float(sline[1]), 
-#                                          range = [float(sline[2]), float(sline[3])], 
-#                                          bounds = [sline[4], sline[5]])
-                            nkey = self.par.variables.__setitem__(sline[0], varpar(self.par, sline[0], 
-                                          val = float(sline[1]), 
-                                          range = [float(sline[2]), float(sline[3])], 
-                                          bounds = [sline[4], sline[5]]))
-                            if nkey != sline[0]:nkeys[sline[0]]=nkey
-                        vars = True
-                    elif sline[0] == "refsysname":
-                        self.refsysname = sline[1]
-                        refsysname = True
-#                    if azone == vars == refsysname == True:
-                    if vars == True:
-                        fpar.seek(0)
-                        stop = True
-                        break
-                line = fpar.readline()
-                if len(line) == 0:
-                    raise IOError("Variables block and/or azone in fpar is missing!")
-        else:
-            fpar = open(fname+".par", "r")
-        stop = False
-        found_hash = False
-        while not stop:         
-            line = fpar.readline()
-            if len(line) == 0:
-                stop = True
-            sline = line.split()
-            if len(sline)>0:
-                if sline[0] == "HASH:":
-                    found_hash = True
-                    assert sline[1] == hash, "Hashes of ric and par file do not match!"
-                if sline[0][0] == "#": continue 
-                curric = sline[0].split("_")[0]
-                if sline[0]=="FF":
-                    self.par.FF = sline[1]
-                elif curric in ric_type:
-                    par = self.par[curric]
-                    t2ident = {} # maps integer type to identifier
-                    ntypes = int(sline[1])
-                    for i in range(ntypes):
-                        sline = fpar.readline().split()
-                        if sline[0][0] == "#": continue 
-                        # now parse the line 
-                        itype = int(sline[0])
-                        ptype = sline[1]
-                        ident = sline[-1]
-                        param = sline[2:-2]
-                        if self.fit:
-                            newparam = []
-                            # if we read a fpar file we need to test if there are variables
-                            for paridx,p in enumerate(param):
-                                if p[0] == "$":
-                                    # check if variable name was overwritten
-                                    if p in nkeys: p = nkeys[p]
-                                    #import pdb; pdb.set_trace()
-                                    if not p in self.par.variables:
-                                        raise IOError("Varible %s undefiend in variable block" % p)
-                                    # for multistruc fits the $ name are not anymore valid, it has
-                                    # to be checked firtst if the variable is already defined under
-                                    # a different name
-                                    found = False
-                                    for vname in self.par.variables.keys():
-                                        if (curric, ident, paridx) in self.par.variables[vname].pos:
-                                            found = True
-                                            p = vname
-                                            break
-                                    if not found:
-                                        self.par.variables[p].pos.append((curric,ident,paridx))
-                                    newparam.append(p)
-                                else:
-                                    newparam.append(float(p))
-                            param = newparam
-                        else:
-                            param = map(float, param)
-                        if ident in par:
-                            logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
-                            raise ValueError("Identifier %s appears twice" % ident)
-                        par[ident] = (ptype, param)
-                        if itype in t2ident:
-                            t2ident[itype].append(ident)
-                        else:
-                            t2ident[itype] = [ident]
-                    # now all types are read in: set up the parind datastructure of the ric
-                    parind = self.parind[curric]
-                    for i,r in enumerate(self.ric_type[curric]):
-                        parind[i] = t2ident[r.type]
-        fpar.close()
-        # check if both fpar and ric file have hashes
-        if hash is not None and found_hash == False:
-            raise IOError("ric file has a hash, but par has not")
-        logger.info("read parameter from file %s.par" % fname)
-        ### replace variable names by the current value
-        if self.fit: 
-            self.par.variables.cleanup()
-            self.par.variables()
-        """
+        # now do par part
+        self.par.FF = data["FF"]
+        for r in ric_type:
+            par = self.par[r]
+            ptypes, names, npars, pars = data[r+"_par"]
+            t2ident = {} # maps integer type to identifier
+            ntypes = len(ptypes)
+            for i in range(ntypes):
+                itype = npars[i,1]
+                ptype = ptypes[i]
+                ident = names[i]
+                param = list(pars[i,0:npars[i,0]]) # npars[i,0] is the number of params
+                if ident in par:
+                    logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
+                    raise ValueError("Identifier %s appears twice" % ident)
+                par[ident] = (ptype, param)
+                if itype in t2ident:
+                    t2ident[itype].append(ident)
+                else:
+                    t2ident[itype] = [ident]
+            # now all types are read in: set up the parind datastructure of the ric
+            parind = self.parind[r]
+            for i,ri in enumerate(self.ric_type[r]):
+                parind[i] = t2ident[ri.type]
         return
 
 
