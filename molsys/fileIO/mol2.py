@@ -10,10 +10,12 @@ def read(mol, f, delimiter=','):
         -mol (obj): instance of a molclass
         -delimiter=',' (str): coordinate delimiter
     """
+    ### read check ###
     try:
         f.readline ### do nothing
     except AttributeError:
         raise IOError, "%s is not readable" % f
+    ### read func ###
     s = f.read().splitlines()
     bonds,atoms=0,0
     mol.xyz,mol.elems,mol.ctab = [],[],[]
@@ -42,13 +44,20 @@ def read(mol, f, delimiter=','):
     mol.set_nofrags()
     return
 
-def write(mol, fname):
+def write(mol, f):
     """
     Write mol sytem in mol2 format 
     ### NOT YET IMPLEMENTED
     :Parameters:
-        -fname  (str): name of the plain file
         -mol    (obj): instance of a molclass
+        -f (obj) : file object or writable object
     """
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not writable" % f
+    ### write func ###
+
     print('NOT YET IMPLEMENTED!')
     return

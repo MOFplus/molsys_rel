@@ -11,10 +11,12 @@ import string
 from molsys.util.units import angstrom, kcalmol
 
 def read(mol, f, gradient = False, trajectory=False, cycle = -1):
+    ### read check ###
     try:
         f.readline ### do nothing
     except AttributeError:
         raise IOError, "%s is not readable" % f
+    ### read func ###
     if gradient:
         return read_gradfile(mol,f,cycle)
     if trajectory:
@@ -195,13 +197,17 @@ def read_gradfile(mol, f, cycle):
     return
 
 
-def write(mol, fname):
-    f = open(fname, "w")
+def write(mol, f):
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not writable" % f
+    ### write func ###
     f.write("$coord\n")
     c = mol.xyz*angstrom
     for i in range(mol.natoms):
         f.write("  %19.14f %19.14f %19.14f   %-2s\n" % 
                 (c[i,0],c[i,1], c[i,2], mol.elems[i]))
     f.write("$end\n")
-    f.close()
     return

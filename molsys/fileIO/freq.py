@@ -51,7 +51,6 @@ def read(mol, f):
             nm_idx = int(stage)-1
             eigvec[nmcount,nm_idx,:] = numpy.array([float(i) for i in c.split() if c != ''])
             nmcount += 1
-    f.close()
     mol.natoms = len(elems)
     mol.xyz = numpy.array(xyz)/angstrom
     mol.elems = elems

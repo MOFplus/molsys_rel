@@ -158,6 +158,7 @@ class mol(mpiobject):
         else:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
+        f.close()
         return
 
     @classmethod
@@ -335,10 +336,26 @@ class mol(mpiobject):
                     ftype = 'mfpx' #default
             logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
             if ftype in formats.read:
-                formats.write[ftype](self,fname,**kwargs)
+                with open(fname,"w") as f:
+                    formats.write[ftype](self,f,**kwargs)
             else:
                 logger.error("unsupported format: %s" % ftype)
                 raise IOError("Unsupported format")
+        return
+
+    def to_string(self, f, ftype='mfpx', **kwargs):
+        ''' generic reader for the mol class, reading from a string
+        Parameters:
+            f (obj)      : ByteIO object to be written
+            ftype="mfpx" : the parser type that is used to read the file
+            **kwargs     : all options of the parser are passed by the kwargs
+                             see molsys.io.* for detailed info'''
+        logger.info("writing string as %s" % str(ftype))
+        if ftype in formats.read:
+            formats.write[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
         return
 
     def view(self, program='moldenx', fmt='mfpx', **kwargs):

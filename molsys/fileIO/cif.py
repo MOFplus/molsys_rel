@@ -6,14 +6,19 @@ import logging
 
 logger = logging.getLogger("molsys.io")
 
-def write(mol,fname, name='', write_bonds=True):
+def write(mol,f, name='', write_bonds=True):
     """
     Routine, which writes a cif file in P1
     :Parameters:
-        -fname  (str) : name of the cif file
-        -mol    (obj) : instance of a molclass
+        -mol (obj) : instance of a molclass
+        -f (obj) : file object or writable object
     """
-    f = open(fname, 'w')
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not writable" % f
+    ### write func ###
     f.write("data_mofplus.org:%s\n" % name)
     f.write("_symmetry_cell_setting           triclinic \n")
     f.write("_symmetry_space_group_name_H-M   'P 1' \n")
@@ -52,10 +57,9 @@ def write(mol,fname, name='', write_bonds=True):
             f.write('%s%d   %s%d \n' % (e1,c1,e2,c2) )
     f.write("  \n")
     f.write("#END  \n")
-    f.close()
     return
 
-def read(mol, fname, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None):
+def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None):
     """read CIF file
     :Arguments:
     - make_P1(bool): if True: make P1 unit cell from primitive cell
@@ -70,7 +74,7 @@ def read(mol, fname, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=N
         import CifFile
     except ImportError:
         raise ImportError('pycifrw not installed, install via pip!')
-    cf = CifFile.ReadCif(fname)
+    cf = CifFile.ReadCif(f)
     if len(cf.keys()) != 1:
         for key in cf.keys(): print(key)
         raise IOError('Cif File has multiple entries ?!')

@@ -9,14 +9,15 @@ def read(mol, f):
     """
     Read mfpx file
     :Parameters:
-        -f   (obj): mfpx file object
+        -f   (obj): mfpx file object or mfpx-like readable object
         -mol (obj): instance of a molclass
     """
-    ### read header ###
+    ### read check ###
     try:
         f.readline ### do nothing
     except AttributeError:
         raise IOError, "%s is not readable" % f
+    ### read func ###
     ftype = 'xyz'
     lbuffer = f.readline().split()
     stop = False
@@ -85,16 +86,21 @@ def read(mol, f):
         txyz.parse_connstring(mol,con_info)
     return
 
-def write(mol, fname, fullcell = True):
+def write(mol, f, fullcell = True):
     """
     Routine, which writes an mfpx file
     :Parameters:
         -mol   (obj) : instance of a molsys class
-        -fname (str) : name of the mfpx file
+        -f (obj) : file object or writable object
         -fullcell  (bool): flag to specify if complete cellvectors arre written
     """
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not writable" % f
+    ### write func ###
     if mol.fragtypes == []: mol.set_nofrags()
-    f = open(fname, 'w')
     if mol.is_topo:
         ftype = 'topo'
         if mol.use_pconn == False:
@@ -140,6 +146,5 @@ def write(mol, fname, fullcell = True):
         txyz.write_body(f,mol)
     else:
         txyz.write_body(f,mol,topo=True)
-    f.close()
     return
 

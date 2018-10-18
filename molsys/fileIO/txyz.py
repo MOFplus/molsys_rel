@@ -14,10 +14,12 @@ def read(mol, f, topo = False):
         -mol  (obj) : instance of a molclass
         -topo (bool): flag for reading topo information
     """
+    ### read check ###
     try:
         f.readline ### do nothing
     except AttributeError:
         raise IOError, "%s is not readable" % f
+    ### read func ###
     lbuffer = f.readline().split()
     mol.natoms = int(lbuffer[0])
     if len(lbuffer) >1 and lbuffer[1] == "molden": lbuffer = [lbuffer[0]]
@@ -316,20 +318,24 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
     return
 
 
-def write(mol, fname, topo = False, frags = False, pbc=True, moldenr=False):
+def write(mol, f, topo = False, frags = False, pbc=True, moldenr=False):
     """
     Routine, which writes an txyz file
     :Parameters:
-        -fname  (str) : name of the txyz file
         -mol    (obj) : instance of a molclass
+        -f (obj) : file object or writable object
         -topo   (bool): flag top specify if pconn should be in txyz file or not
     """
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not writable" % f
+    ### write func ###
     cellparams = mol.cellparams
-    f = open(fname, 'w')
     if cellparams is not None:
         f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)
     write_body(f, mol, topo = topo, frags = frags, pbc = pbc, moldenr = moldenr)
-    f.close()
     return
