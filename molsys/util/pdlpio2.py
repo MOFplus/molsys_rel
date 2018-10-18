@@ -215,6 +215,34 @@ class pdlpio2(mpiobject):
                 pdlp_cnc_table = system.require_dataset("cnc_table", shape=cnc_table.shape, dtype=cnc_table.dtype)
                 pdlp_cnc_table[...] = cnc_table
             system.attrs["bcd"] = self.ffe.mol.get_bcond()
+            if "ff" in self.ffe.mol.loaded_addons:
+                # a force field is loaded: we assume it is also initialized. TBI: a switch in the ff addon to verify this
+                data = self.ffe.mol.ff.pack()
+                ff = system.require_group("ff")
+                ric = ff.require_group("ric")
+                par = ff.require_group("par")
+                if data["FF"] is not None:
+                    par.attrs["FF"] = data["FF"]
+                else:
+                    par.attrs["FF"] = ""
+                for r in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+                    # write ric arrays to pdlp file
+                    d = data[r]
+                    fd = ric.require_dataset(r, shape=d.shape, dtype="i")
+                    fd[...] = d
+                    # write par data to pdlp file
+                    #  order is ptype, names, npars, pars
+                    p = data[r+"_par"]
+                    fp = par.require_group(r)
+                    n = len(p[0]) # number of paramters for this ric type
+                    fptypes = fp.require_dataset("ptypes", shape=(n,), dtype=self.str_dt)
+                    fptypes[...] = p[0]
+                    fnames = fp.require_dataset("names", shape=(n,), dtype=self.str_dt)
+                    fnames[...] = p[1]
+                    fnpars = fp.require_dataset("npars", shape=p[2].shape, dtype="i")
+                    fnpars[...] = p[2]
+                    fpars = fp.require_dataset("pars", shape=p[3].shape, dtype="float64")
+                    fpars[...] = p[3]
         return
 
     def compare_system(self):
@@ -293,6 +321,33 @@ class pdlpio2(mpiobject):
                 self.mpi_comm.Bcast(cell)
         mol.set_xyz(xyz)
         mol.set_cell(cell)
+        # new check if addon data is present in the system group
+        # start with ff
+        ff_data = None
+        if self.is_master:
+            if "ff" in system.keys():
+                # ok, there is force field data in this file lets read it in as a packed directory
+                ff_data = {}
+                ff = system["ff"]
+                ric = ff["ric"]
+                par = ff["par"]
+                ff_data["FF"] = par.attrs["FF"]
+                for r in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+                    # read in ric integer arrays
+                    ff_data[r] = np.array(ric[r])
+                    # now get the parameter
+                    rpar = par[r]
+                    ff_data[r+"_par"] = (\
+                                        list(rpar["ptypes"]),\
+                                        list(rpar["names"]),\
+                                        np.array(rpar["npars"]),\
+                                        np.array(rpar["pars"]))
+        if self.mpi_size>1:
+            ff_data = self.mpi_comm.bcast(ff_data)
+        if ff_data is not None:
+            # yes there was ff data .. set up mol addon ff
+            mol.addon("ff")
+            mol.ff.unpack(ff_data)
         return mol
 
     def add_stage(self, stage):
