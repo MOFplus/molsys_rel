@@ -10,8 +10,6 @@ Created on Mon Jun 11 14:19:27 2018
         
         contains class acab
 """
-debug = True
-
 from molsys.addon import base
 from molsys.util.misc import normalize_ratio
 
@@ -145,7 +143,7 @@ class acab(base):
     #    #    self.otab = []
     #    #    self.oconn = []
 
-    def setup_model(self, verbose=False, ctrlc=True, *args, **kwargs):
+    def setup_model(self, verbose=False, debug=True, ctrlc=True, *args, **kwargs):
         """
         initialize the model and its utility attributes
 
@@ -171,6 +169,7 @@ class acab(base):
         self.assert_flag(ctrlc)
         if not verbose:
             self.model.hideOutput()
+        self.debug = debug
         if not ctrlc:
             logger.warning("KeyboardInterrupt is DISABLED: " \
                 "hope you have your own good reasons")
@@ -535,7 +534,7 @@ class acab(base):
             raise TypeError("unconstraint step solutions: infinite loop!")
         m.addon("spg")
         self.permutations = m.spg.generate_symperms()
-        if debug:
+        if self.debug:
             m.atypes = [0 for i in m.atypes]
             m.write("%s%ssym.mfpx" % (self.rundir, os.sep))
             m.write("%s%ssym.txyz" % (self.rundir, os.sep), pbc=False)
@@ -548,7 +547,6 @@ class acab(base):
         \"colors\" contains useful structures to weave frameworks later
         \"pretty\" contains just clearer views of these structures (do not use)
         """
-        self.rundir = _checkrundir("run")
         self.coldir = "%s%scolors" % (self.rundir, os.sep)
         self.predir = "%s%spretty" % (self.rundir, os.sep)
         _makedirs(self.coldir) #mfpx, w/  pbc, useful
@@ -562,18 +560,33 @@ class acab(base):
         symmetrize the solution of the optimal model in its symmetry solution
         subspace.
         """
-        if ecolors is not None and vcolors is not None:
-            if self.alpha == 2:
-                colors = np.array(ecolors*2 + vcolors)[self.permutations]
-            else:
-                colors = np.array(ecolors + vcolors)[self.permutations]
-        elif ecolors is None:
-            colors = np.array(vcolors)[self.permutations]
-        elif vcolors is None:
-            if self.alpha == 2:
-                colors = np.array(ecolors)[self.permutations]
-            else:
-                colors = np.array(ecolors*2)[self.permutations]
+        if self.use_sym:
+            assert hasattr(self,"permutations")
+            if ecolors is not None and vcolors is not None:
+                if self.alpha == 2:
+                    colors = np.array(ecolors*2 + vcolors)[self.permutations]
+                else:
+                    colors = np.array(ecolors + vcolors)[self.permutations]
+            elif ecolors is None:
+                colors = np.array(vcolors)[self.permutations]
+            elif vcolors is None:
+                if self.alpha == 2:
+                    colors = np.array(ecolors)[self.permutations]
+                else:
+                    colors = np.array(ecolors*2)[self.permutations]
+        else:
+            if ecolors is not None and vcolors is not None:
+                if self.alpha == 2:
+                    colors = np.array(ecolors*2 + vcolors)[np.newaxis,:]
+                else:
+                    colors = np.array(ecolors + vcolors)[np.newaxis,:]
+            elif ecolors is None:
+                colors = np.array(vcolors)[np.newaxis,:]
+            elif vcolors is None:
+                if self.alpha == 2:
+                    colors = np.array(ecolors)[np.newaxis,:]
+                else:
+                    colors = np.array(ecolors*2)[np.newaxis,:]
         colors = np.vstack({tuple(row) for row in colors})
         return colors
 
@@ -624,9 +637,10 @@ class acab(base):
         else:
             return True
     
-    def cycle_loop(self, Nmax=1e4, alpha=2, write=True, use_sym=True,
+    def cycle_loop(self, Nmax=1e4, alpha=2, use_sym=True,
         use_edge=True, use_vertex=True,
-        constr_edge=True, constr_vertex=True):
+        constr_edge=True, constr_vertex=True,
+        rundir="run", newrundir=True):
         """
         cycle model
 
@@ -639,6 +653,10 @@ class acab(base):
         if N > 0: EXACT number of solutions (exhaustiveness)
         if N < 0: MINIMUM number of solutions (there may be others)
         """
+        if newrundir:
+            self.rundir = _checkrundir(rundir)
+        else:
+            self.rundir = rundir
         self.cycle_init(alpha=alpha, use_sym=use_sym,
             use_edge=use_edge, use_vertex=use_vertex,
             constr_edge=constr_edge, constr_vertex=constr_vertex)
@@ -649,7 +667,8 @@ class acab(base):
             N = 0
             while N < Nmax:
                 self.report_step(N)
-                if self.cycle_step(): break
+                if self.cycle_step():
+                    break
                 N += 1
         except KeyboardInterrupt:
             N *= -1
@@ -1489,46 +1508,79 @@ __version__ = "2.1.1"
 header= """
 ********************************************************************************
 
-                                 .';ldxO00KKKK0Okdl:'.
-                            ':lxO0kdoc:;;      ;:cldxO0koc,.
-                       .;ok0xl;..            :xxdc.      :dK0.
-                    'lOOo;. .cdd:            OKxd0Kc      cKl               ..
-                 ,o0x:.     OKkkKO'         'KK,.kKc     ,Kd              .',.
-              .l0k:.       .K0  lKK,        oKKKKk.     .00'            .,;'
-            .d0d.          .KK'  dK0.       0KdkKKc     OKxkkl,       .,;,.
-          .dKo. ,xd.        dKO.'lKKO      'KO  OK0    dKc,:loxko,  .,;,.
-         cKx.  'KKk.        .OKK0xl0Ko     oKc  OK0   cKk:'..':lod:,,;,.
-       'OO,    xKK.          .0Kl  '0Kc   .0KdcxK0,  ;K0ooooc,.';,,,;c.
-      cKo      ,0Kd.          'KKc  .dc    .,:clc.  .0KNX0xolc;,'',;cxOl
-     dK:         lK0l.     .   ,xd   :ldxkkOOkxdlc,'O0ok0XKo;,'',;,.':lkk'
-    dK;           .oK0oclx0KO.  ,oOOdc;'         :ok0'  ,c;,'.',:loc..;cdOc
-   oK;.,,,'.        .oOK0ko;.,d0d;.          ....      .,,..',:O0dooo,.'coOo
-  cKl,KK0OKKKOxl;.         ;OO:      .',;,''......;..','...,,'x0NNkooo:..coOd
- .0k '0Kc     kKKK0kdc.  .x0:     ...';,,,..lo....;,,'...','   oOXWOooo:..coOl
- dK'  .dKkc   kKc   ld. ,0k.     .,;;;,...cOO:...;,'...',,.     cOXWOood;.'cdO,
-.Kx     .;o0KKKKc      ;Kd      .','....,xO0O;..;'....,,.        cOXWkooo'.;ckk
-lK,           ;lxOKKO.'Kx      ,;'.....dO0XX0Oollc::coddddl;.     d0NXoooc..cdO;
-kKd                   xK.       ,;,..,kOKXXXXXKK0000KKKKXXK0k;    ,OKWkooo..:lOo
-kKdliclkK0OO00OOkxdollKx      .,'...lO0XXXx..,cok0XXXXXXXXXXOk.   .O0W0ood,.;ckk
-       cOoc..oddkNK0l;:,      ,,.,;xOKXXXXk   ,xl; lXXXXXXXXOk.    x0WKood;.,ckO
-       cOoc..oookWXO,    ',''',;lkOKXXXXXXXo.  ,;,lXXXXXXXX0k,     k0WKood;.,ckO
-       ;Odc..loodNNOc    'cc;cdO0KXXXXXXXXXXXOdxOXXXXXXXXKOd.     .OKW0ood'.;cOx
-       .Oxc,.;dooKW0k    ,xOO0KXXXXXXXXXXXXXXXXXXKOkxOOOko,       :OXWxooo..coOc
-        dOl:..oooxWXOc     ;xOKXXXXXXXXXXXXXXXXXKOc              .k0WKood;.,cxO.
-        'Oxc,.;doo0WKO;      'dO0XXXXXXXXXXXXXXXOx              .x0NXdool..:lOo
-         lOoc..:ooo0WKO:       .oO0XXXXXXXXXXXXKO;             .x0NNxooo..;ckk.
-          dOl:..cooo0WX0o.       .lO0KXXXXXXXXXOx             ,kKNXdooo'.;cxO,
-          .xkl:..:oookNN0k;        .ck0KXXXXXXOk.           .d0XN0oool'.;cxO;
-           .dOoc'.,ooodONXKkc.       .:kOKXX0Oo.          ,d0XNKxooo:..;lxO,
-             cOxc;..:ooodONNK0x:.       ,dOxc.        .,oOKXNKxoool'.'cokx.
-              .xkoc,..:ooookKNNK0Oo:,..          .';lx0KXNXOdoool,..:lxOc
-                :kxoc,..;looook0XNNXKK00kxxddxkO00KXXNXKOdoooo:'.';ldOd.
-                  :kkoc;..';loooooxkO0KXXNNNNNNXXK0Oxdoooooc,..,:ldOd'
-                    ,dkxoc;'..';clooooooooooooooooooool:,...,:ldkkc.
-                      .;dOxdl:;'....',;::ccccc::;;,'...',:codkkc.
-                         .,cxkxdolc:;,,'''....''',,;:lodxkko;.
-                              .;ldkkkxxddddodddddxxkkxo:,.
-                                   .,:ldxkOOOOkxoc;.
+                                                          .k:
+                                                          XMk
+                                                         xMMk
+                                                        :MMMx
+                                                       .WMMMd
+                                                       KMMMMo
+                                                      xMMMMMl
+                                                     :MMMMMM:
+                                                    .WMMMMMM;
+                                                    KMMMMMMM,
+                                                   dMMMMMMMM'
+                           kko;.                  ,MMMMMMMMM.         .:oko
+                          .OOOOOkl.  ...',,;;;:; .NMMMMMMMMM.      .lkOOOOk
+                          .OOOOOOOOo.,kOOOOOOOO, OMMMMMMMMMM .Okdl:'..,cxOk
+                        '' kOOOOOOOOk..xOxo:,'. lMMMMMMMMMMM 'OOOOOOOOo;..;
+                    'cxOOk ,OOOOOOOOOO, .':ldd 'MMMMMMMMMMMW ,OOOOOOOOOOOx'
+                 ,oOOOOOOOd ,OOOOOOOOOOxOOOOO. NMMMMMMMMMMMX .ckOOOOOOOOOOOl
+              'oOOOOOOOOOOOx..dOOOOOOOOOOOOO; kMMMMMMMMMMMMK '; ;OOOOOOOOOOOo
+            ;kOOOOOOOOOOOOOOOl..dOOOOOOOOOOo cMMMMMMMMMMMMM0 :Ox..OOOOOOOOOOO;
+          ;kOOOOOOOOOOOOOOOOOOx ,OOOOOOOOOk..WMMMMMMMMMMMMMk cOOx ,OOOOOOOOOOk
+        'xOOOOOOOOOOOOOOOOOOOO, kOOOOOOOOO, XMMMMMMMMMMMMMMx lOOOc dOOOOOOOOOO'
+       lOOOOOOOOOOOOOOOOOOOOOk..OOOOOOOOOk .0XNWMMMMMMMMMMMd lOOOk ,OOOOOOOOOO;
+     .xOOOOOOOOOOOOOOOOOOOOOd  ,OOOOOOOOOOx;.................kOOOO..OOOOOOOOOO:
+    .kOOOOOOOOOOOOOOOOOOOOOc   ;OOOOOOOOOOOOOOOOOOOkxxdoolloOOOOOO.'OOOOOOOOOO;
+   .OOOOOOOOOOOOOOOOOOOOOOc    'OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO ;OOOOOOOOOO.
+  .kOOOOOOOOOOOOOOOOOOOOOo      OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOx cOOOOOOOOOk
+  xOOOOOOOOOOOOOOOOOOOOOx       lOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOl oOOOOOOOOO:
+ ;OOOOOOOOOOOOOOOOOOOOOO.       .OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOc xOOOOOOOOk
+ kOOOOOOOOOOOOOOOOOOOOOo         ;OOOOOO:     OOOOOOOOOO     lOOO: xOOOOOOOO,
+,OOOOOOOOOOOOOOOOOOOOOO'          lOOOOO,      .kOOOOd.      cOOOl oOOOOOOOl
+lOOOOOOOOOOOOOOOOOOOOOO            lOOOOk,    'dOOOOOOo.    ;OOOOk :OOOOOOx
+xOOOOOOOOOOOOOOOOOOOOOk             cOOOOOOxxkOOOOOOOOOOkxxOOOOOO; .OOOOOO.
+OOOOOOOOOOOOOOOOOOOOOOx              ,kOOOOOOOOOOOOOOOOOOOOOOOOk.   kOOOOc
+OOOOOOOOOOOOOOOOOOOOOOO               .dOOOOOOOOOOOOOOOOOOOOOOo     ;OOOO,
+kOOOOOOOOOOOOOOOOOOOOOO.                oOOOOOOOOOOOOOOOOOOOOc       :OOO'
+oOOOOOOOOOOOOOOOOOOOOOOl                 dOOOOOOOOOOOOOOOOOOl         'xO.
+,OOOOOOOOOOOOOOOOOOOOOOO.                 xOOOOOOOOOOOOOOOOx
+ kOOOOOOOOOOOOOOOOOOOOOOx                 .OOOklcxOOdcoOOOO.
+ :OOOOOOOOOOOOOOOOOOOOOOOx                 oOO;   Ox   cOOc
+  kOOOOOOOOOOOOOOOOOOOOOOOx.               'OOklcxOOdclOOO.
+  .OOOOOOOOOOOOOOOOOOOOOOOOO:               ;kOOOOOOOOOOx'
+   ,OOOOOOOOOOOOOOOOOOOOOOOOOk;               ':odxxdl:.
+    ,OOOOOOOOOOOOOOOOOOOOOOOOOOkc.                                   ..
+     'kOOOOOOOOOOOOOOOOOOOOOOOOOOOx:.                               ,k;
+      .dOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOd:'.                        ;xOx
+        ;OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOxoc;,...          .'cdOOOo
+          cOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOkkkkkOOOOOOOO:
+           .cOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOd.
+              ,dOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOd.
+                .;oOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOx:.
+                    .:okOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOxl,.
+                        ..;coxkOOOOOOOOOOOOOOOOOkdoc;'.
+                                 ....''''.....
+
+
+        .,;;'.              ..oOOOOo;            .';;,.         ..oOOOOOoo.     
+    .oKMMMMMMMNx'       ,lxOOOOOOOOOOk:      :kNMMMMMMM0c      xOOOOOOOOOOOxl'  
+  .0MMMMMMMMMMMMMO    :kOOOx.       ,OO,   oWMMMMMMMMMMMMN;    OOc       cOOOOl
+ oMMMNdc;'..'oMMMMX  dOOOOo         .OO, .XMMMOl;,...:KMMMM;  ;OO:       xOOOOx
+:MMMX         dMMMM,lOOOOk          .Ok  NMMM:        .MMMMO  kOO,     .dOOOx:  
+OMMM:         lMMMM.kOOOOo           O' ,MMMX          MMMMd ;OOOdllodkOkd:.    
+OMMMd,,,,'''''KMMMk xOOOOk           .  ,MMMX,,,,,'''.lMMMW. kOOc      .kOOkc   
+xMMWXNNNNWWWWWMMMN. .OOOOOd.            .MMMNXNNNNWWWWMMMMl 'OOO.       kOOOOx  
+lMM:          cMMl   'kOOOOOd:'.   .,.   MM0           NMX  ;OOx       cOOOOOd  
+lMo            WW      ;dOOOOOOOOOOo.    MX.           dMc   oOO;.  ..lOOOOo,   
+ck             od        .:dkOOxl;       X.            .N.    .lxkOOkkxdl;      
+
+
+						ACAB = ALL COLORS ARE BEAUTIFUL
+			 by Roberto Amabile <roberto d0t amabile at rub d0t de>
+
+  Net coloring + advanced Reverse Topological Approach: R. Amabile, R. Schmid
+			 (C) 2018- Computational Materials Chemistry (Germany).
 
 ********************************************************************************
 """
@@ -1536,8 +1588,9 @@ kKdliclkK0OO00OOkxdollKx      .,'...lO0XXXx..,cok0XXXXXXXXXXOk.   .O0W0ood,.;ckk
 footer="""
 ********************************************************************************
 
-Your ride with ACAB ends here. Houyhnhnm!
+                   Your ride with ACAB ends here. Houyhnhnm!
 
+********************************************************************************
 """
 
 def print_header():

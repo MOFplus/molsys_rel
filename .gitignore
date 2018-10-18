@@ -8,3 +8,6 @@ doc/_build/*
 .hypothesis
 __pycache__/*
 .pytest_cache/*
+.vscode/
+molsys/addon/acab/tests/.cache/
+

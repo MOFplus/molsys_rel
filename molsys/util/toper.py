@@ -11,6 +11,7 @@ import copy
 from mofplus import user_api
 from string import ascii_lowercase
 
+from molsys.util.color import make_mol
 from molsys.util.sysmisc import _makedirs, _checkrundir
 from molsys.util.misc import argsorted, triplenats_on_sphere
 
@@ -1121,6 +1122,8 @@ class topotyper(object):
             del vertex_bb_list[vertex_bb_list.index(i)]
         colorsigns = {} # color signatures
         clustsigns = {}
+        assert len(self.tg.mol.etab) == len(set(self.tg.mol.etab)), \
+            "edges w/ same termini (i.e. when pconn is needed) is NOT supported [TBI]"
         self.tg.molg.ep.color = self.tg.molg.new_edge_property("int")
         for edge in self.tg.molg.edges():
             # v,u are source,target vertex of the edge
@@ -1149,7 +1152,7 @@ class topotyper(object):
                 ## midpoint cluster
                 allconnt = list(set(allconnv_) & set(allconnu_))
                 assert len(allconnt) == 1,\
-                    "only 1 cluster btw. vertex clusters!"
+                    "only 1 edge must be btw. 2 vertices"
                 t = allconnt[0] # the only one
                 ubbt = self.bb2ubb[t]
                 sign1 = self.get_color_signature(v, t)
@@ -1167,10 +1170,30 @@ class topotyper(object):
         if sort_flag is True:
             # sort colors according to color signature lexsorting
             # it is invariant wrt. order of occurrence
+            # it sorts just the colortypes
             keys, items = zip(*colorsigns.items())
             sorting_dict = dict(zip(items,argsorted(keys)))
             self.tg.molg.ep.color.a = [sorting_dict[i] for i in self.tg.molg.ep.color]
         return
+
+    def write_colors(self, foldername="colors", index_run=False, scell=None, sort_flag=True):
+        if not hasattr(self.tg.molg.ep, "color"):
+            self.compute_colors(sort_flag=sort_flag)
+        if index_run:
+            foldername = _checkrundir(foldername)
+        else:
+            _makedirs(foldername)
+
+        asort = argsorted([(int(e.source()),int(e.target())) for e in self.tg.molg.edges()])
+        self.tg.molg.ep.color.a = self.tg.molg.ep.color.a[asort]
+        n = make_mol(self.tg.mol, alpha=3, ecolors=self.tg.molg.ep.color.a)
+        if scell is not None:
+            n.make_supercell(scell)
+        n.wrap_in_box()
+        n.write("%s%s%s.mfpx" % (foldername, os.sep, "colors"))
+        n.write("%s%s%s.txyz" % (foldername, os.sep, "colors"), pbc=False)
+
+        return foldername
 
     def get_color_signature(self, v, u):
         """

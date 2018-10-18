@@ -46,6 +46,23 @@ Same story for examples:
 
 A design policy is TBA.
 
+## Building the Documentation
+
+Mandatory dependencies to built the documentation can be obtained via pip:
+```
+pip install Sphinx
+pip install sphinx-rtd-theme
+```
+The Documentation can be compiled by running
+```
+make html
+```
+in the doc folder.
+A Built directory containing
+```
+/built/html/index.html
+```
+was created. It can be opened with the browser of your choice
 
 ## Contributing
 

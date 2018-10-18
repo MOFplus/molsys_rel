@@ -1482,7 +1482,7 @@ class mol(mpiobject):
         >>> m = molsys.mol.from_file("molecules.mfpx")
         >>> molecules_idx = m.get_separated_molecules()
         >>> for m_idx in molecules_idx:
-        >>>     m.new_mol_by_idx(m_idx).view()
+        >>>     m.new_mol_by_index(m_idx).view()
         >>> # if in trouble: CTRL+Z and "kill %%"
         """
         try:

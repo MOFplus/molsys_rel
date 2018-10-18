@@ -3,6 +3,7 @@ import pytest
 import molsys
 import molsys.util.toper as toper
 from molsys.util.color import make_mol
+from molsys.util.misc import argsorted
 
 import os
 
@@ -19,12 +20,7 @@ def test_compute_colors(fname, net):
     tt = toper.topotyper(m)
     assert tt.get_net() == [net]
 
-    folder = tt.write_bbs("%s%s%s" % ("colors", os.sep, name))
-    tt.compute_colors()
+    folder = tt.write_bbs("%s%s%s" % ("run", os.sep, name), index_run=True)
 
-    # TBI: it deserves new methods in topograph or
-    # a specific colorgraph class
-    ecolors = tt.tg.molg.ep.color.a
-    n = make_mol(tt.tg.mol, alpha=3, ecolors=ecolors)
-    n.write("%s%s%s.mfpx" % (folder, os.sep, name))
-    n.write("%s%s%s.txyz" % (folder, os.sep, name), pbc=False)
+    tt.write_colors(folder, scell=[3,3,3])
+

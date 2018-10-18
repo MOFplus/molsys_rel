@@ -3,28 +3,50 @@ import pytest
 import molsys
 import molsys.util.toper as toper
 
-# Original UMCM-1.cif file has broken disorder and unclear fractional occupancies
-# conn_thresh = 1.2 is a rule of thumb to get rid of half-occ. C atoms... but you remove H atoms too!
-#m = molsys.mol.from_file("UMCM-1.cif", conn_thresh=1.2) # RULE OF THUMB: actually we want H atoms
+import os
 
-# Workaround: use another structure w/ same connectivity to get original UMCM-1 connectivity
-m = molsys.mol.from_file("UMCM-1_dioxole.cif")
-m.elems = ["h" if e=="o" and m.conn[i] == ["c"] else e for i,e in enumerate(m.elems)]
+infolder = "struct"
+infile = "%s%s%s" % (infolder, os.sep, "UMCM-1_dioxole.cif")
+m = molsys.mol.from_file(infile)
 
-#scell = [2,2,2]
-#strscell = "".join([str(i) for i in scell])
-#m.make_supercell(scell)
-#m.write("UMCM-1_"+strscell+".mfpx")
-#m.write("UMCM-1_"+strscell+".txyz", pbc=False)
+scell = [2,2,2]
+strscell = "".join([str(i) for i in scell])
+
+scell_net = [5,5,2]
+strscell_net = "".join([str(i) for i in scell_net])
+
+outfolder = "run"
 
 @pytest.mark.slow
 def test_standard_bbs():
     tt = toper.topotyper(m)
-    print(tt.get_net())
-    tt.write_bbs("standard")
+    netname = tt.get_net()
+    outfolder_ = "%s%s%s" % (outfolder, os.sep,"standard")
+    outfolder_bbs = tt.write_bbs(outfolder_, index_run=True)
+
+    m_net = tt.tg.mol
+    m_net.make_supercell(scell_net)
+    outfile = "%s%s%s%s%s%s" % (outfolder_bbs, os.sep, netname[0], "_", strscell_net, "_standard")
+    m_net.write(outfile + ".mfpx")
+    m_net.write(outfile + ".txyz", pbc=False)
 
 @pytest.mark.slow
 def test_write_no_organicity_bbs():
     tt = toper.topotyper(m, split_by_org=False)
-    print(tt.get_net())
-    tt.write_bbs("not_split_by_org")
+    netname = tt.get_net()
+    outfolder_ = "%s%s%s" % (outfolder, os.sep, "not_split_by_org")
+    outfolder_bbs = tt.write_bbs(outfolder_, index_run=True)
+
+    m_net = tt.tg.mol
+    m_net.make_supercell(scell_net)
+    outfile = "%s%s%s%s%s%s" % (outfolder_bbs, os.sep, netname[0], "_", strscell_net, "_not_split_by_org")
+    m_net.write(outfile + ".mfpx")
+    m_net.write(outfile + ".txyz", pbc=False)
+
+def test_write():
+
+    m.make_supercell(scell)
+
+    outstruct = "%s%s%s%s" % (outfolder, os.sep, "UMCM-1_", strscell)
+    m.write(outstruct + ".mfpx")
+    m.write(outstruct + ".txyz", pbc=False)
