@@ -166,8 +166,8 @@ class ric:
 
     def set_rics(self, bnd, ang, oop, dih, sanity_test=True):
         """
-        Method to set the rics from outsided. Args has to be be properly sorted lists of 
-        ic objectos as if they are supplied by find_rics.
+        Method to set the rics from outside. Args has to be a properly sorted lists of 
+        ic objects as if they are supplied by find_rics.
 
         Args:
             bnd(list): list of all bonds
@@ -1452,6 +1452,8 @@ class ff(base):
 
     ################# IO methods #################################################
 
+    ################# central read/write to ric/par ##############################
+
     def write(self, fname):
         """
         write the rics including the referencing types to an ascii file
@@ -1524,123 +1526,6 @@ class ff(base):
                 f.write("%10s %15.8f %15.8f %15.8f %3s %3s\n" % (v.name, v.val, v.range[0], v.range[1], v.bounds[0], v.bounds[1]))
         f.close()
         return
-
-    def write_key(self,fname,atype_map=False,atype_addendum='',write_default_header=True):
-        '''
-        author: Julian
-        try to write a key file from the data available in the class
-        needs then to be merged manually in case there is only a partial system
-        #### !!!! EQUIVALENCES ARE MISSING !!!! ####
-        '''
-        a = atype_addendum
-        fkey=open(fname, 'w')
-        par = self.par
-        if write_default_header == True:
-            fkey.write(
-'''
-version        2.0
-parameters     none
-
-
-bondunit       71.94
-angleunit      0.02191418
-strbndunit     2.51118
-opbendunit     0.02191418
-torsionunit    0.5
-vdwtype        exp6_damped
-vdwdampfact    0.25
-radiusrule     arithmetic
-radiustype     r-min
-radiussize     radius
-epsilonrule    geometric
-a-expterm      184000.0
-b-expterm      12.0
-c-expterm      2.25
-
-bondtype       mixmorse_bde
-strbndtype     mmff
-opbendtype     mmff
-chargetype     gaussian\n\n''')
-            # still in the indentation of write_default_header
-            # we need also atom definitions, get unique atype list from 'cha' dictionary
-            for i,k in enumerate(par['cha'].keys()):
-                atype = k.split('(')[-1].split(')')[0]
-                elem = atype.split('_')[0][0:-1] ## convention: all atypes have .lt. 10 connections! 
-                                                  # remove only last digit from emenent string
-                fkey.write('atom  %s   %s\n' % (atype, elem))
-            import pdb; pdb.set_trace()
-        #syntax of keyfile:
-        # red name [atypes] [params] 
-        parkeys= self.par.keys() # cha ang dih oop vdw bnd
-        atypes_set = []        
-        # bonds 
-        for bond in par['bnd'].keys():
-            atype1,atype2 = bond.split('(')[-1].split(')')[0].split(',')
-            atype1,atype2 = atype1+a,atype2+a
-            partype, vals = par['bnd'][bond]
-            if atype_map != False:
-                #tbi
-                pass
-            fkey.write('%15s     %15s   %15s   %18.10f   %18.10f\n' % ('bond',atype1,atype2,vals[0],vals[1]))
-
-        # angles
-        for angle in par['ang'].keys():
-            atype1,atype2,atype3 = angle.split('(')[-1].split(')')[0].split(',')
-            atype1,atype2,atype3 = atype1+a,atype2+a,atype3+a
-            partype,vals = par['ang'][angle]
-            if partype == 'mm3':
-                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f\n' % ('angle',atype1,atype2,atype3,vals[0],vals[1]))
-            elif partype == 'fourier':
-                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f %18.10f %18.10f\n' % ('fourier',atype1,atype2,atype3,vals[0],vals[1],vals[2],vals[3],vals[4]))
-            elif partype == 'strbnd':
-                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f\n' % ('strbnd',atype1,atype2,atype3,vals[0],vals[1],vals[2]))
-            else:
-                raise IOError('partype %s not yet implemented' % partype)
-        
-        # torsions
-        for torsion in par['dih'].keys():
-            atype1,atype2,atype3,atype4 = torsion.split('(')[-1].split(')')[0].split(',')
-            atype1,atype2,atype3,atype4 = atype1+a,atype2+a,atype3+a,atype4+a
-            partype,vals = par['dih'][torsion]
-            if partype == 'cos3':
-                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f   %18.10f\n' % ('torsion',atype1,atype2,atype3,atype4,vals[0],vals[1],vals[2]))
-            elif partype == 'cos4':
-                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f   %18.10f   %18.10f\n' % ('torsion',atype1,atype2,atype3,atype4,vals[0],vals[1],vals[2],vals[3]))
-            else:
-                raise IOError('partype %s not yet implemented' % partype)
-        
-        # oops
-        for oop in par['oop'].keys():
-            atype1,atype2,atype3,atype4 = oop.split('(')[-1].split(')')[0].split(',')
-            atype1,atype2,atype3,atype4 = atype1+a,atype2+a,atype3+a,atype4+a
-            partype,vals = par['oop'][oop]
-            if partype == 'harm':
-                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f\n' % ('opbend',atype1,atype2,atype3,atype4,vals[0],vals[1]))
-            else:
-                raise IOError('partype %s not yet implemented' % partype)
-
-        for vdw in par['vdw'].keys():
-            atype1 = vdw.split('(')[-1].split(')')[0]
-            atype1 = atype1+a
-            partype, vals = par['vdw'][vdw]
-            if atype_map != False:
-                #tbi
-                pass
-            fkey.write('%15s     %15s   %18.10f   %18.10f\n' % ('vdw',atype1,vals[0],vals[1]))
-        
-        for charge in par['cha'].keys():
-            atype1 = charge.split('(')[-1].split(')')[0]
-            atype1 = atype1+a
-            partype, vals = par['cha'][charge]
-            if atype_map != False:
-                #tbi
-                pass
-            fkey.write('%15s     %15s   %18.10f   %18.10f\n' % ('charge',atype1,vals[0],vals[1]))
-        fkey.close() 
-        
-        return
-
-
 
     def read(self, fname, fit=False):
         """
@@ -1813,6 +1698,258 @@ chargetype     gaussian\n\n''')
             self.par.variables.cleanup()
             self.par.variables()
         return
+
+
+    ################# pack/unpack force field data to numpy arrays ##############################
+
+    def pack(self):
+        """
+        pack the rics and parameters to numpy arrays (one list of strings is provided to regenerate the names)
+        all the data will be packed into a single directory called data
+
+        systems with variables can not be packed
+
+        TODO: currently we only handle the ring attribute, needs to be more general if other attributes will be used in the future
+        """
+        assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
+        data = {}
+        # dummy dicts to assign a number to the type
+        par_types = self.enumerate_types()
+        # pack the RICs first
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+            # pack rics
+            ric = self.ric_type[ic]
+            n = len(ric)
+            l = len(ric[0])+1
+            filt = None
+            if ic == "dih":
+                l += 1
+            parind = self.parind[ic]
+            ptyp = par_types[ic]
+            ric_data = np.zeros([n,l], dtype="int32")
+            for i,r in enumerate(ric):
+                # we take only the first index and remove the ptype to lookup in ptyp dictionary
+                pi = parind[i][0]
+                ipi = ptyp[pi.split("->")[1]]
+                line = [ipi]+list(r)
+                # add ring attribute if it is a dihedral
+                if ic=="dih":
+                    if r.ring is not None:
+                        line += [r.ring]
+                    else:
+                        line += [0]
+                ric_data[i] = np.array(line)
+            data[ic] = ric_data
+            # pack params
+            par = self.par[ic]
+            npar = len(par)
+            ind = par.keys()
+            ind.sort(key=lambda k: ptyp[k.split("->")[1]])
+            # params are stored in a tuple of 2 lists and two numpy arrays
+            #      list ptypes (string)  <- ptype
+            #      list names (string)   <- i
+            #      array npars(n,2) (int)      <- len(values), ipi
+            #      array pars(n, maxnpar) (float) <- values
+            # first round
+            ptypes = []
+            names  = []
+            npars  = []
+            for i in ind:
+                ipi = ptyp[i.split("->")[1]]
+                ptype, values = par[i]
+                ptypes.append(ptype)
+                names.append(i)
+                npars.append([len(values), ipi])
+            npars = np.array(npars)
+            maxnpar = np.amax(npars[:,0])
+            pars = np.zeros([len(ind), maxnpar], dtype="float64")
+            # second round .. pack params
+            for j,i in enumerate(ind):
+                ptype, values = par[i]
+                pars[j,:npars[j,0]] = np.array(values)
+            data[ic+"_par"] = (ptypes, names, npars, pars)
+            data["FF"] = self.par.FF
+        return data
+
+    def unpack(self, data):
+        """
+        unpack data using exactly the structure produced in pack
+        """
+        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
+        ric      = {}
+        for r in ric_type:
+            rdata = data[r]
+            nric = rdata.shape[0]    
+            rlist = []
+            rlen  = rdata.shape[1]
+            if r == "dih":
+                rlen -= 1 # in dih the ring attribute is stored as an additional column
+            for i in xrange(nric):
+                rtype = rdata[i,0]
+                aind  = rdata[i,1:rlen]
+                if r == "dih":
+                    if rdata[i,-1] != 0:
+                        icl = ic(aind, type=rtype, ring=rdata[i,-1])
+                    else:
+                        icl = ic(aind, type=rtype)
+                else:
+                    icl = ic(aind, type=rtype)
+                rlist.append(icl)
+            ric[r] = rlist    
+        # now add data to ric object .. it gets only bnd, angl, oop, dih
+        self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
+        # time to init the data structures .. supply vdw and cha here
+        self._init_data(cha=ric["cha"], vdw=ric["vdw"])
+        self._init_pardata()
+        # now do par part
+        self.par.FF = data["FF"]
+        for r in ric_type:
+            par = self.par[r]
+            ptypes, names, npars, pars = data[r+"_par"]
+            t2ident = {} # maps integer type to identifier
+            ntypes = len(ptypes)
+            for i in range(ntypes):
+                itype = npars[i,1]
+                ptype = ptypes[i]
+                ident = names[i]
+                param = list(pars[i,0:npars[i,0]]) # npars[i,0] is the number of params
+                if ident in par:
+                    logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
+                    raise ValueError("Identifier %s appears twice" % ident)
+                par[ident] = (ptype, param)
+                if itype in t2ident:
+                    t2ident[itype].append(ident)
+                else:
+                    t2ident[itype] = [ident]
+            # now all types are read in: set up the parind datastructure of the ric
+            parind = self.parind[r]
+            for i,ri in enumerate(self.ric_type[r]):
+                parind[i] = t2ident[ri.type]
+        return
+
+
+
+
+    ################# additional IO (legacy file in, special cases, docu writing) ###############
+
+
+    def write_key(self,fname,atype_map=False,atype_addendum='',write_default_header=True):
+        '''
+        author: Julian
+        try to write a key file from the data available in the class
+        needs then to be merged manually in case there is only a partial system
+        #### !!!! EQUIVALENCES ARE MISSING !!!! ####
+        '''
+        a = atype_addendum
+        fkey=open(fname, 'w')
+        par = self.par
+        if write_default_header == True:
+            fkey.write(
+'''
+version        2.0
+parameters     none
+
+
+bondunit       71.94
+angleunit      0.02191418
+strbndunit     2.51118
+opbendunit     0.02191418
+torsionunit    0.5
+vdwtype        exp6_damped
+vdwdampfact    0.25
+radiusrule     arithmetic
+radiustype     r-min
+radiussize     radius
+epsilonrule    geometric
+a-expterm      184000.0
+b-expterm      12.0
+c-expterm      2.25
+
+bondtype       mixmorse_bde
+strbndtype     mmff
+opbendtype     mmff
+chargetype     gaussian\n\n''')
+            # still in the indentation of write_default_header
+            # we need also atom definitions, get unique atype list from 'cha' dictionary
+            for i,k in enumerate(par['cha'].keys()):
+                atype = k.split('(')[-1].split(')')[0]
+                elem = atype.split('_')[0][0:-1] ## convention: all atypes have .lt. 10 connections! 
+                                                  # remove only last digit from emenent string
+                fkey.write('atom  %s   %s\n' % (atype, elem))
+            import pdb; pdb.set_trace()
+        #syntax of keyfile:
+        # red name [atypes] [params] 
+        parkeys= self.par.keys() # cha ang dih oop vdw bnd
+        atypes_set = []        
+        # bonds 
+        for bond in par['bnd'].keys():
+            atype1,atype2 = bond.split('(')[-1].split(')')[0].split(',')
+            atype1,atype2 = atype1+a,atype2+a
+            partype, vals = par['bnd'][bond]
+            if atype_map != False:
+                #tbi
+                pass
+            fkey.write('%15s     %15s   %15s   %18.10f   %18.10f\n' % ('bond',atype1,atype2,vals[0],vals[1]))
+
+        # angles
+        for angle in par['ang'].keys():
+            atype1,atype2,atype3 = angle.split('(')[-1].split(')')[0].split(',')
+            atype1,atype2,atype3 = atype1+a,atype2+a,atype3+a
+            partype,vals = par['ang'][angle]
+            if partype == 'mm3':
+                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f\n' % ('angle',atype1,atype2,atype3,vals[0],vals[1]))
+            elif partype == 'fourier':
+                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f %18.10f %18.10f\n' % ('fourier',atype1,atype2,atype3,vals[0],vals[1],vals[2],vals[3],vals[4]))
+            elif partype == 'strbnd':
+                fkey.write('%15s     %15s   %15s   %15s  %18.10f   %18.10f %18.10f\n' % ('strbnd',atype1,atype2,atype3,vals[0],vals[1],vals[2]))
+            else:
+                raise IOError('partype %s not yet implemented' % partype)
+        
+        # torsions
+        for torsion in par['dih'].keys():
+            atype1,atype2,atype3,atype4 = torsion.split('(')[-1].split(')')[0].split(',')
+            atype1,atype2,atype3,atype4 = atype1+a,atype2+a,atype3+a,atype4+a
+            partype,vals = par['dih'][torsion]
+            if partype == 'cos3':
+                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f   %18.10f\n' % ('torsion',atype1,atype2,atype3,atype4,vals[0],vals[1],vals[2]))
+            elif partype == 'cos4':
+                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f   %18.10f   %18.10f\n' % ('torsion',atype1,atype2,atype3,atype4,vals[0],vals[1],vals[2],vals[3]))
+            else:
+                raise IOError('partype %s not yet implemented' % partype)
+        
+        # oops
+        for oop in par['oop'].keys():
+            atype1,atype2,atype3,atype4 = oop.split('(')[-1].split(')')[0].split(',')
+            atype1,atype2,atype3,atype4 = atype1+a,atype2+a,atype3+a,atype4+a
+            partype,vals = par['oop'][oop]
+            if partype == 'harm':
+                fkey.write('%15s     %15s   %15s   %15s   %15s   %18.10f   %18.10f\n' % ('opbend',atype1,atype2,atype3,atype4,vals[0],vals[1]))
+            else:
+                raise IOError('partype %s not yet implemented' % partype)
+
+        for vdw in par['vdw'].keys():
+            atype1 = vdw.split('(')[-1].split(')')[0]
+            atype1 = atype1+a
+            partype, vals = par['vdw'][vdw]
+            if atype_map != False:
+                #tbi
+                pass
+            fkey.write('%15s     %15s   %18.10f   %18.10f\n' % ('vdw',atype1,vals[0],vals[1]))
+        
+        for charge in par['cha'].keys():
+            atype1 = charge.split('(')[-1].split(')')[0]
+            atype1 = atype1+a
+            partype, vals = par['cha'][charge]
+            if atype_map != False:
+                #tbi
+                pass
+            fkey.write('%15s     %15s   %18.10f   %18.10f\n' % ('charge',atype1,vals[0],vals[1]))
+        fkey.close() 
+        
+        return
+
+
+
 
     def load_params_from_parfile(self, fname, fit = True):
         if fit:
