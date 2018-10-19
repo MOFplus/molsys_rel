@@ -1720,54 +1720,56 @@ class ff(base):
             # pack rics
             ric = self.ric_type[ic]
             n = len(ric)
-            l = len(ric[0])+1
-            filt = None
-            if ic == "dih":
-                l += 1
-            parind = self.parind[ic]
-            ptyp = par_types[ic]
-            ric_data = np.zeros([n,l], dtype="int32")
-            for i,r in enumerate(ric):
-                # we take only the first index and remove the ptype to lookup in ptyp dictionary
-                pi = parind[i][0]
-                ipi = ptyp[pi.split("->")[1]]
-                line = [ipi]+list(r)
-                # add ring attribute if it is a dihedral
-                if ic=="dih":
-                    if r.ring is not None:
-                        line += [r.ring]
-                    else:
-                        line += [0]
-                ric_data[i] = np.array(line)
-            data[ic] = ric_data
+            if n > 0:
+                l = len(ric[0])+1
+                filt = None
+                if ic == "dih":
+                    l += 1
+                parind = self.parind[ic]
+                ptyp = par_types[ic]
+                ric_data = np.zeros([n,l], dtype="int32")
+                for i,r in enumerate(ric):
+                    # we take only the first index and remove the ptype to lookup in ptyp dictionary
+                    pi = parind[i][0]
+                    ipi = ptyp[pi.split("->")[1]]
+                    line = [ipi]+list(r)
+                    # add ring attribute if it is a dihedral
+                    if ic=="dih":
+                        if r.ring is not None:
+                            line += [r.ring]
+                        else:
+                            line += [0]
+                    ric_data[i] = np.array(line)
+                data[ic] = ric_data
             # pack params
             par = self.par[ic]
             npar = len(par)
-            ind = par.keys()
-            ind.sort(key=lambda k: ptyp[k.split("->")[1]])
-            # params are stored in a tuple of 2 lists and two numpy arrays
-            #      list ptypes (string)  <- ptype
-            #      list names (string)   <- i
-            #      array npars(n,2) (int)      <- len(values), ipi
-            #      array pars(n, maxnpar) (float) <- values
-            # first round
-            ptypes = []
-            names  = []
-            npars  = []
-            for i in ind:
-                ipi = ptyp[i.split("->")[1]]
-                ptype, values = par[i]
-                ptypes.append(ptype)
-                names.append(i)
-                npars.append([len(values), ipi])
-            npars = np.array(npars)
-            maxnpar = np.amax(npars[:,0])
-            pars = np.zeros([len(ind), maxnpar], dtype="float64")
-            # second round .. pack params
-            for j,i in enumerate(ind):
-                ptype, values = par[i]
-                pars[j,:npars[j,0]] = np.array(values)
-            data[ic+"_par"] = (ptypes, names, npars, pars)
+            if npar > 0:
+                ind = par.keys()
+                ind.sort(key=lambda k: ptyp[k.split("->")[1]])
+                # params are stored in a tuple of 2 lists and two numpy arrays
+                #      list ptypes (string)  <- ptype
+                #      list names (string)   <- i
+                #      array npars(n,2) (int)      <- len(values), ipi
+                #      array pars(n, maxnpar) (float) <- values
+                # first round
+                ptypes = []
+                names  = []
+                npars  = []
+                for i in ind:
+                    ipi = ptyp[i.split("->")[1]]
+                    ptype, values = par[i]
+                    ptypes.append(ptype)
+                    names.append(i)
+                    npars.append([len(values), ipi])
+                npars = np.array(npars)
+                maxnpar = np.amax(npars[:,0])
+                pars = np.zeros([len(ind), maxnpar], dtype="float64")
+                # second round .. pack params
+                for j,i in enumerate(ind):
+                    ptype, values = par[i]
+                    pars[j,:npars[j,0]] = np.array(values)
+                data[ic+"_par"] = (ptypes, names, npars, pars)
             data["FF"] = self.par.FF
         return data
 

@@ -227,22 +227,24 @@ class pdlpio2(mpiobject):
                     par.attrs["FF"] = ""
                 for r in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                     # write ric arrays to pdlp file
-                    d = data[r]
-                    fd = ric.require_dataset(r, shape=d.shape, dtype="i")
-                    fd[...] = d
+                    if r in data:
+                        d = data[r]
+                        fd = ric.require_dataset(r, shape=d.shape, dtype="i")
+                        fd[...] = d
                     # write par data to pdlp file
                     #  order is ptype, names, npars, pars
-                    p = data[r+"_par"]
-                    fp = par.require_group(r)
-                    n = len(p[0]) # number of paramters for this ric type
-                    fptypes = fp.require_dataset("ptypes", shape=(n,), dtype=self.str_dt)
-                    fptypes[...] = p[0]
-                    fnames = fp.require_dataset("names", shape=(n,), dtype=self.str_dt)
-                    fnames[...] = p[1]
-                    fnpars = fp.require_dataset("npars", shape=p[2].shape, dtype="i")
-                    fnpars[...] = p[2]
-                    fpars = fp.require_dataset("pars", shape=p[3].shape, dtype="float64")
-                    fpars[...] = p[3]
+                    if r+"_par" in data:
+                        p = data[r+"_par"]
+                        fp = par.require_group(r)
+                        n = len(p[0]) # number of paramters for this ric type
+                        fptypes = fp.require_dataset("ptypes", shape=(n,), dtype=self.str_dt)
+                        fptypes[...] = p[0]
+                        fnames = fp.require_dataset("names", shape=(n,), dtype=self.str_dt)
+                        fnames[...] = p[1]
+                        fnpars = fp.require_dataset("npars", shape=p[2].shape, dtype="i")
+                        fnpars[...] = p[2]
+                        fpars = fp.require_dataset("pars", shape=p[3].shape, dtype="float64")
+                        fpars[...] = p[3]
         return
 
     def compare_system(self):
