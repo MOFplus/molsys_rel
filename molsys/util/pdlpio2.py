@@ -336,10 +336,12 @@ class pdlpio2(mpiobject):
                 ff_data["FF"] = par.attrs["FF"]
                 for r in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                     # read in ric integer arrays
-                    ff_data[r] = np.array(ric[r])
+                    if r in ric:
+                        ff_data[r] = np.array(ric[r])
                     # now get the parameter
-                    rpar = par[r]
-                    ff_data[r+"_par"] = (\
+                    if r in par:
+                        rpar = par[r]
+                        ff_data[r+"_par"] = (\
                                         list(rpar["ptypes"]),\
                                         list(rpar["names"]),\
                                         np.array(rpar["npars"]),\

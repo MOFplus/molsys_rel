@@ -1780,23 +1780,24 @@ class ff(base):
         ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
         ric      = {}
         for r in ric_type:
-            rdata = data[r]
-            nric = rdata.shape[0]    
             rlist = []
-            rlen  = rdata.shape[1]
-            if r == "dih":
-                rlen -= 1 # in dih the ring attribute is stored as an additional column
-            for i in xrange(nric):
-                rtype = rdata[i,0]
-                aind  = rdata[i,1:rlen]
+            if r in data:
+                rdata = data[r]
+                nric = rdata.shape[0]                
+                rlen  = rdata.shape[1]
                 if r == "dih":
-                    if rdata[i,-1] != 0:
-                        icl = ic(aind, type=rtype, ring=rdata[i,-1])
+                    rlen -= 1 # in dih the ring attribute is stored as an additional column
+                for i in xrange(nric):
+                    rtype = rdata[i,0]
+                    aind  = rdata[i,1:rlen]
+                    if r == "dih":
+                        if rdata[i,-1] != 0:
+                            icl = ic(aind, type=rtype, ring=rdata[i,-1])
+                        else:
+                            icl = ic(aind, type=rtype)
                     else:
                         icl = ic(aind, type=rtype)
-                else:
-                    icl = ic(aind, type=rtype)
-                rlist.append(icl)
+                    rlist.append(icl)
             ric[r] = rlist    
         # now add data to ric object .. it gets only bnd, angl, oop, dih
         self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
@@ -1807,26 +1808,27 @@ class ff(base):
         self.par.FF = data["FF"]
         for r in ric_type:
             par = self.par[r]
-            ptypes, names, npars, pars = data[r+"_par"]
-            t2ident = {} # maps integer type to identifier
-            ntypes = len(ptypes)
-            for i in range(ntypes):
-                itype = npars[i,1]
-                ptype = ptypes[i]
-                ident = names[i]
-                param = list(pars[i,0:npars[i,0]]) # npars[i,0] is the number of params
-                if ident in par:
-                    logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
-                    raise ValueError("Identifier %s appears twice" % ident)
-                par[ident] = (ptype, param)
-                if itype in t2ident:
-                    t2ident[itype].append(ident)
-                else:
-                    t2ident[itype] = [ident]
-            # now all types are read in: set up the parind datastructure of the ric
-            parind = self.parind[r]
-            for i,ri in enumerate(self.ric_type[r]):
-                parind[i] = t2ident[ri.type]
+            if r+"_par" in data:
+                ptypes, names, npars, pars = data[r+"_par"]
+                t2ident = {} # maps integer type to identifier
+                ntypes = len(ptypes)
+                for i in range(ntypes):
+                    itype = npars[i,1]
+                    ptype = ptypes[i]
+                    ident = names[i]
+                    param = list(pars[i,0:npars[i,0]]) # npars[i,0] is the number of params
+                    if ident in par:
+                        logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
+                        raise ValueError("Identifier %s appears twice" % ident)
+                    par[ident] = (ptype, param)
+                    if itype in t2ident:
+                        t2ident[itype].append(ident)
+                    else:
+                        t2ident[itype] = [ident]
+                # now all types are read in: set up the parind datastructure of the ric
+                parind = self.parind[r]
+                for i,ri in enumerate(self.ric_type[r]):
+                    parind[i] = t2ident[ri.type]
         return
 
 
