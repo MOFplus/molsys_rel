@@ -48,6 +48,7 @@ __all__ = [
     "spg", ### base
     "bb",
     "molecules",
+    "groups",
     "zmat",
 ]
 
