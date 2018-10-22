@@ -2,6 +2,7 @@ import numpy
 import string
 from . import txyz
 from collections import Counter
+import re
 import logging
 
 logger = logging.getLogger("molsys.io")
@@ -133,7 +134,15 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
         else:
             disorder = None
 
-    elems = [str(i) for i in cf.GetItemValue('_atom_site_type_symbol')]
+    try:
+        elems = [str(i) for i in cf.GetItemValue('_atom_site_type_symbol')]
+    except KeyError as e:
+        if e.message == "Itemname _atom_site_type_symbol not in datablock":
+            logger.warning("atom labels as elements")
+            labels = [str(i) for i in cf.GetItemValue('_atom_site_label')]
+            elems = [''.join(c for c in i if not c.isdigit()) for i in labels]
+        else:
+            raise(e)
     elems = [i.lower() for i in elems]
     x = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_x')]
     y = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_y')]
