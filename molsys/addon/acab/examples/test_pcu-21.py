@@ -41,7 +41,7 @@ def test_axial_333():
 def test_axial_444():
     assert axial([4,4,4]) == 4, "Number of colorings is different from expected"
 
-#@pytest.mark.xfail(raises=TypeError, reason="to be understood")
+@pytest.mark.xfail(raises=TypeError, reason="problems with periodic connectivity writing")
 def test_non_axial_111():
     assert non_axial([1,1,1]) == 1, "Number of colorings is different from expected"
 
