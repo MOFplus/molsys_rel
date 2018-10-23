@@ -1109,7 +1109,7 @@ class ff(base):
         for i in range(ntypes):
             for j in range(i, ntypes):
                 #TODO check availability of an explicit paramerter
-                if len(self.par["vdwpr"].keys()) > 0:
+                if "vdwpr" in self.par and len(self.par["vdwpr"].keys()) > 0:
                     _,_,ti = self.split_parname(types[i])
                     _,_,tj = self.split_parname(types[j])
                     ti =ti[0]
