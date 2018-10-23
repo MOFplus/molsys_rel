@@ -31,17 +31,24 @@ Isoreticular Isomerism
 ----------------------
 To build a framework, its molecular constituencies are connected according to a given topology. In other terms, the *building blocks* (or just *blocks*) are *weaved* according to a given *net*. This is done assigning each block to an edge or (more often) vertex of the net, then the block is rotated to "match" its connectors to the surrounding blocks' connectors (its *slot*). For further technical references, see :py:class:`weaver.framework.framework`.
 
+.. image:: /pic/acab/0_mofs2net.png
+   :height: 490 px
+   :width: 700 px
+   :scale: 100 %
+   :alt: frameworks to net: unambiguous
+   :align: center
+
 As Bureekaew *et al.* highlighted, [#bur15]_ there exist cases where a framework and its deconstruction in terms of given blocks is not always *bijective*, *i.e.* one cannot deconstruct a framework and construct it again reversibly. Indeed, the deconstruction process - the *Topological Approach [TA]* - is unambiguous for a given set of blocks, [#dut49]_ whereas the construction process - the *Reverse Topological Approach [RTA]* - can end up with multiple frameworks out of the same starting nets and blocks. This phenomenon is called *isoreticular isomerism* and the resulting frameworks are *distinct chemical species* - they may be even stereoisomers! - with different pore shapes and sizes, physico-chemical properties, and so forth. That is why isoreticular isomerism must be taken into consideration by materials researchers.
+
+.. image:: /pic/acab/1_net2mofs.png
+   :height: 490 px
+   :width: 700 px
+   :scale: 100 %
+   :alt: frameworks to net: unambiguous
+   :align: center
 
 Block multiplicity
 ------------------
-
-.. image:: /pic/acab/blocks2colors.png
-   :height: 1442 px
-   :width: 682 px
-   :scale: 100 %
-   :alt: blocks to colors
-   :align: center
 
 The *necessary* condition for isoreticular isomerism is the *block multiplicity*.
 
@@ -100,13 +107,20 @@ For the *L3* case, the most chemically reasonable orientations are 3 too. The di
 Coloring the carboxylate termini with the *red* code and the pyridinyl part with a *blue* code makes the ball-and-stick model two:one red:blue. Any symmetry of the slot's space group acts on the molecule and on the 2-red,1-blue model the same. 
 
 .. image:: /pic/acab/blocks-idea.png
-   :height: 700 px
-   :width: 531 px
+   :height: 531 px
+   :width: 700 px
    :scale: 100 %
    :alt: from blocks to colors: our model
    :align: center
 
 The same concept can be applied to a paddlewheel in a regular 6-connected slot, which is like a compressed octahedron inside a regular octahedron. If the carboxylate moieties are *red* and the metal ions are *blue*, then we have a 4-red,2-blue block. Applying any slot's space group symmetry can result at maximum into 3 different orientations, *i.e* the paddlewheel metal dimer along the axes of the slot.
+
+.. image:: /pic/acab/blocks2colors.png
+   :height: 538 px
+   :width: 952 px
+   :scale: 100 %
+   :alt: blocks to colors
+   :align: center
 
 Eventually, our message is:
 
@@ -126,6 +140,14 @@ Overview
 
 *advanced* Reverse Topological Approach
 --------------------------------------
+
+.. image:: /pic/acab/2_mofs2smt2net.png
+   :height: 490 px
+   :width: 700 px
+   :scale: 100 %
+   :alt: frameworks to colorings to grey net
+   :align: center
+
 **ACAB** is part of the implementation of the *advanced Reverse Topological Approach [aRTA]*. The original RTA [#bur15]_ takes into consideration only the orientational multiplicity of the blocks, leaving the user to handle any translational multiplicity outside the approach. Conversely, *aRTA* includes the translational multiplicity in the scheme.
 
 These two different multiplicities - translational and orientational - can be handled one step at the time or at the same time.
@@ -133,6 +155,13 @@ These two different multiplicities - translational and orientational - can be ha
 - A stepwise aRTA - first translational, then orientational multiplicity - permits to focus on the single contributes. Apart from formalizing the first step, this is just an extension to perform before the original *RTA*.
 
 - A concerted aRTA - both the multiplicities together - allows a better inter-dependence of the two. This was not formalized by the original *RTA*.
+
+.. image:: /pic/acab/3_mofs2colors2net.png
+   :height: 490 px
+   :width: 700 px
+   :scale: 100 %
+   :alt: frameworks to colorings to grey net
+   :align: center
 
 The choice of which *aRTA* fashion to use depends on the chemistry, its encoding in the problem, the solver, and ultimately on user's preferences. In general, when either multiplicity dominates the other, then the stepwise aRTA is clearer and easier. When neither wins, the combined aRTA is more efficient.
 
