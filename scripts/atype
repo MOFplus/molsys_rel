@@ -13,11 +13,4 @@ m.read(name)
 at = atomtyper(m)
 at()
 
-for i, e in enumerate(m.elems):
-    if e == 'h':
-        if len(m.conn[i]) == 1:
-            if m.atypes[m.conn[i][0]] == 'c3_h1n2':
-                m.atypes[i] = 'h1_c1S'
-
-
 m.write(name)

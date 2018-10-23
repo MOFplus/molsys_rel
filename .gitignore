@@ -4,3 +4,10 @@
 doc/_build/*
 *.so
 *.swp
+*_run/*
+.hypothesis
+__pycache__/*
+.pytest_cache/*
+.vscode/
+molsys/addon/acab/tests/.cache/
+

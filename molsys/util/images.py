@@ -19,6 +19,8 @@ imgidx, revimgidx = np.where((images == -images[:,np.newaxis]).all(axis=-1))
 
 # INDEX TO ARRAY
 idx2arr = dict(zip(imgidx,images))
+revidx2arr = dict(zip(revimgidx,images))
+idx2revidx = dict(zip(imgidx,revimgidx))
 # ARRAY TO INDEX
 imgtuple = [tuple(i) for i in images.tolist()]
 arr2idx_items = zip(imgtuple,imgidx)

@@ -8,6 +8,12 @@ def read(mol, f, cycle = 0):
         -f   (obj): xyz file object
         -mol (obj): instance of a molclass
     """
+    ### read check ###
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not readable" % f
+    ### read func ###
     done=False
     elems,xyz = [],[]
     cell = numpy.zeros((3,3),dtype='float')
@@ -41,20 +47,24 @@ def read(mol, f, cycle = 0):
     mol.set_nofrags()
     return
 
-def write(mol, fname):
+def write(mol, f):
     """
     Routine to write a castep .cell file
     :Parameters:
-        -fname  (str): name of the file
         -mol    (obj): instance of a molclass
+        -f (obj) : file object or writable object
     """
     natoms = mol.natoms 
-    f = open(fname,"w")
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError, "%s is not writable" % f
+    ### write func ###
 #    if mol.periodic:
 #        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n\n" % tuple([mol.natoms]+mol.cellparams))
 #    else:
     f.write("%d\n\n" % mol.natoms)
     for i in range(natoms):
         f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
-    f.close()
     return

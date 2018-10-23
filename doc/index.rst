@@ -28,6 +28,14 @@ It is used by other projects within the CMC group such as PYDLPOLY, WEAVER, FFGE
    tech_api
 
 
+.. toctree::
+   :maxdepth: 2
+   :numbered:
+   :caption: File Formats
+
+   file_io
+
+
 
 
 
