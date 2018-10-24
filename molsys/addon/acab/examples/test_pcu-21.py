@@ -3,6 +3,8 @@ import pytest
 from math import pi
 import molsys
 
+assert_message = "Number of colorings is different from expected"
+
 def axial(supercell):
     m = molsys.mol.from_file("pcu")
     m.make_supercell(supercell)
@@ -12,7 +14,8 @@ def axial(supercell):
     m.acab.setup_vcratio_per_edge([1])
     m.acab.setup_angle_btw_edges(color=1, theta=pi)
     scell = ''.join([str(s) for s in supercell])
-    m.acab.cycle_loop(alpha=3, constr_vertex=False, rundir='run/'+scell)
+    N = m.acab.cycle_loop(alpha=3, constr_vertex=False, rundir='run/'+scell)
+    return N
 
 def non_axial(supercell):
     m = molsys.mol.from_file("pcu")
@@ -22,28 +25,29 @@ def non_axial(supercell):
     m.acab.setup_ecratio_per_vertex([2,1])
     m.acab.setup_vcratio_per_edge([1])
     scell = ''.join([str(s) for s in supercell])
-    m.acab.cycle_loop(alpha=3, constr_vertex=False, rundir='run/'+scell)
+    N = m.acab.cycle_loop(alpha=3, constr_vertex=False, rundir='run/'+scell)
+    return N
 
 @pytest.mark.xfail(raises=KeyError, reason="supercell too small (to be fixed)")
 def test_axial_111():
-    axial([1,1,1])
+    assert axial([1,1,1]) == 1, assert_message
 
 def test_axial_222():
-    axial([2,2,2])
+    assert axial([2,2,2]) == 2, assert_message
 
 @pytest.mark.slow
 def test_axial_333():
-    axial([3,3,3])
+    assert axial([3,3,3]) == 2, assert_message
 
 @pytest.mark.xpass(reason="too slow")
 def test_axial_444():
-    axial([4,4,4])
+    assert axial([4,4,4]) == 4, assert_message
 
-@pytest.mark.xfail(raises=TypeError, reason="to be understood")
+@pytest.mark.xfail(raises=TypeError, reason="problems with periodic connectivity writing")
 def test_non_axial_111():
-    non_axial([1,1,1])
+    assert non_axial([1,1,1]) == 1, assert_message
 
 @pytest.mark.slow
 def test_non_axial_222():
-    non_axial([2,2,2])
+    assert non_axial([2,2,2]) == 41, assert_message
 

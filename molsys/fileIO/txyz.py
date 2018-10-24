@@ -298,6 +298,8 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
                 pimg = []
                 for pc in pconn[i]:
                     for ii,img in enumerate(images):
+                        if pc is None:
+                            raise TypeError, "Something went VERY BAD in pconn"
                         if all(img==pc):
                             pimg.append(ii)
                             break

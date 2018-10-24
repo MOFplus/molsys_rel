@@ -87,6 +87,7 @@ def make_emol(m, alpha=2, ecolors=None, etab=None):
         xyz_c1 = calpha*xyz_a + ralpha*xyz_c
         xyz_c2 = ralpha*xyz_a + calpha*xyz_c
         me = m.from_array(np.vstack([xyz_c1,xyz_c2]), use_pconn=m.use_pconn)
+    me.xyz += 1e-24 # to avoid underflows when wrapping
     # attributes #
     if hasattr(m,'cell'):
         me.set_cell(m.cell)

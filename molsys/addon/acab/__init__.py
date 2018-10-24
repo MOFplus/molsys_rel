@@ -484,8 +484,7 @@ class acab(base):
     ############################################################################
     ### CYCLE ###
 
-    def cycle_init(self, alpha=2, use_sym=True, use_edge=True, use_vertex=True, 
-        constr_edge=True, constr_vertex=True):
+    def cycle_init(self):
         """
         initialize symmetry
 
@@ -496,44 +495,32 @@ class acab(base):
         :TODO:
         - disable symmetry
         """
-        ### loop assertions ###
-        self.assert_loop_alpha(alpha)
-        self.assert_loop_edge(use_edge, constr_edge)
-        self.assert_loop_vertex(use_vertex, constr_vertex)
-        ### loop options ###
-        self.alpha = alpha
-        self.use_sym       = use_sym
-        self.use_edge      = use_edge
-        self.use_vertex    = use_vertex
-        self.constr_edge   = constr_edge
-        self.constr_vertex = constr_vertex
         self.colors_ = []
-        ### init methods ###
         self.cycle_initdir()
-        self.cycle_initsym(alpha=alpha, use_sym=use_sym,
-            use_edge=use_edge, use_vertex=use_vertex,
-            constr_edge=constr_edge, constr_vertex=constr_vertex)
+        self.cycle_initsym()
         return
 
-    def cycle_initsym(self, alpha=2, use_sym=True, use_edge=True, use_vertex=True,
-            constr_edge=True, constr_vertex=True):
+    def cycle_initsym(self):
         ### "grey" mol setup (=> symmetry space and permutations) ###
         erange = range(len(self._mol.etab))
         vrange = range(self._mol.natoms)
         ecolors = [maxecolor-1 for i in erange] # last possible "color"
         vcolors = [maxvcolor-1 for i in vrange] # last possible "color"
-        if self.evars and use_edge and self.vvars and use_vertex:
-            m = make_mol(self._mol, alpha=alpha, ecolors=ecolors, vcolors=vcolors,
-                use_edge=use_edge, use_vertex=use_vertex)
-        elif self.evars and use_edge:
-            m = make_emol(self._mol, alpha=alpha, ecolors=ecolors)
-        elif self.vvars and use_vertex:
+        if self.evars and self.use_edge and self.vvars and self.use_vertex:
+            m = make_mol(self._mol, alpha=self.alpha, ecolors=ecolors, vcolors=vcolors,
+                use_edge=self.use_edge, use_vertex=self.use_vertex)
+        elif self.evars and self.use_edge:
+            m = make_emol(self._mol, alpha=self.alpha, ecolors=ecolors)
+        elif self.vvars and self.use_vertex:
             m = make_vmol(self._mol, vcolors=vcolors)
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
-        m.addon("spg")
-        self.permutations = m.spg.generate_symperms()
+        if self.init_sym:
+            m.addon("spg")
+            self.permutations = m.spg.generate_symperms()
+        else:
+            self.permutations = None
         if self.debug:
             m.atypes = [0 for i in m.atypes]
             m.write("%s%ssym.mfpx" % (self.rundir, os.sep))
@@ -560,20 +547,37 @@ class acab(base):
         symmetrize the solution of the optimal model in its symmetry solution
         subspace.
         """
-        if self.use_sym:
-            assert hasattr(self,"permutations")
-            if ecolors is not None and vcolors is not None:
-                if self.alpha == 2:
-                    colors = np.array(ecolors*2 + vcolors)[self.permutations]
-                else:
-                    colors = np.array(ecolors + vcolors)[self.permutations]
-            elif ecolors is None:
-                colors = np.array(vcolors)[self.permutations]
-            elif vcolors is None:
-                if self.alpha == 2:
-                    colors = np.array(ecolors)[self.permutations]
-                else:
-                    colors = np.array(ecolors*2)[self.permutations]
+        if self.span_sym:
+            if self.permutations is not None:
+                if ecolors is not None and vcolors is not None:
+                    if self.alpha == 2:
+                        colors = np.array(ecolors*2 + vcolors)[self.permutations]
+                    else:
+                        colors = np.array(ecolors + vcolors)[self.permutations]
+                elif ecolors is None:
+                    colors = np.array(vcolors)[self.permutations]
+                elif vcolors is None:
+                    if self.alpha == 2:
+                        colors = np.array(ecolors)[self.permutations]
+                    else:
+                        colors = np.array(ecolors*2)[self.permutations]
+            else:
+                m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=self.alpha)
+                m.addon("spg")
+                permutations = m.spg.generate_symperms()
+                import pdb; pdb.set_trace()
+                if ecolors is not None and vcolors is not None:
+                    if self.alpha == 2:
+                        colors = np.array(ecolors*2 + vcolors)[permutations]
+                    else:
+                        colors = np.array(ecolors + vcolors)[permutations]
+                elif ecolors is None:
+                    colors = np.array(vcolors)[permutations]
+                elif vcolors is None:
+                    if self.alpha == 2:
+                        colors = np.array(ecolors)[permutations]
+                    else:
+                        colors = np.array(ecolors*2)[permutations]
         else:
             if ecolors is not None and vcolors is not None:
                 if self.alpha == 2:
@@ -637,10 +641,9 @@ class acab(base):
         else:
             return True
     
-    def cycle_loop(self, Nmax=1e4, alpha=2, use_sym=True,
-        use_edge=True, use_vertex=True,
-        constr_edge=True, constr_vertex=True,
-        rundir="run", newrundir=True):
+    def cycle_loop(self, Nmax=1e4, alpha=2, init_sym=True, span_sym=True,
+        use_edge=True, use_vertex=True, constr_edge=True, constr_vertex=True,
+        color_equivalence=None, rundir="run", newrundir=True):
         """
         cycle model
 
@@ -653,13 +656,29 @@ class acab(base):
         if N > 0: EXACT number of solutions (exhaustiveness)
         if N < 0: MINIMUM number of solutions (there may be others)
         """
+        # assert variables
+        self.assert_loop_alpha(alpha)
+        self.assert_flag(init_sym)
+        self.assert_flag(span_sym)
+        self.assert_loop_edge(use_edge, constr_edge)
+        self.assert_loop_vertex(use_vertex, constr_vertex)
+        # set attributes
+        self.alpha = alpha
+        self.init_sym = init_sym
+        self.span_sym = span_sym
+        self.use_edge = use_edge
+        self.use_vertex = use_vertex
+        self.constr_edge = constr_edge
+        self.constr_vertex = constr_vertex
+        self.color_equivalence = color_equivalence
+        # set run directory
         if newrundir:
             self.rundir = _checkrundir(rundir)
         else:
             self.rundir = rundir
-        self.cycle_init(alpha=alpha, use_sym=use_sym,
-            use_edge=use_edge, use_vertex=use_vertex,
-            constr_edge=constr_edge, constr_vertex=constr_vertex)
+        # initialize loop
+        self.cycle_init()
+        # run loop
         try:
             logger.info("KeyboardInterrupt is DISABLED: " \
                 "no worries, cycle handles the exception")
@@ -671,11 +690,14 @@ class acab(base):
                     break
                 N += 1
         except KeyboardInterrupt:
-            N *= -1
-        self.report_cycle(N)
+            N *= -1 ### convention
         if N == Nmax:
             N *= -1
+        self.report_cycle(N, Nmax)
         if N > 0:
+            if self.span_sym:
+                logger.warning("Symmetry detection is not implemented here")
+            N = self.filter_cycle(N)
             self.write_cycle(N)
         return N
 
@@ -693,37 +715,64 @@ class acab(base):
         logger.info("Last status: %s; Number of cycles: %s" % (status,i))
         return
 
-    def report_cycle(self, i):
-        if i < 0:
-            self.report_last(-i)
-            logger.warning("INTERRUPTED: Convergence NOT reached")
+    def report_cycle(self, N, Nmax):
+        if N < 0: ### by convention
+            N -= -1
+            self.report_last(N)
+            if N == Nmax:
+                logger.warning("FAILURE: Time limit, convergence NOT reached")
+            else:
+                logger.warning("FAILURE: Interrupted process, convergence NOT reached")
         else:
-            self.report_last(i)
+            self.report_last(N)
             status = self.model.getStatus()
             if status == "unknown":
                 logger.warning("FAILURE: Convergence NOT reached")
             elif status == "timelimit":
                 logger.warning("FAILURE: Time limit has been reached")
             elif status == "infeasible":
-                if i == 0:
-                    logger.info("FAILURE: No feasible solution found")
+                if N == 0:
+                    logger.info("SUCCESS: No feasible solution found!")
                 else:
-                    logger.info("SUCCESS: Convergence reached")
+                    logger.info("SUCCESS: %s feasible solutions found!" % N)
             else:
                 logger.error("DISASTER: the unexpected happened!")
         ### timer?
         #print("Total elapsed time: %.3f s" % (self.model.getTotalTime(),))
         return
 
+    def filter_cycle(self, N):
+        if self.color_equivalence is None:
+            return N
+        colors_ = self.colors_
+        newcolors_ = [colors_[0]]
+        for j in range(N):
+            for k in range(N):
+                if j < k:
+                    jcolors = colors_[j]
+                    kcolors = colors_[k]
+                    if not self.color_equivalence(self, jcolors, kcolors):
+                        newcolors_.append(kcolors)
+        M = len(newcolors_)
+        if M < N:
+            N = M
+            logger.info("%s unequivalent solutions after filtering" % N)
+            self.colors_ = newcolors_
+        return N
+
     def write_cycle(self, N):
-        j = 0
-        while j < N:
+        for j in range(N):
             ecolors,vcolors = self.colors_[j]
             name = "%%0%dd" % len("%d" % N) % j
             self.write_structure(name, ecolors, vcolors, alpha=2)
-            j += 1
 
     def write_structure(self, name, ecolors=None, vcolors=None, alpha=2):
+        m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=self.alpha)
+        m.write("%s%s%s.mfpx" % (self.coldir, os.sep, name))
+        m.write("%s%s%s.txyz" % (self.predir, os.sep, name), pbc=False)
+        return
+
+    def make_structure(self, ecolors=None, vcolors=None, alpha=2):
         if ecolors and vcolors:
             m = make_mol(self._mol, alpha, ecolors=ecolors, vcolors=vcolors,
                 use_vertex=self.use_vertex, use_edge=self.use_edge)
@@ -734,9 +783,7 @@ class acab(base):
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
-        m.write("%s%s%s.mfpx" % (self.coldir, os.sep, name))
-        m.write("%s%s%s.txyz" % (self.predir, os.sep, name), pbc=False)
-        return
+        return m
 
     ############################################################################
     ### SOLUTION CONSTRAINTS ###
