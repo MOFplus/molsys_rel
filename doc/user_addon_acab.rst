@@ -222,9 +222,10 @@ SCIP and PySCIPOpt
 
 Current version of **ACAB** uses *SCIP* [*Solver for Constraint Integer Programming*] and *PySCIPOpt* [its python interface]. Other solvers like MC or GA are not available at the moment.
 
-These 2 programs are trickier to get since *SCIP* can be downloaded *via* `scip website <http://scip.zib.de/>`_ only filling a form (yet a brief form). The version you need is *SCIP 5*, or ``scipoptsuite-5.0.1`` which is the only compatible with `PySCIPOpt version of my GitHub <https://github.com/ramabile/PySCIPOpt>`_. They have recently released *SCIP 6* and updated *PySCIPOpt* accordingly. I have a pull request open for *PySCIPOpt* so I did not bother to update everything and then check if it works with **ACAB**. If you want to check by yourself I am glad to get info from you back.
+*SCIP* with its suite can be downloaded *via* `scip website <http://scip.zib.de/>`_ filling a very brief form. **ACAB** is tested with *SCIP 5* and *SCIP 6*. *PySCIPOpt*, `which can be cloned or downloaded *via* GitHub <https://github.com/SCIP-Interfaces/PySCIPOpt>`_, is updated by design just after a new *SCIP* release, so there should not be any problem with inconsistent versions between them.
+**ACAB** is tested against the current versions (24.10.2018) of *SCIP* and *PySCIPOpt*.
 
-Instead, if you are brave enough/have no time to bother with dipendencies, I prepared a script in the ``secret`` machine which runs automatically the installation of both.
+If you are brave enough/have no time to bother with dipendencies, I prepared a script in the ``secret`` machine which runs automatically the installation of both.
 
 - Since the script uses ``sudo``-er's priviledge, please **do not trust it blindly** and see where these ``sudo``-es are needed:
 
@@ -242,7 +243,8 @@ Instead, if you are brave enough/have no time to bother with dipendencies, I pre
 
 .. code-block:: console
 
-    $ ssh name@secret:/home/repo/codes/scip/install.sh
+    $ scp name@secret:/home/repo/codes/scip/install.sh scip_install.sh
+    $ ./scip_install.sh
 
 *TIP*: By default, only ``scip`` will be tested. If you installed ``pytest`` previously, ``pyscipopt`` will be tested too. Testing **ACAB** is not automatically done by the ``install.sh`` script: see `Tests <#tests>`_.
 
