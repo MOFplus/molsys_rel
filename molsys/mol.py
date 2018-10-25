@@ -49,15 +49,15 @@ if molsys_mpi.size > 1:
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
-#fhandler.setLevel(logging.DEBUG)
-fhandler.setLevel(logging.WARNING)
+fhandler.setLevel(logging.DEBUG)
+#fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
 if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
-    #shandler.setLevel(logging.INFO)
-    shandler.setLevel(logging.WARNING)
+    shandler.setLevel(logging.INFO)
+    #shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
 
@@ -148,7 +148,7 @@ class mol(mpiobject):
         try:
             f = open(fname, "r")
         except IOError:
-            logger.warning('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
+            logger.info('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
             try:
                 f = open(fname+'.'+ftype, "r")
             except:

@@ -52,7 +52,7 @@ else:
     quickprod = pyscipopt.quickprod
 
 ### AUX ###
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import combinations
 from numbers import Number
 import numpy as np
@@ -60,23 +60,15 @@ from math import pi, cos
 
 ### UTIL ###
 from molsys.util.images import arr2idx
-from molsys.util.sysmisc import _makedirs, _checkrundir
+from molsys.util.sysmisc import isatty, supports_color, _makedirs, _checkrundir
 import sys
 import os
-from copy import deepcopy
 
 ### LOGGING ###
 import logging
 logger = logging.getLogger("molsys.acab")
-logger.setLevel(logging.DEBUG)
-#logger.setLevel(logging.INFO)
-### HACK ###******
-logger.debug = print
-logger.info = print
-logger.warning = print
-logger.error = print
-logger.critical = print
-#*****************
+#logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 import atexit
 
 if mpi_comm is None:
@@ -87,7 +79,6 @@ class acab(base):
     ############################################################################
     ### TODO
     ###
-    ### logger?
     ### supercell support
     ### cromo format read/write
     ### testing cases! (w/ & w/o pconn) [see poster]
@@ -115,9 +106,6 @@ class acab(base):
         self.Model = Model
         self.quicksum = quicksum
         self.quickprod = quickprod
-        # logo and farewells
-        #print_header()
-        #atexit.register(print_footer)
         return
 
     ############################################################################
@@ -143,7 +131,7 @@ class acab(base):
     #    #    self.otab = []
     #    #    self.oconn = []
 
-    def setup_model(self, verbose=False, debug=True, ctrlc=True, *args, **kwargs):
+    def setup_model(self, verbose=True, debug=False, ctrlc=True, *args, **kwargs):
         """
         initialize the model and its utility attributes
 
@@ -167,13 +155,19 @@ class acab(base):
         """
         self.model = Model(*args, **kwargs)
         self.assert_flag(ctrlc)
-        if not verbose:
+        # logo and farewells
+        if verbose:
+            print_header()
+            atexit.register(print_footer)
+        self.verbose = verbose
+        if debug:
             self.model.hideOutput()
         self.debug = debug
         if not ctrlc:
-            logger.warning("KeyboardInterrupt is DISABLED: " \
+            logger.warning("Key Interrupt DISABLED: " \
                 "hope you have your own good reasons")
             self.model.setBoolParam('misc/catchctrlc', ctrlc)
+        self.ctrlc = ctrlc
         self.evars = {}
         self.vvars = {}
     
@@ -521,10 +515,9 @@ class acab(base):
             self.permutations = m.spg.generate_symperms()
         else:
             self.permutations = None
-        if self.debug:
-            m.atypes = [0 for i in m.atypes]
-            m.write("%s%ssym.mfpx" % (self.rundir, os.sep))
-            m.write("%s%ssym.txyz" % (self.rundir, os.sep), pbc=False)
+        m.atypes = [0 for i in m.atypes]
+        m.write("%s%ssym.mfpx" % (self.rundir, os.sep))
+        m.write("%s%ssym.txyz" % (self.rundir, os.sep), pbc=False)
         return
 
     def cycle_initdir(self):
@@ -533,11 +526,14 @@ class acab(base):
         \"colors\" and \"pretty\" contains graph-like structures
         \"colors\" contains useful structures to weave frameworks later
         \"pretty\" contains just clearer views of these structures (do not use)
+        \"plain\" contains clearer views in plain tinker format (do not use)
         """
         self.coldir = "%s%scolors" % (self.rundir, os.sep)
         self.predir = "%s%spretty" % (self.rundir, os.sep)
+        self.pladir = "%s%splain" % (self.rundir, os.sep)
         _makedirs(self.coldir) #mfpx, w/  pbc, useful
         _makedirs(self.predir) #txyz, w/o pbc, clearer
+        _makedirs(self.pladir) #txyz, w/o pbc, clearer, plain
         return
 
     def cycle_permute(self, ecolors=None, vcolors=None):
@@ -565,7 +561,6 @@ class acab(base):
                 m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=self.alpha)
                 m.addon("spg")
                 permutations = m.spg.generate_symperms()
-                import pdb; pdb.set_trace()
                 if ecolors is not None and vcolors is not None:
                     if self.alpha == 2:
                         colors = np.array(ecolors*2 + vcolors)[permutations]
@@ -641,7 +636,7 @@ class acab(base):
         else:
             return True
     
-    def cycle_loop(self, Nmax=1e4, alpha=2, init_sym=True, span_sym=True,
+    def cycle_loop(self, Nmax=1e4, alpha=3, init_sym=True, span_sym=True,
         use_edge=True, use_vertex=True, constr_edge=True, constr_vertex=True,
         color_equivalence=None, rundir="run", newrundir=True):
         """
@@ -656,6 +651,7 @@ class acab(base):
         if N > 0: EXACT number of solutions (exhaustiveness)
         if N < 0: MINIMUM number of solutions (there may be others)
         """
+        logger.info("Run exhaustive search of colorings")
         # assert variables
         self.assert_loop_alpha(alpha)
         self.assert_flag(init_sym)
@@ -663,6 +659,7 @@ class acab(base):
         self.assert_loop_edge(use_edge, constr_edge)
         self.assert_loop_vertex(use_vertex, constr_vertex)
         # set attributes
+        self.Nmax = int(Nmax)
         self.alpha = alpha
         self.init_sym = init_sym
         self.span_sym = span_sym
@@ -680,20 +677,21 @@ class acab(base):
         self.cycle_init()
         # run loop
         try:
-            logger.info("KeyboardInterrupt is DISABLED: " \
-                "no worries, cycle handles the exception")
+            logger.info("Key Interrupt DISABLED: " \
+                "loop handles CTRL+C")
             self.model.setBoolParam('misc/catchctrlc', True)
+            logger.info("Max cycle iteration n.: %s" % self.Nmax)
             N = 0
-            while N < Nmax:
+            while N < self.Nmax:
                 self.report_step(N)
                 if self.cycle_step():
                     break
                 N += 1
         except KeyboardInterrupt:
             N *= -1 ### convention
-        if N == Nmax:
+        if N == self.Nmax:
             N *= -1
-        self.report_cycle(N, Nmax)
+        self.report_cycle(N)
         if N > 0:
             if self.span_sym:
                 logger.warning("Symmetry detection is not implemented here")
@@ -702,7 +700,12 @@ class acab(base):
         return N
 
     def report_step(self, i):
-        sys.stdout.write("cycle n.: %d\n" % i)
+        if isatty():
+            sys.stdout.write("\r")
+        sys.stdout.write("Run cycle iteration n.: %d" % i)
+        if not isatty():
+            sys.stdout.write("\n")
+        sys.stdout.flush()
 
     def report_last(self, i=None):
         """
@@ -711,15 +714,16 @@ class acab(base):
         :Parameters:
         - i (int): loop index (if None prints None)
         """
+        sys.stdout.write("\n")
         status = self.model.getStatus()
         logger.info("Last status: %s; Number of cycles: %s" % (status,i))
         return
 
-    def report_cycle(self, N, Nmax):
+    def report_cycle(self, N):
         if N < 0: ### by convention
             N -= -1
             self.report_last(N)
-            if N == Nmax:
+            if N == self.Nmax:
                 logger.warning("FAILURE: Time limit, convergence NOT reached")
             else:
                 logger.warning("FAILURE: Interrupted process, convergence NOT reached")
@@ -761,15 +765,27 @@ class acab(base):
         return N
 
     def write_cycle(self, N):
+        # N.B.: alpha=2 irrespective to self.alpha by design
         for j in range(N):
             ecolors,vcolors = self.colors_[j]
             name = "%%0%dd" % len("%d" % N) % j
             self.write_structure(name, ecolors, vcolors, alpha=2)
 
     def write_structure(self, name, ecolors=None, vcolors=None, alpha=2):
-        m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=self.alpha)
+        m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=alpha)
         m.write("%s%s%s.mfpx" % (self.coldir, os.sep, name))
         m.write("%s%s%s.txyz" % (self.predir, os.sep, name), pbc=False)
+        ### MOVE ELSEWHERE ###
+        atypes = ["%s" % i for i in m.atypes]
+        u_atypes = Counter(atypes).keys()
+        atypesa = [i for i in u_atypes if not i.isdigit()]
+        atypesd = [i for i in u_atypes if i.isdigit()]
+        new_atypes = set([str(i) for i in range(len(u_atypes))])
+        new_atypes -= set(u_atypes)
+        new_atypes = sorted(list(new_atypes))
+        atypes = [new_atypes[atypesa.index(a)] if not str(a).isdigit() else a for a in atypes]
+        m.atypes = atypes
+        m.write("%s%s%s.txyz" % (self.pladir, os.sep, name), pbc=False)
         return
 
     def make_structure(self, ecolors=None, vcolors=None, alpha=2):
@@ -1552,9 +1568,9 @@ class acab(base):
 
 __version__ = "2.1.1"
 
-header= """
-********************************************************************************
-
+stars= """
+********************************************************************************"""
+logo = """
                                                           .k:
                                                           XMk
                                                          xMMk
@@ -1607,9 +1623,9 @@ oOOOOOOOOOOOOOOOOOOOOOOl                 dOOOOOOOOOOOOOOOOOOl         'xO.
                 .;oOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOx:.
                     .:okOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOxl,.
                         ..;coxkOOOOOOOOOOOOOOOOOkdoc;'.
-                                 ....''''.....
-
-
+                                 .;coxkOdoc;'.
+"""
+info = """
         .,;;'.              ..oOOOOo;            .';;,.         ..oOOOOOoo.     
     .oKMMMMMMMNx'       ,lxOOOOOOOOOOk:      :kNMMMMMMM0c      xOOOOOOOOOOOxl'  
   .0MMMMMMMMMMMMMO    :kOOOx.       ,OO,   oWMMMMMMMMMMMMN;    OOc       cOOOOl
@@ -1623,11 +1639,11 @@ lMo            WW      ;dOOOOOOOOOOo.    MX.           dMc   oOO;.  ..lOOOOo,
 ck             od        .:dkOOxl;       X.            .N.    .lxkOOkkxdl;      
 
 
-						ACAB = ALL COLORS ARE BEAUTIFUL
-			 by Roberto Amabile <roberto d0t amabile at rub d0t de>
+                        ACAB = ALL COLORS ARE BEAUTIFUL
+             by Roberto Amabile <roberto d0t amabile at rub d0t de>
 
   Net coloring + advanced Reverse Topological Approach: R. Amabile, R. Schmid
-			 (C) 2018- Computational Materials Chemistry (Germany).
+             (C) 2018- Computational Materials Chemistry (Germany).
 
 ********************************************************************************
 """
@@ -1641,7 +1657,10 @@ footer="""
 """
 
 def print_header():
-    print(header)
+    print(stars)
+    if isatty():
+        print(logo)
+    print(info)
 
 def print_footer():
     print(footer)

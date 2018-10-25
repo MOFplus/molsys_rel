@@ -1,5 +1,21 @@
+import sys
 import os
 import glob
+
+def isatty():
+    """
+    Returs True if tty is not supported and file is connected to a tty device
+    """
+    return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+
+def supports_color():
+    """
+    Returns True if terminal supports color, False otherwise
+    """
+    supported = 'ANSICON' in os.environ or \
+        sys.platform not in ['Pocket PC', "win32"]
+    # both conditions must hold
+    return supported and isatty()
 
 def _makedirs(folder):
     """

@@ -56,10 +56,8 @@ except ImportError:
     import _pickle as Pickle
 
 import logging
-import pdb
 logger = logging.getLogger("molsys.ff")
 #logger.setLevel(logging.INFO)
-#import pdb; pdb.set_trace()
 
 if mpi_comm is None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
@@ -1877,7 +1875,7 @@ chargetype     gaussian\n\n''')
                 elem = atype.split('_')[0][0:-1] ## convention: all atypes have .lt. 10 connections! 
                                                   # remove only last digit from emenent string
                 fkey.write('atom  %s   %s\n' % (atype, elem))
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
         #syntax of keyfile:
         # red name [atypes] [params] 
         parkeys= self.par.keys() # cha ang dih oop vdw bnd
