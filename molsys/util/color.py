@@ -140,7 +140,7 @@ def make_vmol(m, vcolors=None):
     """
     if vcolors is None:
         vcolors = [maxvcolor-1]*m.natoms
-    mv = copy.deepcopy(m)
+    mv = copy.copy(m)
     for i in range(mv.natoms):
         mv.atypes[i] = elematypecolor2string(
             mv.elems[i],
@@ -161,7 +161,7 @@ def make_mol(m, alpha=2, ecolors=None, vcolors=None, etab=None, use_edge=True, u
         me = make_emol(m, alpha=alpha, ecolors=ecolors, etab=etab)
         ne = me.natoms
         mv = make_vmol(m, vcolors=vcolors)
-        mm = copy.deepcopy(me)
+        mm = copy.copy(me)
         mm.add_mol(mv) # N.B.: in THIS EXACT ORDER, otherwise KO connectivity
         ### connectivity ###
         ctab = []

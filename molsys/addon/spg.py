@@ -30,7 +30,9 @@ import copy
 
 import logging
 logger = logging.getLogger("molsys.spg")
+logger.setLevel(logging.INFO)
 
+from molsys.util.sysmisc import isatty
 from molsys.util.timing import timer, Timer #to be removed
 
 ### UTIL ### please move to molsys.util module!
@@ -292,9 +294,9 @@ class spg:
         >>> rota, tran = sym['rotations'][n], sym['translations'][n]
         >>> new_vector = rota*old_vector[:,np.newaxis] + tran
         """
-        logger.info("Get symmetries")
+        logger.info("Find space group symmetries")
         sym = spglib.get_symmetry(self.spgcell)
-        logger.info("Found %s symmetry/ies and %s equivalent atom/s" % \
+        logger.info("Found %s symmetries and %s equiv. atom/s" % \
             (len(sym['rotations']), len(sym['equivalent_atoms'])))
         return sym['rotations'], sym['translations'], sym['equivalent_atoms']
 
@@ -303,7 +305,7 @@ class spg:
         Generate list of coordinates by symmetries
         scale (same scale as per supercell) ###TBI: non-orthorombic cells
         """
-        logger.info("Generating symmetries")
+        logger.info("Get space group symmetries")
         ### INITIALIZE ###
         frac = self.mol.get_frac_xyz()
         self.syms = []
@@ -343,14 +345,21 @@ class spg:
         N.B. to avoid that -0. = 0 an older implementation used np.isclose to substitute 0/1 floats to exact 0/1 integers
         """
         if not hasattr(self,""): self.generate_symmetries()
-        logger.info("Generating symmetry permutations")
+        logger.info("Set %s space group symmetry permutations" % len(self.syms))
         natoms = self.mol.natoms
         tot = len(self.syms)
         sp  = np.empty((0,self.mol.natoms),int)
         sp_ = sp.copy()
         frac = self.mol.get_frac_xyz()
         for i,isym in enumerate(self.syms):
-            if (i+1)%100==0 or i+1 == tot: sys.stdout.write("\r%s of %s\n" % (i+1,tot))
+            if (i+1)%100==0 or i+1 == tot:
+                if isatty():
+                    sys.stdout.write("\r")
+                sys.stdout.write("%s of %s symmetry permutations" % (i+1,tot))
+                if not isatty():
+                    sys.stdout.write("\n")
+                elif i+1 == tot:
+                    sys.stdout.write("\n")
             isp = get_frac_match(frac, isym, thresh, eps)
             if isp.shape[0] == natoms: 
                 ### STANDARD: match position -> match permutation index ###
