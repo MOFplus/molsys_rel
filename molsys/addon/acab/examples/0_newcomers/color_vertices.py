@@ -57,6 +57,6 @@ m.acab.setup_vcratio_per_edge(vcratio)  # stricter
 
 ### cycle loop of solutions
 ### N is the number of solutions
-N = m.acab.cycle_loop(rundir=rundir)
+N = m.acab.cycle_loop(rundir=rundir, newrundir=False)
 print("Number of unequivalent colorings: %s" % N)
 

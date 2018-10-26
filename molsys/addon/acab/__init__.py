@@ -775,17 +775,7 @@ class acab(base):
         m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=alpha)
         m.write("%s%s%s.mfpx" % (self.coldir, os.sep, name))
         m.write("%s%s%s.txyz" % (self.predir, os.sep, name), pbc=False)
-        ### MOVE ELSEWHERE ###
-        atypes = ["%s" % i for i in m.atypes]
-        u_atypes = Counter(atypes).keys()
-        atypesa = [i for i in u_atypes if not i.isdigit()]
-        atypesd = [i for i in u_atypes if i.isdigit()]
-        new_atypes = set([str(i) for i in range(len(u_atypes))])
-        new_atypes -= set(u_atypes)
-        new_atypes = sorted(list(new_atypes))
-        atypes = [new_atypes[atypesa.index(a)] if not str(a).isdigit() else a for a in atypes]
-        m.atypes = atypes
-        m.write("%s%s%s.txyz" % (self.pladir, os.sep, name), pbc=False)
+        m.write("%s%s%s.txyz" % (self.pladir, os.sep, name), pbc=False, plain=True)
         return
 
     def make_structure(self, ecolors=None, vcolors=None, alpha=2):

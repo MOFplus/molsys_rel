@@ -62,6 +62,6 @@ m.acab.setup_vcratio_per_edge([1])
 ### N.B. constr_vertex=False to unconstraint colored vertices, otherwise the
 ###     loop finds just one solution! (there is only one way to color all the
 ###     vertices by just one color...)
-N = m.acab.cycle_loop(constr_vertex=False, rundir=rundir)
+N = m.acab.cycle_loop(constr_vertex=False, rundir=rundir, newrundir=False)
 print("Number of unequivalent colorings: %s" % N)
 
