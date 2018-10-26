@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function
 """
 Created on Mon Jun 11 14:19:27 2018
 
@@ -10,13 +9,21 @@ Created on Mon Jun 11 14:19:27 2018
         
         contains class acab
 """
-from molsys.addon import base
-from molsys.util.misc import normalize_ratio
+from __future__ import print_function
+from __future__ import absolute_import # no RuntimeWarning import error
 
-from molsys.util.color import ecolor2elem, elem2ecolor, maxecolor
-from molsys.util.color import vcolor2elem, elem2vcolor, maxvcolor
-from molsys.util.color import elematypecolor2string, string2elematypecolor
+### LOGGING ###
+import logging
+logger = logging.getLogger("molsys.acab")
+#logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
+
+### MOLSYS ###
+from molsys.addon import base
 from molsys.util.color import make_emol, make_vmol, make_mol
+from molsys.util.images import arr2idx
+from molsys.util.misc import normalize_ratio
+from molsys.util.sysmisc import isatty, _makedirs, _checkrundir
 
 try:
     from mpi4py import MPI
@@ -51,25 +58,17 @@ else:
     quicksum = pyscipopt.quicksum
     quickprod = pyscipopt.quickprod
 
-### AUX ###
+
+### UTIL ###
+import sys
+import os
+import numpy as np
 from collections import defaultdict, Counter
 from itertools import combinations
 from numbers import Number
-import numpy as np
 from math import pi, cos
-
-### UTIL ###
-from molsys.util.images import arr2idx
-from molsys.util.sysmisc import isatty, supports_color, _makedirs, _checkrundir
-import sys
-import os
-
-### LOGGING ###
-import logging
-logger = logging.getLogger("molsys.acab")
-#logger.setLevel(logging.DEBUG)
-logger.setLevel(logging.INFO)
 import atexit
+
 
 if mpi_comm is None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
@@ -79,9 +78,7 @@ class acab(base):
     ############################################################################
     ### TODO
     ###
-    ### supercell support
-    ### cromo format read/write
-    ### testing cases! (w/ & w/o pconn) [see poster]
+    ### chromo format read/write
 
     ############################################################################
     ### INITIALIZERS ###
@@ -153,13 +150,12 @@ class acab(base):
         :Toughts:
         - separate edge model and vertex model! (emodel vs vmodel)
         """
-        self.model = Model(*args, **kwargs)
-        self.assert_flag(ctrlc)
         # logo and farewells
         if verbose:
             print_header()
             atexit.register(print_footer)
         self.verbose = verbose
+        self.model = Model(*args, **kwargs)
         if not debug:
             self.model.hideOutput()
         self.debug = debug
@@ -170,6 +166,15 @@ class acab(base):
         self.ctrlc = ctrlc
         self.evars = {}
         self.vvars = {}
+        # symmetry enabled check
+        if not hasattr(self,"spglib"):
+            try:
+                import spglib # no practical use out of this check
+                self.sym_enabled = True
+            except ImportError:
+                logger.error("spglib not imported: symmetry is DISABLED")
+                self.sym_enabled = False
+        return
     
     def setup_colors(self, necolors=0, nvcolors=0, *args, **kwargs):
         """
@@ -496,17 +501,13 @@ class acab(base):
 
     def cycle_initsym(self):
         ### "grey" mol setup (=> symmetry space and permutations) ###
-        erange = range(len(self._mol.etab))
-        vrange = range(self._mol.natoms)
-        ecolors = [maxecolor-1 for i in erange] # last possible "color"
-        vcolors = [maxvcolor-1 for i in vrange] # last possible "color"
         if self.evars and self.use_edge and self.vvars and self.use_vertex:
-            m = make_mol(self._mol, alpha=self.alpha, ecolors=ecolors, vcolors=vcolors,
+            m = make_mol(self._mol, alpha=self.alpha,
                 use_edge=self.use_edge, use_vertex=self.use_vertex)
         elif self.evars and self.use_edge:
-            m = make_emol(self._mol, alpha=self.alpha, ecolors=ecolors)
+            m = make_emol(self._mol, alpha=self.alpha)
         elif self.vvars and self.use_vertex:
-            m = make_vmol(self._mol, vcolors=vcolors)
+            m = make_vmol(self._mol)
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
@@ -661,8 +662,8 @@ class acab(base):
         # set attributes
         self.Nmax = int(Nmax)
         self.alpha = alpha
-        self.init_sym = init_sym
-        self.span_sym = span_sym
+        self.init_sym = init_sym and self.sym_enabled
+        self.span_sym = span_sym and self.sym_enabled
         self.use_edge = use_edge
         self.use_vertex = use_vertex
         self.constr_edge = constr_edge
