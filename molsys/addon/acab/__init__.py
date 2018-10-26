@@ -160,7 +160,7 @@ class acab(base):
             print_header()
             atexit.register(print_footer)
         self.verbose = verbose
-        if debug:
+        if not debug:
             self.model.hideOutput()
         self.debug = debug
         if not ctrlc:
