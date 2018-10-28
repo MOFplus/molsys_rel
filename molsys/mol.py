@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 #from scipy.optimize import linear_sum_assignment as hungarian
 #import types
+import string
 import copy
 import os
 #import sys
@@ -160,6 +161,35 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         f.close()
         return
+
+    @classmethod
+    def from_smile(cls, smile, bbconn=[], bbcenter='com', maxiter=500):
+        ''' generates mol object from smiles string, requires openbabel to be installed            
+        '''
+        try:
+            import pybel
+        except:
+            raise ImportError('pybel not installed. Install openbabel incl. python bindings')
+        if bbconn != []:
+            nconns = len(bbconn)
+            dummies = ['He','Ne','Ar','Kr','Xe','Rn']
+            for i,c in enumerate(bbconn):
+                smile = smile.replace(c,dummies[i])
+        om = pybel.readstring("smi", smile)
+        om.make3D(forcefield='UFF', steps=maxiter)
+        txyzs = om.write('txyz') 
+        # there is gibberish in the first line of the txyzstring, we need to remove it!
+        txyzsl = txyzs.split("\n")
+        txyzsl[0] = txyzsl[0].split()[0]
+        txyzs = string.join(txyzsl,'\n')    
+        m = mol.from_string(txyzs,ftype='txyz')
+        if len(bbconn) == 1:
+            m.addon('bb')
+            m.bb.add_bb_info(conn_identifier= dummies[0].lower(),center_point=bbcenter)
+            m.bb.center()
+        elif len(bbconn) > 1:
+            raise NotImplementedError('currently only single connector type BBs can be constructed in this way')
+        return m
 
     @classmethod
     def from_file(cls, fname, ftype=None, **kwargs):
