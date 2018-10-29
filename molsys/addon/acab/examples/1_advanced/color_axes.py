@@ -7,8 +7,8 @@ from math import pi
 # angle between second-colored edges
 #theta = pi # only straight angles == axes
 #theta = 3.1
-theta = 3.0
-#theta = 2.6
+#theta = 3.0
+theta = 2.6
 #theta = 0
 
 # sense of the angle constraint
@@ -45,6 +45,6 @@ m.acab.setup_angle_btw_edges(color=1, theta=theta, sense=sense, eps=eps,
     vsele=vsele)
 
 #.. old part (loop) ............................................................
-N = m.acab.cycle_loop(constr_vertex=False, rundir=rundir)
+N = m.acab.cycle_loop(constr_vertex=False, rundir=rundir, newrundir=False)
 print("Number of unequivalent colorings: %s" % N)
 
