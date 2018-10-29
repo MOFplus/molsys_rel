@@ -169,7 +169,7 @@ class mol(mpiobject):
         try:
             import pybel
         except:
-            raise ImportError('pybel not installed. Install openbabel incl. python bindings')
+            raise ImportError('install openbabel and python-openbabel via apt')
         if bbconn != []:
             nconns = len(bbconn)
             dummies = ['He','Ne','Ar','Kr','Xe','Rn']
