@@ -167,13 +167,12 @@ class acab(base):
         self.evars = {}
         self.vvars = {}
         # symmetry enabled check
-        if not hasattr(self,"spglib"):
-            try:
-                import spglib # no practical use out of this check
-                self.sym_enabled = True
-            except ImportError:
-                logger.error("spglib not imported: symmetry is DISABLED")
-                self.sym_enabled = False
+        try:
+            import spglib # no practical use out of this check
+            self.sym_enabled = True
+        except ImportError:
+            logger.error("spglib not imported: symmetry is DISABLED")
+            self.sym_enabled = False
         return
     
     def setup_colors(self, necolors=0, nvcolors=0, *args, **kwargs):
@@ -693,11 +692,10 @@ class acab(base):
         if N == self.Nmax:
             N *= -1
         self.report_cycle(N)
-        if N > 0:
-            if self.span_sym:
-                logger.warning("Symmetry detection is not implemented here")
-            N = self.filter_cycle(N)
-            self.write_cycle(N)
+        if self.span_sym:
+            logger.warning("Symmetry detection is not implemented here")
+        #N = self.filter_cycle(N)
+        self.write_cycle(abs(N))
         return N
 
     def report_step(self, i):
@@ -722,10 +720,10 @@ class acab(base):
 
     def report_cycle(self, N):
         if N < 0: ### by convention
-            N -= -1
+            N *= -1
             self.report_last(N)
             if N == self.Nmax:
-                logger.warning("FAILURE: Time limit, convergence NOT reached")
+                logger.warning("FAILURE: Iteration limit, convergence NOT reached")
             else:
                 logger.warning("FAILURE: Interrupted process, convergence NOT reached")
         else:
