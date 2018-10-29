@@ -12,7 +12,8 @@ import sys
 import os
 import string
 import molsys
-argv = sys.argv
+import copy
+argv = copy.deepcopy(sys.argv)
 
 
 if argv.count('-name') != 0:
@@ -25,18 +26,12 @@ else:
     name = 'bb.mfpx'
 
 try:
-    smile = sys.argv[1]
+    smile = argv[1]
 except:
     print 'provide a smiles string as first argument!'
 
-try:
-    identifier = sys.argv[2]
-except:
-    print 'using X as default conn identifier'
-    identifier = 'X'
 
-
-m = molsys.mol.from_smile(smile,bbconn = [identifier],maxiter=500)
+m = molsys.mol.from_smiles(smile,maxiter=500)
 
 # write
 done=False; i=0
