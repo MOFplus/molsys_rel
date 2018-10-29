@@ -58,7 +58,7 @@ def write(mol, f):
     natoms = mol.natoms 
     if mol.periodic:
         f.write("%d\n" % mol.natoms)
-        f.write('Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n"' % 
+        f.write('Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f"\n' % 
             tuple(mol.cell.ravel()))
     else:
         f.write("%d\n\n" % mol.natoms)
