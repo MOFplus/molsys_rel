@@ -163,18 +163,16 @@ class mol(mpiobject):
         return
 
     @classmethod
-    def from_smile(cls, smile, bbconn=[], bbcenter='com', maxiter=500):
+    def from_smiles(cls, smile, bbcenter='com', maxiter=500):
         ''' generates mol object from smiles string, requires openbabel to be installed            
         '''
         try:
             import pybel
-        except:
+        except Exception as e: 
+            print(e)
+            import traceback
+            traceback.print_exc()
             raise ImportError('pybel not installed. Install openbabel incl. python bindings')
-        if bbconn != []:
-            nconns = len(bbconn)
-            dummies = ['He','Ne','Ar','Kr','Xe','Rn']
-            for i,c in enumerate(bbconn):
-                smile = smile.replace(c,dummies[i])
         om = pybel.readstring("smi", smile)
         om.make3D(forcefield='UFF', steps=maxiter)
         txyzs = om.write('txyz') 
@@ -183,12 +181,12 @@ class mol(mpiobject):
         txyzsl[0] = txyzsl[0].split()[0]
         txyzs = string.join(txyzsl,'\n')    
         m = mol.from_string(txyzs,ftype='txyz')
-        if len(bbconn) == 1:
+        if smile.count('*') != 0:
             m.addon('bb')
-            m.bb.add_bb_info(conn_identifier= dummies[0].lower(),center_point=bbcenter)
+            m.bb.add_bb_info(conn_identifier= 'xx',center_point=bbcenter)
             m.bb.center()
-        elif len(bbconn) > 1:
-            raise NotImplementedError('currently only single connector type BBs can be constructed in this way')
+        import molsys.util.atomtyper as atomtyper
+        at = atomtyper(m); at()
         return m
 
     @classmethod
