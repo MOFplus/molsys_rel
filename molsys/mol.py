@@ -1673,9 +1673,11 @@ class mol(mpiobject):
         self.xyz = rotations.rotate_by_triple(self.xyz, triple)
         return
 
-    def center_com(self):
+    def center_com(self, check_periodic=True, pbc = True):
         ''' centers the molsys at the center of mass '''
-        center = self.get_com()
+        if check_periodic:
+            if self.periodic: return
+        center = self.get_com(check_periodic=check_periodic, pbc = pbc)
         self.translate(-center)
         return
 
@@ -1837,7 +1839,7 @@ class mol(mpiobject):
             closest=[0]
         return d, r, closest
 
-    def get_com(self, idx = None, xyz = None, check_periodic=True):
+    def get_com(self, idx = None, xyz = None, check_periodic=True, pbc = True):
         """
         returns the center of mass of the mol object.
 
@@ -1856,7 +1858,7 @@ class mol(mpiobject):
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
-        xyz = self.apply_pbc(xyz, 0)
+        if pbc: xyz = self.apply_pbc(xyz, 0)
         if np.sum(amass) > 0.0:
             center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         else: #every atom is dummy!
