@@ -56,10 +56,8 @@ except ImportError:
     import _pickle as Pickle
 
 import logging
-import pdb
 logger = logging.getLogger("molsys.ff")
 #logger.setLevel(logging.INFO)
-#import pdb; pdb.set_trace()
 
 if mpi_comm is None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
@@ -1109,21 +1107,18 @@ class ff(base):
         for i in range(ntypes):
             for j in range(i, ntypes):
                 #TODO check availability of an explicit paramerter
-                try:
-                    if len(self.par["vdwpr"].keys()) > 0:
-                        _,_,ti = self.split_parname(types[i])
-                        _,_,tj = self.split_parname(types[j])
-                        ti =ti[0]
-                        tj = tj[0]
-                        parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
-                        if parname in self.par["vdwpr"].keys():
-                            # got it
-                            par_ij = self.par["vdwpr"][parname]
-                            self.vdwdata[types[i]+":"+types[j]] = par_ij
-                            self.vdwdata[types[j]+":"+types[i]] = par_ij
-                            continue
-                except:
-                    pass
+                if "vdwpr" in self.par and len(self.par["vdwpr"].keys()) > 0:
+                    _,_,ti = self.split_parname(types[i])
+                    _,_,tj = self.split_parname(types[j])
+                    ti =ti[0]
+                    tj = tj[0]
+                    parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
+                    if parname in self.par["vdwpr"].keys():
+                        # got it
+                        par_ij = self.par["vdwpr"][parname]
+                        self.vdwdata[types[i]+":"+types[j]] = par_ij
+                        self.vdwdata[types[j]+":"+types[i]] = par_ij
+                        continue
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]
@@ -1720,54 +1715,56 @@ class ff(base):
             # pack rics
             ric = self.ric_type[ic]
             n = len(ric)
-            l = len(ric[0])+1
-            filt = None
-            if ic == "dih":
-                l += 1
-            parind = self.parind[ic]
-            ptyp = par_types[ic]
-            ric_data = np.zeros([n,l], dtype="int32")
-            for i,r in enumerate(ric):
-                # we take only the first index and remove the ptype to lookup in ptyp dictionary
-                pi = parind[i][0]
-                ipi = ptyp[pi.split("->")[1]]
-                line = [ipi]+list(r)
-                # add ring attribute if it is a dihedral
-                if ic=="dih":
-                    if r.ring is not None:
-                        line += [r.ring]
-                    else:
-                        line += [0]
-                ric_data[i] = np.array(line)
-            data[ic] = ric_data
+            if n > 0:
+                l = len(ric[0])+1
+                filt = None
+                if ic == "dih":
+                    l += 1
+                parind = self.parind[ic]
+                ptyp = par_types[ic]
+                ric_data = np.zeros([n,l], dtype="int32")
+                for i,r in enumerate(ric):
+                    # we take only the first index and remove the ptype to lookup in ptyp dictionary
+                    pi = parind[i][0]
+                    ipi = ptyp[pi.split("->")[1]]
+                    line = [ipi]+list(r)
+                    # add ring attribute if it is a dihedral
+                    if ic=="dih":
+                        if r.ring is not None:
+                            line += [r.ring]
+                        else:
+                            line += [0]
+                    ric_data[i] = np.array(line)
+                data[ic] = ric_data
             # pack params
             par = self.par[ic]
             npar = len(par)
-            ind = par.keys()
-            ind.sort(key=lambda k: ptyp[k.split("->")[1]])
-            # params are stored in a tuple of 2 lists and two numpy arrays
-            #      list ptypes (string)  <- ptype
-            #      list names (string)   <- i
-            #      array npars(n,2) (int)      <- len(values), ipi
-            #      array pars(n, maxnpar) (float) <- values
-            # first round
-            ptypes = []
-            names  = []
-            npars  = []
-            for i in ind:
-                ipi = ptyp[i.split("->")[1]]
-                ptype, values = par[i]
-                ptypes.append(ptype)
-                names.append(i)
-                npars.append([len(values), ipi])
-            npars = np.array(npars)
-            maxnpar = np.amax(npars[:,0])
-            pars = np.zeros([len(ind), maxnpar], dtype="float64")
-            # second round .. pack params
-            for j,i in enumerate(ind):
-                ptype, values = par[i]
-                pars[j,:npars[j,0]] = np.array(values)
-            data[ic+"_par"] = (ptypes, names, npars, pars)
+            if npar > 0:
+                ind = par.keys()
+                ind.sort(key=lambda k: ptyp[k.split("->")[1]])
+                # params are stored in a tuple of 2 lists and two numpy arrays
+                #      list ptypes (string)  <- ptype
+                #      list names (string)   <- i
+                #      array npars(n,2) (int)      <- len(values), ipi
+                #      array pars(n, maxnpar) (float) <- values
+                # first round
+                ptypes = []
+                names  = []
+                npars  = []
+                for i in ind:
+                    ipi = ptyp[i.split("->")[1]]
+                    ptype, values = par[i]
+                    ptypes.append(ptype)
+                    names.append(i)
+                    npars.append([len(values), ipi])
+                npars = np.array(npars)
+                maxnpar = np.amax(npars[:,0])
+                pars = np.zeros([len(ind), maxnpar], dtype="float64")
+                # second round .. pack params
+                for j,i in enumerate(ind):
+                    ptype, values = par[i]
+                    pars[j,:npars[j,0]] = np.array(values)
+                data[ic+"_par"] = (ptypes, names, npars, pars)
             data["FF"] = self.par.FF
         return data
 
@@ -1778,23 +1775,24 @@ class ff(base):
         ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
         ric      = {}
         for r in ric_type:
-            rdata = data[r]
-            nric = rdata.shape[0]    
             rlist = []
-            rlen  = rdata.shape[1]
-            if r == "dih":
-                rlen -= 1 # in dih the ring attribute is stored as an additional column
-            for i in xrange(nric):
-                rtype = rdata[i,0]
-                aind  = rdata[i,1:rlen]
+            if r in data:
+                rdata = data[r]
+                nric = rdata.shape[0]                
+                rlen  = rdata.shape[1]
                 if r == "dih":
-                    if rdata[i,-1] != 0:
-                        icl = ic(aind, type=rtype, ring=rdata[i,-1])
+                    rlen -= 1 # in dih the ring attribute is stored as an additional column
+                for i in xrange(nric):
+                    rtype = rdata[i,0]
+                    aind  = rdata[i,1:rlen]
+                    if r == "dih":
+                        if rdata[i,-1] != 0:
+                            icl = ic(aind, type=rtype, ring=rdata[i,-1])
+                        else:
+                            icl = ic(aind, type=rtype)
                     else:
                         icl = ic(aind, type=rtype)
-                else:
-                    icl = ic(aind, type=rtype)
-                rlist.append(icl)
+                    rlist.append(icl)
             ric[r] = rlist    
         # now add data to ric object .. it gets only bnd, angl, oop, dih
         self.ric.set_rics(ric["bnd"], ric["ang"], ric["oop"], ric["dih"])
@@ -1805,26 +1803,27 @@ class ff(base):
         self.par.FF = data["FF"]
         for r in ric_type:
             par = self.par[r]
-            ptypes, names, npars, pars = data[r+"_par"]
-            t2ident = {} # maps integer type to identifier
-            ntypes = len(ptypes)
-            for i in range(ntypes):
-                itype = npars[i,1]
-                ptype = ptypes[i]
-                ident = names[i]
-                param = list(pars[i,0:npars[i,0]]) # npars[i,0] is the number of params
-                if ident in par:
-                    logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
-                    raise ValueError("Identifier %s appears twice" % ident)
-                par[ident] = (ptype, param)
-                if itype in t2ident:
-                    t2ident[itype].append(ident)
-                else:
-                    t2ident[itype] = [ident]
-            # now all types are read in: set up the parind datastructure of the ric
-            parind = self.parind[r]
-            for i,ri in enumerate(self.ric_type[r]):
-                parind[i] = t2ident[ri.type]
+            if r+"_par" in data:
+                ptypes, names, npars, pars = data[r+"_par"]
+                t2ident = {} # maps integer type to identifier
+                ntypes = len(ptypes)
+                for i in range(ntypes):
+                    itype = npars[i,1]
+                    ptype = ptypes[i]
+                    ident = names[i]
+                    param = list(pars[i,0:npars[i,0]]) # npars[i,0] is the number of params
+                    if ident in par:
+                        logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
+                        raise ValueError("Identifier %s appears twice" % ident)
+                    par[ident] = (ptype, param)
+                    if itype in t2ident:
+                        t2ident[itype].append(ident)
+                    else:
+                        t2ident[itype] = [ident]
+                # now all types are read in: set up the parind datastructure of the ric
+                parind = self.parind[r]
+                for i,ri in enumerate(self.ric_type[r]):
+                    parind[i] = t2ident[ri.type]
         return
 
 
@@ -1876,7 +1875,7 @@ chargetype     gaussian\n\n''')
                 elem = atype.split('_')[0][0:-1] ## convention: all atypes have .lt. 10 connections! 
                                                   # remove only last digit from emenent string
                 fkey.write('atom  %s   %s\n' % (atype, elem))
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
         #syntax of keyfile:
         # red name [atypes] [params] 
         parkeys= self.par.keys() # cha ang dih oop vdw bnd

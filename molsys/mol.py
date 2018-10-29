@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 #from scipy.optimize import linear_sum_assignment as hungarian
 #import types
+import string
 import copy
 import os
 #import sys
@@ -49,15 +50,15 @@ if molsys_mpi.size > 1:
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
-#fhandler.setLevel(logging.DEBUG)
-fhandler.setLevel(logging.WARNING)
+fhandler.setLevel(logging.DEBUG)
+#fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
 if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
-    #shandler.setLevel(logging.INFO)
-    shandler.setLevel(logging.WARNING)
+    shandler.setLevel(logging.INFO)
+    #shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
 
@@ -148,7 +149,7 @@ class mol(mpiobject):
         try:
             f = open(fname, "r")
         except IOError:
-            logger.warning('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
+            logger.info('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
             try:
                 f = open(fname+'.'+ftype, "r")
             except:
@@ -160,6 +161,35 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         f.close()
         return
+
+    @classmethod
+    def from_smile(cls, smile, bbconn=[], bbcenter='com', maxiter=500):
+        ''' generates mol object from smiles string, requires openbabel to be installed            
+        '''
+        try:
+            import pybel
+        except:
+            raise ImportError('pybel not installed. Install openbabel incl. python bindings')
+        if bbconn != []:
+            nconns = len(bbconn)
+            dummies = ['He','Ne','Ar','Kr','Xe','Rn']
+            for i,c in enumerate(bbconn):
+                smile = smile.replace(c,dummies[i])
+        om = pybel.readstring("smi", smile)
+        om.make3D(forcefield='UFF', steps=maxiter)
+        txyzs = om.write('txyz') 
+        # there is gibberish in the first line of the txyzstring, we need to remove it!
+        txyzsl = txyzs.split("\n")
+        txyzsl[0] = txyzsl[0].split()[0]
+        txyzs = string.join(txyzsl,'\n')    
+        m = mol.from_string(txyzs,ftype='txyz')
+        if len(bbconn) == 1:
+            m.addon('bb')
+            m.bb.add_bb_info(conn_identifier= dummies[0].lower(),center_point=bbcenter)
+            m.bb.center()
+        elif len(bbconn) > 1:
+            raise NotImplementedError('currently only single connector type BBs can be constructed in this way')
+        return m
 
     @classmethod
     def from_file(cls, fname, ftype=None, **kwargs):
@@ -343,20 +373,28 @@ class mol(mpiobject):
                 raise IOError("Unsupported format")
         return
 
-    def to_string(self, f, ftype='mfpx', **kwargs):
-        ''' generic reader for the mol class, reading from a string
-        Parameters:
-            f (obj)      : ByteIO object to be written
-            ftype="mfpx" : the parser type that is used to read the file
-            **kwargs     : all options of the parser are passed by the kwargs
-                             see molsys.io.* for detailed info'''
+    def to_string(self, ftype='mfpx', **kwargs):
+        """
+        Method to output mol object as string in the format
+        of the given filetype.
+
+        Kwargs:
+            ftype(string): name of the filetype, default to mfpx
+        
+        Raises:
+            IOError
+        
+        Returns:
+            string: mol object as string
+        """
+        f = StringIO()
         logger.info("writing string as %s" % str(ftype))
         if ftype in formats.read:
             formats.write[ftype](self,f,**kwargs)
         else:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
-        return
+        return f.getvalue()
 
     def view(self, program='moldenx', fmt='mfpx', **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
@@ -1665,9 +1703,11 @@ class mol(mpiobject):
         self.xyz = rotations.rotate_by_triple(self.xyz, triple)
         return
 
-    def center_com(self):
+    def center_com(self, check_periodic=True, pbc = True):
         ''' centers the molsys at the center of mass '''
-        center = self.get_com()
+        if check_periodic:
+            if self.periodic: return
+        center = self.get_com(check_periodic=check_periodic, pbc = pbc)
         self.translate(-center)
         return
 
@@ -1829,7 +1869,7 @@ class mol(mpiobject):
             closest=[0]
         return d, r, closest
 
-    def get_com(self, idx = None, xyz = None, check_periodic=True):
+    def get_com(self, idx = None, xyz = None, check_periodic=True, pbc = True):
         """
         returns the center of mass of the mol object.
 
@@ -1848,7 +1888,7 @@ class mol(mpiobject):
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
-        xyz = self.apply_pbc(xyz, 0)
+        if pbc: xyz = self.apply_pbc(xyz, 0)
         if np.sum(amass) > 0.0:
             center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         else: #every atom is dummy!

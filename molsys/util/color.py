@@ -87,6 +87,7 @@ def make_emol(m, alpha=2, ecolors=None, etab=None):
         xyz_c1 = calpha*xyz_a + ralpha*xyz_c
         xyz_c2 = ralpha*xyz_a + calpha*xyz_c
         me = m.from_array(np.vstack([xyz_c1,xyz_c2]), use_pconn=m.use_pconn)
+    me.xyz += 1e-24 # to avoid underflows when wrapping
     # attributes #
     if hasattr(m,'cell'):
         me.set_cell(m.cell)
@@ -139,7 +140,7 @@ def make_vmol(m, vcolors=None):
     """
     if vcolors is None:
         vcolors = [maxvcolor-1]*m.natoms
-    mv = copy.deepcopy(m)
+    mv = copy.copy(m)
     for i in range(mv.natoms):
         mv.atypes[i] = elematypecolor2string(
             mv.elems[i],
@@ -160,7 +161,7 @@ def make_mol(m, alpha=2, ecolors=None, vcolors=None, etab=None, use_edge=True, u
         me = make_emol(m, alpha=alpha, ecolors=ecolors, etab=etab)
         ne = me.natoms
         mv = make_vmol(m, vcolors=vcolors)
-        mm = copy.deepcopy(me)
+        mm = copy.copy(me)
         mm.add_mol(mv) # N.B.: in THIS EXACT ORDER, otherwise KO connectivity
         ### connectivity ###
         ctab = []

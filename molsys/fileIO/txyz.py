@@ -1,7 +1,8 @@
 import numpy
 import string
-#from molsys import *
 import molsys.util.images as images
+from collections import Counter
+import pprint
 import logging
 
 logger = logging.getLogger("molsys.io")
@@ -248,7 +249,7 @@ def read_body(f, natoms, frags = True, topo = False, cromo = False):
         return elems, numpy.array(xyz), atypes, conn, fragtypes, fragnumbers
 
 
-def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
+def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
     """
     Routine, which writes the body of a txyz or a mfpx file
     :Parameters:
@@ -257,11 +258,12 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
         -frags  (bool) : flag to specify if fragment info should be in body or not
         -topo   (bool) : flag to specigy if pconn info should be in body or not
         -pbc    (bool) : if False, removes connectivity out of the box (meant for visualization)
-        -moldenrc (bool) : atypes compatible with molden
+        -plain  (bool) : plain Tinker file supported by molden
     """
-    if topo: frags = False   #from now on this is convention!
+    if topo:
+        frags = False   #from now on this is convention!
     if topo: pconn = mol.pconn
-    if frags == True:
+    if frags:
         fragtypes   = mol.fragtypes
         fragnumbers = mol.fragnumbers
     else:
@@ -272,32 +274,37 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
     cnct        = mol.conn
     natoms      = mol.natoms
     atypes      = mol.atypes
-    if pbc == False:
+    if not pbc:
         cellcond = .5*numpy.array(mol.cellparams[:3])
         cnct = [ [i for i in c if (abs(xyz[i]-xyz[e]) < cellcond).all()] for e,c in enumerate(cnct)]
-    if moldenr:
-        if fragtypes is None: fragtypes = [None for i in mol.atypes]
-        if fragnumbers is None: fragnumbers = [None for i in mol.atypes]
-        from collections import Counter
-        oldatypes = list(zip(fragnumbers, fragtypes, atypes))
-        unique_oldatypes = list(Counter(oldatypes).keys())
-        unique_oldatypes.sort()
-        old2newatypes = {e:i for i,e in enumerate(unique_oldatypes)}
-        new2oldatypes = {i:e for i,e in enumerate(unique_oldatypes)}
-        newatypes = [old2newatypes[i] for i in oldatypes]
-        atypes = newatypes
+    if plain:
+        if frags:
+            fragtypes = [None]*len(mol.atypes)
+            fragnumbers = [None]*len(mol.atypes)
+            oldatypes = list(zip(atypes, fragtypes, fragnumbers))
+        else:
+            oldatypes = atypes[:]
+        u_atypes = set(Counter(oldatypes).keys())
+        u_atypes -= set([a for a in u_atypes if str(a).isdigit()])
+        u_atypes = sorted(list(u_atypes))
+        o2n_atypes = {e:i for i,e in enumerate(u_atypes)}
+        n2o_atypes = {i:e for i,e in enumerate(u_atypes)}
+        atypes = [a if str(a).isdigit() else o2n_atypes[a] for a in oldatypes]
         frags = False ### encoded in one column only
+    xyzl = xyz.tolist()
     for i in range(mol.natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
-            tuple([i+1]+[elems[i]]+ xyz[i].tolist() + [atypes[i]])
+            (i+1, elems[i], xyzl[i][0], xyzl[i][1], xyzl[i][2], atypes[i])
         if frags == True:
-            line += ("%-16s %5d ") % tuple([fragtypes[i]]+[fragnumbers[i]])
+            line += ("%-16s %5d ") % (fragtypes[i], fragnumbers[i])
         conn = (numpy.array(cnct[i])+1).tolist()
         if len(conn) != 0:
             if topo:
                 pimg = []
                 for pc in pconn[i]:
                     for ii,img in enumerate(images):
+                        if pc is None:
+                            raise TypeError, "Something went VERY BAD in pconn"
                         if all(img==pc):
                             pimg.append(ii)
                             break
@@ -309,16 +316,20 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, moldenr=False):
             else:
                 line += (len(conn)*"%7d ") % tuple(conn)
         f.write("%s \n" % line)
-    if moldenr:
-        satoms = len(str(mol.natoms))
-        f.write("### type fragment_type fragment_number atom_type\n{\n")
-        for key,val in new2oldatypes.items():
-            f.write("    %%%ds: %%s,\n" % (satoms,) % (key,val))
-        f.write("}\n")
+    if plain:
+        if hasattr(u_atypes[0],"__iter__"):
+            f.write("### atype: (old_atype, fragment_type, fragment_number)\n")
+            n2o_fmt = pprint.pformat(n2o_atypes, indent=4)
+        else:
+            f.write("### atype: old_atype\n")
+            n2o_fmt = pprint.pformat(n2o_atypes, indent=4, width=1) #force \n
+        n2o_fmt = n2o_fmt.strip("{}")
+        n2o_fmt = "{\n " + n2o_fmt + "\n}\n"
+        f.write(n2o_fmt)
     return
 
 
-def write(mol, f, topo = False, frags = False, pbc=True, moldenr=False):
+def write(mol, f, topo = False, frags = False, pbc=True, plain=False):
     """
     Routine, which writes an txyz file
     :Parameters:
@@ -337,5 +348,5 @@ def write(mol, f, topo = False, frags = False, pbc=True, moldenr=False):
         f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)
-    write_body(f, mol, topo = topo, frags = frags, pbc = pbc, moldenr = moldenr)
+    write_body(f, mol, topo=topo, frags=frags, pbc=pbc, plain=plain)
     return

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function
 """
 Created on Mon Jun 11 14:19:27 2018
 
@@ -10,13 +9,21 @@ Created on Mon Jun 11 14:19:27 2018
         
         contains class acab
 """
-from molsys.addon import base
-from molsys.util.misc import normalize_ratio
+from __future__ import print_function
+from __future__ import absolute_import # no RuntimeWarning import error
 
-from molsys.util.color import ecolor2elem, elem2ecolor, maxecolor
-from molsys.util.color import vcolor2elem, elem2vcolor, maxvcolor
-from molsys.util.color import elematypecolor2string, string2elematypecolor
+### LOGGING ###
+import logging
+logger = logging.getLogger("molsys.acab")
+#logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
+
+### MOLSYS ###
+from molsys.addon import base
 from molsys.util.color import make_emol, make_vmol, make_mol
+from molsys.util.images import arr2idx
+from molsys.util.misc import normalize_ratio
+from molsys.util.sysmisc import isatty, _makedirs, _checkrundir
 
 try:
     from mpi4py import MPI
@@ -51,33 +58,17 @@ else:
     quicksum = pyscipopt.quicksum
     quickprod = pyscipopt.quickprod
 
-### AUX ###
-from collections import defaultdict
-from itertools import combinations
-from numbers import Number
-import numpy as np
-from math import pi, cos
 
 ### UTIL ###
-from molsys.util.images import arr2idx
-from molsys.util.sysmisc import _makedirs, _checkrundir
 import sys
 import os
-from copy import deepcopy
-
-### LOGGING ###
-import logging
-logger = logging.getLogger("molsys.acab")
-logger.setLevel(logging.DEBUG)
-#logger.setLevel(logging.INFO)
-### HACK ###******
-logger.debug = print
-logger.info = print
-logger.warning = print
-logger.error = print
-logger.critical = print
-#*****************
+import numpy as np
+from collections import defaultdict, Counter
+from itertools import combinations
+from numbers import Number
+from math import pi, cos
 import atexit
+
 
 if mpi_comm is None:
     logger.error("MPI NOT IMPORTED DUE TO ImportError")
@@ -87,10 +78,7 @@ class acab(base):
     ############################################################################
     ### TODO
     ###
-    ### logger?
-    ### supercell support
-    ### cromo format read/write
-    ### testing cases! (w/ & w/o pconn) [see poster]
+    ### chromo format read/write
 
     ############################################################################
     ### INITIALIZERS ###
@@ -115,9 +103,6 @@ class acab(base):
         self.Model = Model
         self.quicksum = quicksum
         self.quickprod = quickprod
-        # logo and farewells
-        #print_header()
-        #atexit.register(print_footer)
         return
 
     ############################################################################
@@ -143,7 +128,7 @@ class acab(base):
     #    #    self.otab = []
     #    #    self.oconn = []
 
-    def setup_model(self, verbose=False, debug=True, ctrlc=True, *args, **kwargs):
+    def setup_model(self, verbose=True, debug=False, ctrlc=True, *args, **kwargs):
         """
         initialize the model and its utility attributes
 
@@ -165,17 +150,31 @@ class acab(base):
         :Toughts:
         - separate edge model and vertex model! (emodel vs vmodel)
         """
+        # logo and farewells
+        if verbose:
+            print_header()
+            atexit.register(print_footer)
+        self.verbose = verbose
         self.model = Model(*args, **kwargs)
-        self.assert_flag(ctrlc)
-        if not verbose:
+        if not debug:
             self.model.hideOutput()
         self.debug = debug
         if not ctrlc:
-            logger.warning("KeyboardInterrupt is DISABLED: " \
+            logger.warning("Key Interrupt DISABLED: " \
                 "hope you have your own good reasons")
             self.model.setBoolParam('misc/catchctrlc', ctrlc)
+        self.ctrlc = ctrlc
         self.evars = {}
         self.vvars = {}
+        # symmetry enabled check
+        if not hasattr(self,"spglib"):
+            try:
+                import spglib # no practical use out of this check
+                self.sym_enabled = True
+            except ImportError:
+                logger.error("spglib not imported: symmetry is DISABLED")
+                self.sym_enabled = False
+        return
     
     def setup_colors(self, necolors=0, nvcolors=0, *args, **kwargs):
         """
@@ -484,8 +483,7 @@ class acab(base):
     ############################################################################
     ### CYCLE ###
 
-    def cycle_init(self, alpha=2, use_sym=True, use_edge=True, use_vertex=True, 
-        constr_edge=True, constr_vertex=True):
+    def cycle_init(self):
         """
         initialize symmetry
 
@@ -496,48 +494,31 @@ class acab(base):
         :TODO:
         - disable symmetry
         """
-        ### loop assertions ###
-        self.assert_loop_alpha(alpha)
-        self.assert_loop_edge(use_edge, constr_edge)
-        self.assert_loop_vertex(use_vertex, constr_vertex)
-        ### loop options ###
-        self.alpha = alpha
-        self.use_sym       = use_sym
-        self.use_edge      = use_edge
-        self.use_vertex    = use_vertex
-        self.constr_edge   = constr_edge
-        self.constr_vertex = constr_vertex
         self.colors_ = []
-        ### init methods ###
         self.cycle_initdir()
-        self.cycle_initsym(alpha=alpha, use_sym=use_sym,
-            use_edge=use_edge, use_vertex=use_vertex,
-            constr_edge=constr_edge, constr_vertex=constr_vertex)
+        self.cycle_initsym()
         return
 
-    def cycle_initsym(self, alpha=2, use_sym=True, use_edge=True, use_vertex=True,
-            constr_edge=True, constr_vertex=True):
+    def cycle_initsym(self):
         ### "grey" mol setup (=> symmetry space and permutations) ###
-        erange = range(len(self._mol.etab))
-        vrange = range(self._mol.natoms)
-        ecolors = [maxecolor-1 for i in erange] # last possible "color"
-        vcolors = [maxvcolor-1 for i in vrange] # last possible "color"
-        if self.evars and use_edge and self.vvars and use_vertex:
-            m = make_mol(self._mol, alpha=alpha, ecolors=ecolors, vcolors=vcolors,
-                use_edge=use_edge, use_vertex=use_vertex)
-        elif self.evars and use_edge:
-            m = make_emol(self._mol, alpha=alpha, ecolors=ecolors)
-        elif self.vvars and use_vertex:
-            m = make_vmol(self._mol, vcolors=vcolors)
+        if self.evars and self.use_edge and self.vvars and self.use_vertex:
+            m = make_mol(self._mol, alpha=self.alpha,
+                use_edge=self.use_edge, use_vertex=self.use_vertex)
+        elif self.evars and self.use_edge:
+            m = make_emol(self._mol, alpha=self.alpha)
+        elif self.vvars and self.use_vertex:
+            m = make_vmol(self._mol)
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
-        m.addon("spg")
-        self.permutations = m.spg.generate_symperms()
-        if self.debug:
-            m.atypes = [0 for i in m.atypes]
-            m.write("%s%ssym.mfpx" % (self.rundir, os.sep))
-            m.write("%s%ssym.txyz" % (self.rundir, os.sep), pbc=False)
+        if self.init_sym:
+            m.addon("spg")
+            self.permutations = m.spg.generate_symperms()
+        else:
+            self.permutations = None
+        m.atypes = [0 for i in m.atypes]
+        m.write("%s%ssym.mfpx" % (self.rundir, os.sep))
+        m.write("%s%ssym.txyz" % (self.rundir, os.sep), pbc=False)
         return
 
     def cycle_initdir(self):
@@ -546,11 +527,14 @@ class acab(base):
         \"colors\" and \"pretty\" contains graph-like structures
         \"colors\" contains useful structures to weave frameworks later
         \"pretty\" contains just clearer views of these structures (do not use)
+        \"plain\" contains clearer views in plain tinker format (do not use)
         """
         self.coldir = "%s%scolors" % (self.rundir, os.sep)
         self.predir = "%s%spretty" % (self.rundir, os.sep)
+        self.pladir = "%s%splain" % (self.rundir, os.sep)
         _makedirs(self.coldir) #mfpx, w/  pbc, useful
         _makedirs(self.predir) #txyz, w/o pbc, clearer
+        _makedirs(self.pladir) #txyz, w/o pbc, clearer, plain
         return
 
     def cycle_permute(self, ecolors=None, vcolors=None):
@@ -560,20 +544,36 @@ class acab(base):
         symmetrize the solution of the optimal model in its symmetry solution
         subspace.
         """
-        if self.use_sym:
-            assert hasattr(self,"permutations")
-            if ecolors is not None and vcolors is not None:
-                if self.alpha == 2:
-                    colors = np.array(ecolors*2 + vcolors)[self.permutations]
-                else:
-                    colors = np.array(ecolors + vcolors)[self.permutations]
-            elif ecolors is None:
-                colors = np.array(vcolors)[self.permutations]
-            elif vcolors is None:
-                if self.alpha == 2:
-                    colors = np.array(ecolors)[self.permutations]
-                else:
-                    colors = np.array(ecolors*2)[self.permutations]
+        if self.span_sym:
+            if self.permutations is not None:
+                if ecolors is not None and vcolors is not None:
+                    if self.alpha == 2:
+                        colors = np.array(ecolors*2 + vcolors)[self.permutations]
+                    else:
+                        colors = np.array(ecolors + vcolors)[self.permutations]
+                elif ecolors is None:
+                    colors = np.array(vcolors)[self.permutations]
+                elif vcolors is None:
+                    if self.alpha == 2:
+                        colors = np.array(ecolors)[self.permutations]
+                    else:
+                        colors = np.array(ecolors*2)[self.permutations]
+            else:
+                m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=self.alpha)
+                m.addon("spg")
+                permutations = m.spg.generate_symperms()
+                if ecolors is not None and vcolors is not None:
+                    if self.alpha == 2:
+                        colors = np.array(ecolors*2 + vcolors)[permutations]
+                    else:
+                        colors = np.array(ecolors + vcolors)[permutations]
+                elif ecolors is None:
+                    colors = np.array(vcolors)[permutations]
+                elif vcolors is None:
+                    if self.alpha == 2:
+                        colors = np.array(ecolors)[permutations]
+                    else:
+                        colors = np.array(ecolors*2)[permutations]
         else:
             if ecolors is not None and vcolors is not None:
                 if self.alpha == 2:
@@ -637,10 +637,9 @@ class acab(base):
         else:
             return True
     
-    def cycle_loop(self, Nmax=1e4, alpha=2, use_sym=True,
-        use_edge=True, use_vertex=True,
-        constr_edge=True, constr_vertex=True,
-        rundir="run", newrundir=True):
+    def cycle_loop(self, Nmax=1e4, alpha=3, init_sym=True, span_sym=True,
+        use_edge=True, use_vertex=True, constr_edge=True, constr_vertex=True,
+        color_equivalence=None, rundir="run", newrundir=True):
         """
         cycle model
 
@@ -653,34 +652,61 @@ class acab(base):
         if N > 0: EXACT number of solutions (exhaustiveness)
         if N < 0: MINIMUM number of solutions (there may be others)
         """
+        logger.info("Run exhaustive search of colorings")
+        # assert variables
+        self.assert_loop_alpha(alpha)
+        self.assert_flag(init_sym)
+        self.assert_flag(span_sym)
+        self.assert_loop_edge(use_edge, constr_edge)
+        self.assert_loop_vertex(use_vertex, constr_vertex)
+        # set attributes
+        self.Nmax = int(Nmax)
+        self.alpha = alpha
+        self.init_sym = init_sym and self.sym_enabled
+        self.span_sym = span_sym and self.sym_enabled
+        self.use_edge = use_edge
+        self.use_vertex = use_vertex
+        self.constr_edge = constr_edge
+        self.constr_vertex = constr_vertex
+        self.color_equivalence = color_equivalence
+        # set run directory
         if newrundir:
             self.rundir = _checkrundir(rundir)
         else:
             self.rundir = rundir
-        self.cycle_init(alpha=alpha, use_sym=use_sym,
-            use_edge=use_edge, use_vertex=use_vertex,
-            constr_edge=constr_edge, constr_vertex=constr_vertex)
+        # initialize loop
+        self.cycle_init()
+        # run loop
         try:
-            logger.info("KeyboardInterrupt is DISABLED: " \
-                "no worries, cycle handles the exception")
+            logger.info("Key Interrupt DISABLED: " \
+                "loop handles CTRL+C")
             self.model.setBoolParam('misc/catchctrlc', True)
+            logger.info("Max cycle iteration n.: %s" % self.Nmax)
             N = 0
-            while N < Nmax:
+            while N < self.Nmax:
                 self.report_step(N)
                 if self.cycle_step():
                     break
                 N += 1
         except KeyboardInterrupt:
+            N *= -1 ### convention
+        if N == self.Nmax:
             N *= -1
         self.report_cycle(N)
-        if N == Nmax:
-            N *= -1
         if N > 0:
+            if self.span_sym:
+                logger.warning("Symmetry detection is not implemented here")
+            N = self.filter_cycle(N)
             self.write_cycle(N)
         return N
 
     def report_step(self, i):
-        sys.stdout.write("cycle n.: %d\n" % i)
+        if isatty():
+            sys.stdout.write("\r")
+        sys.stdout.write("Run cycle iteration n.: %d" % i)
+        if not isatty():
+            sys.stdout.write("\n")
+        sys.stdout.flush()
 
     def report_last(self, i=None):
         """
@@ -689,41 +715,71 @@ class acab(base):
         :Parameters:
         - i (int): loop index (if None prints None)
         """
+        sys.stdout.write("\n")
         status = self.model.getStatus()
         logger.info("Last status: %s; Number of cycles: %s" % (status,i))
         return
 
-    def report_cycle(self, i):
-        if i < 0:
-            self.report_last(-i)
-            logger.warning("INTERRUPTED: Convergence NOT reached")
+    def report_cycle(self, N):
+        if N < 0: ### by convention
+            N -= -1
+            self.report_last(N)
+            if N == self.Nmax:
+                logger.warning("FAILURE: Time limit, convergence NOT reached")
+            else:
+                logger.warning("FAILURE: Interrupted process, convergence NOT reached")
         else:
-            self.report_last(i)
+            self.report_last(N)
             status = self.model.getStatus()
             if status == "unknown":
                 logger.warning("FAILURE: Convergence NOT reached")
             elif status == "timelimit":
                 logger.warning("FAILURE: Time limit has been reached")
             elif status == "infeasible":
-                if i == 0:
-                    logger.info("FAILURE: No feasible solution found")
+                if N == 0:
+                    logger.info("SUCCESS: No feasible solution found!")
                 else:
-                    logger.info("SUCCESS: Convergence reached")
+                    logger.info("SUCCESS: %s feasible solutions found!" % N)
             else:
                 logger.error("DISASTER: the unexpected happened!")
         ### timer?
         #print("Total elapsed time: %.3f s" % (self.model.getTotalTime(),))
         return
 
+    def filter_cycle(self, N):
+        if self.color_equivalence is None:
+            return N
+        colors_ = self.colors_
+        newcolors_ = [colors_[0]]
+        for j in range(N):
+            for k in range(N):
+                if j < k:
+                    jcolors = colors_[j]
+                    kcolors = colors_[k]
+                    if not self.color_equivalence(self, jcolors, kcolors):
+                        newcolors_.append(kcolors)
+        M = len(newcolors_)
+        if M < N:
+            N = M
+            logger.info("%s unequivalent solutions after filtering" % N)
+            self.colors_ = newcolors_
+        return N
+
     def write_cycle(self, N):
-        j = 0
-        while j < N:
+        # N.B.: alpha=2 irrespective to self.alpha by design
+        for j in range(N):
             ecolors,vcolors = self.colors_[j]
             name = "%%0%dd" % len("%d" % N) % j
             self.write_structure(name, ecolors, vcolors, alpha=2)
-            j += 1
 
     def write_structure(self, name, ecolors=None, vcolors=None, alpha=2):
+        m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=alpha)
+        m.write("%s%s%s.mfpx" % (self.coldir, os.sep, name))
+        m.write("%s%s%s.txyz" % (self.predir, os.sep, name), pbc=False)
+        m.write("%s%s%s.txyz" % (self.pladir, os.sep, name), pbc=False, plain=True)
+        return
+
+    def make_structure(self, ecolors=None, vcolors=None, alpha=2):
         if ecolors and vcolors:
             m = make_mol(self._mol, alpha, ecolors=ecolors, vcolors=vcolors,
                 use_vertex=self.use_vertex, use_edge=self.use_edge)
@@ -734,9 +790,7 @@ class acab(base):
         else:
             logger.error("step solutions are not constraint: infinite loop!")
             raise TypeError("unconstraint step solutions: infinite loop!")
-        m.write("%s%s%s.mfpx" % (self.coldir, os.sep, name))
-        m.write("%s%s%s.txyz" % (self.predir, os.sep, name), pbc=False)
-        return
+        return m
 
     ############################################################################
     ### SOLUTION CONSTRAINTS ###
@@ -1505,9 +1559,9 @@ class acab(base):
 
 __version__ = "2.1.1"
 
-header= """
-********************************************************************************
-
+stars= """
+********************************************************************************"""
+logo = """
                                                           .k:
                                                           XMk
                                                          xMMk
@@ -1560,9 +1614,9 @@ oOOOOOOOOOOOOOOOOOOOOOOl                 dOOOOOOOOOOOOOOOOOOl         'xO.
                 .;oOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOx:.
                     .:okOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOxl,.
                         ..;coxkOOOOOOOOOOOOOOOOOkdoc;'.
-                                 ....''''.....
-
-
+                                 .;coxkOdoc;'.
+"""
+info = """
         .,;;'.              ..oOOOOo;            .';;,.         ..oOOOOOoo.     
     .oKMMMMMMMNx'       ,lxOOOOOOOOOOk:      :kNMMMMMMM0c      xOOOOOOOOOOOxl'  
   .0MMMMMMMMMMMMMO    :kOOOx.       ,OO,   oWMMMMMMMMMMMMN;    OOc       cOOOOl
@@ -1576,11 +1630,11 @@ lMo            WW      ;dOOOOOOOOOOo.    MX.           dMc   oOO;.  ..lOOOOo,
 ck             od        .:dkOOxl;       X.            .N.    .lxkOOkkxdl;      
 
 
-						ACAB = ALL COLORS ARE BEAUTIFUL
-			 by Roberto Amabile <roberto d0t amabile at rub d0t de>
+                        ACAB = ALL COLORS ARE BEAUTIFUL
+             by Roberto Amabile <roberto d0t amabile at rub d0t de>
 
   Net coloring + advanced Reverse Topological Approach: R. Amabile, R. Schmid
-			 (C) 2018- Computational Materials Chemistry (Germany).
+             (C) 2018- Computational Materials Chemistry (Germany).
 
 ********************************************************************************
 """
@@ -1594,7 +1648,10 @@ footer="""
 """
 
 def print_header():
-    print(header)
+    print(stars)
+    if isatty():
+        print(logo)
+    print(info)
 
 def print_footer():
     print(footer)
