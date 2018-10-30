@@ -163,13 +163,16 @@ class mol(mpiobject):
         return
 
     @classmethod
-    def from_smile(cls, smile, bbconn=[], bbcenter='com', maxiter=500):
+    def from_smiles(cls, smile, bbcenter='com', maxiter=500):
         ''' generates mol object from smiles string, requires openbabel to be installed            
         '''
         try:
             import pybel
-        except:
-            raise ImportError('pybel not installed. Install openbabel incl. python bindings')
+        except ImportError as e:
+            print(e)
+            import traceback
+            traceback.print_exc()
+            raise ImportError('install openbabel and python-openbabel via apt')
         if bbconn != []:
             nconns = len(bbconn)
             dummies = ['He','Ne','Ar','Kr','Xe','Rn']
@@ -183,12 +186,12 @@ class mol(mpiobject):
         txyzsl[0] = txyzsl[0].split()[0]
         txyzs = string.join(txyzsl,'\n')    
         m = mol.from_string(txyzs,ftype='txyz')
-        if len(bbconn) == 1:
+        if smile.count('*') != 0:
             m.addon('bb')
-            m.bb.add_bb_info(conn_identifier= dummies[0].lower(),center_point=bbcenter)
+            m.bb.add_bb_info(conn_identifier= 'xx',center_point=bbcenter)
             m.bb.center()
-        elif len(bbconn) > 1:
-            raise NotImplementedError('currently only single connector type BBs can be constructed in this way')
+        import molsys.util.atomtyper as atomtyper
+        at = atomtyper(m); at()
         return m
 
     @classmethod
@@ -396,27 +399,38 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         return f.getvalue()
 
-    def view(self, program='moldenx', fmt='mfpx', **kwargs):
+    def view(self, program=None, ftype='mfpx', opts=()):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
         if self.mpi_rank == 0:
             logger.info("invoking %s as visualisation tool" % (program,))
             pid = str(os.getpid())
-            _tmpfname = "_tmpfname_%s.%s" % (pid, fmt)
-            self.write(_tmpfname)
+            _tmpfname = "_tmpfname_%s.%s" % (pid, ftype)
+            self.write(_tmpfname, ftype=ftype)
+            if program in [None,"moldenx"] and opts is ():
+                program = "moldenx"
+                opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
             try:
-                ret = subprocess.call([program, _tmpfname])
+                ret = subprocess.call([program, _tmpfname] + list(opts))
             except KeyboardInterrupt:
                 pass
             finally:
-                os.remove(_tmpfname)
-                logger.info("temporary file "+_tmpfname+" removed")
+                try:
+                    os.remove(_tmpfname)
+                    logger.info("temporary file "+_tmpfname+" removed")
+                except:
+                    logger.warning("temporary file "+_tmpfname+" removed during view!")
         return
 
-    def molden(self, **kwargs):
-        self.view(program='moldenx', fmt='mfpx', **kwargs)
-    def pymol(self, **kwargs):
-        self.view(program='pymol', fmt='mfpx', **kwargs)
+    def molden(self, opts=()):
+        if opts is ():
+            opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
+        if self.mpi_rank == 0:
+            self.view(program='moldenx', ftype='mfpx', opts=opts)
+
+    def pymol(self, opts=None):
+        if self.mpi_rank == 0:
+            self.view(program='pymol', ftype='mfpx', opts=opts)
 
     ##### addons ####################################################################################
 
@@ -735,6 +749,7 @@ class mol(mpiobject):
         for cc in conn:
             for c in cc:
                 self.conn.append(c)
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
         self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
         cell = self.cell * np.array(self.supercell)[:,np.newaxis]
@@ -808,13 +823,15 @@ class mol(mpiobject):
                                 if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
                                 #print(px,py,pz)
         self.natoms = nat*ntot
-        self.conn, self.pconn, self.xyz = [],[],[]
+        self.conn, self.pconn, self.pimages, self.xyz = [],[],[],[]
         for cc in conn:
             for c in cc:
                 self.conn.append(c)
         for pp in pconn:
             for p in pp:
                 self.pconn.append(p)
+                self.pimages.append([arr2idx[ip] for ip in p])
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
         self.cellparams[0:3] *= np.array(self.supercell)
         self.cell *= np.array(self.supercell)[:,np.newaxis]
@@ -848,6 +865,7 @@ class mol(mpiobject):
             elif self.bcond == 3:
                 frac = self.get_frac_xyz()
                 self.xyz[:,:] -= np.dot(np.around(frac),self.cell)
+                #self.xyz[:,:] -= np.dot(np.floor(frac),self.cell)
             if self.use_pconn:
                 # we need to reconstruct pconn in this case
                 self.add_pconn()
@@ -865,6 +883,7 @@ class mol(mpiobject):
             elif self.bcond == 3:
                 frac = np.dot(a, self.inv_cell)
                 xyz[:,:] -= np.dot(np.around(frac),self.cell)
+                #xyz[:,:] -= np.dot(np.floor(frac),self.cell)
         if self.use_pconn:
             self.add_pconn()
         return xyz
@@ -1072,7 +1091,8 @@ class mol(mpiobject):
             cn = (np.array(c)+self.natoms).tolist()
             self.conn.append(cn)
         self.natoms += other.natoms
-        if len(other.fragtypes) == 0: other.set_nofrags()
+        if len(other.fragtypes) == 0:
+            other.set_nofrags()
         self.add_fragtypes(other.fragtypes)
         self.add_fragnumbers(other.fragnumbers)
         #self.fragtypes += other.fragtypes
@@ -1274,7 +1294,7 @@ class mol(mpiobject):
             self.xyz = xyz
         self.conn.append([])
         if self.use_pconn: self.pconn.append([])
-        if self.fragtypes:
+        if len(self.fragtypes) > 0:
             self.fragtypes.append(fragtype)
             self.fragnumbers.append(fragnumber)
         return self.natoms-1
@@ -1366,6 +1386,9 @@ class mol(mpiobject):
                         # if atom i not in bads
                         for i in range(self.natoms) if i not in bads
                     ]
+                if len(self.fragtypes) > 0:
+                    self.fragtypes = np.take(self.fragtypes, goods)
+                    self.fragnumbers = np.take(self.fragnumbers, goods)
                 self.natoms = len(self.elems)
                 self.xyz    = self.xyz[goods]
                 return
@@ -1422,7 +1445,7 @@ class mol(mpiobject):
             labels (list): atom labels to be removed'''
         badlist = []
         for i,e in enumerate(self.elems):
-            if labels.count(e) != 0:
+            if e in labels:
                 badlist.append(i)
         logger.info('removing '+ str(badlist[::-1]))
         self.delete_atoms(badlist, keep_conn=keep_conn)
@@ -1486,7 +1509,7 @@ class mol(mpiobject):
                 parent = sel[parent_index]
                 elem = self.elems[parent]
                 atype = self.atypes[parent]
-                if self.fragtypes:
+                if len(self.fragtypes) > 0:
                     fragtype = self.fragtypes[parent]
                     fragnumber = self.fragnumbers[parent]
                     self.add_atom(elem, atype, xyz, fragtype=fragtype, fragnumber=fragnumber)
@@ -2056,7 +2079,13 @@ class mol(mpiobject):
         :Parameters:
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         """
-        self.fragnumbers += list(np.array(fragnumbers)+self.get_nfrags())
+        if len(self.fragnumbers) > 0:
+            self.fragnumbers = np.concatenate([
+                self.fragnumbers,np.array(fragnumbers)+self.get_nfrags()
+            ])
+        else:
+            self.fragnumbers = fragnumbers
+        #self.fragnumbers += list(np.array(fragnumbers)+self.get_nfrags())
         self.nfrags = np.max(self.fragnumbers)+1  
         return
 

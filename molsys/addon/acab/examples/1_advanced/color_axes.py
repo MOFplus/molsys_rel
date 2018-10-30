@@ -5,10 +5,11 @@ from math import pi
 ### OPTIONS ####################################################################
 #.. new options ................................................................
 # angle between second-colored edges
-#theta = pi # only straight angles == axes
+theta = pi # only straight angles == axes
 #theta = 3.1
 #theta = 3.0
-theta = 2.6
+#theta = 2.6
+theta = 2.1
 #theta = 0
 
 # sense of the angle constraint
@@ -20,8 +21,9 @@ sense="min" # minimum theta allowed
 eps=1e-3
 
 #.. old options ................................................................
-net = "brk" # must be in the running directory
-supercell = [2,2,2]
+#net = "brk" # must be in the running directory
+net = "eea"
+supercell = [1,1,1]
 scell = ''.join([str(s) for s in supercell]) # just a string
 ecratio = [2,1] # edge color ratio
 rundir = "%s%s%s_%s_%s" % ("run", os.sep, "axes", net, scell)

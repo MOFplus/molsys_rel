@@ -100,7 +100,8 @@ def write(mol, f, fullcell = True):
     except AttributeError:
         raise IOError, "%s is not writable" % f
     ### write func ###
-    if mol.fragtypes == []: mol.set_nofrags()
+    if len(mol.fragtypes) == 0:
+        mol.set_nofrags()
     if mol.is_topo:
         ftype = 'topo'
         if mol.use_pconn == False:
