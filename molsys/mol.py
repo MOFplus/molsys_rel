@@ -1387,8 +1387,8 @@ class mol(mpiobject):
                         for i in range(self.natoms) if i not in bads
                     ]
                 if len(self.fragtypes) > 0:
-                    self.fragtypes = np.take(self.fragtypes, self.goods)
-                    self.fragnumbers = np.take(self.fragnumbers, self.goods)
+                    self.fragtypes = np.take(self.fragtypes, goods)
+                    self.fragnumbers = np.take(self.fragnumbers, goods)
                 self.natoms = len(self.elems)
                 self.xyz    = self.xyz[goods]
                 return

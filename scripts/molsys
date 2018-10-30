@@ -36,3 +36,4 @@ if sum(scell) > 3:
 if addon is not None:
     m.addon(addon)
     print("\"m.%s\" addon loaded" % addon)
+
