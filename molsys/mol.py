@@ -173,11 +173,11 @@ class mol(mpiobject):
             import traceback
             traceback.print_exc()
             raise ImportError('install openbabel and python-openbabel via apt')
-        if bbconn != []:
-            nconns = len(bbconn)
-            dummies = ['He','Ne','Ar','Kr','Xe','Rn']
-            for i,c in enumerate(bbconn):
-                smile = smile.replace(c,dummies[i])
+        #if bbconn != []:
+        #    nconns = len(bbconn)
+        #    dummies = ['He','Ne','Ar','Kr','Xe','Rn']
+        #    for i,c in enumerate(bbconn):
+        #        smile = smile.replace(c,dummies[i])
         om = pybel.readstring("smi", smile)
         om.make3D(forcefield='UFF', steps=maxiter)
         txyzs = om.write('txyz') 
