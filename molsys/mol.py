@@ -399,14 +399,14 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         return f.getvalue()
 
-    def view(self, program=None, ftype='mfpx', opts=()):
+    def view(self, ftype='txyz', program=None, opts=(), **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
         if self.mpi_rank == 0:
             logger.info("invoking %s as visualisation tool" % (program,))
             pid = str(os.getpid())
             _tmpfname = "_tmpfname_%s.%s" % (pid, ftype)
-            self.write(_tmpfname, ftype=ftype)
+            self.write(_tmpfname, ftype=ftype, **kwargs)
             if program in [None,"moldenx"] and opts is ():
                 program = "moldenx"
                 opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
@@ -422,15 +422,15 @@ class mol(mpiobject):
                     logger.warning("temporary file "+_tmpfname+" removed during view!")
         return
 
-    def molden(self, opts=()):
+    def molden(self, opts=(), **kwargs):
         if opts is ():
             opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
         if self.mpi_rank == 0:
-            self.view(program='moldenx', ftype='mfpx', opts=opts)
+            self.view(ftype='txyz', program='moldenx', opts=opts, **kwargs)
 
-    def pymol(self, opts=None):
+    def pymol(self, opts=(), **kwargs):
         if self.mpi_rank == 0:
-            self.view(program='pymol', ftype='mfpx', opts=opts)
+            self.view(ftype='txyz', program='moldenx', opts=opts, **kwargs)
 
     ##### addons ####################################################################################
 
