@@ -403,7 +403,7 @@ class acab(base):
             ic = conn[i]
             ip = pconn[i]
             for j,jp in zip(ic,ip):
-                rk = self._mol.xyz[j] - self._mol.xyz[i] + np.dot(self._mol.cell,jp)
+                rk = self._mol.xyz[j] - self._mol.xyz[i] + np.dot(jp,self._mol.cell)
                 dk = np.linalg.norm(rk)
                 rk /= dk
                 v2e[i].append(rk)
@@ -765,8 +765,8 @@ class acab(base):
 
     def write_cycle(self, N):
         # N.B.: alpha=2 irrespective to self.alpha by design
-        for j in range(N):
-            ecolors,vcolors = self.colors_[j]
+        for j,jcolors_ in enumerate(self.colors_):
+            ecolors,vcolors = jcolors_
             name = "%%0%dd" % len("%d" % N) % j
             self.write_structure(name, ecolors, vcolors, alpha=2)
 

@@ -5,11 +5,11 @@ import os
 
 folder = "%s%snets" % (os.path.dirname(__file__), os.sep)
 
-nets      = ["apo", "brk", "eea", "pyr", "qom", "rtl", "zzz"]#, "spn-z"]
-ncolors   = [   63,   -70,  -70,     43,   -70,     7,   -70]#,     -10]
-ncolors_  = [    3,     3,    0,      2,     0,     2,    10]#,       4]
-ncolors__ = [    1,     1,    0,      2,     0,     2,    10]#,       4]
-maxcycle  = [   70,    70,   70,     70,    70,    70,    70]#,      10]
+nets      = ["apo", "eea", "brk", "pyr", "qom", "rtl", "zzz"]#, "spn-z"]
+ncolors   = [   63,   -70,   -70,    43,   -70,     7,   -70]#,     -10]
+ncolors_  = [    3,     5,     6,     2,     4,     2,    10]#,       4]
+ncolors__ = [    1,     5,     1,     2,     0,     2,    10]#,       4]
+maxcycle  = [   70,    70,    70,    70,    70,    70,    70]#,      30]
 #N.B.: spn-z is commented due to numerous symmetry operations (it's slow wrt. others!)
 #remove the sharp and the closed bracket before the sharp ( ']#' ) to test
 
