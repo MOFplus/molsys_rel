@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 #from scipy.optimize import linear_sum_assignment as hungarian
 #import types
+import string
 import copy
 import os
 #import sys
@@ -160,6 +161,33 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         f.close()
         return
+
+    @classmethod
+    def from_smiles(cls, smile, bbcenter='com', maxiter=500):
+        ''' generates mol object from smiles string, requires openbabel to be installed            
+        '''
+        try:
+            import pybel
+        except Exception as e: 
+            print(e)
+            import traceback
+            traceback.print_exc()
+            raise ImportError('pybel not installed. Install openbabel incl. python bindings')
+        om = pybel.readstring("smi", smile)
+        om.make3D(forcefield='UFF', steps=maxiter)
+        txyzs = om.write('txyz') 
+        # there is gibberish in the first line of the txyzstring, we need to remove it!
+        txyzsl = txyzs.split("\n")
+        txyzsl[0] = txyzsl[0].split()[0]
+        txyzs = string.join(txyzsl,'\n')    
+        m = mol.from_string(txyzs,ftype='txyz')
+        if smile.count('*') != 0:
+            m.addon('bb')
+            m.bb.add_bb_info(conn_identifier= 'xx',center_point=bbcenter)
+            m.bb.center()
+        import molsys.util.atomtyper as atomtyper
+        at = atomtyper(m); at()
+        return m
 
     @classmethod
     def from_file(cls, fname, ftype=None, **kwargs):
