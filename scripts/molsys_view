@@ -1,0 +1,40 @@
+#!/usr/bin/python
+import molsys
+import sys
+import os
+
+nargs = len(sys.argv)
+if nargs == 1:
+    raise IndexError("give at least one positional argument as filename")
+elif nargs == 3:
+    strcell = sys.argv[2]
+    scell = [int(s) for s in strcell.split(',')]
+else:
+    scell = [1,1,1]
+
+try:
+    fname = sys.argv[1]
+except IndexError:
+    raise IndexError("provide at least fname as first positional argument")
+try:
+    strcell = sys.argv[2]
+    scell = [int(s) for s in strcell.split(',')]
+except IndexError:
+    strcell = '1,1,1'
+    scell = [1,1,1]
+try:
+    addon = sys.argv[3]
+except IndexError:
+    addon = None
+
+
+m = molsys.mol.from_file(fname)
+print("%s loaded as mol instance \"m\"" % fname)
+if sum(scell) > 3:
+    m.make_supercell(scell)
+    print("\"m\" made as %s supercell" % strcell)
+if addon is not None:
+    m.addon(addon)
+    print("\"m.%s\" addon loaded" % addon)
+m.view(pbc=False)
+

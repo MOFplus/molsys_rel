@@ -399,16 +399,17 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         return f.getvalue()
 
-    def view(self, program=None, ftype='mfpx', opts=()):
+    def view(self, ftype='txyz', program=None, opts=(), **kwfopts):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
         if self.mpi_rank == 0:
             logger.info("invoking %s as visualisation tool" % (program,))
             pid = str(os.getpid())
             _tmpfname = "_tmpfname_%s.%s" % (pid, ftype)
-            self.write(_tmpfname, ftype=ftype)
-            if program in [None,"moldenx"] and opts is ():
+            self.write(_tmpfname, ftype=ftype, **kwfopts)
+            if program in [None,"moldenx"]:
                 program = "moldenx"
+            if opts is () and program == "moldenx":
                 opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
             try:
                 ret = subprocess.call([program, _tmpfname] + list(opts))
