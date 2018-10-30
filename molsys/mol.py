@@ -168,11 +168,16 @@ class mol(mpiobject):
         '''
         try:
             import pybel
-        except Exception as e: 
+        except ImportError as e:
             print(e)
             import traceback
             traceback.print_exc()
-            raise ImportError('pybel not installed. Install openbabel incl. python bindings')
+            raise ImportError('install openbabel and python-openbabel via apt')
+        if bbconn != []:
+            nconns = len(bbconn)
+            dummies = ['He','Ne','Ar','Kr','Xe','Rn']
+            for i,c in enumerate(bbconn):
+                smile = smile.replace(c,dummies[i])
         om = pybel.readstring("smi", smile)
         om.make3D(forcefield='UFF', steps=maxiter)
         txyzs = om.write('txyz') 

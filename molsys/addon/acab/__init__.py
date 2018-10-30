@@ -20,7 +20,7 @@ logger.setLevel(logging.INFO)
 
 ### MOLSYS ###
 from molsys.addon import base
-from molsys.util.color import make_emol, make_vmol, make_mol
+from molsys.util.color import make_emol, make_vmol, make_mol, ecolor2elem, vcolor2elem
 from molsys.util.images import arr2idx
 from molsys.util.misc import normalize_ratio
 from molsys.util.sysmisc import isatty, _makedirs, _checkrundir
@@ -779,8 +779,17 @@ class acab(base):
 
     def make_structure(self, ecolors=None, vcolors=None, alpha=2):
         if ecolors and vcolors:
+            if self.constr_edge:
+                ec2e = None
+            else:
+                ec2e = ecolor2elem[len(ecolor2elem)/2:]+ecolor2elem[:len(ecolor2elem)/2]
+            if self.constr_vertex:
+                vc2e = None
+            else:
+                vc2e = vcolor2elem[len(vcolor2elem)/2:]+vcolor2elem[:len(vcolor2elem)/2]
             m = make_mol(self._mol, alpha, ecolors=ecolors, vcolors=vcolors,
-                use_vertex=self.use_vertex, use_edge=self.use_edge)
+                use_vertex=self.use_vertex, use_edge=self.use_edge,
+                vc2e=vc2e, ec2e=ec2e)
         elif ecolors:
             m = make_emol(self._mol, alpha, ecolors=ecolors)
         elif vcolors:

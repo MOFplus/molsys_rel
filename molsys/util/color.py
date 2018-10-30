@@ -53,7 +53,7 @@ def assert_eacstr(st):
 
 # make mol objects out of graph elements (edges and/or vertices) #
 
-def make_emol(m, alpha=2, ecolors=None, etab=None):
+def make_emol(m, alpha=2, ecolors=None, etab=None, ec2e=None):
     """
     make mol object out of edge colors
     """
@@ -61,6 +61,8 @@ def make_emol(m, alpha=2, ecolors=None, etab=None):
         etab = m.etab
     if ecolors is None:
         ecolors = [maxecolor-1]*len(etab)
+    if ec2e is None:
+        ec2e = ecolor2elem
     # coordinates #
     ralpha = 1./alpha #reverse alpha
     calpha = 1-ralpha #one's complement of reverse alpha
@@ -98,10 +100,10 @@ def make_emol(m, alpha=2, ecolors=None, etab=None):
         me.use_pconn = True
     # elements/atomtypes #
     if alpha == 2:
-        me.elems = [ecolor2elem[v] for v in ecolors] # N.B.: no connectivity
+        me.elems = [ec2e[v] for v in ecolors] # N.B.: no connectivity
         me.atypes = [0 for v in ecolors]
     else:
-        me.elems = [ecolor2elem[v] for v in list(ecolors)*2] # with connectivity
+        me.elems = [ec2e[v] for v in list(ecolors)*2] # with connectivity
         me.atypes = [0 for v in list(ecolors)*2]
     # connectivity #
     new_etab = []
@@ -134,12 +136,14 @@ def make_emol(m, alpha=2, ecolors=None, etab=None):
     me.new_etab = new_etab ### MOVE TO make_mol
     return me
 
-def make_vmol(m, vcolors=None):
+def make_vmol(m, vcolors=None, vc2e=None):
     """
     make mol object out of graph vertices
     """
     if vcolors is None:
         vcolors = [maxvcolor-1]*m.natoms
+    if vc2e is None:
+        vc2e = vcolor2elem
     mv = copy.copy(m)
     for i in range(mv.natoms):
         mv.atypes[i] = elematypecolor2string(
@@ -147,20 +151,21 @@ def make_vmol(m, vcolors=None):
             mv.atypes[i],
             vcolors[i]
         )
-        mv.elems[i] = vcolor2elem[vcolors[i]]
+        mv.elems[i] = vc2e[vcolors[i]]
     if hasattr(m,'cell'): mv.set_cell(m.cell)
     if hasattr(m,'supercell'): mv.supercell = m.supercell[:]
     return mv
 
-def make_mol(m, alpha=2, ecolors=None, vcolors=None, etab=None, use_edge=True, use_vertex=True):
+def make_mol(m, alpha=2, ecolors=None, vcolors=None, etab=None,
+    use_edge=True, use_vertex=True, ec2e=None, vc2e=None):
     """
     make mol object out of graph elements (edges and/or vertices)
     if both edges and vertices, it takes care of the connectivity too
     """
     if use_edge and use_vertex:
-        me = make_emol(m, alpha=alpha, ecolors=ecolors, etab=etab)
+        me = make_emol(m, alpha=alpha, ecolors=ecolors, etab=etab, ec2e=ec2e)
         ne = me.natoms
-        mv = make_vmol(m, vcolors=vcolors)
+        mv = make_vmol(m, vcolors=vcolors, vc2e=vc2e)
         mm = copy.copy(me)
         mm.add_mol(mv) # N.B.: in THIS EXACT ORDER, otherwise KO connectivity
         ### connectivity ###
