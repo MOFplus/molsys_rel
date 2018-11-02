@@ -1263,8 +1263,8 @@ class mol(mpiobject):
         """
         idxj = self.conn[i].index(j)
         idxi = self.conn[j].index(i)
-        self.conn[i].remove(idxj)
-        self.conn[j].remove(idxi)
+        self.conn[i].pop(idxj)
+        self.conn[j].pop(idxi)
         if self.use_pconn:
             self.pconn[i].pop(idxj)
             self.pconn[j].pop(idxi)            
