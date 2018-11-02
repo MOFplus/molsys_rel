@@ -1210,9 +1210,9 @@ class mol(mpiobject):
                     self.conn[a2].append(a1)
                     if self.use_pconn:
                         d,v,imgi = self.get_distvec(a1,a2)
-                        self.pconn[a1].append(images[imgi])
+                        self.pconn[a1].append(images[imgi[0]])
                         d,v,imgi = self.get_distvec(a2,a1)
-                        self.pconn[a2].append(images[imgi])                
+                        self.pconn[a2].append(images[imgi][0])                
         return
 
     def add_shortest_bonds(self,lista1,lista2):
