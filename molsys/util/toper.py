@@ -588,7 +588,8 @@ class molgraph(conngraph):
             assert self.clusters
         except AttributeError:
             self.get_clusters()
-        tm = molsys.topo()
+        tm = molsys.mol()
+        tm.force_topo()
         tm.natoms = len(self.clusters)
         tm.set_empty_conn()
         xyz = []

@@ -676,6 +676,10 @@ class mol(mpiobject):
         self.omit_pconn()
         return
     
+    def force_topo(self):
+        self.is_topo = True
+        self.add_pconn()
+        return
 
     ###  periodic systems .. cell manipulation ############
     
