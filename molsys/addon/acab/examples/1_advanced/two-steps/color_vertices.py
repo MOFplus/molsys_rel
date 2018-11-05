@@ -6,15 +6,17 @@ import os
 
 ### OPTIONS ####################################################################
 # net name as in filename or in MOF+ database
-net = "pcu"
+net = "nbo-b"
 # number unit cell replica in the 3 directions of space
-supercell = [1,1,1]
+supercell = [2,2,2]
 # string of supercell
 scell = ''.join([str(s) for s in supercell])
-# edge color ratio per vertex
-ecratio = [2,1]
+# edge color ratio
+ecratio = [1,1]
+# vertex color ratio
+vcratio = [1]
 # run directory (with leading running index)
-rundir = "%s%s%s_%s" % ('run', os.sep, "edges", scell)
+rundir = "%s%s%s_%s" % ('run', os.sep, "vertices", scell)
 
 ### UTILITY ####################################################################
 # script path
@@ -49,19 +51,14 @@ m.addon("acab")     # load addon as attribute of mol instance
 
 m.acab.setup_model()    # setup model options
 
-### setup edge color ratio per each vertex (local)
-m.acab.setup_ecratio_per_vertex(ecratio) # stricter
-### setup edge color ratio altogether (global)
-#m.acab.setup_ecratio(ecratio) # looser
-### setup vertex color ratio as [1] => vertices are colored all the same!
-### N.B.: w/o this: there is no vertex and edges are not connected!
-m.acab.setup_vcratio_per_edge([1])  
+### setup vertex color ratio per each edge (local, for bipartite)
+m.acab.setup_ecratio_per_vertex(ecratio)  # stricter
+### setup vertex color ratio altogether (global, for disorder)
+m.acab.setup_vcratio(vcratio) # looser
+### N.B.: setup_ecratio is not needed to connect vertices here
 
 ### cycle loop of solutions
 ### N is the number of solutions
-### N.B. constr_vertex=False to unconstraint colored vertices, otherwise the
-###     loop finds just one solution! (there is only one way to color all the
-###     vertices by just one color...)
 N = m.acab.cycle_loop(constr_vertex=False, rundir=rundir, newrundir=False)
 print("Number of unequivalent colorings: %s" % N)
 
