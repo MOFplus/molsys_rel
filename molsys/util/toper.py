@@ -1189,7 +1189,6 @@ class topotyper(object):
         n = make_mol(self.tg.mol, alpha=3, ecolors=self.tg.molg.ep.color.a)
         if scell is not None:
             n.make_supercell(scell)
-        n.wrap_in_box()
         n.write("%s%s%s.mfpx" % (foldername, os.sep, "colors"))
         n.write("%s%s%s.txyz" % (foldername, os.sep, "colors"), pbc=False)
 
