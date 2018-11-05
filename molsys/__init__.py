@@ -7,7 +7,7 @@ import subprocess
 from .molsys_mpi import mpiobject
 from . import molsys_mpi
 from .mol import mol
-from .topo import topo
+#from .topo import topo
 from . import addon
 
 def git_revision_hash():
@@ -30,4 +30,4 @@ __version_info__ = (0, 0, rev_no, "%s"%commit)
 __version__ = "%i.%i.%i.%s"%__version_info__
 
 
-__all__=["mol", "topo", "mpiobject", "molsys_mpi"]
+__all__=["mol", "mpiobject", "molsys_mpi"]
