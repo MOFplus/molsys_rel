@@ -1532,8 +1532,8 @@ class ff(base):
         """
         hash = None
         fric = open(fname+".ric", "r")
-        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
-        ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
+        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]
+        ric_len  = [2    , 3    , 4    , 4    , 1    , 1      ,2     ]
         ric      = {}
         # read in ric first, store the type as an attribute in the first place
         stop = False
@@ -1680,9 +1680,10 @@ class ff(base):
                         else:
                             t2ident[itype] = [ident]
                     # now all types are read in: set up the parind datastructure of the ric
-                    parind = self.parind[curric]
-                    for i,r in enumerate(self.ric_type[curric]):
-                        parind[i] = t2ident[r.type]
+                    if curric != "vdwpr":
+                        parind = self.parind[curric]
+                        for i,r in enumerate(self.ric_type[curric]):
+                            parind[i] = t2ident[r.type]
         fpar.close()
         # check if both fpar and ric file have hashes
         if hash is not None and found_hash == False:
