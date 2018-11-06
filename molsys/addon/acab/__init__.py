@@ -219,7 +219,7 @@ class acab(base):
         self.ecratio = ecratio
         self.vcratio = vcratio
 
-    def setup_ecratio(self, ecratio, sele=None, set_ecratio=True):
+    def setup_ecratio(self, ecratio, vsele=None, set_ecratio=True):
         """
         :Parameters:
         - ecratio (None or list of ints): overall edge   color ratio
@@ -230,13 +230,14 @@ class acab(base):
         """
         if not hasattr(self,"necolors"):
             self.setup_colors(necolors=len(ecratio))
-        #if sele is None:
-        #    etab = self._mol.etab
-        #else:
-        #    try:
-        #        etab = self._mol.etab[sele]
-        #    except TypeError:
-        #        etab = [self._mol.etab[i] for i in sele]
+        if vsele is None:
+            vertices = range(self._mol.natoms)
+        else:
+            vertices = vsele
+            try:
+                vertices[0]
+            except TypeError:
+                vertices = [vertices]
         self.assert_ecratio(ecratio)
         evars = self.evars
         necolors = self.necolors
@@ -261,7 +262,7 @@ class acab(base):
         if set_ecratio: self.ecratio = ecratio
         return
 
-    def setup_vcratio(self, vcratio, sele=None, set_vcratio=True):
+    def setup_vcratio(self, vcratio, esele=None, set_vcratio=True):
         """
         :Parameters:
         - vcratio (None or list of ints): overall vertex color ratio
@@ -272,6 +273,8 @@ class acab(base):
         """
         if not hasattr(self,"nvcolors"):
             self.setup_colors(nvcolors=len(vcratio))
+        if esele is not None:
+            raise NotImplementedError
         #if sele is None:
         #    sele = range(self._mol.natoms)
         #else:
@@ -327,12 +330,14 @@ class acab(base):
                 )
         if set_ecratios: self.ecratios = ecratios
 
-    def setup_vcratio_per_edge(self, vcratio, sele=None, set_vcratios=True):
+    def setup_vcratio_per_edge(self, vcratio, esele=None, set_vcratios=True):
         """
         N.B.: there are always two vertex per edge
         """
         if not hasattr(self,"nvcolors"):
             self.setup_colors(nvcolors=len(vcratio))
+        if esele is not None:
+            raise NotImplementedError
         #if sele is None:
         #    sele = range(self._mol.natoms)
         #else:
@@ -403,7 +408,7 @@ class acab(base):
             ic = conn[i]
             ip = pconn[i]
             for j,jp in zip(ic,ip):
-                rk = self._mol.xyz[j] - self._mol.xyz[i] + np.dot(self._mol.cell,jp)
+                rk = self._mol.xyz[j] - self._mol.xyz[i] + np.dot(jp,self._mol.cell)
                 dk = np.linalg.norm(rk)
                 rk /= dk
                 v2e[i].append(rk)
@@ -493,7 +498,7 @@ class acab(base):
         :TODO:
         - disable symmetry
         """
-        self.colors_ = []
+        self.colorings = []
         self.cycle_initdir()
         self.cycle_initsym()
         return
@@ -609,14 +614,14 @@ class acab(base):
         ### exclude permutations of colors ###
         if self.evars and self.constr_edge:
             if self.alpha == 2:
-                ecolors_ = colors[:,:len(ecolors)]
+                ecolorings = colors[:,:len(ecolors)]
             else:
-                ecolors_ = colors[:,:len(ecolors)/2]
-            for ecolors in ecolors_:
+                ecolorings = colors[:,:len(ecolors)/2]
+            for ecolors in ecolorings:
                 self.exclude_edge_solution(ecolors)
         if self.vvars and self.constr_vertex:
-            vcolors_ = colors[:,-len(vcolors):]
-            for vcolors in vcolors_:
+            vcolorings = colors[:,-len(vcolors):]
+            for vcolors in vcolorings:
                 self.exclude_vertex_solution(vcolors)
 
     def cycle_step(self):
@@ -631,7 +636,7 @@ class acab(base):
         self.optimize_model()
         if self.is_optimal_model():
             self.cycle_constraint()
-            self.colors_.append([self.ecolors[:], self.vcolors[:]])
+            self.colorings.append([self.ecolors[:], self.vcolors[:]])
             return False
         else:
             return True
@@ -747,26 +752,26 @@ class acab(base):
     def filter_cycle(self, N):
         if self.color_equivalence is None:
             return N
-        colors_ = self.colors_
-        newcolors_ = [colors_[0]]
+        colorings = self.colorings
+        newcolorings = [colorings[0]]
         for j in range(N):
             for k in range(N):
                 if j < k:
-                    jcolors = colors_[j]
-                    kcolors = colors_[k]
+                    jcolors = colorings[j]
+                    kcolors = colorings[k]
                     if not self.color_equivalence(self, jcolors, kcolors):
-                        newcolors_.append(kcolors)
-        M = len(newcolors_)
+                        newcolorings.append(kcolors)
+        M = len(newcolorings)
         if M < N:
             N = M
             logger.info("%s unequivalent solutions after filtering" % N)
-            self.colors_ = newcolors_
+            self.colorings = newcolorings
         return N
 
     def write_cycle(self, N):
         # N.B.: alpha=2 irrespective to self.alpha by design
-        for j in range(N):
-            ecolors,vcolors = self.colors_[j]
+        for j,coloring in enumerate(self.colorings):
+            ecolors, vcolors = coloring
             name = "%%0%dd" % len("%d" % N) % j
             self.write_structure(name, ecolors, vcolors, alpha=2)
 

@@ -28,9 +28,10 @@ def non_axial(supercell):
     N = m.acab.cycle_loop(alpha=3, constr_vertex=False, rundir='run/'+scell)
     return N
 
-@pytest.mark.xfail(raises=KeyError, reason="supercell too small (to be fixed)")
+### supercell too small to be written (to be fixed)
 def test_axial_111():
-    assert axial([1,1,1]) == 1, assert_message
+    with pytest.raises(KeyError):
+        assert axial([1,1,1]) == 1, assert_message
 
 def test_axial_222():
     assert axial([2,2,2]) == 2, assert_message
@@ -39,13 +40,15 @@ def test_axial_222():
 def test_axial_333():
     assert axial([3,3,3]) == 2, assert_message
 
+@pytest.mark.slow
 @pytest.mark.xpass(reason="too slow")
 def test_axial_444():
     assert axial([4,4,4]) == 4, assert_message
 
-@pytest.mark.xfail(raises=TypeError, reason="problems with periodic connectivity writing")
+### problems with periodic connectivity writing
 def test_non_axial_111():
-    assert non_axial([1,1,1]) == 1, assert_message
+    with pytest.raises(TypeError, match="VERY BAD"):
+        assert non_axial([1,1,1]) == 1, assert_message
 
 @pytest.mark.slow
 def test_non_axial_222():

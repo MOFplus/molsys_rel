@@ -173,11 +173,11 @@ class mol(mpiobject):
             import traceback
             traceback.print_exc()
             raise ImportError('install openbabel and python-openbabel via apt')
-        if bbconn != []:
-            nconns = len(bbconn)
-            dummies = ['He','Ne','Ar','Kr','Xe','Rn']
-            for i,c in enumerate(bbconn):
-                smile = smile.replace(c,dummies[i])
+        #if bbconn != []:
+        #    nconns = len(bbconn)
+        #    dummies = ['He','Ne','Ar','Kr','Xe','Rn']
+        #    for i,c in enumerate(bbconn):
+        #        smile = smile.replace(c,dummies[i])
         om = pybel.readstring("smi", smile)
         om.make3D(forcefield='UFF', steps=maxiter)
         txyzs = om.write('txyz') 
@@ -399,15 +399,15 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         return f.getvalue()
 
-    def view(self, ftype='txyz', program=None, opts=(), **kwfopts):
+    def view(self, ftype='txyz', program=None, opts=(), **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
         if self.mpi_rank == 0:
             logger.info("invoking %s as visualisation tool" % (program,))
             pid = str(os.getpid())
             _tmpfname = "_tmpfname_%s.%s" % (pid, ftype)
-            self.write(_tmpfname, ftype=ftype, **kwfopts)
-            if program in [None,"moldenx"]:
+            self.write(_tmpfname, ftype=ftype, **kwargs)
+            if program is None:
                 program = "moldenx"
             if opts is () and program == "moldenx":
                 opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
@@ -423,15 +423,15 @@ class mol(mpiobject):
                     logger.warning("temporary file "+_tmpfname+" removed during view!")
         return
 
-    def molden(self, opts=()):
+    def molden(self, opts=(), **kwargs):
         if opts is ():
             opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
         if self.mpi_rank == 0:
-            self.view(program='moldenx', ftype='mfpx', opts=opts)
+            self.view(ftype='txyz', program='moldenx', opts=opts, **kwargs)
 
-    def pymol(self, opts=None):
+    def pymol(self, opts=(), **kwargs):
         if self.mpi_rank == 0:
-            self.view(program='pymol', ftype='mfpx', opts=opts)
+            self.view(ftype='txyz', program='moldenx', opts=opts, **kwargs)
 
     ##### addons ####################################################################################
 
@@ -677,6 +677,10 @@ class mol(mpiobject):
         self.omit_pconn()
         return
     
+    def force_topo(self):
+        self.is_topo = True
+        self.add_pconn()
+        return
 
     ###  periodic systems .. cell manipulation ############
     
@@ -1211,9 +1215,9 @@ class mol(mpiobject):
                     self.conn[a2].append(a1)
                     if self.use_pconn:
                         d,v,imgi = self.get_distvec(a1,a2)
-                        self.pconn[a1].append(images[imgi])
+                        self.pconn[a1].append(images[imgi[0]])
                         d,v,imgi = self.get_distvec(a2,a1)
-                        self.pconn[a2].append(images[imgi])                
+                        self.pconn[a2].append(images[imgi][0])                
         return
 
     def add_shortest_bonds(self,lista1,lista2):
@@ -1264,8 +1268,8 @@ class mol(mpiobject):
         """
         idxj = self.conn[i].index(j)
         idxi = self.conn[j].index(i)
-        self.conn[i].remove(idxj)
-        self.conn[j].remove(idxi)
+        self.conn[i].pop(idxj)
+        self.conn[j].pop(idxi)
         if self.use_pconn:
             self.pconn[i].pop(idxj)
             self.pconn[j].pop(idxi)            

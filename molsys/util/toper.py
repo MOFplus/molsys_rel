@@ -588,7 +588,8 @@ class molgraph(conngraph):
             assert self.clusters
         except AttributeError:
             self.get_clusters()
-        tm = molsys.topo()
+        tm = molsys.mol()
+        tm.force_topo()
         tm.natoms = len(self.clusters)
         tm.set_empty_conn()
         xyz = []
@@ -1189,7 +1190,6 @@ class topotyper(object):
         n = make_mol(self.tg.mol, alpha=3, ecolors=self.tg.molg.ep.color.a)
         if scell is not None:
             n.make_supercell(scell)
-        n.wrap_in_box()
         n.write("%s%s%s.mfpx" % (foldername, os.sep, "colors"))
         n.write("%s%s%s.txyz" % (foldername, os.sep, "colors"), pbc=False)
 
