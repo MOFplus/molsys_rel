@@ -10,5 +10,6 @@ from molsys.util.atomtyper import atomtyper
 from .fragmentizer import fragmentizer
 from .slicer import slicer
 from . import sysmisc
+from .histogram import histogram
 
-__all__ = ['unit_cell', 'elems', 'rotations', 'atomtyper', 'images', 'fragmentizer','spacegroups', 'slicer', 'sysmisc']
+__all__ = ['unit_cell', 'elems', 'rotations', 'atomtyper', 'images', 'fragmentizer','spacegroups', 'slicer', 'sysmisc', "histogram"]
