@@ -6,7 +6,8 @@ Minimum set to convert spacegroup symbols to the respective spacegroup number
 Much more has to be added here!
 """
 
-spacegroups={'P1':1,
+spacegroups={
+'P1':1,
 'P-1':2,
 'P2':3,
 'P21':4,
@@ -32,6 +33,7 @@ spacegroups={'P1':1,
 'I212121':24,
 'Pmm2':25,
 'Pmc21':26,
+'Pmc2(1)':26,
 'Pcc2':27,
 'Pma2':28,
 'Pca21':29,
@@ -53,14 +55,17 @@ spacegroups={'P1':1,
 'Iba2':45,
 'Ima2':46,
 'Pmmm':47,
+'Pmmmm':47,
 'Pnnn':48,
 'Pccm':49,
 'Pban':50,
 'Pmma':51,
+'Pmbm':51,
 'Pnna':52,
 'Pmna':53,
 'Pcca':54,
 'Pbam':55,
+'Pbamm':55,
 'Pccn':56,
 'Pbcm':57,
 'Pnnm':58,
@@ -71,6 +76,7 @@ spacegroups={'P1':1,
 'Cmcm':63,
 'Cmca':64,
 'Cmmm':65,
+'Cmmmm':65,
 'Cccm':66,
 'Cmma':67,
 'Ccca':68,
@@ -486,7 +492,7 @@ spacegroups={'P1':1,
 
 def get_spacegroup_number(sg_name):
     ''' returns the spacegroup number if the string is found in the dictionary. Returns None if not found
-    
+
     :Parameters:
         -sg_name    (str): name(symbol) of the spacegroup
     '''
