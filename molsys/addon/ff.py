@@ -1095,26 +1095,24 @@ class ff(base):
             - radrule (str): radiusrule, default to arithmetic
             - epsrule (str): epsilonrule, default to geometric
         """
+        # one could improve this via an additional dictionary like structure using the vdwpr 
         self.vdwdata = {}
         self.types2numbers = {} #equivalent to self.dlp_types
         types = self.par["vdw"].keys()
-        #print(types)
         for i, t in enumerate(types):
             if t not in self.types2numbers.keys():
                 self.types2numbers[t]=str(i)
         ntypes = len(types)
-        #print (ntypes)
         for i in range(ntypes):
             for j in range(i, ntypes):
-                #TODO check availability of an explicit paramerter
                 if "vdwpr" in self.par and len(self.par["vdwpr"].keys()) > 0:
-                    _,_,ti = self.split_parname(types[i])
-                    _,_,tj = self.split_parname(types[j])
-                    ti =ti[0]
-                    tj = tj[0]
-                    parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
+                    poti,refi,ti = self.split_parname(types[i])
+                    potj,refj,tj = self.split_parname(types[j])
+                    assert poti == potj
+                    assert refi == refj
+                    parname = self.build_parname("vdwpr", poti, refi, [ti[0],tj[0]])
                     if parname in self.par["vdwpr"].keys():
-                        # got it
+                        # found an explicit parameter
                         par_ij = self.par["vdwpr"][parname]
                         self.vdwdata[types[i]+":"+types[j]] = par_ij
                         self.vdwdata[types[j]+":"+types[i]] = par_ij
@@ -1707,7 +1705,8 @@ class ff(base):
 
         TODO: currently we only handle the ring attribute, needs to be more general if other attributes will be used in the future
         """
-        assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
+        #assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
+        if hasattr(self.par, 'variables'): return {}
         data = {}
         # dummy dicts to assign a number to the type
         par_types = self.enumerate_types()
