@@ -92,7 +92,115 @@ class rcsr(object):
         f.close()
         return
 
-    def read_3dall(self, fname):
+    def read_2dall(self, fname="2dall.txt"):
+        txt = open(fname,'r').read().split('start')[1:-1]
+        for i,t in enumerate(txt):
+            self.parse_2dall(t)
+        return
+
+    def parse_2dall(self, txt):
+        ndic = {}
+#        print(txt)
+        lines = txt.split('\n')[1:]
+        # jump over line cotaining the id
+        lines.pop(0)
+        # get the netname
+        name = lines.pop(0).split()[0]
+        #if name in ['mtd-a', 'mtg-a']:
+        #    return
+        if name.count('*') > 0:
+            name = name.replace('*','s')
+            
+        ndic['name'] = name
+        #ndic['embed_type'] = lines.pop(0)
+
+        nsymbols = int(lines.pop(0).split('!')[0])
+        ndic['symbols'] = [lines.pop(0) for i in range(nsymbols)]
+
+        nnames = int(lines.pop(0).split('!')[0])
+        ndic['knownas'] = [lines.pop(0) for i in range(nnames)]
+        nnames = int(lines.pop(0).split('!')[0])
+        ndic['knownas'] += [lines.pop(0) for i in range(nnames)]
+        nkeys = int(lines.pop(0).split('!')[0])
+        ndic['keywords'] = [lines.pop(0) for i in range(nkeys)]
+        # no reference in 2d
+        #nrefs = int(lines.pop(0).split('!')[0])
+        #ndic['refs'] = [lines.pop(0) for i in range(nrefs)]
+        # no sg_number, new wallpaper group name
+        ndic['wg_name'] = lines.pop(0).split()
+        ndic['sg_name'] = lines.pop(0).split()
+        ndic['cell'] = numpy.array(map(float,lines.pop(0).split()))
+        # new in 2d
+        nkinds = lines.pop(0).split()
+        ndic['nverts'] = int(nkinds[0])
+        ndic['nedges'] = int(nkinds[0])
+        ndic['nfaces'] = int(nkinds[0])
+        #self.make_cellvec()
+        
+        # not in 2d
+        #nverts = int(lines.pop(0))
+        nverts = ndic['nverts']
+        
+        ndic['symbolic']   = []
+        # not in 2d
+        #ndic['wyckoff']     = []
+        #ndic['symmetry']    = []
+        #ndic['order']       = []
+        ndic['node']        = []
+        ndic['node_coordination'] = []
+        ndic['cs']          = []
+        ndic['vs']          = []
+
+        for i in range(nverts):
+            # switched in 2d
+            #ndic['node_coordination'].append(int(lines.pop(0).split()[-1]))
+            #ndic['node'].append(map(float,lines.pop(0).split()))
+            ndic['node_coordination'].append(lines.pop(0).split()[-1])
+            try: # mtd-a and mtg-a are malformed
+                ndic['node_coordination'][-1] = int(ndic['node_coordination'][-1])
+            except ValueError:
+                # assumption, same as the one before the last
+                ndic['node_coordination'][-1] = int(ndic['node_coordination'][-2])
+            ndic['node'].append(map(float,lines.pop(0).split()))
+            ndic['symbolic'].append(lines.pop(0).split()[0])
+            ndic['cs'].append(map(int, lines.pop(0).split())[:-1])
+            ndic['vs'].append(lines.pop(0).split()[0])
+            # not in 2d
+            #ndic['wyckoff'].append(lines.pop(0).split()[0])
+            #ndic['symmetry'].append(lines.pop(0).split()[0])
+            #ndic['order'].append(int(lines.pop(0)))
+    
+        # not in 2d
+        #nedges = int(lines.pop(0))
+        nedges = ndic['nedges']
+        
+        # not in 2d
+        #ndic['center_symbolic']   = []
+        #ndic['center_wyckoff']    = []
+        #ndic['center_symmetry']   = []
+        #ndic['edge_center']       = []
+        #for i in range(nedges):
+        #    temp = lines.pop(0)
+        #    ndic['edge_center'].append(map(float,lines.pop(0).split()))
+        #    ndic['center_symbolic'].append(lines.pop(0))
+        #    ndic['center_wyckoff'].append(lines.pop(0))
+        #    ndic['center_symmetry'].append(lines.pop(0))
+        # jump over the next 5 lines
+        # read coord seqences and vertex symbols
+        # not in 2d
+        #for i in range(5): lines.pop(0)
+        #for i in range(nverts):
+        #    ndic['cs'].append(map(int, lines.pop(0).split())[:-1])
+        #for i in range(nverts):
+        #    ndic['vs'].append(lines.pop(0).split()[0])
+        # put ndic into the overall _nets dictionaray
+        if self._nets.keys().count(name) == 0:
+            self._nets[name] = ndic
+        else:
+            self._nets[name].update(ndic)
+        return 
+
+    def read_3dall(self, fname="3dall.txt"):
         txt = open(fname,'r').read().split('start')[1:-1]
         for i,t in enumerate(txt):
             self.parse_3dall(t)

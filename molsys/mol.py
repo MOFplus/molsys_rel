@@ -676,6 +676,10 @@ class mol(mpiobject):
         self.omit_pconn()
         return
     
+    def force_topo(self):
+        self.is_topo = True
+        self.add_pconn()
+        return
 
     ###  periodic systems .. cell manipulation ############
     
@@ -1210,9 +1214,9 @@ class mol(mpiobject):
                     self.conn[a2].append(a1)
                     if self.use_pconn:
                         d,v,imgi = self.get_distvec(a1,a2)
-                        self.pconn[a1].append(images[imgi])
+                        self.pconn[a1].append(images[imgi[0]])
                         d,v,imgi = self.get_distvec(a2,a1)
-                        self.pconn[a2].append(images[imgi])                
+                        self.pconn[a2].append(images[imgi][0])                
         return
 
     def add_shortest_bonds(self,lista1,lista2):
@@ -1263,8 +1267,8 @@ class mol(mpiobject):
         """
         idxj = self.conn[i].index(j)
         idxi = self.conn[j].index(i)
-        self.conn[i].remove(idxj)
-        self.conn[j].remove(idxi)
+        self.conn[i].pop(idxj)
+        self.conn[j].pop(idxi)
         if self.use_pconn:
             self.pconn[i].pop(idxj)
             self.pconn[j].pop(idxi)            

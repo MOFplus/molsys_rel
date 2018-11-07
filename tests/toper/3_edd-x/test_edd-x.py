@@ -23,4 +23,6 @@ def test_compute_colors(fname, net):
     folder = tt.write_bbs("%s%s%s" % ("run", os.sep, name), index_run=True)
 
     tt.write_colors(folder, scell=[3,3,3])
+    m.make_supercell([3,3,3])
+    m.write("%s%s%s" % (folder, os.sep, "net.txyz"), pbc=False)
 

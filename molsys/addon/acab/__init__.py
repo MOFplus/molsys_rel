@@ -219,7 +219,7 @@ class acab(base):
         self.ecratio = ecratio
         self.vcratio = vcratio
 
-    def setup_ecratio(self, ecratio, sele=None, set_ecratio=True):
+    def setup_ecratio(self, ecratio, vsele=None, set_ecratio=True):
         """
         :Parameters:
         - ecratio (None or list of ints): overall edge   color ratio
@@ -230,13 +230,14 @@ class acab(base):
         """
         if not hasattr(self,"necolors"):
             self.setup_colors(necolors=len(ecratio))
-        #if sele is None:
-        #    etab = self._mol.etab
-        #else:
-        #    try:
-        #        etab = self._mol.etab[sele]
-        #    except TypeError:
-        #        etab = [self._mol.etab[i] for i in sele]
+        if vsele is None:
+            vertices = range(self._mol.natoms)
+        else:
+            vertices = vsele
+            try:
+                vertices[0]
+            except TypeError:
+                vertices = [vertices]
         self.assert_ecratio(ecratio)
         evars = self.evars
         necolors = self.necolors
@@ -261,7 +262,7 @@ class acab(base):
         if set_ecratio: self.ecratio = ecratio
         return
 
-    def setup_vcratio(self, vcratio, sele=None, set_vcratio=True):
+    def setup_vcratio(self, vcratio, esele=None, set_vcratio=True):
         """
         :Parameters:
         - vcratio (None or list of ints): overall vertex color ratio
@@ -272,6 +273,8 @@ class acab(base):
         """
         if not hasattr(self,"nvcolors"):
             self.setup_colors(nvcolors=len(vcratio))
+        if esele is not None:
+            raise NotImplementedError
         #if sele is None:
         #    sele = range(self._mol.natoms)
         #else:
@@ -327,12 +330,14 @@ class acab(base):
                 )
         if set_ecratios: self.ecratios = ecratios
 
-    def setup_vcratio_per_edge(self, vcratio, sele=None, set_vcratios=True):
+    def setup_vcratio_per_edge(self, vcratio, esele=None, set_vcratios=True):
         """
         N.B.: there are always two vertex per edge
         """
         if not hasattr(self,"nvcolors"):
             self.setup_colors(nvcolors=len(vcratio))
+        if esele is not None:
+            raise NotImplementedError
         #if sele is None:
         #    sele = range(self._mol.natoms)
         #else:
