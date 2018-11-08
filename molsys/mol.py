@@ -119,6 +119,12 @@ class mol(mpiobject):
         self._etab = []
         return
 
+    # for future python3 compatibility
+    #def __copy__(self):
+    #    pass
+    #def __deepcopy__(self):
+    #    pass
+
     #####  I/O stuff ######################################################################################
 
     def set_logger_level(self,level='WARNING'):
@@ -2209,6 +2215,16 @@ class mol(mpiobject):
         self.pconn = []
         for i in range(self.natoms):
             self.pconn.append([])
+        self.set_empty_pimages()
+        return
+        
+    def set_empty_pimages(self):
+        """
+        sets an empty list of lists for the periodic connected images
+        """
+        self.pimages = []
+        for i in range(self.natoms):
+            self.pimages.append([])
         return
         
     def get_pconn_as_tab(self, pconn_flag=None):
