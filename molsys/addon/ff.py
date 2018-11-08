@@ -538,8 +538,29 @@ class ff(base):
         self.settings =  {
             "radfact" : 1.0,
             "radrule" : "arithmetic", 
-            "epsrule" : "geometric",            
-            }
+            "epsrule" : "geometric",
+            "coul12"  : 1.0,
+            "coul13"  : 1.0,
+            "coul14"  : 1.0,
+            "vdw12"   : 0.0,
+            "vdw13"   : 0.0,
+            "vdw14"   : 1.0,
+            "chargetype": "gaussian",
+            "vdwtype": "exp6_damped",
+        }
+        self.settings_formatter = {
+            "radfact": float,
+            "radrule": str,
+            "epsrule": str,
+            "coul12"  : float,
+            "coul13"  : float,
+            "coul14"  : float,
+            "vdw12"   : float,
+            "vdw13"   : float,
+            "vdw14"   : float,
+            "chargetype": str,
+            "vdwtype": str,
+        }
         self.pair_potentials_initalized = False
         self.refsysname = None
         self.fit = False
@@ -1430,7 +1451,7 @@ class ff(base):
         """
         # dummy dicts to assign a number to the type
         par_types = {}
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw","vdwpr"]:
             ptyp = {}
             i = 1
             for ind in self.par[ic]:
@@ -1492,7 +1513,11 @@ class ff(base):
             logger.info("Writing parameter to file %s.par" % fname)
         f.write("HASH: %s\n" % hash)
         f.write("FF %s\n\n" % self.par.FF)
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+        # write settings
+        for k,v in self.settings.items():
+            f.write("%-15s %s\n" % (k, str(v)))
+        f.write("\n")
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]:
             ptyp = par_types[ic]
             par = self.par[ic]
             f.write(ff_desc[ic])
@@ -1508,6 +1533,7 @@ class ff(base):
                 #sval = (len(values)*"%15.8f ") % tuple(values)
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
             f.write("\n")
+        
         if hasattr(self.par, 'variables'):
             self.par.variables(vals)
             if hasattr(self, 'active_zone'):
@@ -1630,6 +1656,8 @@ class ff(base):
                 curric = sline[0].split("_")[0]
                 if sline[0]=="FF":
                     self.par.FF = sline[1]
+                elif sline[0] in self.settings.keys():
+                    self.settings[sline[0]] = self.settings_formatter[sline[0]](sline[1])
                 elif curric in ric_type:
                     par = self.par[curric]
                     t2ident = {} # maps integer type to identifier
