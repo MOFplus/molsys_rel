@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python -i
 import molsys
 import sys
 import os
@@ -37,5 +37,4 @@ if addon is not None:
     m.addon(addon)
     print("\"m.%s\" addon loaded" % addon)
 
-m.view(pbc=False)
 
