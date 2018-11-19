@@ -6,21 +6,21 @@ import string
 import cPickle as pickle
 import os
 import sys
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+#import matplotlib.pyplot as plt
+#from mpl_toolkits.mplot3d import Axes3D
 import copy
 
 
 
-# net class dependencies
-from spgr import *
-from spgr import vertex_names
-from ase.spacegroup import Spacegroup
-from ase import Atoms
-import ase
-import unit_cell
-import geoms2 as geo
-import spglib
+## net class dependencies
+##from spgr import *
+##from spgr import vertex_names
+##from ase.spacegroup import Spacegroup
+##from ase import Atoms
+##import ase
+##import unit_cell
+##import geoms2 as geo
+##import spglib
 from collections import defaultdict
 
 # netbase dependencies
