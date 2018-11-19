@@ -145,6 +145,7 @@ class mol(mpiobject):
             ftype(str)   : the parser type that is used to read the file (default: "mfpx")
             **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
+        self.fname = fname
         if ftype is None:
             fsplit = fname.rsplit('.',1)[-1]
             if fsplit != fname: #there is an extension
@@ -2029,7 +2030,11 @@ class mol(mpiobject):
     def get_atypes(self):
         ''' return the list of atom types '''
         return self.atypes
-
+    
+    def get_natypes(self):
+        if not self.atypes: return 0
+        return len(set(self.atypes))
+        
     # just to make compatible with pydlpoly standard API
     def get_atomtypes(self):
         return self.atypes
@@ -2184,6 +2189,23 @@ class mol(mpiobject):
             self.conn[i].append(j)
             self.conn[j].append(i)
         return
+    
+    def get_unique_neighbors(self):
+        un = []
+        counter = []
+        for i,c in enumerate(self.conn):
+            for j,cc in enumerate(c):
+                neighs = sorted([self.atypes[i], self.atypes[cc]])
+                try: 
+                    ii=un.index(neighs)
+                    counter[ii] += 1
+                except:
+                    un.append(neighs)
+                    counter.append(1)
+        self.unique_neighbors = []
+        for i in range(len(un)):  
+            self.unique_neighbors.append([un[i],counter[i]])
+        return self.unique_neighbors
         
     ### PERIODIC CONNECTIVITY ###
     def get_pconn(self):
