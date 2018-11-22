@@ -538,8 +538,29 @@ class ff(base):
         self.settings =  {
             "radfact" : 1.0,
             "radrule" : "arithmetic", 
-            "epsrule" : "geometric",            
-            }
+            "epsrule" : "geometric",
+            "coul12"  : 1.0,
+            "coul13"  : 1.0,
+            "coul14"  : 1.0,
+            "vdw12"   : 0.0,
+            "vdw13"   : 0.0,
+            "vdw14"   : 1.0,
+            "chargetype": "gaussian",
+            "vdwtype": "exp6_damped",
+        }
+        self.settings_formatter = {
+            "radfact": float,
+            "radrule": str,
+            "epsrule": str,
+            "coul12"  : float,
+            "coul13"  : float,
+            "coul14"  : float,
+            "vdw12"   : float,
+            "vdw13"   : float,
+            "vdw14"   : float,
+            "chargetype": str,
+            "vdwtype": str,
+        }
         self.pair_potentials_initalized = False
         self.refsysname = None
         self.fit = False
@@ -1095,26 +1116,24 @@ class ff(base):
             - radrule (str): radiusrule, default to arithmetic
             - epsrule (str): epsilonrule, default to geometric
         """
+        # one could improve this via an additional dictionary like structure using the vdwpr 
         self.vdwdata = {}
         self.types2numbers = {} #equivalent to self.dlp_types
         types = self.par["vdw"].keys()
-        #print(types)
         for i, t in enumerate(types):
             if t not in self.types2numbers.keys():
                 self.types2numbers[t]=str(i)
         ntypes = len(types)
-        #print (ntypes)
         for i in range(ntypes):
             for j in range(i, ntypes):
-                #TODO check availability of an explicit paramerter
                 if "vdwpr" in self.par and len(self.par["vdwpr"].keys()) > 0:
-                    _,_,ti = self.split_parname(types[i])
-                    _,_,tj = self.split_parname(types[j])
-                    ti =ti[0]
-                    tj = tj[0]
-                    parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
+                    poti,refi,ti = self.split_parname(types[i])
+                    potj,refj,tj = self.split_parname(types[j])
+                    assert poti == potj
+                    assert refi == refj
+                    parname = self.build_parname("vdwpr", poti, refi, [ti[0],tj[0]])
                     if parname in self.par["vdwpr"].keys():
-                        # got it
+                        # found an explicit parameter
                         par_ij = self.par["vdwpr"][parname]
                         self.vdwdata[types[i]+":"+types[j]] = par_ij
                         self.vdwdata[types[j]+":"+types[i]] = par_ij
@@ -1432,7 +1451,7 @@ class ff(base):
         """
         # dummy dicts to assign a number to the type
         par_types = {}
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw","vdwpr"]:
             ptyp = {}
             i = 1
             for ind in self.par[ic]:
@@ -1494,7 +1513,11 @@ class ff(base):
             logger.info("Writing parameter to file %s.par" % fname)
         f.write("HASH: %s\n" % hash)
         f.write("FF %s\n\n" % self.par.FF)
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+        # write settings
+        for k,v in self.settings.items():
+            f.write("%-15s %s\n" % (k, str(v)))
+        f.write("\n")
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]:
             ptyp = par_types[ic]
             par = self.par[ic]
             f.write(ff_desc[ic])
@@ -1510,6 +1533,7 @@ class ff(base):
                 #sval = (len(values)*"%15.8f ") % tuple(values)
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
             f.write("\n")
+        
         if hasattr(self.par, 'variables'):
             self.par.variables(vals)
             if hasattr(self, 'active_zone'):
@@ -1532,8 +1556,8 @@ class ff(base):
         """
         hash = None
         fric = open(fname+".ric", "r")
-        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
-        ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
+        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]
+        ric_len  = [2    , 3    , 4    , 4    , 1    , 1      ,2     ]
         ric      = {}
         # read in ric first, store the type as an attribute in the first place
         stop = False
@@ -1632,6 +1656,8 @@ class ff(base):
                 curric = sline[0].split("_")[0]
                 if sline[0]=="FF":
                     self.par.FF = sline[1]
+                elif sline[0] in self.settings.keys():
+                    self.settings[sline[0]] = self.settings_formatter[sline[0]](sline[1])
                 elif curric in ric_type:
                     par = self.par[curric]
                     t2ident = {} # maps integer type to identifier
@@ -1680,9 +1706,10 @@ class ff(base):
                         else:
                             t2ident[itype] = [ident]
                     # now all types are read in: set up the parind datastructure of the ric
-                    parind = self.parind[curric]
-                    for i,r in enumerate(self.ric_type[curric]):
-                        parind[i] = t2ident[r.type]
+                    if curric != "vdwpr":
+                        parind = self.parind[curric]
+                        for i,r in enumerate(self.ric_type[curric]):
+                            parind[i] = t2ident[r.type]
         fpar.close()
         # check if both fpar and ric file have hashes
         if hash is not None and found_hash == False:
@@ -1706,7 +1733,8 @@ class ff(base):
 
         TODO: currently we only handle the ring attribute, needs to be more general if other attributes will be used in the future
         """
-        assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
+        #assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
+        if hasattr(self.par, 'variables'): return {}
         data = {}
         # dummy dicts to assign a number to the type
         par_types = self.enumerate_types()
