@@ -2,7 +2,7 @@ import numpy
 import string
 import molsys.util.unit_cell as unit_cell
 
-def read(mol,f,triclinic=False,atom_offset=0):
+def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
     ### read check ###
     try:
         f.readline ### do nothing
@@ -60,6 +60,8 @@ def read(mol,f,triclinic=False,atom_offset=0):
             for i in range(natoms):
                 sline = string.split(f.readline()) 
                 idx = int(sline[0]) -1 - atom_offset
+                if len(idx_map.keys()) != 0:
+                    idx = idx_map[idx]
                 xyz[idx,0] = float(sline[3])
                 xyz[idx,1] = float(sline[4])
                 xyz[idx,2] = float(sline[5])

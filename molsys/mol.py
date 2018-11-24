@@ -119,6 +119,12 @@ class mol(mpiobject):
         self._etab = []
         return
 
+    # for future python3 compatibility
+    #def __copy__(self):
+    #    pass
+    #def __deepcopy__(self):
+    #    pass
+
     #####  I/O stuff ######################################################################################
 
     def set_logger_level(self,level='WARNING'):
@@ -139,6 +145,7 @@ class mol(mpiobject):
             ftype(str)   : the parser type that is used to read the file (default: "mfpx")
             **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
+        self.fname = fname
         if ftype is None:
             fsplit = fname.rsplit('.',1)[-1]
             if fsplit != fname: #there is an extension
@@ -407,8 +414,9 @@ class mol(mpiobject):
             pid = str(os.getpid())
             _tmpfname = "_tmpfname_%s.%s" % (pid, ftype)
             self.write(_tmpfname, ftype=ftype, **kwargs)
-            if program in [None,"moldenx"] and opts is ():
+            if program is None:
                 program = "moldenx"
+            if opts is () and program == "moldenx":
                 opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
             try:
                 ret = subprocess.call([program, _tmpfname] + list(opts))
@@ -2022,7 +2030,11 @@ class mol(mpiobject):
     def get_atypes(self):
         ''' return the list of atom types '''
         return self.atypes
-
+    
+    def get_natypes(self):
+        if not self.atypes: return 0
+        return len(set(self.atypes))
+        
     # just to make compatible with pydlpoly standard API
     def get_atomtypes(self):
         return self.atypes
@@ -2177,6 +2189,23 @@ class mol(mpiobject):
             self.conn[i].append(j)
             self.conn[j].append(i)
         return
+    
+    def get_unique_neighbors(self):
+        un = []
+        counter = []
+        for i,c in enumerate(self.conn):
+            for j,cc in enumerate(c):
+                neighs = sorted([self.atypes[i], self.atypes[cc]])
+                try: 
+                    ii=un.index(neighs)
+                    counter[ii] += 1
+                except:
+                    un.append(neighs)
+                    counter.append(1)
+        self.unique_neighbors = []
+        for i in range(len(un)):  
+            self.unique_neighbors.append([un[i],counter[i]])
+        return self.unique_neighbors
         
     ### PERIODIC CONNECTIVITY ###
     def get_pconn(self):
@@ -2208,6 +2237,16 @@ class mol(mpiobject):
         self.pconn = []
         for i in range(self.natoms):
             self.pconn.append([])
+        self.set_empty_pimages()
+        return
+        
+    def set_empty_pimages(self):
+        """
+        sets an empty list of lists for the periodic connected images
+        """
+        self.pimages = []
+        for i in range(self.natoms):
+            self.pimages.append([])
         return
         
     def get_pconn_as_tab(self, pconn_flag=None):
