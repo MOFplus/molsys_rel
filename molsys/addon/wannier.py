@@ -3,6 +3,7 @@
 from __future__ import print_function
 
 import numpy
+import copy
 import string
 
 from molsys.addon import base
@@ -35,13 +36,13 @@ class wannier(base):
         for i,idx in enumerate(self.centers):
             a = self._mol.xyz[atoms]-self._mol.xyz[idx]
             if self._mol.periodic:
-                if self._mol.bcond <= 2:
-                    cell_abc = self._mol.cellparams[:3]
-                    a -= cell_abc * numpy.around(a/cell_abc)
-                elif self._mol.bcond == 3:
-                    frac = numpy.dot(a, self._mol.inv_cell)
-                    frac -= numpy.around(frac)
-                    a = numpy.dot(frac, self._mol.cell)
+                #if self._mol.bcond <= 2:
+                #    cell_abc = self._mol.cellparams[:3]
+                #    a -= cell_abc * numpy.around(a/cell_abc)
+                #if self._mol.bcond == 3:
+                frac = numpy.dot(a, self._mol.inv_cell)
+                frac -= numpy.around(frac)
+                a = numpy.dot(frac, self._mol.cell)
             dist = numpy.sqrt((a*a).sum(axis=1)) # distance to all atoms
             # sort distances
             atom2centers[numpy.argsort(dist)[0]].append(idx)
@@ -51,24 +52,33 @@ class wannier(base):
     def prep_molecules(self):
         self._mol.addon("molecules")
         self._mol.molecules()
-        self.dipoles = {}
-        diptypes = {}
-        for m in self._mol.molecules.mols:
-            if len(m) not in self.dipoles.keys():
-                diptypes[len(m)]=1
-            else:
-                diptypes[len(m)]+=1
-        for i,k in diptypes.items():
-            self.dipoles[i]=numpy.zeros((k))
+        #self.dipoles = {}
+        #diptypes = {}
+        #for m in self._mol.molecules.mols:
+        #    if len(m) not in self.dipoles.keys():
+        #        diptypes[len(m)]=1
+        #    else:
+        #        diptypes[len(m)]+=1
+        #for i,k in diptypes.items():
+        #    self.dipoles[i]=numpy.zeros((k))
 
 
     def calc_mol_dipoles(self):
-        self._mol.addon("molecules")
-        self._mol.molecules()
+        #self._mol.addon("molecules")
+        #self._mol.molecules()
         # distinct species
-        results = {3:[], 1:[]}
+        results = []
+        self.portion_centers()
         for m in self._mol.molecules.mols:
-            self.dipolesresults[len(m)].append(self.calc_mol_dipole(m))
+            #if len(m)==1 and m[0]<self.natoms:
+            if len(m)>1:
+                if len(self._atom2centers)!=0:
+                    belongs = []
+                    for i in m:
+                        belongs += self._atom2centers[i]
+                    results.append(self.calc_mol_dipole(m+belongs))
+                else:
+                    results.append(self.calc_mol_dipole(m))
             #if len(m) > 1: print(m,self.calc_mol_dipole(m))
         return results
         
@@ -80,8 +90,10 @@ class wannier(base):
 
     @property
     def centers(self):
+        centers = []
         for i,e in enumerate(self._mol.elems):
-            if e == self._specifier: self._centers.append(i)
+            if e == self._specifier: centers.append(i)
+        self._centers = centers
         return self._centers
 
     @property
@@ -90,8 +102,10 @@ class wannier(base):
 
     @property
     def atoms(self):
+        atoms = []
         for i,e in enumerate(self._mol.elems):
-            if e != self._specifier: self._atoms.append(i)
+            if e != self._specifier: atoms.append(i)
+        self._atoms = atoms
         return self._atoms
     
     @property
@@ -114,16 +128,16 @@ class wannier(base):
         # com
         a = self._mol.xyz[idx]-com
         if self._mol.periodic:
-            if self._mol.bcond <=2:
-                cell_abc = self._mol.cellparams[:3]
-                a[:,:] -= cell_abc*numpy.around(a/cell_abc)
-            elif self._mol.bcond <=3:
-                frac = numpy.dot(a, self.inv_cell)
-                a[:,:] -= numpy.dot(numpy.around(frac),self.cell)
+            #if self._mol.bcond <=2:
+            #    cell_abc = self._mol.cellparams[:3]
+            #    a[:,:] -= cell_abc*numpy.around(a/cell_abc)
+            #if self._mol.bcond <=3:
+            frac = numpy.dot(a, self._mol.inv_cell)
+            a[:,:] -= numpy.dot(numpy.around(frac),self._mol.cell)
         d = a*self._charges[idx][:,numpy.newaxis]
         d = numpy.sum(d, axis = 0)
         m = numpy.linalg.norm(d)
-        return d*2.5417465, m*2.5417465
+        return m*2.5417465
 
     def calc_total_monopole(self):
         return numpy.sum(self._charges)
