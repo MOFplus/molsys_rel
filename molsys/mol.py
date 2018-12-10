@@ -245,7 +245,7 @@ class mol(mpiobject):
     
 
     @classmethod
-    def from_abinit(cls, elems, xyz, cell, frac = False):
+    def from_abinit(cls, elems, xyz, cell, frac = False, detect_conn = True):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
         m.natoms = len(elems)
@@ -258,7 +258,8 @@ class mol(mpiobject):
             m.set_xyz(xyz)
         m.set_nofrags()
         m.set_empty_conn()
-        m.detect_conn()
+        if detect_conn:
+            m.detect_conn()
         return m
 
     @classmethod
@@ -954,7 +955,7 @@ class mol(mpiobject):
 
         '''
         assert np.shape(cell) == (3,3)
-        if cell_only is False: 
+        if cell_only is False:
             frac_xyz = self.get_frac_from_xyz()
         self.periodic = True
         self.cell = cell
@@ -1023,7 +1024,7 @@ class mol(mpiobject):
     def set_xyz_from_frac(self, frac_xyz):
         ''' Sets atomic coordinates based on input fractional coordinates
         
-        Args:
+        Arg
             - frac_xyz (array): fractional coords to be converted to xyz
         '''
         if not self.periodic: return
