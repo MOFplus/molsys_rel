@@ -14,6 +14,12 @@ Created on Thu Mar 23 11:25:43 2017
 
 """
 
+def string2bool(s):
+    return s.lower() in ("True", "true", "yes")
+
+def bool2string(b):
+    return str(b)
+
 try:
     from mpi4py import MPI
     mpi_comm = MPI.COMM_WORLD
@@ -204,7 +210,7 @@ class ric:
             # find bonds and check if they are equal ... this should be a sufficent test that the rest is the same, too
             
             mol_bnd = self.find_bonds()
-            if mol_bnd != bnd:
+            if sorted(mol_bnd) != sorted(bnd):
                 raise ValueError("The rics provided do not match the mol object!")
         return
 
@@ -566,6 +572,7 @@ class ff(base):
             "vdw14"   : 1.0,
             "chargetype": "gaussian",
             "vdwtype": "exp6_damped",
+            "coreshell": False
         }
         self.settings_formatter = {
             "radfact": float,
@@ -579,9 +586,9 @@ class ff(base):
             "vdw14"   : float,
             "chargetype": str,
             "vdwtype": str,
+            "coreshell": string2bool
         }
         self.pair_potentials_initalized = False
-        self.coreshell = False
         self.refsysname = None
         self.fit = False
         if par is not None: 
@@ -591,8 +598,8 @@ class ff(base):
         return
 
     def _setup_coreshell(self, poltypes):
-        assert self.coreshell == False
-        self.coreshell = True
+        assert self.settings["coreshell"] == False
+        self.settings["coreshell"] = True
         self._shells = []
         self._cores = range(self._mol.natoms)
         xyz = copy.deepcopy(self._mol.xyz)
@@ -608,6 +615,15 @@ class ff(base):
                 self._mol.conn[i].append(idx)
                 self._mol.conn[-1].append(i)
                 self.ric.bnd.append(ic([i,idx]))
+        # make some settings
+        self.settings["chargetype"]="point"
+        self.settings["vdwtype"]="buck"
+        self.settings["coul12"]=0.0
+        self.settings["coul13"]=0.0
+        self.settings["coul14"]=0.0
+        self.settings["vdw12"]=0.0
+        self.settings["vdw13"]=0.0
+        self.settings["vdw14"]=0.0
         return
 
 
@@ -760,7 +776,8 @@ class ff(base):
                 
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
-            plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None, poltypes = []):
+            plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None, poltypes = [],
+            dummies = None):
         """
         Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -803,8 +820,10 @@ class ff(base):
         if ricdetect==True:
             with self.timer("find rics"):
                 self.ric.find_rics(specials = special_atypes, smallring = smallring)
+                if dummies is not None:
+                    dummies(self)
                 if len(poltypes)>0:
-                    self._setup_coreshell(poltypes)
+                    self._setup_coreshell(poltypes)           
                 self._init_data()
                 self._init_pardata(FF)
             # as a first step we need to generate the fragment graph
