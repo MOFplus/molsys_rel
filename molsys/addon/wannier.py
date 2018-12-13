@@ -7,6 +7,9 @@ import copy
 import string
 
 from molsys.addon import base
+from molsys.util.units import debye, angstrom
+
+eA2debye = 1./(debye/angstrom)
 
 def read_until(f,s):
     while True:
@@ -24,6 +27,7 @@ class wannier(base):
         super(wannier,self).__init__(mol)
         self._specifier = specifier
         self._centers = []
+        self._shells = []
         self._atoms = []
         self._charges = numpy.zeros([self._mol.natoms])
         self._dcharges = dcharges
@@ -48,6 +52,12 @@ class wannier(base):
             atom2centers[numpy.argsort(dist)[0]].append(idx)
         self._atom2centers = atom2centers
         return
+
+    def find_shells(self):
+        self._shells  = []
+        for i,e in enumerate(self._mol.elems):
+            if e[0].lower()=="x":
+                self._shells.append(i)
 
     def prep_molecules(self):
         self._mol.addon("molecules")
@@ -80,6 +90,7 @@ class wannier(base):
                 else:
                     results.append(self.calc_mol_dipole(m))
             #if len(m) > 1: print(m,self.calc_mol_dipole(m))
+        #print(results)
         return results
         
 
@@ -117,7 +128,7 @@ class wannier(base):
     def calc_mol_dipole(self, idx):
         molidx = []
         for i in idx:
-            if i not in self._centers:
+            if i not in self._centers and i not in self._shells:
                 molidx.append(i)
         com = self._mol.get_com(molidx)
         #print (self._charges[idx])
@@ -135,9 +146,10 @@ class wannier(base):
             frac = numpy.dot(a, self._mol.inv_cell)
             a[:,:] -= numpy.dot(numpy.around(frac),self._mol.cell)
         d = a*self._charges[idx][:,numpy.newaxis]
-        d = numpy.sum(d, axis = 0)
-        m = numpy.linalg.norm(d)
-        return m*2.5417465
+        d = numpy.sum(d, axis = 0)*eA2debye
+        #print (d)
+        #m = numpy.linalg.norm(d)
+        return d
 
     def calc_total_monopole(self):
         return numpy.sum(self._charges)

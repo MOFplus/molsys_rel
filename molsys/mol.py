@@ -2427,7 +2427,10 @@ class mol(mpiobject):
         self.masstype = 'real'
         self.amass = []
         for i in self.elems:
-            self.amass.append(elements.mass[i])
+            try:
+                self.amass.append(elements.mass[i])
+            except:
+                self.amass.append(1.)
         return
 
     def get_mass(self, return_masstype=False):
