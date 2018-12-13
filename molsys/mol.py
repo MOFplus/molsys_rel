@@ -407,6 +407,15 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         return f.getvalue()
 
+    def to_fileobject(self,f, ftype ="mfpx", **kwargs):
+        logger.info("writing string as %s" % str(ftype))
+        if ftype in formats.read:
+            formats.write[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
+        return f
+
     def view(self, ftype='txyz', program=None, opts=(), **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
