@@ -571,6 +571,7 @@ class ff(base):
             "vdw13"   : 0.0,
             "vdw14"   : 1.0,
             "chargetype": "gaussian",
+            "cutoff"  :12.0, 
             "vdwtype": "exp6_damped",
             "coreshell": False
         }
@@ -586,7 +587,8 @@ class ff(base):
             "vdw14"   : float,
             "chargetype": str,
             "vdwtype": str,
-            "coreshell": string2bool
+            "coreshell": string2bool,
+            "cutoff": float,
         }
         self.pair_potentials_initalized = False
         self.refsysname = None

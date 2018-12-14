@@ -80,8 +80,8 @@ class wannier(base):
         results = []
         self.portion_centers()
         for m in self._mol.molecules.mols:
-            #if len(m)==1 and m[0]<self.natoms:
             if len(m)>1:
+            #if len(m)==1 and self._mol.elems[m[0]].lower() == "na":
                 if len(self._atom2centers)!=0:
                     belongs = []
                     for i in m:
