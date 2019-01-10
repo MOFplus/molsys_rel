@@ -68,7 +68,7 @@ class groups(object):
                 done = True
         return
 
-    def walk_bond(self, m, start_ind, inds=[], continue_at=[], stop_at=[]):
+    def walk_bond(self, m, start_ind, inds=[], continue_at=[], stop_at=[],stop_at_idx=[]):
         """get group by walking over atoms using the connectivity stopping at certain atom types
 
         [description]
@@ -89,10 +89,12 @@ class groups(object):
                 continue
             if any([m.atypes[c].count(x) != 0 for x in stop_at]):
                 continue
+            if stop_at_idx.count(c) != 0:
+                continue
             if inds.count(c) == 0:
                 inds.append(c)
                 inds = self.walk_bond(
-                    m, c, inds=inds, continue_at=continue_at, stop_at=stop_at)
+                    m, c, inds=inds, continue_at=continue_at, stop_at=stop_at,stop_at_idx=stop_at_idx)
             else:
                 pass
         return inds
