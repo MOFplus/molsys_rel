@@ -36,7 +36,6 @@ def read(mol, f, delimiter=','):
             mol.elems.append(stsp[3].lower())
             atoms -= 1
             continue
-    import pdb; pdb.set_trace()
     mol.xyz = numpy.array(mol.xyz)
     mol.natoms = len(mol.xyz)
     mol.atypes = ["0"]*mol.natoms
