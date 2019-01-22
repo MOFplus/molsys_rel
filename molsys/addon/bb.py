@@ -128,13 +128,10 @@ class bb:
         do this AFTER center but BEFORE extract_connector_xyz
         we always use the first connector (could also be a regular SBU!) to be on the z-axis """
         c1_xyz = self.mol.xyz[self.mol.connectors[0]]
-        print c1_xyz
         z_axis = np.array([0.0,0.0,1.0],"d")
         theta = rotations.angle(z_axis,c1_xyz) # angle to rotate
-        print theta
         if (theta > 1.0e-10) and (theta < (np.pi-1.0e-10)):
             axis  = rotations.normalize(rotations.cross_prod(z_axis,c1_xyz)) # axis around which we rotate
-            print axis
             self.mol.xyz = rotations.rotate(self.mol.xyz, axis, -theta)
         return
 
