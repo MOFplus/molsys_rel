@@ -561,6 +561,8 @@ class mol(mpiobject):
         if self.use_pconn:
             # we had a pconn and redid the conn --> need to reconstruct the pconn
             self.add_pconn()
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
+        self.set_etab_from_tabs()
         return
 
     def report_conn(self):
@@ -1489,10 +1491,14 @@ class mol(mpiobject):
         parent_index(int): index of parent atom in the selection which
             attributes are taken from (e.g. element, atomtype, etc.)
         molecules_flag(bool): if True: sele is regrouped accoring to the found
-            molecules (e.g. if you select the COO of different linkers, each
+            molecules (e.g. if you select the COO of different carboxylates, each
             COO is merged per se). The same behavior can be reproduced with
             an appropriate nesting of sele, so consider molecules_flag a
             convenience flag.
+            N.B.: this does NOT divide a selection of non-connected parts if
+            those parts belong to the same molecule (e.g. linkers in a framework).
+            In that case, you have to get_separated_molecules(sele) first to get
+            the nested list of separated moieties.
         """
         if sele is None: # trivial if molecules_flag=False...
             sele = [range(self.natoms)]
