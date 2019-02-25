@@ -50,6 +50,8 @@ def read(mol, f, topo = False):
     else:
         mol.elems, mol.xyz, mol.atypes, mol.conn,\
                 mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
+    mol.set_ctab_from_conn(pconn_flag=topo) 
+    mol.set_etab_from_tabs()
     ### this has to go at some point
     if 'con_info' in locals():
         if mol.center_point == "special":
