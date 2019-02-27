@@ -376,7 +376,7 @@ class mol(mpiobject):
                 else: #there is no extension
                     ftype = 'mfpx' #default
             logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-            if ftype in formats.read:
+            if ftype in formats.write:
                 with open(fname,"w") as f:
                     formats.write[ftype](self,f,**kwargs)
             else:
@@ -409,7 +409,7 @@ class mol(mpiobject):
 
     def to_fileobject(self,f, ftype ="mfpx", **kwargs):
         logger.info("writing string as %s" % str(ftype))
-        if ftype in formats.read:
+        if ftype in formats.write:
             formats.write[ftype](self,f,**kwargs)
         else:
             logger.error("unsupported format: %s" % ftype)
