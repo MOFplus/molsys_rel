@@ -43,18 +43,21 @@ import random
 #        master node writes INFO to stdout
 # TBI: colored logging https://stackoverflow.com/a/384125
 import logging
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
 if molsys_mpi.size > 1:
     logger_file_name = "molsys.%d.log" % molsys_mpi.rank
 else:
     logger_file_name = "molsys.log"
-fhandler  = logging.FileHandler(logger_file_name)
-fhandler.setLevel(logging.DEBUG)
-#fhandler.setLevel(logging.WARNING)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
-fhandler.setFormatter(formatter)
-logger.addHandler(fhandler)
+# check if environment variable MOLSYS_LOG is set
+if "MOLSYS_LOG" in os.environ:
+    fhandler  = logging.FileHandler(logger_file_name)
+    # TBI if os.environ["MOLSYS_LOG"] in ("DEBUG", "WARNING", "INFO"):
+    fhandler.setLevel(logging.DEBUG)
+    #fhandler.setLevel(logging.WARNING)
+    fhandler.setFormatter(formatter)
+    logger.addHandler(fhandler)
 if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
     shandler.setLevel(logging.INFO)
@@ -117,6 +120,7 @@ class mol(mpiobject):
         self.aprops = {}
         self.bprops = {}
         self._etab = []
+        self.name = ""
         return
 
     # for future python3 compatibility
@@ -167,6 +171,8 @@ class mol(mpiobject):
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         f.close()
+        basename = fname.split("/")[-1].split(".")[0]
+        self.name = basename
         return
 
     @classmethod
