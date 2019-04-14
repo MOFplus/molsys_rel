@@ -7,7 +7,7 @@ def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     stop = False
     natoms = 0
@@ -94,7 +94,7 @@ def write(mol, f,vel=None):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
     natoms = mol.natoms 
     #### timestep header, not sure if necessary

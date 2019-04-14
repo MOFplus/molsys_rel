@@ -12,7 +12,7 @@ def read(mol, f, cycle = 0):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     ncycle=0
     fline = f.readline().split()
@@ -42,7 +42,7 @@ def read(mol, f, cycle = 0):
     mol.set_nofrags()
     return
 
-def write(mol, f):
+def write(mol, f, energy = None, forces = None):
     """
     Routine, which writes an xyz file
     :Parameters:
@@ -53,15 +53,31 @@ def write(mol, f):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
     natoms = mol.natoms 
+    header = ""
     if mol.periodic:
-        f.write("%d\n" % mol.natoms)
-        f.write('Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f"\n' % 
-            tuple(mol.cell.ravel()))
+        header +=  'Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" ' %  tuple(mol.cell.ravel())
+    header += "Properties=species:S:1:pos:R:3"
+    if forces is not None:
+        assert forces.shape == mol.xyz.shape, "Force array does not match the coordinates array"
+        header+= ":forces:R:3"
+    if energy is not None:
+        header += " energy=%16.10f" % energy
+    #if mol.periodic:
+    #    f.write("%d\n" % mol.natoms)
+    #    f.write('Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f"\n' % 
+    #        tuple(mol.cell.ravel()))
+    #else:
+    f.write("%d\n" % mol.natoms)
+    f.write(header)
+    f.write("\n")
+    if forces is None:
+        for i in range(natoms):
+            f.write("%2s %12.8f %12.8f %12.8f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     else:
-        f.write("%d\n\n" % mol.natoms)
-    for i in range(natoms):
-        f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
+         for i in range(natoms):
+            f.write("%2s %12.8f %12.8f %12.8f   %12.8f %12.8f %12.8f\n" % 
+            (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2], forces[i,0], forces[i,1], forces[i,2]))
     return
