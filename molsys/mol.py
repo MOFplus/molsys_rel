@@ -943,6 +943,25 @@ class mol(mpiobject):
         cx = self.get_cell()
         return np.abs(np.dot(cx[0], np.cross(cx[1],cx[2])))
 
+    def set_volume(self,Volume):
+        """rescales the cell to  achieve a given volume
+        
+        Rescales the unit cell in order to achieve a target volume. 
+        Tested only for orthorombic systems!
+
+        Parameters:
+            Volume (float)      : Target volume in cubic Angstroms
+        Returns:
+            float: fact         : Scaling factor used to scale the cell parameters
+        """
+        Vx = self.get_volume()
+        fact = (Volume / Vx)**(1/3.0)
+        abc = self.get_cellparams()
+        abc[0],abc[1],abc[2] = abc[0]*fact,abc[1]*fact,abc[2]*fact
+        self.set_cellparams(abc,cell_only=False)
+        Vnew = self.get_volume()
+        assert abs(Vnew - Volume)  <= 0.1
+        return fact
 
     def set_bcond(self):
         """
