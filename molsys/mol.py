@@ -252,7 +252,7 @@ class mol(mpiobject):
     
 
     @classmethod
-    def from_abinit(cls, elems, xyz, cell, frac = False, detect_conn = True):
+    def from_abinit(cls, elems, xyz, cell, frac = False, detect_conn = False):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
         m.natoms = len(elems)
@@ -376,7 +376,7 @@ class mol(mpiobject):
                 else: #there is no extension
                     ftype = 'mfpx' #default
             logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-            if ftype in formats.read:
+            if ftype in formats.write:
                 with open(fname,"w") as f:
                     formats.write[ftype](self,f,**kwargs)
             else:
@@ -409,7 +409,7 @@ class mol(mpiobject):
 
     def to_fileobject(self,f, ftype ="mfpx", **kwargs):
         logger.info("writing string as %s" % str(ftype))
-        if ftype in formats.read:
+        if ftype in formats.write:
             formats.write[ftype](self,f,**kwargs)
         else:
             logger.error("unsupported format: %s" % ftype)
@@ -1562,7 +1562,7 @@ class mol(mpiobject):
                 for i in conn:
                     self.conn[i].append(self.natoms-1)
                 if self.use_pconn:
-                    raise NotImplementedError, "TBI! [RA]"
+                    raise NotImplementedError("TBI! [RA]")
                     frac_xyz = self.get_frac_xyz()
                     frac_j = self.frac_xyz[-1]
                     for i in conn:
@@ -1607,7 +1607,7 @@ class mol(mpiobject):
         try:
             from graph_tool.topology import label_components
         except ImportError:
-            raise ImportError, "install graph-tool via 'pip install graph-tool'"
+            raise ImportError("install graph-tool via 'pip install graph-tool'")
         from molsys.util.toper import molgraph
         from collections import Counter
         if sele is None:

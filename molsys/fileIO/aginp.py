@@ -17,7 +17,7 @@ def read(mol, f, connectors=False, morebonds = False):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     elems, xyz, atypes, qmmmtypes, bonds = [], [], [], [], []
     for line in f:
         split = line.split()

@@ -1,5 +1,6 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 """
 Created on Wed Nov  8 17:09:25 2017
 
@@ -101,12 +102,12 @@ class slicer:
             # no test which dimension this plane cuts
             periodic = np.logical_and(np.equal(p, 0.0),periodic)
         # now add stubs (only those registered)
-        print self.stubs.keys()
+        print(self.stubs.keys())
         for s in stubs:
             if s[0] not in delete:
                 at = mol.get_atypes()[s[0]]
                 stub_name = at+"_"+s[2]
-                print stub_name
+                print(stub_name)
                 if stub_name in self.stubs:
                     sel, sat, sdist = self.stubs[stub_name]
                     # to compute the new position we need sdist times the unit vect plus the overall shift
