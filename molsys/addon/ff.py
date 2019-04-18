@@ -862,7 +862,6 @@ class ff(base):
                     "cha" : self.ref_params[ref]["onebody"]["charge"],
                     "vdw" : self.ref_params[ref]["onebody"]["vdw"]
                     }
-                if ref == "Zn4O_benz": import pdb; pdb.set_trace()
                 curr_equi_par = {}
                 for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                     if verbose>0: logger.info(" ### Params for %s ###" % ic)
