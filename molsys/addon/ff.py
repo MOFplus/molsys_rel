@@ -862,6 +862,7 @@ class ff(base):
                     "cha" : self.ref_params[ref]["onebody"]["charge"],
                     "vdw" : self.ref_params[ref]["onebody"]["vdw"]
                     }
+                if ref == "Zn4O_benz": import pdb; pdb.set_trace()
                 curr_equi_par = {}
                 for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
                     if verbose>0: logger.info(" ### Params for %s ###" % ic)
@@ -1275,14 +1276,15 @@ class ff(base):
             if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
                 scan_ref.append(refname)
                 scan_prio.append(prio)
-            # check for upgrades
-            elif upgrades and len(reffrags) > 0:
-                oreffrags = copy.deepcopy(reffrags)
-                for d,u in upgrades.items():
-                    reffrags = [i.replace(d,u) for i in reffrags]
-                    if all(f in self.fragments.get_fragnames() for f in reffrags):
-                        scan_ref.append(refname)
-                        scan_prio.append(prio)
+            # check for upgrade   
+        #    elif upgrades and len(reffrags) > 0:        
+        #        print (refname)
+        #        oreffrags = copy.deepcopy(reffrags)
+        #        for d,u in upgrades.items():
+        #            reffrags = [i.replace(d,u) for i in reffrags]
+        #            if all(f in self.fragments.get_fragnames() for f in reffrags):
+        #                scan_ref.append(refname)
+        #                scan_prio.append(prio)
         # sort to be scanned referecnce systems by their prio
         self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
         self.scan_ref.reverse()
@@ -1318,19 +1320,26 @@ class ff(base):
         logger.info("Searching for reference systems:")
         self.ref_fraglists = {}
         self.ref_atomlists = {}
+        allowed_downgrades = ["Zn4O_benz"]
         for ref in copy.copy(self.scan_ref):
             # TODO: if a ref system has only one fragment we do not need to do a substructure search but
             #       could pick it from self.fragemnts.fraglist
             subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
             # in the case that an upgrade for a reference system is available, it has also to be searched
             # for the upgraded reference systems
-            upgrades = ref_dic[ref][3]
-            if upgrades:
-                # if upgrades should be applied, also an active zone has to be present
-                assert ref_dic[ref][2] != None
-                for s,r in upgrades.items():
-                    self.ref_systems[ref].fragments.upgrade(s, r)
-                    subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+            #upgrades = ref_dic[ref][3]
+            #if upgrades:
+            #    # if upgrades should be applied, also an active zone has to be present
+            #    assert ref_dic[ref][2] != None
+            #    for s,r in upgrades.items():
+            #        self.ref_systems[ref].fragments.upgrade(s, r)
+            #        subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+            # check again for vtypes2 fragments (substituted phenyl like fragments)
+            if (len(subs) == 0) and (ref in allowed_downgrades):
+                self._mol.graph.plot_graph("ref", g = self.ref_systems[ref].fragments.frag_graph)
+                self._mol.graph.plot_graph("host", g = self.fragments.frag_graph, vertex_text=self.fragments.frag_graph.vp.types2)
+                subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph, 
+                    graph_property = self.fragments.frag_graph.vp.types2)
             logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
             if len(subs) == 0:
                 # this ref system does not appear => discard

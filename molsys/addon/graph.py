@@ -70,7 +70,7 @@ class graph:
                         #self.molg.add_edge( self.molg.vertex(self.vert2atom.index(ja)),self.molg.vertex(i))
         return
 
-    def plot_graph(self, fname, g = None, size=1000, fsize=16, vsize=8, ptype = "pdf",method='arf'):
+    def plot_graph(self, fname, g = None, size=1000, fsize=8, vsize=8, ptype = "pdf",method='arf', vertex_text = None):
         """
         plot the graph (needs more tuning options) [via **kwargs? RA]
 
@@ -104,13 +104,15 @@ class graph:
             pos = gt.random_layout(g)
         else:
             pos=None
+        if vertex_text is None:
+            vertex_text = draw_g.vp.type
         from graph_tool.draw import graph_draw
-        graph_draw(draw_g,pos=pos, vertex_text=draw_g.vp.type, vertex_font_size=fsize, vertex_size=vsize, \
-            output_size=(size, size), output=fname+"."+ptype, bg_color=[1,1,1,1])
+        graph_draw(draw_g,pos=pos, vertex_text=vertex_text, vertex_font_size=fsize, vertex_size=vsize, \
+            output_size=(size, size), output=fname+"."+ptype, bg_color=[1,1,1,1], edge_pen_width=3)
         return
 
     @staticmethod
-    def find_subgraph(graph, subg):
+    def find_subgraph(graph, subg, graph_property = None, subg_property = None):
         """
         use graph_tools subgraph_isomorphism tool to find substructures
 
@@ -123,7 +125,11 @@ class graph:
 
             a list of lists with the (sorted) vertex indices of the substructure
         """
-        maps = subgraph_isomorphism(subg, graph, vertex_label=(subg.vp.type, graph.vp.type))
+
+        if graph_property is None: graph_property = graph.vp.type
+        if subg_property is None: subg_property = subg.vp.type
+        property_maps = (subg_property, graph_property)
+        maps = subgraph_isomorphism(subg, graph, vertex_label=property_maps)
         subs = []
         subs_check = []
         for m in maps:
@@ -180,16 +186,22 @@ class graph:
             frags.append(f)
         return frags
 
-    def util_graph(self, vertices, conn):
+    def util_graph(self, vertices, conn, vtypes2 = None):
         """
         generate a graph with vertices and connectivity in conn
         """
+        if vtypes2 is not None:
+            assert len(vtypes2)==len(vertices)
         g = Graph(directed=False)
         # now add vertices
         g.vp.type = g.new_vertex_property("string")
+        if vtypes2 is not None:
+            g.vp.types2 = g.new_vertex_property("string")
         for i, v in enumerate(vertices):
             g.add_vertex()
             g.vp.type[i] = v
+            if vtypes2 is not None:
+                g.vp.types2[i] = vtypes2[i]
         # now add edges ...
         for i, v in enumerate(vertices):
             for j in conn[i]:
