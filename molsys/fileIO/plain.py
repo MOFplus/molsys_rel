@@ -38,6 +38,6 @@ def write(mol, f):
     except AttributeError:
         raise IOError("%s is not writable" % f)
     ### write func ###
-    for i in range(natoms):
+    for i in range(mol.natoms):
         f.write("%12.6f %12.6f %12.6f\n" % (mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     return
