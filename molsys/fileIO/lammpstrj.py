@@ -119,8 +119,9 @@ def write(mol, f,vel=None):
     f.write('ITEM: ATOMS id type x y z vx vy vz\n')
     if vel is None: vel = numpy.zeros((natoms,3))
     for i in range(natoms):
-        f.write("%i %2s %f %f %f %f %f %f \n" % (i,mol.elems[i], mol.xyz[i][0], mol.xyz[i][1], mol.xyz[i][2]))
-        #f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
+        f.write("%i %2s %f %f %f %f %f %f \n" % (i, mol.elems[i],
+            mol.xyz[i][0], mol.xyz[i][1], mol.xyz[i][2],
+            vel[i][0], vel[i][1], vel[i][2]))
     f.close()
     return
 
