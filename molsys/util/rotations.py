@@ -12,7 +12,7 @@ outerproduct = outer
 PI2 = pi*2.0
 
 # for debuging set a seed
-random.seed(42)
+#random.seed(42)
 
 
 def make_vec(l):

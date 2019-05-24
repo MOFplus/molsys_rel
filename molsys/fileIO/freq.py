@@ -14,7 +14,7 @@ def read(mol, f):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     xyz,elems,eigval,eigvec = [],[],[],[]
     stage,nm_idx = 'Null', -1
     for i,c in enumerate(f.xreadlines()):

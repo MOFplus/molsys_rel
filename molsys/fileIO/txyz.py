@@ -19,7 +19,7 @@ def read(mol, f, topo = False):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     lbuffer = f.readline().split()
     mol.natoms = int(lbuffer[0])
@@ -306,7 +306,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
                 for pc in pconn[i]:
                     for ii,img in enumerate(images):
                         if pc is None:
-                            raise TypeError, "Something went VERY BAD in pconn"
+                            raise TypeError("Something went VERY BAD in pconn")
                         if all(img==pc):
                             pimg.append(ii)
                             break
@@ -343,7 +343,7 @@ def write(mol, f, topo = False, frags = False, pbc=True, plain=False):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
     cellparams = mol.cellparams
     if cellparams is not None:

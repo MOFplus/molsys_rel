@@ -252,7 +252,7 @@ class mol(mpiobject):
     
 
     @classmethod
-    def from_abinit(cls, elems, xyz, cell, frac = False):
+    def from_abinit(cls, elems, xyz, cell, frac = False, detect_conn = False):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
         m.natoms = len(elems)
@@ -265,7 +265,8 @@ class mol(mpiobject):
             m.set_xyz(xyz)
         m.set_nofrags()
         m.set_empty_conn()
-        m.detect_conn()
+        if detect_conn:
+            m.detect_conn()
         return m
 
     @classmethod
@@ -375,7 +376,7 @@ class mol(mpiobject):
                 else: #there is no extension
                     ftype = 'mfpx' #default
             logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-            if ftype in formats.read:
+            if ftype in formats.write:
                 with open(fname,"w") as f:
                     formats.write[ftype](self,f,**kwargs)
             else:
@@ -405,6 +406,15 @@ class mol(mpiobject):
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         return f.getvalue()
+
+    def to_fileobject(self,f, ftype ="mfpx", **kwargs):
+        logger.info("writing string as %s" % str(ftype))
+        if ftype in formats.write:
+            formats.write[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
+        return f
 
     def view(self, ftype='txyz', program=None, opts=(), **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
@@ -935,6 +945,25 @@ class mol(mpiobject):
         cx = self.get_cell()
         return np.abs(np.dot(cx[0], np.cross(cx[1],cx[2])))
 
+    def set_volume(self,Volume):
+        """rescales the cell to  achieve a given volume
+        
+        Rescales the unit cell in order to achieve a target volume. 
+        Tested only for orthorombic systems!
+
+        Parameters:
+            Volume (float)      : Target volume in cubic Angstroms
+        Returns:
+            float: fact         : Scaling factor used to scale the cell parameters
+        """
+        Vx = self.get_volume()
+        fact = (Volume / Vx)**(1/3.0)
+        abc = self.get_cellparams()
+        abc[0],abc[1],abc[2] = abc[0]*fact,abc[1]*fact,abc[2]*fact
+        self.set_cellparams(abc,cell_only=False)
+        Vnew = self.get_volume()
+        assert abs(Vnew - Volume)  <= 0.1
+        return fact
 
     def set_bcond(self):
         """
@@ -964,7 +993,7 @@ class mol(mpiobject):
 
         '''
         assert np.shape(cell) == (3,3)
-        if cell_only is False: 
+        if cell_only is False:
             frac_xyz = self.get_frac_from_xyz()
         self.periodic = True
         self.cell = cell
@@ -1033,7 +1062,7 @@ class mol(mpiobject):
     def set_xyz_from_frac(self, frac_xyz):
         ''' Sets atomic coordinates based on input fractional coordinates
         
-        Args:
+        Arg
             - frac_xyz (array): fractional coords to be converted to xyz
         '''
         if not self.periodic: return
@@ -1539,7 +1568,7 @@ class mol(mpiobject):
                 for i in conn:
                     self.conn[i].append(self.natoms-1)
                 if self.use_pconn:
-                    raise NotImplementedError, "TBI! [RA]"
+                    raise NotImplementedError("TBI! [RA]")
                     frac_xyz = self.get_frac_xyz()
                     frac_j = self.frac_xyz[-1]
                     for i in conn:
@@ -1584,7 +1613,7 @@ class mol(mpiobject):
         try:
             from graph_tool.topology import label_components
         except ImportError:
-            raise ImportError, "install graph-tool via 'pip install graph-tool'"
+            raise ImportError("install graph-tool via 'pip install graph-tool'")
         from molsys.util.toper import molgraph
         from collections import Counter
         if sele is None:
@@ -2432,7 +2461,10 @@ class mol(mpiobject):
         self.masstype = 'real'
         self.amass = []
         for i in self.elems:
-            self.amass.append(elements.mass[i])
+            try:
+                self.amass.append(elements.mass[i])
+            except:
+                self.amass.append(1.)
         return
 
     def get_mass(self, return_masstype=False):
