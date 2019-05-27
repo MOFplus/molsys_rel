@@ -467,7 +467,7 @@ class mol(mpiobject):
             logger.warning("%s addon is already available as attribute of mol instance!" % addmod)
             return
         if addmod in addon.__all__: ### addon is enabled: try to set it
-            if getattr(addon, addmod) is not None: ### no error raised during addon/__init__.py import
+            if getattr(addon, addmod, None) is not None: ### no error raised during addon/__init__.py import
                 try: ### get the addon attribute, initialize it and set as self attribute
                     addinit = getattr(addon, addmod)(self, *args, **kwargs)
                     setattr(self, addmod, addinit)
@@ -1685,7 +1685,7 @@ class mol(mpiobject):
         try:
             from graph_tool.topology import label_components
         except ImportError:
-            raise ImportError, "install graph-tool via 'pip install graph-tool'"
+            raise ImportError("install graph-tool via 'pip install graph-tool'")
         from molsys.util.topos import molgraph
         from collections import Counter
         if sele is None:

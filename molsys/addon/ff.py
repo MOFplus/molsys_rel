@@ -2264,7 +2264,7 @@ chargetype     gaussian\n\n''')
                 elif formatcode[1] == "s":
                     pass
                 else:
-                    raise ValueError, "unknown formatcode %s" % formatcode
+                    raise ValueError("unknown formatcode %s" % formatcode)
             else:
                 for i in xrange(len(formatcode)):
                     if formatcode[i] == "i":
