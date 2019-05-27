@@ -448,7 +448,7 @@ class mol(mpiobject):
 
     def pymol(self, opts=(), **kwargs):
         if self.mpi_rank == 0:
-            self.view(ftype='txyz', program='moldenx', opts=opts, **kwargs)
+            self.view(ftype='txyz', program='pymol', opts=opts, **kwargs)
 
     ##### addons ####################################################################################
 
