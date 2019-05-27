@@ -276,7 +276,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
     cnct        = mol.conn
     natoms      = mol.natoms
     atypes      = mol.atypes
-    if not pbc:
+    if mol.cellparams is not None and not pbc:
         cellcond = .5*numpy.array(mol.cellparams[:3])
         cnct = [ [i for i in c if (abs(xyz[i]-xyz[e]) < cellcond).all()] for e,c in enumerate(cnct)]
     if plain:
