@@ -29,6 +29,8 @@ from . import molsys_mpi
 from . import addon
 from .prop import Property
 
+import random
+
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
 # DEBUG/LOG goes to logfile, whereas WARNIGNS/ERRORS go to stdout
@@ -1173,7 +1175,7 @@ class mol(mpiobject):
             self.pconn[j].pop(idxi)            
         return
 
-    def add_atom(self, elem, atype, xyz):
+    def add_atom(self, elem, atype, xyz, fragtype='-1', fragnumber=-1):
         """
         add a ato/vertex to the system (unconnected)
         
@@ -1182,7 +1184,6 @@ class mol(mpiobject):
             atype (string):   atom type string
             xyz (ndarry [3]): coordinates
             
-        TBI: what to do with fragment types etc?
         """
         assert type(elem) == str
         assert type(atype)== str
@@ -1197,6 +1198,9 @@ class mol(mpiobject):
             self.xyz = xyz
         self.conn.append([])
         if self.use_pconn: self.pconn.append([])
+        if self.fragtypes:
+            self.fragtypes.append(fragtype)
+            self.fragnumbers.append(fragnumber)
         return self.natoms-1
 
     def insert_atom(self,elem, atype, i, j, xyz=None):
@@ -1233,8 +1237,11 @@ class mol(mpiobject):
                 for i in range(self.natoms):
                     if i in bads:
                         offset[i:] += 1
-                self.atypes = np.take(self.atypes, goods)
-                self.elems  = np.take(self.elems, goods)
+                self.elems  = np.take(self.elems, goods).tolist()
+                self.atypes = np.take(self.atypes, goods).tolist()
+                if self.fragtypes:
+                    self.fragtypes = np.take(self.fragtypes, goods).tolist()
+                    self.fragnumbers  = np.take(self.fragnumbers, goods).tolist()
                 if keep_conn:
                     #works ONLY for edges: ERROR for terminal atoms and TRASH for the rest
                     if self.use_pconn: #must go before setting self.conn
@@ -1366,6 +1373,141 @@ class mol(mpiobject):
                     badlist.append(j)
         self.delete_atoms(badlist)
         return
+
+    def merge_atoms(self, sele=None, parent_index=0, molecules_flag=False):
+        """
+        merge selected atoms
+        sele(list of nested lists of int): list of atom indices
+        parent_index(int): index of parent atom in the selection which
+            attributes are taken from (e.g. element, atomtype, etc.)
+        """
+        if sele is None: # trivial if molecules_flag=False...
+            sele = [range(self.natoms)]
+        else:
+            if not hasattr(sele[0], '__iter__'): # quick and dirt
+                sele = [sele]
+        assert len(set().union(*sele)) == len(sum(sele,[])),\
+            "multiple occurring atom indices are NOT supported!"
+        if molecules_flag:
+            # atoms are merged per connected components i.e. molecules
+            sele_molecules = []
+            molidx = self.get_separated_molecules()
+            for midx in molidx:
+                for sel in sele:
+                    msel = [i for i in midx if i in sel]
+                    if msel != []:
+                        sele_molecules.append(msel)
+            sele = sele_molecules
+        while True:
+            try:
+                sel = sele.pop(0)
+            except IndexError:
+                return
+            else:
+                xyz = self.xyz[sel].mean(axis=0)
+                parent = sel[parent_index]
+                elem = self.elems[parent]
+                atype = self.atypes[parent]
+                if self.fragtypes:
+                    fragtype = self.fragtypes[parent]
+                    fragnumber = self.fragnumbers[parent]
+                    self.add_atom(elem, atype, xyz, fragtype=fragtype, fragnumber=fragnumber)
+                else:
+                    self.add_atom(elem, atype, xyz)
+                conn_all = sum([self.conn[i] for i in sel],[])
+                conn = set(conn_all) - set(sel)
+                self.conn[-1] = conn
+                for i in conn:
+                    self.conn[i].append(self.natoms-1)
+                if self.use_pconn:
+                    raise NotImplementedError, "TBI! [RA]"
+                    frac_xyz = self.get_frac_xyz()
+                    frac_j = self.frac_xyz[-1]
+                    for i in conn:
+                        frac_i = self.frac_xyz[i]
+                        a = (frac_j - frac_i)%[1,1,1]
+                        xyz_i = self.xyz[i]
+                        self.pconn[i].append()
+                # offset trick (not new: see delete_atoms)
+                # trick must be performed BEFORE delete_atoms!
+                offset = np.zeros(self.natoms, 'int')
+                for i in range(self.natoms):
+                    if i in sel:
+                        offset[i:] += 1
+                # one of the last call, taking care of conn indices!
+                # N.B.: offset must be initialized before delete_atoms
+                self.delete_atoms(sel)
+                # back to the trick
+                for i,s in enumerate(sele):
+                    sele[i] = [j-offset[j] for j in s]
+        return # will never get it, here for clarity
+
+    def shuffle_atoms(self, sele=None):
+        """
+        shuffle atom indices, debug purpose
+        sele(list): selection list
+            if sele is None: all the atoms are shuffled
+
+        many methods should be INVARIANT wrt. atom sorting
+        N.B.: using numpy array since for readability
+        """
+        if sele is None:
+            sele = range(self.natoms)
+        sele_original = sele[:]
+        random.shuffle(sele)
+        # selection to original dictionary
+        sele2sele_original = dict(zip(sele,sele_original))
+        # coordinates #
+        self.xyz[sele_original] = self.xyz[sele]
+        # elements #
+        elems = np.array(self.elems)
+        elems[sele_original] = elems[sele]
+        self.elems = [str(e) for e in elems.tolist()]
+        # atomtypes #
+        atypes = np.array(self.atypes)
+        atypes[sele_original] = atypes[sele]
+        self.atypes = [str(e) for e in atypes]
+        # connectivity #
+        conn = copy.deepcopy(self.conn)
+        for i,ic in enumerate(conn):
+            ic = [sele2sele_original[j] if j in sele else j for j in ic]
+            conn[i] = ic
+        conn = np.array(conn)
+        conn[sele_original] = conn[sele][:]
+        self.set_conn(conn.tolist())
+        return sele2sele_original
+
+    def get_separated_molecules(self, sele = None):
+        """
+        get lists of indices of atoms which are connected together inside the
+        list and not connected outside the list.
+        same as get islands (see toper) with a native graph-tools algorithm
+
+        >>> import molsys
+        >>> m = molsys.mol.from_file("molecules.mfpx")
+        >>> molecules_idx = m.get_separated_molecules()
+        >>> for m_idx in molecules_idx:
+        >>>     m.new_mol_by_idx(m_idx).view()
+        >>> # if in trouble: CTRL+Z and "kill %%"
+        """
+        try:
+            from graph_tool.topology import label_components
+        except ImportError:
+            raise ImportError, "install graph-tool via 'pip install graph-tool'"
+        from molsys.util.topos import molgraph
+        from collections import Counter
+        if sele is None:
+            mg = molgraph(self)
+        else:
+            m = self.new_mol_by_index(sele)
+            mg = molgraph(m)
+        labels = label_components(mg.molg)[0].a.tolist()
+        unique_labels = Counter(labels).keys()
+        if sele is None:
+            molidx = [[j for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
+        else:
+            molidx = [[sele[j] for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
+        return molidx
 
 ### property interface #########################################################
 
