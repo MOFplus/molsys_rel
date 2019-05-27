@@ -12,7 +12,7 @@ outerproduct = outer
 PI2 = pi*2.0
 
 # for debuging set a seed
-random.seed(42)
+#random.seed(42)
 
 
 def make_vec(l):
@@ -30,7 +30,10 @@ def norm(v1):
 def normalize(v1):
     n = norm(v1)
     if isscalar(n):
-        return v1/n
+        if isclose(n,0):
+           return v1
+        else:
+            return v1/n
     else:
         return v1/n[:,newaxis]
 
@@ -259,6 +262,20 @@ def get_spherical_coordinates(xyz):
     #ptsnew[:,1] = numpy.arctan2(xyz[:,2], np.sqrt(xy)) # for elevation angle defined from XY-plane up
     ptsnew[:,2] = numpy.arctan2(xyz[:,1], xyz[:,0])
     return ptsnew
+
+def get_cartesian_coordinates(sphere):
+    if len(sphere) == 2:
+        theta = numpy.deg2rad(sphere[0])
+        phi   = numpy.deg2rad(sphere[1])
+        r = 1.0
+    if len(sphere) == 3:
+        r     = numpy.deg2rad(sphere[0])
+        theta = numpy.deg2rad(sphere[1])
+        phi   = numpy.deg2rad(sphere[2])
+    x = r * numpy.sin(theta) * numpy.cos(phi)
+    y = r * numpy.sin(theta) * numpy.sin(phi)
+    z = r * numpy.cos(theta)
+    return (numpy.array([x,y,z]))
 
 def normalize_angles_to_angle(angles,ref_angle=None):
     ''' JK

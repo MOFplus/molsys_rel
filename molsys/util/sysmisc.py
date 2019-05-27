@@ -1,5 +1,21 @@
+import sys
 import os
 import glob
+
+def isatty():
+    """
+    Returs True if tty is not supported and file is connected to a tty device
+    """
+    return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+
+def supports_color():
+    """
+    Returns True if terminal supports color, False otherwise
+    """
+    supported = 'ANSICON' in os.environ or \
+        sys.platform not in ['Pocket PC', "win32"]
+    # both conditions must hold
+    return supported and isatty()
 
 def _makedirs(folder):
     """
@@ -11,8 +27,9 @@ def _makedirs(folder):
         os.makedirs(folder)
     except OSError:
         pass
+    return folder # convenience return
 
-def _checkrundir(folder, basename):
+def _checkrundir(path):
     """Check if numbered basename directory in folder exists; create a new one.
     The function searches for directories in the folder with a starting
     indices (e.g. `0_run` where `0` is the index and `run` the basename).
@@ -21,6 +38,8 @@ def _checkrundir(folder, basename):
     directory with the increased index is created.
     The function is intended for output directories after multiple run in the
     same folder."""
+    folder = os.path.realpath(os.path.dirname(path))
+    basename = os.path.basename(path)
     # find directories
     globs = glob.glob("%s%s[0-9]*_%s%s" % (folder, os.sep, basename, os.sep))
     # split removing basename

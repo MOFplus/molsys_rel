@@ -1,9 +1,16 @@
+# files
 *.pyo
 *.pyc
 *.log
-doc/_build/*
 *.so
 *.swp
-*_run/*
-.hypothesis
-__pycache__/*
+# folders
+doc/_build/*
+.cache/
+.hypothesis/
+__pycache__/
+.pytest_cache/
+.vscode/
+*_run/
+run/
+

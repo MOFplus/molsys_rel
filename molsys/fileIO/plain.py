@@ -9,7 +9,12 @@ def read(mol, f, delimiter=','):
         -mol (obj): instance of a molclass
         -delimiter=',' (str): coordinate delimiter
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    ### read check ###
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError("%s is not readable" % f)
+    ### read func ###
     splits = f.read().splitlines()
     xyz = [s.split(delimiter) for s in splits]
     mol.natoms = len(xyz)
@@ -20,14 +25,19 @@ def read(mol, f, delimiter=','):
     mol.set_nofrags()
     return
 
-def write(mol, fname):
+def write(mol, f):
     """
     Routine, which writes an xyz file
     :Parameters:
-        -fname  (str): name of the plain file
         -mol    (obj): instance of a molclass
+        -f (obj) : file object or writable object
     """
-    with open(fname,'w') as f:
-        for i in range(natoms):
-            f.write("%12.6f %12.6f %12.6f\n" % (mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError("%s is not writable" % f)
+    ### write func ###
+    for i in range(mol.natoms):
+        f.write("%12.6f %12.6f %12.6f\n" % (mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     return

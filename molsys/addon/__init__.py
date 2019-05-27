@@ -4,7 +4,6 @@ from __future__ import absolute_import
 import os.path
 import sys
 import importlib
-
 import traceback
 
 """
@@ -26,10 +25,10 @@ USE CUSTOM ADDON IMPORT FOR
 - a different module addonname2.py
 - a different directory that contains addonname.py
 - a class in addonname.py that is NOT named addnoname
-    - N.B. must be named addonname in globals() (i.e. here) for instance:
+    - N.B. must be named addonname in locals() (i.e. here) for instance:
         from .addonname import classname as addonname
 - in general, a particular importing behaviour (see e.g. zmat)
-N.B. BY DESIGN: if addonname in __all__, globals()[addonname] can be only:
+N.B. BY DESIGN: if addonname in __all__, locals()[addonname] can be only:
 - None (addon is known but not imported)
 - a class named addonname
     - if standard: must be named addonname in the addonname module too!
@@ -48,7 +47,9 @@ __all__ = [
     "spg", ### base
     "bb",
     "molecules",
+    "groups",
     "zmat",
+    "wannier"
 ]
 
 _importfunc = {k:None for k in __all__}
@@ -67,7 +68,7 @@ def _importfunc_zmat():
         zmat = None
     else:
         from .zmat import zmat 
-        globals()["zmat"] = zmat ### N.B.: implicit globals()["zmat"] = zmat.zmat
+        globals()["zmat"] = zmat ### N.B.: implicit locals()["zmat"] = zmat.zmat
     finally:
         sys.stderr = sys.__stderr__
 _importfunc["zmat"] = _importfunc_zmat
@@ -88,5 +89,13 @@ for _addon in __all__:
     except Exception as e: ### stores errors raised by _addon.py module
         _errortrace[_addon] = traceback.format_exc()
         globals()[_addon] = None ### means import failed
-del sys.path[0] # remove temporarily-added dirname in path
+
+for _addon in __all__: 
+    try:
+        sys.modules['__'+_addon] = sys.modules[_addon] # to keep addons working
+        del sys.modules[_addon] # prevent import addons in any directory
+    except KeyError as e:
+        pass
+
+del sys.path[0] # prevent import modules of that directory
 

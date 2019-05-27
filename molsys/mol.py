@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 #from scipy.optimize import linear_sum_assignment as hungarian
 #import types
+import string
 import copy
 import os
 #import sys
@@ -49,15 +50,15 @@ if molsys_mpi.size > 1:
 else:
     logger_file_name = "molsys.log"
 fhandler  = logging.FileHandler(logger_file_name)
-#fhandler.setLevel(logging.DEBUG)
-fhandler.setLevel(logging.WARNING)
+fhandler.setLevel(logging.DEBUG)
+#fhandler.setLevel(logging.WARNING)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
 if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
-    #shandler.setLevel(logging.INFO)
-    shandler.setLevel(logging.WARNING)
+    shandler.setLevel(logging.INFO)
+    #shandler.setLevel(logging.WARNING)
     shandler.setFormatter(formatter)
     logger.addHandler(shandler)
 
@@ -108,14 +109,21 @@ class mol(mpiobject):
         self.set_logger_level()
         # defaults
         self.is_topo = False # this flag replaces the old topo object derived from mol
-        self.use_pconn = False # extra flag .. we could have topos that do not need pconn
+        self.use_pconn = False # extra flag .. we could have toper that do not need pconn
         self.pconn = []
+        self.pimages = []
         self.ptab  = []
         self.supercell=[1,1,1]
         self.aprops = {}
         self.bprops = {}
         self._etab = []
         return
+
+    # for future python3 compatibility
+    #def __copy__(self):
+    #    pass
+    #def __deepcopy__(self):
+    #    pass
 
     #####  I/O stuff ######################################################################################
 
@@ -137,6 +145,7 @@ class mol(mpiobject):
             ftype(str)   : the parser type that is used to read the file (default: "mfpx")
             **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
+        self.fname = fname
         if ftype is None:
             fsplit = fname.rsplit('.',1)[-1]
             if fsplit != fname: #there is an extension
@@ -147,7 +156,7 @@ class mol(mpiobject):
         try:
             f = open(fname, "r")
         except IOError:
-            logger.warning('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
+            logger.info('the file %s does not exist, trying with extension %s' % (fname,str(ftype)))
             try:
                 f = open(fname+'.'+ftype, "r")
             except:
@@ -157,7 +166,40 @@ class mol(mpiobject):
         else:
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
+        f.close()
         return
+
+    @classmethod
+    def from_smiles(cls, smile, bbcenter='com', maxiter=500):
+        ''' generates mol object from smiles string, requires openbabel to be installed            
+        '''
+        try:
+            import pybel
+        except ImportError as e:
+            print(e)
+            import traceback
+            traceback.print_exc()
+            raise ImportError('install openbabel and python-openbabel via apt')
+        #if bbconn != []:
+        #    nconns = len(bbconn)
+        #    dummies = ['He','Ne','Ar','Kr','Xe','Rn']
+        #    for i,c in enumerate(bbconn):
+        #        smile = smile.replace(c,dummies[i])
+        om = pybel.readstring("smi", smile)
+        om.make3D(forcefield='UFF', steps=maxiter)
+        txyzs = om.write('txyz') 
+        # there is gibberish in the first line of the txyzstring, we need to remove it!
+        txyzsl = txyzs.split("\n")
+        txyzsl[0] = txyzsl[0].split()[0]
+        txyzs = string.join(txyzsl,'\n')    
+        m = mol.from_string(txyzs,ftype='txyz')
+        if smile.count('*') != 0:
+            m.addon('bb')
+            m.bb.add_bb_info(conn_identifier= 'xx',center_point=bbcenter)
+            m.bb.center()
+        import molsys.util.atomtyper as atomtyper
+        at = atomtyper(m); at()
+        return m
 
     @classmethod
     def from_file(cls, fname, ftype=None, **kwargs):
@@ -210,7 +252,7 @@ class mol(mpiobject):
     
 
     @classmethod
-    def from_abinit(cls, elems, xyz, cell, frac = False):
+    def from_abinit(cls, elems, xyz, cell, frac = False, detect_conn = False):
         m = cls()
         logger.info('reading basic data provided by any AbInitio programm')
         m.natoms = len(elems)
@@ -223,7 +265,8 @@ class mol(mpiobject):
             m.set_xyz(xyz)
         m.set_nofrags()
         m.set_empty_conn()
-        m.detect_conn()
+        if detect_conn:
+            m.detect_conn()
         return m
 
     @classmethod
@@ -333,34 +376,79 @@ class mol(mpiobject):
                 else: #there is no extension
                     ftype = 'mfpx' #default
             logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-            if ftype in formats.read:
-                formats.write[ftype](self,fname,**kwargs)
+            if ftype in formats.write:
+                with open(fname,"w") as f:
+                    formats.write[ftype](self,f,**kwargs)
             else:
                 logger.error("unsupported format: %s" % ftype)
                 raise IOError("Unsupported format")
         return
 
-    def view(self, program='moldenx', fmt='mfpx', **kwargs):
+    def to_string(self, ftype='mfpx', **kwargs):
+        """
+        Method to output mol object as string in the format
+        of the given filetype.
+
+        Kwargs:
+            ftype(string): name of the filetype, default to mfpx
+        
+        Raises:
+            IOError
+        
+        Returns:
+            string: mol object as string
+        """
+        f = StringIO()
+        logger.info("writing string as %s" % str(ftype))
+        if ftype in formats.read:
+            formats.write[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
+        return f.getvalue()
+
+    def to_fileobject(self,f, ftype ="mfpx", **kwargs):
+        logger.info("writing string as %s" % str(ftype))
+        if ftype in formats.write:
+            formats.write[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
+        return f
+
+    def view(self, ftype='txyz', program=None, opts=(), **kwargs):
         ''' launch graphics visualisation tool, i.e. moldenx.
         Debugging purpose.'''
         if self.mpi_rank == 0:
             logger.info("invoking %s as visualisation tool" % (program,))
             pid = str(os.getpid())
-            _tmpfname = "_tmpfname_%s.%s" % (pid, fmt)
-            self.write(_tmpfname)
+            _tmpfname = "_tmpfname_%s.%s" % (pid, ftype)
+            self.write(_tmpfname, ftype=ftype, **kwargs)
+            if program is None:
+                program = "moldenx"
+            if opts is () and program == "moldenx":
+                opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
             try:
-                ret = subprocess.call([program, _tmpfname])
+                ret = subprocess.call([program, _tmpfname] + list(opts))
             except KeyboardInterrupt:
                 pass
             finally:
-                os.remove(_tmpfname)
-                logger.info("temporary file "+_tmpfname+" removed")
+                try:
+                    os.remove(_tmpfname)
+                    logger.info("temporary file "+_tmpfname+" removed")
+                except:
+                    logger.warning("temporary file "+_tmpfname+" removed during view!")
         return
 
-    def molden(self, **kwargs):
-        self.view(program='moldenx', fmt='mfpx', **kwargs)
-    def pymol(self, **kwargs):
-        self.view(program='pymol', fmt='mfpx', **kwargs)
+    def molden(self, opts=(), **kwargs):
+        if opts is ():
+            opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
+        if self.mpi_rank == 0:
+            self.view(ftype='txyz', program='moldenx', opts=opts, **kwargs)
+
+    def pymol(self, opts=(), **kwargs):
+        if self.mpi_rank == 0:
+            self.view(ftype='txyz', program='pymol', opts=opts, **kwargs)
 
     ##### addons ####################################################################################
 
@@ -382,6 +470,11 @@ class mol(mpiobject):
             if getattr(addon, addmod) is not None: ### no error raised during addon/__init__.py import
                 try: ### get the addon attribute, initialize it and set as self attribute
                     addinit = getattr(addon, addmod)(self, *args, **kwargs)
+                    setattr(self, addmod, addinit)
+                except TypeError as e: ### HACK when 'from molsys.addon.addmod import something'
+                    # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
+                    # the 'getattr' to get molsys.addon.ff.ff
+                    addinit = getattr(getattr(addon, addmod),addmod)(self, *args, **kwargs)
                     setattr(self, addmod, addinit)
                 except Exception as e: ### unexpected error! bugfix needed or addon used improperly
                     import traceback
@@ -478,6 +571,8 @@ class mol(mpiobject):
         if self.use_pconn:
             # we had a pconn and redid the conn --> need to reconstruct the pconn
             self.add_pconn()
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
+        self.set_etab_from_tabs()
         return
 
     def report_conn(self):
@@ -500,8 +595,17 @@ class mol(mpiobject):
             pconn is really needed only for small unit cells (usually topologies) where vertices
             can be bonded to itself (next image) or multiple times to the same vertex in different images.
             """
-        self.use_pconn= True
-        self.pconn = []
+        # N.B. add_pconn is not bullet-proof!
+        # It works pretty always for large frameworks
+        # whereas failing quite often with nets
+        # (and quite always with the smaller ones)
+        # JK+RA proposed FIX [work in progress, needs investigation]
+        #for i in self.conn:
+        #    i.sort()
+        #
+        # END FIX
+        pimages = []
+        pconn = []
         for i,c in enumerate(self.conn):
             atoms_pconn = []
             atoms_image = []
@@ -539,7 +643,11 @@ class mol(mpiobject):
                             if use_it:
                                 atoms_image.append(ii)
                                 atoms_pconn.append(images[ii])
-            self.pconn.append(atoms_pconn)
+            pimages.append(atoms_image)
+            pconn.append(atoms_pconn)
+        self.use_pconn= True
+        self.pimages = pimages
+        self.pconn = pconn
         return
     
     def check_need_pconn(self):
@@ -588,6 +696,10 @@ class mol(mpiobject):
         self.omit_pconn()
         return
     
+    def force_topo(self):
+        self.is_topo = True
+        self.add_pconn()
+        return
 
     ###  periodic systems .. cell manipulation ############
     
@@ -661,14 +773,15 @@ class mol(mpiobject):
         for cc in conn:
             for c in cc:
                 self.conn.append(c)
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
         self.natoms = nat*ntot
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
         cell = self.cell * np.array(self.supercell)[:,np.newaxis]
         self.set_cell(cell)
         self.inv_cell = np.linalg.inv(self.cell)
-        self.elems *= ntot
-        self.atypes*=ntot
-        self.fragtypes*=ntot
+        self.elems = list(self.elems)*ntot
+        self.atypes=list(self.atypes)*ntot
+        self.fragtypes=list(self.fragtypes)*ntot
         mfn = max(self.fragnumbers)+1
         nfragnumbers = []
         for i in range(ntot):
@@ -712,7 +825,6 @@ class mol(mpiobject):
                     ixyz = ix+nx*iy+nx*ny*iz
                     dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
                     xyz[ixyz] += dispvect
-
                     i = copy.copy(ixyz)
                     for cc in range(len(conn[i])):
                         for c in range(len(conn[i][cc])):
@@ -734,14 +846,16 @@ class mol(mpiobject):
                                 if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
                                 if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
                                 #print(px,py,pz)
-        self.conn, self.pconn, self.xyz = [],[],[]
+        self.natoms = nat*ntot
+        self.conn, self.pconn, self.pimages, self.xyz = [],[],[],[]
         for cc in conn:
             for c in cc:
                 self.conn.append(c)
         for pp in pconn:
             for p in pp:
                 self.pconn.append(p)
-        self.natoms = nat*ntot
+                self.pimages.append([arr2idx[ip] for ip in p])
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
         self.xyz = np.array(xyz).reshape(nat*ntot,3)
         self.cellparams[0:3] *= np.array(self.supercell)
         self.cell *= np.array(self.supercell)[:,np.newaxis]
@@ -749,6 +863,8 @@ class mol(mpiobject):
         self.elems *= ntot
         self.atypes*=ntot
         self.images_cellvec = np.dot(images, self.cell)
+        self.set_ctab_from_conn(pconn_flag=True)
+        self.set_etab_from_tabs(sort_flag=True)
         return xyz,conn,pconn
 
     def apply_pbc(self, xyz=None, fixidx=0):
@@ -773,6 +889,7 @@ class mol(mpiobject):
             elif self.bcond == 3:
                 frac = self.get_frac_xyz()
                 self.xyz[:,:] -= np.dot(np.around(frac),self.cell)
+                #self.xyz[:,:] -= np.dot(np.floor(frac),self.cell)
             if self.use_pconn:
                 # we need to reconstruct pconn in this case
                 self.add_pconn()
@@ -790,6 +907,7 @@ class mol(mpiobject):
             elif self.bcond == 3:
                 frac = np.dot(a, self.inv_cell)
                 xyz[:,:] -= np.dot(np.around(frac),self.cell)
+                #xyz[:,:] -= np.dot(np.floor(frac),self.cell)
         if self.use_pconn:
             self.add_pconn()
         return xyz
@@ -827,6 +945,25 @@ class mol(mpiobject):
         cx = self.get_cell()
         return np.abs(np.dot(cx[0], np.cross(cx[1],cx[2])))
 
+    def set_volume(self,Volume):
+        """rescales the cell to  achieve a given volume
+        
+        Rescales the unit cell in order to achieve a target volume. 
+        Tested only for orthorombic systems!
+
+        Parameters:
+            Volume (float)      : Target volume in cubic Angstroms
+        Returns:
+            float: fact         : Scaling factor used to scale the cell parameters
+        """
+        Vx = self.get_volume()
+        fact = (Volume / Vx)**(1/3.0)
+        abc = self.get_cellparams()
+        abc[0],abc[1],abc[2] = abc[0]*fact,abc[1]*fact,abc[2]*fact
+        self.set_cellparams(abc,cell_only=False)
+        Vnew = self.get_volume()
+        assert abs(Vnew - Volume)  <= 0.1
+        return fact
 
     def set_bcond(self):
         """
@@ -856,7 +993,7 @@ class mol(mpiobject):
 
         '''
         assert np.shape(cell) == (3,3)
-        if cell_only is False: 
+        if cell_only is False:
             frac_xyz = self.get_frac_from_xyz()
         self.periodic = True
         self.cell = cell
@@ -925,7 +1062,7 @@ class mol(mpiobject):
     def set_xyz_from_frac(self, frac_xyz):
         ''' Sets atomic coordinates based on input fractional coordinates
         
-        Args:
+        Arg
             - frac_xyz (array): fractional coords to be converted to xyz
         '''
         if not self.periodic: return
@@ -965,7 +1102,7 @@ class mol(mpiobject):
                 scale (float)           : scaling factor for other mol object coodinates
                 roteuler (numpy.ndarry) : euler angles to apply a rotation prior to insertion'''
         if self.use_pconn:
-            logger.warning("Connectivity may need tinkering with pconn!")
+            logger.info("Add mols with pconn, which may need tinkering")
         if other.periodic:
             if not (self.cell==other.cell).all():
                 raise ValueError("can not add periodic systems with unequal cells!!")
@@ -997,7 +1134,8 @@ class mol(mpiobject):
             cn = (np.array(c)+self.natoms).tolist()
             self.conn.append(cn)
         self.natoms += other.natoms
-        if len(other.fragtypes) == 0: other.set_nofrags()
+        if len(other.fragtypes) == 0:
+            other.set_nofrags()
         self.add_fragtypes(other.fragtypes)
         self.add_fragnumbers(other.fragnumbers)
         #self.fragtypes += other.fragtypes
@@ -1115,9 +1253,9 @@ class mol(mpiobject):
                     self.conn[a2].append(a1)
                     if self.use_pconn:
                         d,v,imgi = self.get_distvec(a1,a2)
-                        self.pconn[a1].append(images[imgi])
+                        self.pconn[a1].append(images[imgi[0]])
                         d,v,imgi = self.get_distvec(a2,a1)
-                        self.pconn[a2].append(images[imgi])                
+                        self.pconn[a2].append(images[imgi][0])                
         return
 
     def add_shortest_bonds(self,lista1,lista2):
@@ -1168,8 +1306,8 @@ class mol(mpiobject):
         """
         idxj = self.conn[i].index(j)
         idxi = self.conn[j].index(i)
-        self.conn[i].remove(idxj)
-        self.conn[j].remove(idxi)
+        self.conn[i].pop(idxj)
+        self.conn[j].pop(idxi)
         if self.use_pconn:
             self.pconn[i].pop(idxj)
             self.pconn[j].pop(idxi)            
@@ -1197,8 +1335,9 @@ class mol(mpiobject):
         else:
             self.xyz = xyz
         self.conn.append([])
-        if self.use_pconn: self.pconn.append([])
-        if self.fragtypes:
+        if self.use_pconn:
+            self.pconn.append([])
+        if len(self.fragtypes) > 0:
             self.fragtypes.append(fragtype)
             self.fragnumbers.append(fragnumber)
         return self.natoms-1
@@ -1293,6 +1432,9 @@ class mol(mpiobject):
                         # if atom i not in bads
                         for i in range(self.natoms) if i not in bads
                     ]
+                if len(self.fragtypes) > 0:
+                    self.fragtypes = np.take(self.fragtypes, goods)
+                    self.fragnumbers = np.take(self.fragnumbers, goods)
                 self.natoms = len(self.elems)
                 self.xyz    = self.xyz[goods]
                 return
@@ -1349,7 +1491,7 @@ class mol(mpiobject):
             labels (list): atom labels to be removed'''
         badlist = []
         for i,e in enumerate(self.elems):
-            if labels.count(e) != 0:
+            if e in labels:
                 badlist.append(i)
         logger.info('removing '+ str(badlist[::-1]))
         self.delete_atoms(badlist, keep_conn=keep_conn)
@@ -1377,9 +1519,18 @@ class mol(mpiobject):
     def merge_atoms(self, sele=None, parent_index=0, molecules_flag=False):
         """
         merge selected atoms
-        sele(list of nested lists of int): list of atom indices
+        sele(list of nested lists of int OR list of int): list of atom indices
         parent_index(int): index of parent atom in the selection which
             attributes are taken from (e.g. element, atomtype, etc.)
+        molecules_flag(bool): if True: sele is regrouped accoring to the found
+            molecules (e.g. if you select the COO of different carboxylates, each
+            COO is merged per se). The same behavior can be reproduced with
+            an appropriate nesting of sele, so consider molecules_flag a
+            convenience flag.
+            N.B.: this does NOT divide a selection of non-connected parts if
+            those parts belong to the same molecule (e.g. linkers in a framework).
+            In that case, you have to get_separated_molecules(sele) first to get
+            the nested list of separated moieties.
         """
         if sele is None: # trivial if molecules_flag=False...
             sele = [range(self.natoms)]
@@ -1408,7 +1559,7 @@ class mol(mpiobject):
                 parent = sel[parent_index]
                 elem = self.elems[parent]
                 atype = self.atypes[parent]
-                if self.fragtypes:
+                if len(self.fragtypes) > 0:
                     fragtype = self.fragtypes[parent]
                     fragnumber = self.fragnumbers[parent]
                     self.add_atom(elem, atype, xyz, fragtype=fragtype, fragnumber=fragnumber)
@@ -1420,7 +1571,7 @@ class mol(mpiobject):
                 for i in conn:
                     self.conn[i].append(self.natoms-1)
                 if self.use_pconn:
-                    raise NotImplementedError, "TBI! [RA]"
+                    raise NotImplementedError("TBI! [RA]")
                     frac_xyz = self.get_frac_xyz()
                     frac_j = self.frac_xyz[-1]
                     for i in conn:
@@ -1442,10 +1593,51 @@ class mol(mpiobject):
                     sele[i] = [j-offset[j] for j in s]
         return # will never get it, here for clarity
 
+    def get_separated_molecules(self, sele = None):
+        """
+        get lists of indices of atoms which are connected together inside the
+        list and not connected outside the list.
+        same as get islands (see toper) with a native graph-tools algorithm
+
+        :Arguments:
+        sele(list of int): selection list of atom indices
+            if sele is None: find molecules in the whole mol
+            else: find molecules just in the selection, countin non-connected
+                atoms as separated molecules (e.g. if you select just the
+                COO of a paddlewheel you get 4 molecules)
+
+        >>> import molsys
+        >>> m = molsys.mol.from_file("molecules.mfpx")
+        >>> molecules_idx = m.get_separated_molecules()
+        >>> for m_idx in molecules_idx:
+        >>>     m.new_mol_by_index(m_idx).view()
+        >>> # if in trouble: CTRL+Z and "kill %%"
+        """
+        try:
+            from graph_tool.topology import label_components
+        except ImportError:
+            raise ImportError("install graph-tool via 'pip install graph-tool'")
+        from molsys.util.toper import molgraph
+        from collections import Counter
+        if sele is None:
+            mg = molgraph(self)
+        else:
+            m = self.new_mol_by_index(sele)
+            mg = molgraph(m)
+        labels = label_components(mg.molg)[0].a.tolist()
+        unique_labels = Counter(labels).keys()
+        if sele is None:
+            molidx = [[j for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
+        else:
+            molidx = [[sele[j] for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
+        return molidx
+
     def shuffle_atoms(self, sele=None):
         """
         shuffle atom indices, debug purpose
-        sele(list): selection list
+
+        :Arguments:
+        sele(list of int): selection list of atom indices
             if sele is None: all the atoms are shuffled
 
         many methods should be INVARIANT wrt. atom sorting
@@ -1616,9 +1808,11 @@ class mol(mpiobject):
         self.xyz = rotations.rotate_by_triple(self.xyz, triple)
         return
 
-    def center_com(self):
+    def center_com(self, check_periodic=True, pbc = True):
         ''' centers the molsys at the center of mass '''
-        center = self.get_com()
+        if check_periodic:
+            if self.periodic: return
+        center = self.get_com(check_periodic=check_periodic, pbc = pbc)
         self.translate(-center)
         return
 
@@ -1780,7 +1974,7 @@ class mol(mpiobject):
             closest=[0]
         return d, r, closest
 
-    def get_com(self, idx = None, xyz = None, check_periodic=True):
+    def get_com(self, idx = None, xyz = None, check_periodic=True, pbc = True):
         """
         returns the center of mass of the mol object.
 
@@ -1799,7 +1993,7 @@ class mol(mpiobject):
         else:
             xyz = self.get_xyz()[idx]
             amass = np.array(self.amass)[idx]
-        xyz = self.apply_pbc(xyz, 0)
+        if pbc: xyz = self.apply_pbc(xyz, 0)
         if np.sum(amass) > 0.0:
             center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
         else: #every atom is dummy!
@@ -1906,7 +2100,11 @@ class mol(mpiobject):
     def get_atypes(self):
         ''' return the list of atom types '''
         return self.atypes
-
+    
+    def get_natypes(self):
+        if not self.atypes: return 0
+        return len(set(self.atypes))
+        
     # just to make compatible with pydlpoly standard API
     def get_atomtypes(self):
         return self.atypes
@@ -1967,7 +2165,13 @@ class mol(mpiobject):
         :Parameters:
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         """
-        self.fragnumbers += list(np.array(fragnumbers)+self.get_nfrags())
+        if len(self.fragnumbers) > 0:
+            self.fragnumbers = np.concatenate([
+                self.fragnumbers,np.array(fragnumbers)+self.get_nfrags()
+            ])
+        else:
+            self.fragnumbers = fragnumbers
+        #self.fragnumbers += list(np.array(fragnumbers)+self.get_nfrags())
         self.nfrags = np.max(self.fragnumbers)+1  
         return
 
@@ -2023,11 +2227,11 @@ class mol(mpiobject):
         if pconn_flag:
             for i in range(self.natoms):
                 ci = self.conn[i]
-                pi = self.pimages[i]
+                pi = self.pconn[i]
                 for j, pj in zip(ci,pi):
-                    if j > i or (j==i and pj <= 13):
+                    if j > i or (j==i and arr2idx[pj] < 13):
                         ctab.append((i,j))
-                        ptab.append(pj)
+                        ptab.append(arr2idx[pj])
             return ctab, ptab
         else:
             for i, ci in enumerate(self.conn):
@@ -2055,6 +2259,23 @@ class mol(mpiobject):
             self.conn[i].append(j)
             self.conn[j].append(i)
         return
+    
+    def get_unique_neighbors(self):
+        un = []
+        counter = []
+        for i,c in enumerate(self.conn):
+            for j,cc in enumerate(c):
+                neighs = sorted([self.atypes[i], self.atypes[cc]])
+                try: 
+                    ii=un.index(neighs)
+                    counter[ii] += 1
+                except:
+                    un.append(neighs)
+                    counter.append(1)
+        self.unique_neighbors = []
+        for i in range(len(un)):  
+            self.unique_neighbors.append([un[i],counter[i]])
+        return self.unique_neighbors
         
     ### PERIODIC CONNECTIVITY ###
     def get_pconn(self):
@@ -2086,6 +2307,16 @@ class mol(mpiobject):
         self.pconn = []
         for i in range(self.natoms):
             self.pconn.append([])
+        self.set_empty_pimages()
+        return
+        
+    def set_empty_pimages(self):
+        """
+        sets an empty list of lists for the periodic connected images
+        """
+        self.pimages = []
+        for i in range(self.natoms):
+            self.pimages.append([])
         return
         
     def get_pconn_as_tab(self, pconn_flag=None):
@@ -2130,15 +2361,14 @@ class mol(mpiobject):
             - ptab   : list of peridioc images per bond (nbonds, 2)
         """
         assert hasattr(self, "ctab"), "ctab is needed for the method"
-        #self.set_empty_pconn()
-        conn = self.conn[:]
+        self.set_empty_pconn()
         pconn = [[None for ic in c] for c in self.conn]
         for k,p in enumerate(ptab):
             i,j = self.ctab[k]
             ij = self.conn[i].index(j)
             ji = self.conn[j].index(i)
-            pconn[i][ij] = p
-            pconn[j][ji] = -p 
+            pconn[i][ij] =  idx2arr[p]
+            pconn[j][ji] = -idx2arr[p]
         self.pconn = pconn
         return
 
@@ -2177,9 +2407,10 @@ class mol(mpiobject):
     def etab(self, etab):
         """any time edge tab is set, ctab, (ptab) and etab are sorted"""
         self._etab = etab
+        self.nbonds = len(etab)
         self.sort_tabs(etab_flag=False)
 
-    def set_etab_from_tabs(self, ctab=None, ptab=None, sort_flag=True):
+    def set_etab_from_tabs(self, ctab=None, ptab=None, conn_flag=False, sort_flag=True):
         """set etab from ctab (and ptab). Both can be given or got from mol.
         if sort_flag: ctab, (ptab) and etab are sorted too."""
         if ctab is None and ptab is None:
@@ -2195,6 +2426,9 @@ class mol(mpiobject):
             self.etab = ctab[:]
         if sort_flag is True: #it sorts ctab, ptab, and etab too
             self.sort_tabs(etab_flag=False)
+        if conn_flag is True:
+            self.set_conn_from_tab(self.ctab)
+            self.set_pconn_from_tab(self.ptab)
         return
 
     def set_etab(self, ctab=None, ptab=None, set_tabs=False):
@@ -2205,12 +2439,12 @@ class mol(mpiobject):
         elif ctab is None or ptab is None:
             raise ValueError("ctab and ptab can't both be None")
         if self.use_pconn:
-            etab = list(zip(ctab, ptab)) # python3 compl.: zip iterator gets exhausted
+            etab = list(zip(*(zip(*ctab)+[ptab]))) # python3 compl.: zip iterator gets exhausted
         else:
             etab = ctab
         self._etab = etab
 
-    def sort_tabs(self, etab_flag=False):
+    def sort_tabs(self, etab_flag=False, conn_flag=False):
         """sort ctab, (ptab) and etab according to given convention
         Convention is the following:
             1)first ctab atom is lower or equal than the second
@@ -2225,17 +2459,19 @@ class mol(mpiobject):
             for ii,(i,j) in enumerate(ctab):
                 if i > j:
                     ctab[ii] = ctab[ii][::-1]
-                    ptab[ii] = idx2revidx(ptab[ii])
+                    ptab[ii] = idx2revidx[ptab[ii]]
                 if i == j and ptab[ii] > 13:
-                    ptab[ii] = idx2revidx(ptab[ii])
+                    ptab[ii] = idx2revidx[ptab[ii]]
         else:
             for ii,(i,j) in enumerate(ctab):
                 if i > j:
                     ctab[ii] = ctab[ii][::-1]
         asorted = argsorted(ctab)
-        self.ctab = [ctab[i] for i in asorted]
+        ctab_ = [ctab[i] for i in asorted]
+        self.set_ctab(ctab_, conn_flag=conn_flag)
         if self.use_pconn:
-            self.ptab = [ptab[i] for i in asorted]
+            ptab_ = [ptab[i] for i in asorted]
+            self.set_ptab(ptab_, pconn_flag=conn_flag)
         if etab_flag: # it ensures sorted etab and overwrites previous etab
             self.set_etab_from_tabs(sort_flag=False)
         elif etab:
@@ -2260,7 +2496,10 @@ class mol(mpiobject):
         self.masstype = 'real'
         self.amass = []
         for i in self.elems:
-            self.amass.append(elements.mass[i])
+            try:
+                self.amass.append(elements.mass[i])
+            except:
+                self.amass.append(1.)
         return
 
     def get_mass(self, return_masstype=False):

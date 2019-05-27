@@ -81,15 +81,16 @@ _tmpfile () {
 
 _tmpcheck () {
     ###check if variable is set and print message
+    ###N.B.: give VARIABLE NAME as argument (VAR), so NO DOLLAR ($VAR)
     if [ -z "$1" ]; then
         _logecho "$1 is unset"
     else
         if [ -z "$2" ]; then
             _logecho "$1 is set to ${!1}"
         elif [ "${!2}" == "True" ]; then
-            _logecho "$1 is set to ${!1}" and pre-existed
+            _logecho "$1 is set to ${!1} and pre-existed"
         elif [ "${!2}" == "False" ]; then
-            _logecho "$1 is set to ${!1}" and did not pre-exist
+            _logecho "$1 is set to ${!1} and did not pre-exist"
         else
             echo "*** ERROR: $2 must be \"True\" or \"False\", not: \"${!2}\" " 1>&2
             exit 1

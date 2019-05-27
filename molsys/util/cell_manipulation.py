@@ -2,6 +2,44 @@
 import numpy as np
 import molsys
 
+def unwrap(mol):
+    """ beware, works only for non-periodic molecules """
+    m = mol
+    wrapped = []
+    counter=0; done=False
+    while not done:
+        counter += 1
+        if counter >= 500: 
+            print 'maxiter reached'
+            break
+        for i,cc in enumerate(m.conn):
+            for ic,c in enumerate(cc):
+                d,v,imgi = m.get_distvec(i,c)
+                print i,c,d,v,imgi
+                if imgi != 13:
+                    if wrapped.count(c) != 0:
+                        continue
+                    wrapped.append(c)
+                    m.xyz[c] = m.get_image(m.xyz[c],imgi)
+                    break
+
+    return
+
+def rec_unwrap(m,idx=0,doneidx=[]):
+    #import pdb; pdb.set_trace()
+    c = m.conn[idx]
+    for i,ci in enumerate(c):
+        if doneidx.count(ci) != 0:
+            continue
+        d,v,imgi = m.get_distvec(idx, ci)
+        if imgi[0] != [13]:
+            print d,v,imgi[0]
+            m.xyz[ci] = m.get_image(m.xyz[ci],imgi[0])
+        doneidx.append(idx)
+        rec_unwrap(m,ci,doneidx=doneidx)
+    return
+
+
 def extend_cell(mol,offset):
     ''' Atoms as close as offset to the box boundaries are selected to be copied.
         They are then added at the other side of the cell to "extend" the system periodically 

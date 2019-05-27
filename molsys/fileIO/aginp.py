@@ -14,7 +14,10 @@ def read(mol, f, connectors=False, morebonds = False):
         -connectors(bool): additional connectors information
         -morebonds (bool): additional bonds information
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError("%s is not readable" % f)
     elems, xyz, atypes, qmmmtypes, bonds = [], [], [], [], []
     for line in f:
         split = line.split()

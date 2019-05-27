@@ -8,7 +8,12 @@ def read(mol, f, cycle = 0):
         -f   (obj): xyz file object
         -mol (obj): instance of a molclass
     """
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    ### read check ###
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError("%s is not readable" % f)
+    ### read func ###
     ncycle=0
     fline = f.readline().split()
     natoms = int(fline[0])
@@ -37,22 +42,42 @@ def read(mol, f, cycle = 0):
     mol.set_nofrags()
     return
 
-def write(mol, fname):
+def write(mol, f, energy = None, forces = None):
     """
     Routine, which writes an xyz file
     :Parameters:
-        -fname  (str): name of the xyz file
         -mol    (obj): instance of a molclass
+        -f (obj) : file object or writable object
     """
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError("%s is not writable" % f)
+    ### write func ###
     natoms = mol.natoms 
-    f = open(fname,"w")
+    header = ""
     if mol.periodic:
-        f.write("%d\n" % mol.natoms)
-        f.write('Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n"' % 
-            tuple(mol.cell.ravel()))
+        header +=  'Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" ' %  tuple(mol.cell.ravel())
+    header += "Properties=species:S:1:pos:R:3"
+    if forces is not None:
+        assert forces.shape == mol.xyz.shape, "Force array does not match the coordinates array"
+        header+= ":forces:R:3"
+    if energy is not None:
+        header += " energy=%16.10f" % energy
+    #if mol.periodic:
+    #    f.write("%d\n" % mol.natoms)
+    #    f.write('Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f"\n' % 
+    #        tuple(mol.cell.ravel()))
+    #else:
+    f.write("%d\n" % mol.natoms)
+    f.write(header)
+    f.write("\n")
+    if forces is None:
+        for i in range(natoms):
+            f.write("%2s %12.8f %12.8f %12.8f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     else:
-        f.write("%d\n\n" % mol.natoms)
-    for i in range(natoms):
-        f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
-    f.close()
+         for i in range(natoms):
+            f.write("%2s %12.8f %12.8f %12.8f   %12.8f %12.8f %12.8f\n" % 
+            (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2], forces[i,0], forces[i,1], forces[i,2]))
     return

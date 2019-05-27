@@ -11,7 +11,10 @@ from molsys.util.units import angstrom, kcalmol
 
 def read(mol, f):
     # missing docstring!
-    assert isinstance(f,file), "No such file with filename: \'%s\'" % f
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError("%s is not readable" % f)
     xyz,elems,eigval,eigvec = [],[],[],[]
     stage,nm_idx = 'Null', -1
     for i,c in enumerate(f.xreadlines()):
@@ -48,7 +51,6 @@ def read(mol, f):
             nm_idx = int(stage)-1
             eigvec[nmcount,nm_idx,:] = numpy.array([float(i) for i in c.split() if c != ''])
             nmcount += 1
-    f.close()
     mol.natoms = len(elems)
     mol.xyz = numpy.array(xyz)/angstrom
     mol.elems = elems

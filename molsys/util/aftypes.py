@@ -242,7 +242,11 @@ class afdict(object):
                 raise KeyError("key %s not in afdict" % str(key))
 
     def __contains__(self, item, wildcards = False):
-        raise NotImplementedError("Do not use this method -> use index() instead!")
+        index = self.index(item)
+        if index == -1: # not found, coherent w/ "def index" return
+            return False
+        else:
+            return True
 
     def __repr__(self):
         maxlen = 0

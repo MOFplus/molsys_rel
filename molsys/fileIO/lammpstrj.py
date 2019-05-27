@@ -2,7 +2,13 @@ import numpy
 import string
 import molsys.util.unit_cell as unit_cell
 
-def read(mol,f,triclinic=False,atom_offset=0):
+def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
+    ### read check ###
+    try:
+        f.readline ### do nothing
+    except AttributeError:
+        raise IOError("%s is not readable" % f)
+    ### read func ###
     stop = False
     natoms = 0
     while not stop:
@@ -54,6 +60,8 @@ def read(mol,f,triclinic=False,atom_offset=0):
             for i in range(natoms):
                 sline = string.split(f.readline()) 
                 idx = int(sline[0]) -1 - atom_offset
+                if len(idx_map.keys()) != 0:
+                    idx = idx_map[idx]
                 xyz[idx,0] = float(sline[3])
                 xyz[idx,1] = float(sline[4])
                 xyz[idx,2] = float(sline[5])
@@ -75,15 +83,20 @@ def read(mol,f,triclinic=False,atom_offset=0):
 
 
 
-def write(mol, fname,vel=None):
+def write(mol, f,vel=None):
     '''
     Write lammpstrj to visualize GCMD runs, write lambda into velocities
     :Parameters:
-        -fname  (str): name of the xyz file
         -mol    (obj): instance of a molclass
+        -f (obj) : file object or writable object
     '''
+    ### write check ###
+    try:
+        f.write ### do nothing
+    except AttributeError:
+        raise IOError("%s is not writable" % f)
+    ### write func ###
     natoms = mol.natoms 
-    f = open(fname,"w")
     #### timestep header, not sure if necessary
     f.write('ITEM: TIMESTEP\n0.1\n')
 
@@ -106,8 +119,9 @@ def write(mol, fname,vel=None):
     f.write('ITEM: ATOMS id type x y z vx vy vz\n')
     if vel is None: vel = numpy.zeros((natoms,3))
     for i in range(natoms):
-        f.write("%i %2s %f %f %f %f %f %f \n" % (i,mol.elems[i], mol.xyz[i][0], mol.xyz[i][1], mol.xyz[i][2]))
-        #f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
+        f.write("%i %2s %f %f %f %f %f %f \n" % (i, mol.elems[i],
+            mol.xyz[i][0], mol.xyz[i][1], mol.xyz[i][2],
+            vel[i][0], vel[i][1], vel[i][2]))
     f.close()
     return
 
@@ -119,7 +133,6 @@ def write_raw(f,stepcount,natoms,cell,elems,xyz,lamb):
         -fname  (str): name of the xyz file
         -mol    (obj): instance of a molclass
     '''
-    #f = open(fname,"w")
     #### timestep header, not sure if necessary
     f.write('ITEM: TIMESTEP\n%12.1f\n' % float(stepcount))
 
@@ -142,5 +155,4 @@ def write_raw(f,stepcount,natoms,cell,elems,xyz,lamb):
     for i in range(natoms):
         f.write("%i %2s %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f \n" % (i,elems[i], xyz[i,0], xyz[i,1], xyz[i,2],lamb[i], 0.0,0.0))
         #f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
-    #f.close()
     return

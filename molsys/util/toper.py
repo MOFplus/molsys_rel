@@ -10,10 +10,14 @@ import numpy as np
 import copy
 from mofplus import user_api
 from string import ascii_lowercase
-import itertools
+from collections import Counter
+
+from molsys.util.color import make_mol
+from molsys.util.sysmisc import _makedirs, _checkrundir
+from molsys.util.misc import argsorted, triplenats_on_sphere
 
 import logging
-logger = logging.getLogger("molsys.topos")
+logger = logging.getLogger("molsys.toper")
 
 class conngraph:
     """ This is the "conngraph" class
@@ -35,8 +39,8 @@ class conngraph:
         self.molg = Graph(directed=False)
         ig = 0
         # setup vertices
-        self.molg.vp.fix = self.molg.new_vertex_property("short")
-        self.molg.vp.midx = self.molg.new_vertex_property("short")
+        self.molg.vp.fix = self.molg.new_vertex_property("int64_t")
+        self.molg.vp.midx = self.molg.new_vertex_property("int64_t")
         self.molg.vp.elem = self.molg.new_vertex_property("string")
         self.molg.vp.coord = self.molg.new_vertex_property("vector<double>")
         self.molg.vp.filled = self.molg.new_vertex_property("bool") # boolean for flood fill
@@ -51,7 +55,7 @@ class conngraph:
                 self.molg.vp.fix[ig] = 0
         # setup edges
         self.molg.ep.act = self.molg.new_edge_property("bool")
-        self.molg.ep.Nk = self.molg.new_edge_property("short")
+        self.molg.ep.Nk = self.molg.new_edge_property("int64_t")
         for i in range(self.mol.natoms):
             for j in self.mol.conn[i]:
                 if j > i:
@@ -94,6 +98,7 @@ class conngraph:
             ip = pconn[j].pop(ji)
             mol.pconn[j].append(ip)
         mol.set_ctab_from_conn(pconn_flag=True)
+        self.mol.set_etab_from_tabs()
         cg = self.__class__(mol) # new conngraph
         return cg
     
@@ -258,7 +263,10 @@ class conngraph:
                     traceback.print_exc()
                     sys.exit(1)
         else:
-            return isomorphism(molg1, molg2, **kwargs)
+            isom = subgraph_isomorphism(molg1, molg2,
+                vertex_label=(molg1.vp.elem, molg2.vp.elem),
+                subgraph=False, max_n=1, **kwargs)
+            return bool(isom) # is there any isomorphism? True/False
             # THIS does not work: WHY? investigate #
             # it is needed w/ different element per vertex (e.g. bipartite case)
             #return isomorphism(molg1, molg2,
@@ -314,10 +322,6 @@ class molgraph(conngraph):
                 self.molg.ep.Nk[e] = 0
             #print(self.molg.ep.Nk[e])
         return
-
-    def find_cluster_treshold(self):
-        self.find_cluster_threshold()
-        return self.threshes
 
     def find_cluster_threshold(self):
         """
@@ -575,7 +579,7 @@ class molgraph(conngraph):
                 if not stop:
                     break
         return self.clusters
-    
+
     def make_topograph(self, verbose=True, allow_2conns=False):
         """
         Create the topograph of the topology of the MOF.
@@ -586,9 +590,10 @@ class molgraph(conngraph):
         """
         try:
             assert self.clusters
-        except:
+        except AttributeError:
             self.get_clusters()
-        tm = molsys.topo()
+        tm = molsys.mol()
+        tm.force_topo()
         tm.natoms = len(self.clusters)
         tm.set_empty_conn()
         xyz = []
@@ -632,6 +637,8 @@ class molgraph(conngraph):
         tm.set_cell(self.mol.get_cell())
         tm.ctab = tm.get_conn_as_tab(pconn_flag=False)
         tm.add_pconn()
+        tm.set_ctab_from_conn(pconn_flag=True)
+        tm.set_etab()
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
         if verbose: print(self.threshes)
@@ -649,6 +656,7 @@ class topograph(conngraph):
         """
         self.mol = mol
         if not allow_2conns:
+            self.mol_2conns = copy.deepcopy(self.mol)
             self.midx_2conns = self.remove_2conns_from_mol()
         self.make_graph()
         return
@@ -671,6 +679,8 @@ class topograph(conngraph):
             self.mol.delete_atom(i)
         # recompute pconn
         self.mol.add_pconn()
+        self.mol.set_ctab_from_conn(pconn_flag=True)
+        self.mol.set_etab_from_tabs()
         return delete_list
     
     def graph2topo(self):
@@ -926,7 +936,7 @@ class topograph(conngraph):
         assert cn.count(pattern[0]) == cn.count(pattern[1]) == 0
         ### build subgraph
         patg = Graph(directed=False)
-        patg.vp.cn = patg.new_vertex_property("short")
+        patg.vp.cn = patg.new_vertex_property("int64_t")
         patg.vp.type = patg.new_vertex_property("string")
         for i in pattern:
             v = patg.add_vertex()
@@ -954,7 +964,7 @@ class topograph(conngraph):
             cns.append(cn)
         mol.addon("graph")
         mol.graph.make_graph()
-        mol.graph.molg.vp.cn = mol.graph.molg.new_vertex_property("short")
+        mol.graph.molg.vp.cn = mol.graph.molg.new_vertex_property("int64_t")
         for v in mol.graph.molg.vertices():
             mol.graph.molg.vp.cn[v] = cns[int(v)]
             mol.graph.molg.vp.type[v] = types[int(v)]
@@ -962,7 +972,7 @@ class topograph(conngraph):
 
     def search_coordination_pattern(self,patg):
         assert type(patg) == Graph
-        self.molg.vp.cn = self.molg.new_vertex_property("short")
+        self.molg.vp.cn = self.molg.new_vertex_property("int64_t")
         for v in self.molg.vertices():
             self.molg.vp.cn[v] = len(list(v.out_neighbours()))
         maps = subgraph_isomorphism(patg, self.molg, vertex_label =
@@ -1017,6 +1027,9 @@ class topograph(conngraph):
             self.molg.remove_vertex(v)
             self.mol.delete_atom(v)
         self.mol.add_pconn()
+        self.mol.set_ctab_from_conn(pconn_flag=True)
+        self.mol.set_etab_from_tabs()
+        return
 
 class topotyper(object):
     """ Wrapper class which combines molgraph and topograph for the deconstruction of MOF structures. """
@@ -1029,7 +1042,7 @@ class topotyper(object):
         - depth (int): maximum level of coordination sequences 
         - isum (int*): summation of indices
         - trip (nested tuples*): resizing list for make_supercell if vertex symbols method overflows
-        * recursive purpose, DO NOT CHANGE
+            * recursive purpose, DO NOT CHANGE
         """
         self.api = None
         #molcopy = copy.deepcopy(mol) #prevents mol pollution if restart ###DOES NOT WORK WITH CIF FILES
@@ -1038,7 +1051,7 @@ class topotyper(object):
         self.mg = molgraph(molcopy)
         while not self.goodinit:
             if trip is None:
-                trinat = self.triplenats_on_sphere(isum)
+                trinat = triplenats_on_sphere(isum)
             else:
                 trinat = trip
             try:
@@ -1046,7 +1059,7 @@ class topotyper(object):
                 logger.info("Triplet is: "+str(itri))
                 if isum > 3: mol.make_supercell(itri)
                 self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
-            except OverflowError: ###specific for supercells
+            except OverflowError: # specific for supercells
                 logger.info("Deconstruction failed! Resize original cell")
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
             except IndexError:
@@ -1074,8 +1087,22 @@ class topotyper(object):
         self.cs, self.vs = self.tg.get_unique_vd(cs, vs)
         return
 
-    def compute_colors(self):
-        """ Compute edge coloring (TBI: vertex coloring)"""
+    def compute_colors(self, sort_flag=True):
+        """
+        Compute edge coloring (TBI: vertex coloring)
+        
+        sort_flag (bool): if it is True: colors are sorted according to
+            increasing color signature
+
+        >>> import molsys
+        >>> from molsys.util import toper
+        >>> m = molsys.mol.from_file("jast-1") # as example
+        >>> tt = toper.topotyper(m) # may need time
+        >>> tt.compute_colors()
+        >>> from molsys.util.color import make_mol # TBI: colors I/O
+        >>> ecolors = tt.tg.molg.ep.color.a
+        >>> n = make_mol(tt.tg.mol, alpha=3, ecolors=ecolors)
+        """
         try:
             assert self.bbs
         except:
@@ -1094,51 +1121,118 @@ class topotyper(object):
         #    edgecolors[iedge] = colorsigns[sign]
         ###############################
         """
+        list2c = self.tg.midx_2conns
+        vertex_bb_list = range(len(self.mg.clusters))
+        for i in reversed(sorted(list2c)):
+            del vertex_bb_list[vertex_bb_list.index(i)]
         colorsigns = {} # color signatures
         clustsigns = {}
-        self.tg.molg.ep.color = self.tg.molg.new_edge_property("string")
+        assert len(self.tg.mol.etab) == len(set(self.tg.mol.etab)), \
+            "edges w/ same termini (i.e. when pconn is needed) is NOT supported [TBI]"
+        self.tg.molg.ep.color = self.tg.molg.new_edge_property("int")
         for edge in self.tg.molg.edges():
-            s = int(edge.source())
-            t = int(edge.target())
-            # unique block name
-            ubb_v = self.bb2ubb[int(s)]
-            ubb_u = self.bb2ubb[int(t)]
-            # edge order (TBI?: get it from tg.molg source/target)
-            # N.B.: this order CANNOT be solved to keep the reference!
-            if ubb_v > ubb_u:
-                u, v = s, t
-                ubb_u, ubb_v = ubb_v, ubb_u
-            else: # when lower or equal
-                v, u = s, t
-            # cluster atoms
-            clustv = self.mg.clusters[v]
-            clustu = self.mg.clusters[u]
-            # cluster connectivity
-            connv = [
-                [jc for jc in self.mg.mol.conn[ic] if jc in clustu]
-                for ic in clustv
-            ]
-            connu = [
-                [jc for jc in self.mg.mol.conn[ic] if jc in clustv]
-                for ic in clustu
-            ]
-            # cluster connectivity towards each other
-            # TBI?: atom sequence in that direction
-            connv_ = [i for i,ic in enumerate(connv) if ic != []]
-            connu_ = [i for i,ic in enumerate(connu) if ic != []]
-            # connecting atoms == cluster atoms at the frontier of each other
-            clustv_ = [clustv[i] for i in connv_]
-            clustu_ = [clustu[i] for i in connu_]
-            # elements of the connecting atoms
-            # N.B.: sorted for consistency
-            # TBI: choice of elemsequences
-            elemsv = tuple(sorted([self.mg.mol.elems[i] for i in clustv_]))
-            elemsu = tuple(sorted([self.mg.mol.elems[i] for i in clustu_]))
-            sign = (elemsv, elemsu)
+            # v,u are source,target vertex of the edge
+            v = vertex_bb_list[int(edge.source())]
+            u = vertex_bb_list[int(edge.target())]
+            # unique block names
+            ubbv = self.bb2ubb[v]
+            ubbu = self.bb2ubb[u]
+            # signature
+            sign = self.get_color_signature(v, u)
+            if len(sum(sign,())) == 0:
+                # colors are edge midpoints
+                # workaround: since edges are no more stored in tg we use
+                # directly mg. This will be SLOW
+                # TBI: use tg (maybe w/ self.tg.mol_2conns.conn)
+                # cluster atoms
+                clustv = self.mg.clusters[v]
+                clustu = self.mg.clusters[u]
+                ## cluster connectivity
+                connv = [[self.abb[j] for j in self.mg.mol.conn[i]] for i in clustv]
+                connu = [[self.abb[j] for j in self.mg.mol.conn[i]] for i in clustu]
+                allconnv = sum(connv,[])
+                allconnu = sum(connu,[])
+                allconnv_ = [k for k in allconnv if k != v]
+                allconnu_ = [k for k in allconnu if k != u]
+                ## midpoint cluster
+                allconnt = list(set(allconnv_) & set(allconnu_))
+                assert len(allconnt) == 1,\
+                    "only 1 edge must be btw. 2 vertices"
+                t = allconnt[0] # the only one
+                ubbt = self.bb2ubb[t]
+                sign1 = self.get_color_signature(v, t)
+                sign2 = self.get_color_signature(u, t)
+                sign = (ubbt,tuple(sorted([sign1,sign2])))
+                #if sign1 == sign2:
+                #    sign = ubbt ### JUST the cluster type!
+                #else:
+                #    raise NotImplementedError("TBI: edge midpoints w/ orient colors")
+            # order (int) of occurrence assigned as color to the edge
             if sign not in colorsigns:
-                colorsigns[sign] = str(len(colorsigns)) # starting from 0
-                clustsigns[sign] = (ubb_v, ubb_u)
+                colorsigns[sign] = len(colorsigns) # starting from 0
+                #clustsigns[sign] = (ubbv, ubbu)
             self.tg.molg.ep.color[edge] = colorsigns[sign]
+        if sort_flag is True:
+            # sort colors according to color signature lexsorting
+            # it is invariant wrt. order of occurrence
+            # it sorts just the colortypes
+            keys, items = zip(*colorsigns.items())
+            sorting_dict = dict(zip(items,argsorted(keys)))
+            self.tg.molg.ep.color.a = [sorting_dict[i] for i in self.tg.molg.ep.color]
+        return
+
+    def write_colors(self, foldername="colors", index_run=False, scell=None, sort_flag=True):
+        if not hasattr(self.tg.molg.ep, "color"):
+            self.compute_colors(sort_flag=sort_flag)
+        if index_run:
+            foldername = _checkrundir(foldername)
+        else:
+            _makedirs(foldername)
+
+        asort = argsorted([(int(e.source()),int(e.target())) for e in self.tg.molg.edges()])
+        self.tg.molg.ep.color.a = self.tg.molg.ep.color.a[asort]
+        n = make_mol(self.tg.mol, alpha=3, ecolors=self.tg.molg.ep.color.a)
+        if scell is not None:
+            n.make_supercell(scell)
+        n.write("%s%s%s.mfpx" % (foldername, os.sep, "colors"))
+        n.write("%s%s%s.txyz" % (foldername, os.sep, "colors"), pbc=False)
+
+        return foldername
+
+    def get_color_signature(self, v, u):
+        """
+        Get color signature taking the connecting atoms at the boundary of the blocks
+        TBI: atom sequence going "inside" the block instead of just connecting atoms
+
+        v(int): vertex with index v
+        u(int): vertex with index u
+        """
+        # cluster atoms
+        clustv = self.mg.clusters[v]
+        clustu = self.mg.clusters[u]
+        # cluster connectivity
+        connv = [
+            [jc for jc in self.mg.mol.conn[ic] if jc in clustu]
+            for ic in clustv
+        ]
+        connu = [
+            [jc for jc in self.mg.mol.conn[ic] if jc in clustv]
+            for ic in clustu
+        ]
+        # cluster connectivity towards each other
+        # TBI: atom sequence in that direction
+        connv_ = [i for i,ic in enumerate(connv) if ic != []]
+        connu_ = [i for i,ic in enumerate(connu) if ic != []]
+        # connecting atoms == cluster atoms at the frontier of each other
+        clustv_ = [clustv[i] for i in connv_]
+        clustu_ = [clustu[i] for i in connu_]
+        # elements of the connecting atoms
+        # N.B.: sorted for consistency, tupled for hashability as dict key
+        # TBI: choice of elemsequences
+        elemsv = tuple(sorted([self.mg.mol.elems[i] for i in clustv_]))
+        elemsu = tuple(sorted([self.mg.mol.elems[i] for i in clustu_]))
+        sign = tuple(sorted([elemsv, elemsu]))
+        return sign
 
     def get_net(self):
         """ Connects to mofplus API to compare the cs and vs value to the database, and return the topology. """
@@ -1267,7 +1361,16 @@ class topotyper(object):
         return
 
     def compute_bbs(self, org_flag="_ORG", ino_flag="_INO"):
-        """Compute building blocks"""
+        """Compute building blocks
+
+        >>> import molsys
+        >>> from molsys.util import toper
+        >>> m = molsys.mol.from_file("jast-1") # as example
+        >>> tt = topo.topotyper(m) # may need time
+        >>> tt.compute_bbs()
+        >>> tt.write_bbs()
+        """
+        logger.info('Perform topological deconstruction in blocks')
         self.tg_atypes_by_isomorphism()
         cv, ca = self.mg.get_cluster_atoms()
         bbs = []
@@ -1302,6 +1405,7 @@ class topotyper(object):
         cluster_conn = self.mg.cluster_conn()
         neighbour_atypes = []
         unique_2c = []
+        c2ubb = {}
         for i in list2c:
             neighbour_atype = []
             for cc in cluster_conn[i]:
@@ -1314,6 +1418,7 @@ class topotyper(object):
                 neighbour_atypes.append(neighbour_atype)
                 unique_2c.append(i)
                 unique_bbs.append([i])
+                c2ubb[i] = len(unique_bbs)-1
                 cluster_names.append(neighbour_atype[0]+"-"+neighbour_atype[1])
             else:
                 # check for isomorphism
@@ -1324,6 +1429,8 @@ class topotyper(object):
                     if mg.mol.natoms > 1 and mg2.mol.natoms > 1:
                         if isomorphism(mg.molg, mg2.molg):
                             isomorphic_with_any = True
+                            unique_bbs[c2ubb[i2]].append(i)
+                            c2ubb[i] = c2ubb[i2]
                             break
                     else:
                         # this is a workaround, so multiple edge BBs with 1 atom will always be isomorphic...
@@ -1331,6 +1438,7 @@ class topotyper(object):
                 if not isomorphic_with_any:
                     unique_2c.append(i)
                     unique_bbs.append([i])
+                    c2ubb[i] = len(unique_bbs)-1
                     name = neighbour_atype[0]+"-"+neighbour_atype[1]
                     j = 0
                     while name in cluster_names:
@@ -1343,12 +1451,53 @@ class topotyper(object):
         self.cluster_names = cluster_names
         self.organicity = organicity
         self.set_atom2bb()
-        self.detect_all_connectors()
-        self.set_conn2bb()
         self.set_bb2ubb()
+        self.detect_connectors()
+        ### BUG HERE ###
+        #self.detect_all_connectors()
+        #self.set_conn2bb()
         return
 
-    def write_bbs(self, foldername, org_flag="_ORG", ino_flag="_INO"):
+    def detect_connectors(self):
+        for ubbs in self.unique_bbs:
+            ubb = ubbs[0] # assumption
+            bb = self.bbs[ubb]
+            bbatoms_mg = self.mg.clusters[ubb]
+            if bb.elems != [self.mg.mol.elems[i] for i in bbatoms_mg]: # this is the assumption
+                bb = self.mg.mol.new_mol_by_index(bbatoms_mg)
+                self.bbs[ubb] = bb # NOT SURE
+            connectors = [] # to be converted later
+            connector_atoms = []
+            connectors_sign = []
+            connectors_type = []
+            for ii,(i,j) in enumerate(self.mg.mol.ctab):
+                iin = i in bbatoms_mg
+                jin = j in bbatoms_mg
+                if not iin ^ jin: #both or none
+                    continue
+                if jin: # reverse
+                    i,j = j,i
+                ie, je = self.mg.mol.elems[i], self.mg.mol.elems[j]
+                iabb, jabb = self.abb[i], self.abb[j]
+                iubb, jubb = self.bb2ubb[iabb], self.bb2ubb[jabb]
+                connectors.append(bbatoms_mg.index(i))
+                connector_atoms.append([bbatoms_mg.index(i)])
+                connectors_sign.append((ie,je,iubb,jubb))
+            connectors_signtype = Counter(connectors_sign).keys()
+            sign2type = dict([(e,i) for i,e in enumerate(connectors_signtype)])
+            connectors_type = [sign2type[e] for e in connectors_sign]
+            bb.addon("bb")
+            bb.is_bb = True
+            bb.connectors = connectors
+            bb.connector_atoms = connector_atoms
+            bb.connectors_type = connectors_type
+            bb.center_point = 'coc'
+            bb.set_cell(self.mg.mol.cell)
+            bb.periodic = True
+            bb.center_com(check_periodic=False)
+            bb.wrap_in_box()
+    
+    def write_bbs(self, foldername="bbs", index_run=False, org_flag="_ORG", ino_flag="_INO"):
         """
         Write the clusters of the molgraph into the folder specified in the parameters.
         The names of the clusters written out will be those of the atomtypes of the vertices
@@ -1376,68 +1525,62 @@ class topotyper(object):
         #print("============")
         if not hasattr(self, "bbs"):
             self.compute_bbs(org_flag=org_flag, ino_flag=ino_flag)
-        if not os.path.exists(foldername):
-            os.mkdir(foldername)
+        if index_run:
+            foldername = _checkrundir(foldername)
+        else:
+            _makedirs(foldername)
         for n, i in enumerate(self.unique_bbs):
             m = self.bbs[i[0]]
             # set cell for a moment to center block in the cell
             # otherwise atom distances are lost if block is at the boundary of the cell
             m.set_cell(self.mg.mol.cell)
-            m.shift_by_com()
+            m.center_com()
+            #m.shift_by_com()
             # reset empty cell
             m.set_empty_cell()
             m.write(foldername+"/"+self.cluster_names[n]+self.organicity[i[0]]+".mfpx", "mfpx")
-        return
+        return foldername
         
-### AUXILIARY FUNCTIONS ########################################################
-    def triplenats_on_sphere(self,trisum, trimin=1):
-        """returns triplets of natural numbers on a sphere
-        trisum(int):the summation of the triples must be equal to trisum
-        trimin(int):minimum allowed natural per triplet element (default: 1)"""
-        trinat = []
-        for itri in itertools.product(range(trimin, trisum), repeat=3):
-            if sum(itri) == trisum:
-                trinat.append(itri)
-        return trinat
+    ### BUG HERE, CONNECTIVITY IS CHANGED ###
+    #def detect_all_connectors(self):
+    #    ###TBI: RETRIEVE EDGES FROM SELF.TG.MOL.CONN
+    #    self.edges = set(())
+    #    self.bb2conn = []
+    #    self.bb2adj = []
+    #    self.bb2adjconn = []
+    #    for ibb in range(self.nbbs):
+    #        iedges, iledges, idedges, icedges = self.detect_connectors(ibb, return_dict=True)
+    #        self.edges |= set(iedges)
+    #        self.bb2conn.append(iledges)
+    #        self.bb2adj.append(idedges)
+    #        self.bb2adjconn.append(icedges)
+    #    self.edges = list(self.edges)
+    #    self.edges.sort()
+    #    self.tg.mol.set_ctab(self.edges, conn_flag=True)
+    #    self.mol.set_etab_from_tabs()
+    #    self.nedges = len(self.edges)
+    #    return
 
-    def detect_all_connectors(self):
-        ###TBI: RETRIEVE EDGES FROM SELF.TG.MOL.CONN
-        self.edges = set(())
-        self.bb2conn = []
-        self.bb2adj = []
-        self.bb2adjconn = []
-        for ibb in range(self.nbbs):
-            iedges, iledges, idedges, icedges = self.detect_connectors(ibb, return_dict=True)
-            self.edges |= set(iedges)
-            self.bb2conn.append(iledges)
-            self.bb2adj.append(idedges)
-            self.bb2adjconn.append(icedges)
-        self.edges = list(self.edges)
-        self.edges.sort()
-        self.tg.mol.set_ctab(self.edges, conn_flag=True)
-        self.nedges = len(self.edges)
-        return
-
-    def detect_connectors(self, ibb, return_dict=False):
-        batoms = set(self.mg.clusters[ibb])
-        dedges = {}
-        cedges = {} 
-        ledges = []
-        edges = []
-        for ia in batoms:
-            ic = set(self.mg.mol.conn[ia])
-            ic -= batoms #set difference
-            if ic:
-                ic = int(*ic) #safety: if more than 1, raise error
-                dedges[ia] = ic #computed anyway
-                cedges[self.abb[ic]] = ia
-                ledges.append(ia)
-                iedges = [ibb, self.abb[ic]]
-                iedges.sort()
-                edges.append(tuple(iedges)) #needs tuple
-        if return_dict:
-            return edges, ledges, dedges, cedges
-        return edges, ledges
+    #def detect_connectors(self, ibb, return_dict=False):
+    #    batoms = set(self.mg.clusters[ibb])
+    #    dedges = {}
+    #    cedges = {}
+    #    ledges = []
+    #    edges = []
+    #    for ia in batoms:
+    #        ic = set(self.mg.mol.conn[ia])
+    #        ic -= batoms #set difference
+    #        if ic:
+    #            ic = int(*ic) #safety: if more than 1, raise error
+    #            dedges[ia] = ic #computed anyway
+    #            cedges[self.abb[ic]] = ia
+    #            ledges.append(ia)
+    #            iedges = [ibb, self.abb[ic]]
+    #            iedges.sort()
+    #            edges.append(tuple(iedges)) #needs tuple
+    #    if return_dict:
+    #        return edges, ledges, dedges, cedges
+    #    return edges, ledges
 
     def set_atom2bb(self):
         """from atom index to building block the atom belongs to"""
@@ -1447,13 +1590,14 @@ class topotyper(object):
                 self.abb[ia] = ibb
         return
 
-    def set_conn2bb(self):
-        """from connector index to building block the atom connects"""
-        self.conn2bb = [None]*self.mg.mol.natoms
-        for bba in self.bb2adj:
-            for c,ca in bba.items():
-                self.conn2bb[c] = self.abb[ca]
-        return
+    ### DOES NOT WORK W/O detect_all_connector
+    #def set_conn2bb(self):
+    #    """from connector index to building block the atom connects"""
+    #    self.conn2bb = [None]*self.mg.mol.natoms
+    #    for bba in self.bb2adj:
+    #        for c,ca in bba.items():
+    #            self.conn2bb[c] = self.abb[ca]
+    #    return
 
     def determine_all_color(self, vtype=0, depth=10):
         """determines colors according to element sequences
