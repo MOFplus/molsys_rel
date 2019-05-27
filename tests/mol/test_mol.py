@@ -12,7 +12,7 @@ from os.path import splitext
 
 rundir = _makedirs("run")
 
-fname = "1x1x1"
+fname = "HKUST-1.mfpx"
 name = os.path.splitext(fname)[0]
 
 m = molsys.mol.from_file(fname)
@@ -36,12 +36,22 @@ scells = [
 @pytest.mark.xpass(reason="too slow")
 @pytest.mark.parametrize("scell", scells)
 def test_manipulate_cell(scell):
-    m.make_supercell(scell)
+    # another instance is needed each time to avoid HUGE supercells
+    m_ = molsys.mol.from_file(fname)
+    m_.make_supercell(scell)
 
 writefmts = molsys.fileIO.formats.write.keys()
 @pytest.mark.parametrize("fmt", writefmts)
 def test_write(fmt):
     m.write("%s/%s.%s" % (rundir, name, fmt))
+
+@pytest.mark.parametrize("fmt", writefmts)
+def test_write_supercell(fmt):
+    scell = [2,2,2]
+    m_ = molsys.mol.from_file(fname)
+    m_.make_supercell(scell)
+    strcell = 3*"%d" % tuple(scell)
+    m_.write("%s/%s_%s.%s" % (rundir, strcell, name, fmt))
 
 readfmts = set(molsys.fileIO.formats.read.keys())
 readfmts -= set(["mol2", "freq", "array", "cif", "plain", "cell", "aginp"])
@@ -52,3 +62,4 @@ def test_read(fmt):
 @pytest.mark.parametrize("addon", molsys.addon.__all__)
 def test_load_addon(addon):
     m.addon(addon)
+
