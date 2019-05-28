@@ -325,7 +325,7 @@ class topo(mol):
 #                break
 #            for k,j in enumerate(js[:tillind]):
 #                if imgslen[k] > 1 and not self.use_pconn:
-#                    raise ValueError, "Error in connectivity detection: use pconn!!!"
+#                    raise ValueError("Error in connectivity detection: use pconn!!!")
 #                for ii in imgs[k]:
 #                    self.conn[i].append(j)
 #                    self.conn[j].append(i)

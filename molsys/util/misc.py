@@ -1,4 +1,4 @@
-import itertools
+from functools import cmp_to_key
 
 def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
     """Return the index that would sort a sequence. (python2.7 fashion)
@@ -13,15 +13,34 @@ def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
     sort_flag (bool): if True: sort sequence in place as the standard `sort` method
     """
     if key is None:
-        argsorted = sorted(
-            range(len(seq)), cmp=cmp, reverse=reverse,
-            key=seq.__getitem__)
+        try:
+            argsorted = sorted(
+                range(len(seq)), cmp=cmp, reverse=reverse,
+                key=seq.__getitem__)
+        except TypeError as e: ### python3
+            if cmp is not None:
+                raise TypeError(e)
+            argsorted = sorted(
+                range(len(seq)), reverse=reverse,
+                key=seq.__getitem__)
     else:
-        argsorted = sorted(
-            range(len(seq)), cmp=cmp, reverse=reverse,
-            key=lambda x: key(seq.__getitem__(x)) )
+        try:
+            argsorted = sorted(
+                range(len(seq)), cmp=cmp, reverse=reverse,
+                key=lambda x: key(seq.__getitem__(x)) )
+        except TypeError as e: ### python3
+            if cmp is not None:
+                raise TypeError(e)
+            argsorted = sorted(
+                range(len(seq)), reverse=reverse,
+                key=lambda x: key(seq.__getitem__(x)) )
     if sort_flag:
-        seq.sort(cmp=cmp, key=key, reverse=reverse)
+        try:
+            seq.sort(cmp=cmp, key=key, reverse=reverse)
+        except TypeError as e: ### python3
+            if cmp is not None:
+                raise TypeError(e)
+            seq.sort(key=key, reverse=reverse)
     return argsorted
 
 def normalize_ratio(cratio, total):

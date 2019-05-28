@@ -52,12 +52,13 @@ class bb:
 
 
 
-    def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=1, label = None):
+    def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=1, label = None, no_rot=False):
         self.mol.specific_conn = specific_conn  # that should be obtained from the file itself ?!!?
         self.mol.linker = linker
         self.mol.name = name
         self.mol.zflip  = zflip
         self.mol.nrot   = nrot
+        self.mol.no_rot = no_rot
         if not linker:
             if self.mol.zflip: logger.warning("zflip only supported for linkers")
             if self.mol.nrot>1: logger.debug("rotations only supported for linkers")
@@ -198,7 +199,6 @@ class bb:
         does not yet use weights, but assumes w=1 for all  atoms
         '''
         ### TODO has been tested for m-bdc and some others to work, test for others aswell! 
-        import molsys.util.rotations as rotations
         self.center()
         if use_connxyz == True:
             xyz = numpy.array(self.mol.xyz[self.mol.connectors])

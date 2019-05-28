@@ -12,7 +12,7 @@ outerproduct = outer
 PI2 = pi*2.0
 
 # for debuging set a seed
-random.seed(42)
+#random.seed(42)
 
 
 def make_vec(l):
@@ -30,7 +30,10 @@ def norm(v1):
 def normalize(v1):
     n = norm(v1)
     if isscalar(n):
-        return v1/n
+        if isclose(n,0):
+           return v1
+        else:
+            return v1/n
     else:
         return v1/n[:,newaxis]
 

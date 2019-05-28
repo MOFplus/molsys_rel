@@ -3,9 +3,13 @@
 from __future__ import print_function
 
 import numpy
+import copy
 import string
 
 from molsys.addon import base
+from molsys.util.units import debye, angstrom
+
+eA2debye = 1./(debye/angstrom)
 
 def read_until(f,s):
     while True:
@@ -23,6 +27,7 @@ class wannier(base):
         super(wannier,self).__init__(mol)
         self._specifier = specifier
         self._centers = []
+        self._shells = []
         self._atoms = []
         self._charges = numpy.zeros([self._mol.natoms])
         self._dcharges = dcharges
@@ -35,41 +40,57 @@ class wannier(base):
         for i,idx in enumerate(self.centers):
             a = self._mol.xyz[atoms]-self._mol.xyz[idx]
             if self._mol.periodic:
-                if self._mol.bcond <= 2:
-                    cell_abc = self._mol.cellparams[:3]
-                    a -= cell_abc * numpy.around(a/cell_abc)
-                elif self._mol.bcond == 3:
-                    frac = numpy.dot(a, self._mol.inv_cell)
-                    frac -= numpy.around(frac)
-                    a = numpy.dot(frac, self._mol.cell)
+                #if self._mol.bcond <= 2:
+                #    cell_abc = self._mol.cellparams[:3]
+                #    a -= cell_abc * numpy.around(a/cell_abc)
+                #if self._mol.bcond == 3:
+                frac = numpy.dot(a, self._mol.inv_cell)
+                frac -= numpy.around(frac)
+                a = numpy.dot(frac, self._mol.cell)
             dist = numpy.sqrt((a*a).sum(axis=1)) # distance to all atoms
             # sort distances
             atom2centers[numpy.argsort(dist)[0]].append(idx)
         self._atom2centers = atom2centers
         return
 
+    def find_shells(self):
+        self._shells  = []
+        for i,e in enumerate(self._mol.elems):
+            if e[0].lower()=="x":
+                self._shells.append(i)
+
     def prep_molecules(self):
         self._mol.addon("molecules")
         self._mol.molecules()
-        self.dipoles = {}
-        diptypes = {}
-        for m in self._mol.molecules.mols:
-            if len(m) not in self.dipoles.keys():
-                diptypes[len(m)]=1
-            else:
-                diptypes[len(m)]+=1
-        for i,k in diptypes.items():
-            self.dipoles[i]=numpy.zeros((k))
+        #self.dipoles = {}
+        #diptypes = {}
+        #for m in self._mol.molecules.mols:
+        #    if len(m) not in self.dipoles.keys():
+        #        diptypes[len(m)]=1
+        #    else:
+        #        diptypes[len(m)]+=1
+        #for i,k in diptypes.items():
+        #    self.dipoles[i]=numpy.zeros((k))
 
 
     def calc_mol_dipoles(self):
-        self._mol.addon("molecules")
-        self._mol.molecules()
+        #self._mol.addon("molecules")
+        #self._mol.molecules()
         # distinct species
-        results = {3:[], 1:[]}
+        results = []
+        self.portion_centers()
         for m in self._mol.molecules.mols:
-            self.dipolesresults[len(m)].append(self.calc_mol_dipole(m))
+            if len(m)>1:
+            #if len(m)==1 and self._mol.elems[m[0]].lower() == "na":
+                if len(self._atom2centers)!=0:
+                    belongs = []
+                    for i in m:
+                        belongs += self._atom2centers[i]
+                    results.append(self.calc_mol_dipole(m+belongs))
+                else:
+                    results.append(self.calc_mol_dipole(m))
             #if len(m) > 1: print(m,self.calc_mol_dipole(m))
+        #print(results)
         return results
         
 
@@ -80,8 +101,10 @@ class wannier(base):
 
     @property
     def centers(self):
+        centers = []
         for i,e in enumerate(self._mol.elems):
-            if e == self._specifier: self._centers.append(i)
+            if e == self._specifier: centers.append(i)
+        self._centers = centers
         return self._centers
 
     @property
@@ -90,8 +113,10 @@ class wannier(base):
 
     @property
     def atoms(self):
+        atoms = []
         for i,e in enumerate(self._mol.elems):
-            if e != self._specifier: self._atoms.append(i)
+            if e != self._specifier: atoms.append(i)
+        self._atoms = atoms
         return self._atoms
     
     @property
@@ -103,7 +128,7 @@ class wannier(base):
     def calc_mol_dipole(self, idx):
         molidx = []
         for i in idx:
-            if i not in self._centers:
+            if i not in self._centers and i not in self._shells:
                 molidx.append(i)
         com = self._mol.get_com(molidx)
         #print (self._charges[idx])
@@ -114,16 +139,17 @@ class wannier(base):
         # com
         a = self._mol.xyz[idx]-com
         if self._mol.periodic:
-            if self._mol.bcond <=2:
-                cell_abc = self._mol.cellparams[:3]
-                a[:,:] -= cell_abc*numpy.around(a/cell_abc)
-            elif self._mol.bcond <=3:
-                frac = numpy.dot(a, self.inv_cell)
-                a[:,:] -= numpy.dot(numpy.around(frac),self.cell)
+            #if self._mol.bcond <=2:
+            #    cell_abc = self._mol.cellparams[:3]
+            #    a[:,:] -= cell_abc*numpy.around(a/cell_abc)
+            #if self._mol.bcond <=3:
+            frac = numpy.dot(a, self._mol.inv_cell)
+            a[:,:] -= numpy.dot(numpy.around(frac),self._mol.cell)
         d = a*self._charges[idx][:,numpy.newaxis]
-        d = numpy.sum(d, axis = 0)
-        m = numpy.linalg.norm(d)
-        return d*2.5417465, m*2.5417465
+        d = numpy.sum(d, axis = 0)*eA2debye
+        #print (d)
+        #m = numpy.linalg.norm(d)
+        return d
 
     def calc_total_monopole(self):
         return numpy.sum(self._charges)

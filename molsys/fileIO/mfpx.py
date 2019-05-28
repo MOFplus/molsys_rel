@@ -16,7 +16,7 @@ def read(mol, f):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     ftype = 'xyz'
     lbuffer = f.readline().split()
@@ -98,7 +98,7 @@ def write(mol, f, fullcell = True):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
     if len(mol.fragtypes) == 0:
         mol.set_nofrags()

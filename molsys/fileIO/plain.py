@@ -13,7 +13,7 @@ def read(mol, f, delimiter=','):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     splits = f.read().splitlines()
     xyz = [s.split(delimiter) for s in splits]
@@ -36,8 +36,8 @@ def write(mol, f):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
-    for i in range(natoms):
+    for i in range(mol.natoms):
         f.write("%12.6f %12.6f %12.6f\n" % (mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     return
