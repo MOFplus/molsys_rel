@@ -92,8 +92,10 @@ def triplenats_on_sphere(trisum, trimin=1):
             trinat.append(itri)
     return trinat
 
-def int2base(value, base, maximum=None):
+def int2base(value, base=None, maximum=None):
     """credits: A. Martelli"""
+    if base is None:
+        base = len(digs)
     if maximum is not None:
         return int2base_spaced(value, base, maximum)
     assert 0 <= base <= len(digs), "Not enough digits"
@@ -118,10 +120,11 @@ def int2base(value, base, maximum=None):
 
     return ''.join(digits)
 
-def int2base_spaced(value, base, maximum=None):
+def int2base_spaced(value, base=None, maximum=None):
+    if base is None:
+        base = len(digs)
     if maximum is None:
         return int2base(value, base)
-    assert maximum >= base
     assert base <= len(digs), "Not enough digits"
 
     vb = int2base(value, base)
