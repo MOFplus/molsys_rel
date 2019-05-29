@@ -168,7 +168,7 @@ class mol(mpiobject):
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         f.close()
-        self.name = os.path.splitext(fname)[0]
+        self.name = os.path.basename(os.path.splitext(fname)[0])
         return
 
     @classmethod
