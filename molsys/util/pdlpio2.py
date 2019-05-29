@@ -280,7 +280,7 @@ class pdlpio2(mpiobject):
             atypes = list(system["atypes"])
             fragtypes = list(system["fragtypes"])
             fragnumbers = list(system["fragnumbers"])
-            if "cnc_table" in system.keys():
+            if "cnc_table" in list(system.keys()):
                 cnc_table = list(system["cnc_table"])
             else: 
                 cnc_table = []
@@ -327,7 +327,7 @@ class pdlpio2(mpiobject):
         # start with ff
         ff_data = None
         if self.is_master:
-            if "ff" in system.keys():
+            if "ff" in list(system.keys()):
                 # ok, there is force field data in this file lets read it in as a packed directory
                 ff_data = {}
                 ff = system["ff"]
@@ -368,7 +368,7 @@ class pdlpio2(mpiobject):
             raise IOError
         OK = True
         if self.is_master:
-            if stage in self.h5file.keys():
+            if stage in list(self.h5file.keys()):
                 OK = False
             else:
                 sgroup = self.h5file.create_group(stage)
@@ -388,7 +388,7 @@ class pdlpio2(mpiobject):
             stage = self.stage
         OK = True
         if self.is_master:
-            if stage not in self.h5file.keys():
+            if stage not in list(self.h5file.keys()):
                 OK = False
             else:
                 restart = self.h5file[stage+"/restart"]
@@ -425,14 +425,14 @@ class pdlpio2(mpiobject):
             data_nstep = len(traj_data)*[data_nstep]
         OK=True
         if self.is_master:
-            if stage not in self.h5file.keys():
+            if stage not in list(self.h5file.keys()):
                 OK = False
             else:
                 traj = self.h5file.require_group(stage+"/traj")
                 traj.attrs["nstep"] = traj_nstep
                 traj.attrs["tstep"] = tstep
                 for dname,dnstep in zip(traj_data, data_nstep):
-                    assert dname in self.ffe.data_funcs.keys()
+                    assert dname in list(self.ffe.data_funcs.keys())
                     data = self.ffe.data_funcs[dname]()
                     dshape = list(data.shape)
                     pdlp_data = traj.require_dataset(dname, 
@@ -452,7 +452,7 @@ class pdlpio2(mpiobject):
     def __call__(self, force_wrest=False):
         """ this generic routine is called to save restart info to the hdf5 file
             if force_wrest is True then restart is written in any case """
-        if not self.pd: raise IOError, "No pydlpoly instance"
+        if not self.pd: raise IOError("No pydlpoly instance")
         data_written = False
         if (self.counter%self.rest_nstep == 0) or force_wrest:
             # restart is written .. fetch all data 

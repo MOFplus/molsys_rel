@@ -19,7 +19,7 @@ def read(mol, f, topo = False):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     lbuffer = f.readline().split()
     mol.natoms = int(lbuffer[0])
@@ -50,6 +50,8 @@ def read(mol, f, topo = False):
     else:
         mol.elems, mol.xyz, mol.atypes, mol.conn,\
                 mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
+    mol.set_ctab_from_conn(pconn_flag=topo) 
+    mol.set_etab_from_tabs()
     ### this has to go at some point
     if 'con_info' in locals():
         if mol.center_point == "special":
@@ -274,7 +276,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
     cnct        = mol.conn
     natoms      = mol.natoms
     atypes      = mol.atypes
-    if not pbc:
+    if mol.cellparams is not None and not pbc:
         cellcond = .5*numpy.array(mol.cellparams[:3])
         cnct = [ [i for i in c if (abs(xyz[i]-xyz[e]) < cellcond).all()] for e,c in enumerate(cnct)]
     if plain:
@@ -304,7 +306,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
                 for pc in pconn[i]:
                     for ii,img in enumerate(images):
                         if pc is None:
-                            raise TypeError, "Something went VERY BAD in pconn"
+                            raise TypeError("Something went VERY BAD in pconn")
                         if all(img==pc):
                             pimg.append(ii)
                             break
@@ -341,7 +343,7 @@ def write(mol, f, topo = False, frags = False, pbc=True, plain=False):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
     cellparams = mol.cellparams
     if cellparams is not None:

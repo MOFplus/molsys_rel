@@ -429,7 +429,7 @@ class acab(base):
                     if sense == "max":
                         ea, eb = np.where(prod + eps > cost)
                     if sense == "close":
-                        ea, eb = np.where(cost - eps < prod < cost + eps)
+                        ea, eb = np.where(abs(prod-cost) < eps)
                     ew = np.where(ea < eb)
                     pairs = zip(ea[ew], eb[ew])
                     range_ = range(prod.shape[0])

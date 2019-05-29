@@ -30,7 +30,10 @@ def norm(v1):
 def normalize(v1):
     n = norm(v1)
     if isscalar(n):
-        return v1/n
+        if isclose(n,0):
+           return v1
+        else:
+            return v1/n
     else:
         return v1/n[:,newaxis]
 

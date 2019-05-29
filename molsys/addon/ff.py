@@ -44,6 +44,8 @@ def print(*args, **kwargs):
 
 
 import numpy as np
+np.seterr(invalid='raise')
+
 import uuid
 import molsys
 from molsys.util.timing import timer, Timer
@@ -479,7 +481,13 @@ class ric:
         b2 = apex2-central2
         n1 = np.cross(b0,b1)
         n2 = np.cross(b1,b2)
-        arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
+        try:
+            arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
+        except FloatingPointError as e:
+            if e.message == 'invalid value encountered in double_scalars':
+                arg = 0.0
+            else:
+                raise(e)
         if abs(1.0-arg) < 10**-14:
             arg = 1.0
         elif abs(1.0+arg) < 10**-14:
@@ -2271,7 +2279,7 @@ chargetype     gaussian\n\n''')
                 elif formatcode[1] == "s":
                     pass
                 else:
-                    raise ValueError, "unknown formatcode %s" % formatcode
+                    raise ValueError("unknown formatcode %s" % formatcode)
             else:
                 for i in xrange(len(formatcode)):
                     if formatcode[i] == "i":
