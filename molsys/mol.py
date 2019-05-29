@@ -88,6 +88,7 @@ class mol(mpiobject):
 
     def __init__(self, mpi_comm = None, out = None):
         super(mol,self).__init__(mpi_comm, out)
+        self.name=None
         self.natoms=0
         self.nbonds=0
         self.cell=None
@@ -167,6 +168,7 @@ class mol(mpiobject):
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         f.close()
+        self.name = os.path.splitext(fname)[0]
         return
 
     @classmethod
