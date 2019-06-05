@@ -22,6 +22,7 @@ from .util import rotations
 from .util import images
 from .util.images import arr2idx, idx2arr, idx2revidx
 from .util.misc import argsorted
+from .util.color import vcolor2elem
 
 from .fileIO import formats
 
@@ -704,18 +705,143 @@ class mol(mpiobject):
         return
 
     ###  periodic systems .. cell manipulation ############
-    
-    #RS  Fix this
-    #    currently if pconn is used we just call the old method from topo.py ... a lot of redundant things could 
-    #    could be removed and all should be merged into one method at some point
-    #
 
-    def make_supercell(self,supercell):
-        ''' Extends the periodic system in all directions by the factors given in the
+    def make_supercell(self,supercell, colorize=False):
+        """
+        Extend the periodic system in all directions by the factors given in the
+            supercell upon preserving the connectivity of the initial system
+        Can be used for systems with and without pconn
+
+        :Args:
+            supercell (iterable of ints): extends the cell three times in x and two times in y
+                example: [2,2,2] or []
+            colorize=False (bool): distinguish the duplicates by different colors
+
+        """
+        self.supercell = tuple(supercell)
+        ntot = np.prod(self.supercell)
+        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
+        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
+        if self.use_pconn:
+            pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
+        if sum(self.supercell) == 3:
+            logger.warning('Generating %i x %i x %i supercell? No need to do that!' % self.supercell)
+            if self.use_pconn:
+                return xyz, conn, pconn
+            else:
+                return xyz, conn
+        logger.info('Generating %i x %i x %i supercell' % self.supercell)
+        img = [np.array(i) for i in images.tolist()]
+        nat = copy.deepcopy(self.natoms)
+        nx, ny, nz = self.supercell
+        elems = copy.deepcopy(self.elems)
+        left,right,front,back,bot,top =  [],[],[],[],[],[]
+        neighs = [[] for i in range(6)]
+        iii = []
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    iii.append(ixyz)
+                    if ix == 0   : left.append(ixyz)
+                    if ix == nx-1: right.append(ixyz)
+                    if iy == 0   : bot.append(ixyz)
+                    if iy == ny-1: top.append(ixyz)
+                    if iz == 0   : front.append(ixyz)
+                    if iz == nz-1: back.append(ixyz)
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    # BUG for layers: to be investigated
+                    dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
+                    ### THESE DO NOT WORK
+                    #dispvect = np.sum(np.array([ix,iy,iz]*self.cell)[:,np.newaxis],axis=0)
+                    #dispvect = np.sum(np.array([ix,iy,iz])[np.newaxis,:]*self.cell,axis=-1)
+                    #dispvect = np.sum(np.array([ix,iy,iz])[np.newaxis,:]*self.cell,axis=0)
+                    xyz[ixyz] += dispvect
+                    i = copy.copy(ixyz)
+                    for cc in range(len(conn[i])):
+                        for c in range(len(conn[i][cc])):
+                            if self.use_pconn:
+                                allinbox = (pconn[i][cc][c]).all()
+                            else:
+                                pc = self.get_distvec(cc,conn[i][cc][c])[2]
+                                if len(pc) != 1:
+                                    print(self.get_distvec(cc,conn[i][cc][c]))
+                                    print(c,conn[i][cc][c])
+                                    raise ValueError("an Atom is connected to the same atom twice in different cells! \n Use pconn!")
+                                pc = pc[0]
+                                allinbox = pc == 13
+                            if allinbox:
+                                conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
+                                if self.use_pconn:
+                                    pconn[i][cc][c] = np.array([0,0,0])
+                            else:
+                                if self.use_pconn:
+                                    px,py,pz = pconn[i][cc][c]
+                                else:
+                                    px,py,pz = img[pc]
+                                iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
+                                iixyz= iix+nx*iiy+nx*ny*iiz
+                                conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
+                                if self.use_pconn:
+                                    pconn[i][cc][c] = np.array([0,0,0])
+                                    if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
+                                    if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
+                                    if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
+                                    if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
+                                    if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
+                                    if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
+        if self.use_pconn:
+            self.conn, self.pconn, self.pimages, self.xyz = [],[],[],[]
+        else:
+            self.conn, self.xyz = [],[]
+        for cc in conn:
+            for c in cc:
+                self.conn.append(c)
+        if self.use_pconn:
+            for pp in pconn:
+                for p in pp:
+                    self.pconn.append(p)
+                    self.pimages.append([arr2idx[ip] for ip in p])
+        self.natoms = nat*ntot
+        self.xyz = np.array(xyz).reshape(nat*ntot,3)
+        cell = self.cell * np.array(self.supercell)[:,np.newaxis]
+        self.set_cell(cell)
+        self.inv_cell = np.linalg.inv(self.cell)
+        if colorize:
+            self.elems += [vcolor2elem[i%len(vcolor2elem)] for i in range(ntot-1) for j in range(nat)]
+        else:
+            self.elems = list(self.elems)*ntot
+        self.atypes=list(self.atypes)*ntot
+        if len(self.fragtypes) > 0:
+            self.fragtypes=list(self.fragtypes)*ntot
+            mfn = max(self.fragnumbers)+1
+            fragnumbers = []
+            for i in range(ntot):
+                fragnumbers += list(np.array(self.fragnumbers)+i*mfn)
+            self.fragnumbers = fragnumbers
+        self.images_cellvec = np.dot(images, self.cell)
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
+        self.set_etab_from_tabs(sort_flag=True)
+        if self.use_pconn:
+            return xyz, conn, pconn
+        else:
+            return xyz, conn
+
+    def make_supercell_old(self,supercell):
+        """
+        DEPRECATED: IT WILL BE REMOVED IN A FEW COMMITS
+        PLEASE ADD/FIX FEATURES/BUGS TO make_supercell
+        here just in case of emergency
+
+        Extends the periodic system in all directions by the factors given in the
             supercell upon preserving the connectivity of the initial system
             Can be used for systems with and without pconn
             Args:
-                supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
+                supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y
+        """
         # HACK
         if self.use_pconn:
             xyz,conn,pconn = self._make_supercell_pconn(supercell)
@@ -792,9 +918,13 @@ class mol(mpiobject):
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn
 
-
     def _make_supercell_pconn(self, supercell):
-        """ old make_supercell from topo object
+        """
+        DEPRECATED: IT WILL BE REMOVED IN A FEW COMMITS
+        PLEASE ADD/FIX FEATURES/BUGS TO make_supercell
+        here just in case of emergency
+
+        old make_supercell from topo object
         called automatically when pconn exists
         """
         self.supercell = tuple(supercell)
@@ -868,6 +998,7 @@ class mol(mpiobject):
         self.set_ctab_from_conn(pconn_flag=True)
         self.set_etab_from_tabs(sort_flag=True)
         return xyz,conn,pconn
+
 
     def apply_pbc(self, xyz=None, fixidx=0):
         ''' 
