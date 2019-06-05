@@ -1,4 +1,5 @@
 from functools import cmp_to_key
+import itertools
 import string
 digs = string.ascii_uppercase # max base == 26
 
