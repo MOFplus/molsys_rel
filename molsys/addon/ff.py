@@ -14,6 +14,12 @@ Created on Thu Mar 23 11:25:43 2017
 
 """
 
+def string2bool(s):
+    return s.lower() in ("True", "true", "yes")
+
+def bool2string(b):
+    return str(b)
+
 try:
     from mpi4py import MPI
     mpi_comm = MPI.COMM_WORLD
@@ -38,6 +44,8 @@ def print(*args, **kwargs):
 
 
 import numpy as np
+np.seterr(invalid='raise')
+
 import uuid
 import molsys
 from molsys.util.timing import timer, Timer
@@ -134,14 +142,33 @@ class ric:
     def __init__(self, mol):
         self.timer = Timer()        
         self._mol      = mol
-        self.conn      = mol.get_conn()
-        self.natoms    = mol.get_natoms()
-        self.xyz       = mol.xyz
+        #self.conn      = mol.conn
+        #self.natoms    = mol.natoms
+        #self.xyz       = mol.xyz
         self.aftypes   = []
         for i, a in enumerate(mol.get_atypes()):
             self.aftypes.append(aftype(a, mol.fragtypes[i]))
         return
+
+    @property
+    def natoms(self):
+        return self._mol.natoms
+
+    @property
+    def conn(self):
+        return self._mol.conn
         
+    @property
+    def xyz(self):
+        return self._mol.xyz
+
+    #@property
+    #def aftypes(self):
+    #    aftypes   = []
+    #    for i, a in enumerate(self._mol.get_atypes()):
+    #        self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
+    #    return aftypes
+
 
     def find_rics(self, specials={"linear": [], "sqp":[]}, smallring = False):
         """
@@ -185,7 +212,7 @@ class ric:
             # find bonds and check if they are equal ... this should be a sufficent test that the rest is the same, too
             
             mol_bnd = self.find_bonds()
-            if mol_bnd != bnd:
+            if sorted(mol_bnd) != sorted(bnd):
                 raise ValueError("The rics provided do not match the mol object!")
         return
 
@@ -454,7 +481,13 @@ class ric:
         b2 = apex2-central2
         n1 = np.cross(b0,b1)
         n2 = np.cross(b1,b2)
-        arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
+        try:
+            arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
+        except FloatingPointError as e:
+            if e.message == 'invalid value encountered in double_scalars':
+                arg = 0.0
+            else:
+                raise(e)
         if abs(1.0-arg) < 10**-14:
             arg = 1.0
         elif abs(1.0+arg) < 10**-14:
@@ -538,8 +571,33 @@ class ff(base):
         self.settings =  {
             "radfact" : 1.0,
             "radrule" : "arithmetic", 
-            "epsrule" : "geometric",            
-            }
+            "epsrule" : "geometric",
+            "coul12"  : 1.0,
+            "coul13"  : 1.0,
+            "coul14"  : 1.0,
+            "vdw12"   : 0.0,
+            "vdw13"   : 0.0,
+            "vdw14"   : 1.0,
+            "chargetype": "gaussian",
+            "cutoff"  :12.0, 
+            "vdwtype": "exp6_damped",
+            "coreshell": False
+        }
+        self.settings_formatter = {
+            "radfact": float,
+            "radrule": str,
+            "epsrule": str,
+            "coul12"  : float,
+            "coul13"  : float,
+            "coul14"  : float,
+            "vdw12"   : float,
+            "vdw13"   : float,
+            "vdw14"   : float,
+            "chargetype": str,
+            "vdwtype": str,
+            "coreshell": string2bool,
+            "cutoff": float,
+        }
         self.pair_potentials_initalized = False
         self.refsysname = None
         self.fit = False
@@ -548,6 +606,36 @@ class ff(base):
             self.par = par
         logger.debug("generated the ff addon")
         return
+
+    def _setup_coreshell(self, poltypes):
+        assert self.settings["coreshell"] == False
+        self.settings["coreshell"] = True
+        self._shells = []
+        self._cores = range(self._mol.natoms)
+        xyz = copy.deepcopy(self._mol.xyz)
+        for i, at in enumerate(self._mol.atypes):
+            if at in poltypes:
+                elem = "x"+self._mol.elems[i]
+                atype = "x"+at
+                nxyz = xyz[i]+np.array([0.0,0.0,0.1])
+                fragtype = self._mol.fragtypes[i]
+                fragnumber = self._mol.fragnumbers[i]
+                idx = self._mol.add_atom(elem,atype,nxyz, fragtype,fragnumber)
+                self._shells.append(idx)
+                self._mol.conn[i].append(idx)
+                self._mol.conn[-1].append(i)
+                self.ric.bnd.append(ic([i,idx]))
+        # make some settings
+        self.settings["chargetype"]="point"
+        self.settings["vdwtype"]="buck"
+        self.settings["coul12"]=0.0
+        self.settings["coul13"]=0.0
+        self.settings["coul14"]=0.0
+        self.settings["vdw12"]=0.0
+        self.settings["vdw13"]=0.0
+        self.settings["vdw14"]=0.0
+        return
+
 
     def _init_data(self, cha=None, vdw=None):
         """
@@ -698,7 +786,8 @@ class ff(base):
                 
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
-            plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None):
+            plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None, poltypes = [],
+            dummies = None):
         """
         Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -741,6 +830,10 @@ class ff(base):
         if ricdetect==True:
             with self.timer("find rics"):
                 self.ric.find_rics(specials = special_atypes, smallring = smallring)
+                if dummies is not None:
+                    dummies(self)
+                if len(poltypes)>0:
+                    self._setup_coreshell(poltypes)           
                 self._init_data()
                 self._init_pardata(FF)
             # as a first step we need to generate the fragment graph
@@ -889,6 +982,7 @@ class ff(base):
             - strbnd(bool, optional): switch for a forcing a fixup of strbnd terms, defauls to
             False
         """
+        #import pdb; pdb.set_trace()
         self.ric.compute_rics()
         self.par.attach_variables()
 #        self.variables = varpars()
@@ -1010,7 +1104,10 @@ class ff(base):
                 try:
                     prm = elems.vdw_prm[trunc]
                 except:
-                    prm = elems.vdw_prm[elem]
+                    try:
+                        prm = elems.vdw_prm[elem]
+                    except:
+                        prm = [0.0,0.0]
             self.par["vdw"][self.parind["vdw"][i][0]][1] = prm
         return
 
@@ -1095,30 +1192,29 @@ class ff(base):
             - radrule (str): radiusrule, default to arithmetic
             - epsrule (str): epsilonrule, default to geometric
         """
+        # one could improve this via an additional dictionary like structure using the vdwpr 
         self.vdwdata = {}
         self.types2numbers = {} #equivalent to self.dlp_types
         types = self.par["vdw"].keys()
-        #print(types)
         for i, t in enumerate(types):
             if t not in self.types2numbers.keys():
                 self.types2numbers[t]=str(i)
         ntypes = len(types)
-        #print (ntypes)
         for i in range(ntypes):
             for j in range(i, ntypes):
                 #TODO check availability of an explicit paramerter
-                if "vdwpr" in self.par and len(self.par["vdwpr"].keys()) > 0:
-                    _,_,ti = self.split_parname(types[i])
-                    _,_,tj = self.split_parname(types[j])
-                    ti =ti[0]
-                    tj = tj[0]
-                    parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
-                    if parname in self.par["vdwpr"].keys():
-                        # got it
-                        par_ij = self.par["vdwpr"][parname]
-                        self.vdwdata[types[i]+":"+types[j]] = par_ij
-                        self.vdwdata[types[j]+":"+types[i]] = par_ij
-                        continue
+                #if len(self.par["vdwpr"].keys()) > 0:
+                #    _,_,ti = self.split_parname(types[i])
+                #    _,_,tj = self.split_parname(types[j])
+                #    ti =ti[0]
+                #    tj = tj[0]
+                #    parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
+                #    if parname in self.par["vdwpr"].keys():
+                #        # got it
+                #        par_ij = self.par["vdwpr"][parname]
+                #        self.vdwdata[types[i]+":"+types[j]] = par_ij
+                #        self.vdwdata[types[j]+":"+types[i]] = par_ij
+                #        continue
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]
@@ -1127,19 +1223,36 @@ class ff(base):
                     pot = pot_i
                 else:
                     raise IOError("Can not combine %s and %s" % (pot_i, pot_j))
-                if self.settings["radrule"] == "arithmetic":
-                    rad = self.settings["radfact"]*(par_i[0]+par_j[0])
-                elif self.settings["radrule"] == "geometric":
-                    rad = 2.0*self.settings["radfact"]*np.sqrt(par_i[0]*par_j[0])
-                else:
-                    raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
-                if self.settings["epsrule"] == "arithmetic":
-                    eps = 0.5 * (par_i[1]+par_j[1])
-                elif self.settings["epsrule"] == "geometric":
-                    eps = np.sqrt(par_i[1]*par_j[1])
-                else:
-                    raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
-                par_ij = (pot,[rad,eps])
+                if pot == "buck6d":
+                    if self.settings["radrule"] == "arithmetic":
+                        rad = self.settings["radfact"]*(par_i[0]+par_j[0])
+                    elif self.settings["radrule"] == "geometric":
+                        rad = 2.0*self.settings["radfact"]*np.sqrt(par_i[0]*par_j[0])
+                    else:
+                        raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
+                    if self.settings["epsrule"] == "arithmetic":
+                        eps = 0.5 * (par_i[1]+par_j[1])
+                    elif self.settings["epsrule"] == "geometric":
+                        eps = np.sqrt(par_i[1]*par_j[1])
+                    else:
+                        raise IOError("Unknown epsilon rule %s specified" % self.settings["epsilon"])
+                    par_ij = (pot,[rad,eps])
+                elif pot == "buck":
+                    if self.settings["epsrule"] == "geometric":
+                        A = np.sqrt(par_i[0]*par_j[0])
+                        C = np.sqrt(par_i[2]*par_j[2])
+                    elif self.settings["epsrule"] == "arithmetic":
+                        A = 0.5 * (par_i[0]+par_j[0])
+                        C = 0.5 * (par_i[2]+par_j[2])
+                    else:
+                        raise IOError("Unknown epsilon rule %s specified" % self.settings["epsilon"])
+                    if self.settings["radrule"] == "arithmetic":
+                        B = 0.5*(par_i[1]+par_j[1])
+                    elif self.settings["epsrule"] == "geometric":
+                        B = np.sqrt(par_i[1]*par_j[1])
+                    else:
+                        raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
+                    par_ij = (pot,[A,B,C])    
                 # all combinations are symmetric .. store pairs bith ways
                 self.vdwdata[types[i]+":"+types[j]] = par_ij
                 self.vdwdata[types[j]+":"+types[i]] = par_ij   
@@ -1432,7 +1545,7 @@ class ff(base):
         """
         # dummy dicts to assign a number to the type
         par_types = {}
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw","vdwpr"]:
             ptyp = {}
             i = 1
             for ind in self.par[ic]:
@@ -1494,7 +1607,11 @@ class ff(base):
             logger.info("Writing parameter to file %s.par" % fname)
         f.write("HASH: %s\n" % hash)
         f.write("FF %s\n\n" % self.par.FF)
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
+        # write settings
+        for k,v in self.settings.items():
+            f.write("%-15s %s\n" % (k, str(v)))
+        f.write("\n")
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]:
             ptyp = par_types[ic]
             par = self.par[ic]
             f.write(ff_desc[ic])
@@ -1510,6 +1627,7 @@ class ff(base):
                 #sval = (len(values)*"%15.8f ") % tuple(values)
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
             f.write("\n")
+        
         if hasattr(self.par, 'variables'):
             self.par.variables(vals)
             if hasattr(self, 'active_zone'):
@@ -1532,8 +1650,8 @@ class ff(base):
         """
         hash = None
         fric = open(fname+".ric", "r")
-        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
-        ric_len  = [2    , 3    , 4    , 4    , 1    , 1    ]
+        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]
+        ric_len  = [2    , 3    , 4    , 4    , 1    , 1      ,2     ]
         ric      = {}
         # read in ric first, store the type as an attribute in the first place
         stop = False
@@ -1632,6 +1750,8 @@ class ff(base):
                 curric = sline[0].split("_")[0]
                 if sline[0]=="FF":
                     self.par.FF = sline[1]
+                elif sline[0] in self.settings.keys():
+                    self.settings[sline[0]] = self.settings_formatter[sline[0]](sline[1])
                 elif curric in ric_type:
                     par = self.par[curric]
                     t2ident = {} # maps integer type to identifier
@@ -1680,9 +1800,10 @@ class ff(base):
                         else:
                             t2ident[itype] = [ident]
                     # now all types are read in: set up the parind datastructure of the ric
-                    parind = self.parind[curric]
-                    for i,r in enumerate(self.ric_type[curric]):
-                        parind[i] = t2ident[r.type]
+                    if curric != "vdwpr":
+                        parind = self.parind[curric]
+                        for i,r in enumerate(self.ric_type[curric]):
+                            parind[i] = t2ident[r.type]
         fpar.close()
         # check if both fpar and ric file have hashes
         if hash is not None and found_hash == False:
@@ -1706,7 +1827,8 @@ class ff(base):
 
         TODO: currently we only handle the ring attribute, needs to be more general if other attributes will be used in the future
         """
-        assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
+        #assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
+        if hasattr(self.par, 'variables'): return {}
         data = {}
         # dummy dicts to assign a number to the type
         par_types = self.enumerate_types()
@@ -2142,7 +2264,7 @@ chargetype     gaussian\n\n''')
                 elif formatcode[1] == "s":
                     pass
                 else:
-                    raise ValueError, "unknown formatcode %s" % formatcode
+                    raise ValueError("unknown formatcode %s" % formatcode)
             else:
                 for i in xrange(len(formatcode)):
                     if formatcode[i] == "i":

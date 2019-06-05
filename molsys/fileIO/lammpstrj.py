@@ -1,5 +1,4 @@
 import numpy
-import string
 import molsys.util.unit_cell as unit_cell
 
 def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
@@ -7,20 +6,20 @@ def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     stop = False
     natoms = 0
     while not stop:
         line = f.readline()
         if "ITEM: NUMBER OF ATOMS" in line:
-            natoms = int(string.split(f.readline())[0])
+            natoms = int(f.readline().split()[0])
         elif "ITEM: BOX BOUNDS" in line:
             cell = numpy.zeros([3,3])
             if triclinic is not True:
-                cell[0,0] = float(string.split(f.readline())[1])
-                cell[1,1] = float(string.split(f.readline())[1])
-                cell[2,2] = float(string.split(f.readline())[1])
+                cell[0,0] = float(f.readline().split()[1])
+                cell[1,1] = float(f.readline().split()[1])
+                cell[2,2] = float(f.readline().split()[1])
             else:
                 c1 = [float(x) for x in f.readline().split() if x != '']
                 c2 = [float(x) for x in f.readline().split() if x != '']
@@ -58,7 +57,7 @@ def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
             for i in range(natoms): elems.append("c")
             for i in range(natoms): atypes.append("c")
             for i in range(natoms):
-                sline = string.split(f.readline()) 
+                sline = f.readline().split()
                 idx = int(sline[0]) -1 - atom_offset
                 if len(idx_map.keys()) != 0:
                     idx = idx_map[idx]
@@ -94,7 +93,7 @@ def write(mol, f,vel=None):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
     natoms = mol.natoms 
     #### timestep header, not sure if necessary
@@ -119,8 +118,9 @@ def write(mol, f,vel=None):
     f.write('ITEM: ATOMS id type x y z vx vy vz\n')
     if vel is None: vel = numpy.zeros((natoms,3))
     for i in range(natoms):
-        f.write("%i %2s %f %f %f %f %f %f \n" % (i,mol.elems[i], mol.xyz[i][0], mol.xyz[i][1], mol.xyz[i][2]))
-        #f.write("%2s %12.6f %12.6f %12.6f\n" % (mol.elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
+        f.write("%i %2s %f %f %f %f %f %f \n" % (i, mol.elems[i],
+            mol.xyz[i][0], mol.xyz[i][1], mol.xyz[i][2],
+            vel[i][0], vel[i][1], vel[i][2]))
     f.close()
     return
 

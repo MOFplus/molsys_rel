@@ -15,7 +15,7 @@ def read(mol, f, gradient = False, trajectory=False, cycle = -1):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     if gradient:
         return read_gradfile(mol,f,cycle)
@@ -110,7 +110,7 @@ def read_trajfile(mol,f):
     found    = False
     ### get how many cylces are in the file
     for i_t, traj in enumerate(trajfiles):
-        print 'reading %s (%d/%d)' % (traj,i_t+1,len(trajfiles))
+        #print 'reading %s (%d/%d)' % (traj,i_t+1,len(trajfiles))
         f = open(traj,'r')
         f_text = f.read().replace('\n$end','').rsplit('$current',1)[0]
         frames = f_text.split('t=')[1:]
@@ -129,10 +129,10 @@ def read_trajfile(mol,f):
     mol.gradients  = grad / (kcalmol / angstrom)
     mol.velocities = vel / (1.0/2187.69)  ## v_au to angstrom/fs
     mol.energies = energy/kcalmol
-    print 'gradients  :    mol.gradients'
-    print 'trajectory :    mol.trajectory'
-    print 'velocities :    mol.velocities'
-    print 'energies   :    mol.energies'
+    #print 'gradients  :    mol.gradients'
+    #print 'trajectory :    mol.trajectory'
+    #print 'velocities :    mol.velocities'
+    #print 'energies   :    mol.energies'
     mol.elems = elems
     mol.atypes = elems
     mol.set_empty_conn()
@@ -202,7 +202,7 @@ def write(mol, f):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
     f.write("$coord\n")
     c = mol.xyz*angstrom

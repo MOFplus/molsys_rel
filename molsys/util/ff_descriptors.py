@@ -57,12 +57,15 @@ vdw = """# Suppoerted types
 # buck6d: ep in kcal/mol, r0 in A
 #         buck r0 ep"""
 
+vdwpr = ""
+
 desc = {"bnd": bnd,
         "ang": ang,
         "dih": dih,
         "oop": oop,
         "cha": cha,
         "vdw": vdw,
+        "vdwpr": vdwpr
         }
 
 

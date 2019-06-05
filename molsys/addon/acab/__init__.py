@@ -6,7 +6,7 @@ Created on Mon Jun 11 14:19:27 2018
 
 
         addon module acab to implement colors for molsys
-        
+
         contains class acab
 """
 from __future__ import print_function
@@ -22,7 +22,7 @@ logger.setLevel(logging.INFO)
 from molsys.addon import base
 from molsys.util.color import make_emol, make_vmol, make_mol, ecolor2elem, vcolor2elem
 from molsys.util.images import arr2idx
-from molsys.util.misc import normalize_ratio
+from molsys.util.misc import normalize_ratio, int2base
 from molsys.util.sysmisc import isatty, _makedirs, _checkrundir
 
 try:
@@ -86,23 +86,42 @@ class acab(base):
     def __init__(self, mol):
         """
         acab addon object to be attached to the parent mol instance
-        
+
         :Parameter:
         - mol (obj): mol or mol-derived (bb, topo, etc.) type object
+            it follows the addon implementation in molsys
         :Attributes:
+         - structures (list of molsys.mol): colored net solutions stored as molecules
+         - constrlabels (list of strings): applied constraints stored as strings
          - Model (class): main PySCIPOpt class to setup a model
          - quicksum (function): sum function for PySCIPOpt Expr and ConsExpr
-             faster than built-in sum
-         - ctab: connectivity table
-         - ptab: periodic image table
-         - otab: edge color table
+             faster than built-in sum, here as attribute for debugging convenience
+         - quickprod (function): product function for PySCIPOpt Expr and ConsExpr
+             faster than numpy scalar product, here as attribute for debugging convenience
+         - evars (dict): edge variables accessible as:
+         (periodic case)
+            i (int): source atom index
+            j (int): target atom index
+            p (int): source-to-target image index (it fulfills periodic edge table convention)
+            c (int): color index (see further)
+         (non-periodic case)
+            i (int): source atom index
+            j (int): target atom index
+            c (int): color index (see further)
+         - vvars (dict): vertex variables accessible as:
+            i (int): atom index
+            c (int): color index (see further)
         """
         super(acab, self).__init__(mol)
         logger.info("acab addon generated")
-        # auxiliary: to be available as instance attribute w/o importing
-        self.Model = Model
-        self.quicksum = quicksum
-        self.quickprod = quickprod
+        self.structures = [] # list of found structures
+        self.constrlabels = [] # list of constraint labels
+        # auxiliary: to be available as instance attribute w/o importing (for convenience)
+        self.Model = Model # class for constraint integer programming model
+        self.quicksum = quicksum # quick sum for variables
+        self.quickprod = quickprod # quick product for variable
+        self.evars = {}
+        self.vvars = {}
         return
 
     ############################################################################
@@ -130,7 +149,7 @@ class acab(base):
 
     def setup_model(self, verbose=True, debug=False, ctrlc=True, *args, **kwargs):
         """
-        initialize the model and its utility attributes
+        Initialize the model and its utility attributes
 
         :Parameters:
         - verbose (bool=True): output flag for model instance
@@ -139,13 +158,15 @@ class acab(base):
         :Additional Parameters:
         - args: positional arguments of Model.__init__ (cf. Model)
         - kwargs:  keyword arguments of Model.__init__ (cf. Model)
-        
-        if ctrlc == False: implement a KeyboardInterrupt handler of your own!
-        in case of emergency:
-        - open a shell
-        - ps aux | grep python
-        - find the PID of your script
-        - kill <yourscript-PID>
+
+        :Caveat:
+            ctrlc == False:
+                - implement a KeyboardInterrupt handler of your own!
+                in case of emergency:
+                - open a shell
+                - ps aux | grep python
+                - find the PID of your script
+                - kill <yourscript-PID>
 
         :Toughts:
         - separate edge model and vertex model! (emodel vs vmodel)
@@ -164,8 +185,6 @@ class acab(base):
                 "hope you have your own good reasons")
             self.model.setBoolParam('misc/catchctrlc', ctrlc)
         self.ctrlc = ctrlc
-        self.evars = {}
-        self.vvars = {}
         # symmetry enabled check
         try:
             import spglib # no practical use out of this check
@@ -174,35 +193,73 @@ class acab(base):
             logger.error("spglib not imported: symmetry is DISABLED")
             self.sym_enabled = False
         return
-    
+
     def setup_colors(self, necolors=0, nvcolors=0, *args, **kwargs):
         """
         setup number of edge colors and/or vertex colors.
-        if a color is more than zero, the appropriate variable setter is called
-        
+        if the number of colors is more than zero, the appropriate edge/vertex
+            variable setter is called
+
         :Parameters:
-        - necolors (int): number of max edge   colors
+        - necolors (int): number of max edge colors
         - nvcolors (int): number of max vertex colors
 
         N.B. necolors and nvcolors cannot be:
         - negative (no sense)
         - BOTH zero (why would you ever need a model at all? just set them with
             setters or (e.g.) with <yourinstance>.necolors = colors
-        TBI: THEY CAN BE NONE SO THAT IT IS RETRIEVED FROM CRATIO (?!)
         """
-        self.assert_hasmodel()
         self.assert_nevcolors_number(necolors, nvcolors)
         if necolors > 0:
-            self.set_edge_vars(necolors, set_necolors=True)
-            self.setup_vertex2evars()
-            self.setup_vertex2edges()
+            self.setup_ecolors(necolors, *args, **kwargs)
         if nvcolors > 0:
-            self.set_vertex_vars(nvcolors, set_nvcolors=True)
-            self.setup_edge2vertices()
-            self.setup_edge2vvars()
+            self.setup_vcolors(necolors, *args, **kwargs)
+        return
+
+    def setup_ecolors(self, necolors, *args, **kwargs):
+        """
+        setup number of edge colors
+        if the number of edge colors is more than zero, the appropriate edge
+            variable setter is called
+
+        :Parameters:
+        - necolors (int): number of max edge colors
+        N.B. it must be positive
+
+        """
+        self.assert_ncolors_number(necolors, strict=True)
+        self.set_edge_vars(necolors, set_necolors=True)
+        self.setup_vertex2evars()
+        self.setup_vertex2edges()
+        if necolors > 1:
+            label = "ec%d" % necolors
+            self.constrlabels.append(label)
+        return
+
+    def setup_vcolors(self, nvcolors, *args, **kwargs):
+        """
+        setup number of vertex colors
+        if the number of vertex colors is more than zero, the appropriate vertex
+            variable setter is called
+
+        :Parameters:
+        - nvcolors (int): number of max vertex colors
+        N.B. it must be positive
+
+        """
+        self.assert_ncolors_number(nvcolors, strict=True)
+        self.set_vertex_vars(nvcolors, set_nvcolors=True)
+        self.setup_edge2vertices()
+        self.setup_edge2vvars()
+        if nvcolors > 1:
+            label = "vc%d" % nvcolors
+            self.constrlabels.append(label)
+        return
 
     def setup_constraints(self, ecratio=None, vcratio=None):
         """
+        DEPRECATED / TBI
+
         general interface to setup constraints of the model.
         TBI: additional constraints can be set, see tutorial [TBI, easy]
 
@@ -222,14 +279,14 @@ class acab(base):
     def setup_ecratio(self, ecratio, vsele=None, set_ecratio=True):
         """
         :Parameters:
-        - ecratio (None or list of ints): overall edge   color ratio
+        - ecratio (None or list of ints): overall edge color ratio
 
         TBI: unset ratio with negative integers (convention: -1) and reserve
         the complement of the set elements
         TBI: select atoms which the setup is applied! [JK feature request]
         """
         if not hasattr(self,"necolors"):
-            self.setup_colors(necolors=len(ecratio))
+            self.setup_ecolors(len(ecratio))
         if vsele is None:
             vertices = range(self._mol.natoms)
         else:
@@ -260,6 +317,11 @@ class acab(base):
                     name = "NEdgeColors(%d)=%d" % (c,ecratio[c])
                 )
         if set_ecratio: self.ecratio = ecratio
+        if len(ecratio) > 0:
+            label = "oec" + len(ecratio)*"%d" % tuple(ecratio)
+            if vsele is not None:
+                label += "s"
+            self.constrlabels.append(label)
         return
 
     def setup_vcratio(self, vcratio, esele=None, set_vcratio=True):
@@ -272,7 +334,7 @@ class acab(base):
         sum.
         """
         if not hasattr(self,"nvcolors"):
-            self.setup_colors(nvcolors=len(vcratio))
+            self.setup_vcolors(len(vcratio))
         if esele is not None:
             raise NotImplementedError
         #if sele is None:
@@ -297,12 +359,17 @@ class acab(base):
                 name = "NVertexColors(%d)=%d" % (c,vcratio[c])
             )
         if set_vcratio: self.vcratio = vcratio
+        if len(vcratio) > 0:
+            label = "ovc" + len(vcratio)*"%d" % tuple(vcratio)
+            if esele is not None:
+                label += "s"
+            self.constrlabels.append(label)
         return
 
     def setup_ecratio_per_vertex(self, ecratio, vsele=None, set_ecratios=True):
         ### TBI: assert no conflict btw. global and local cratio
         if not hasattr(self,"necolors"):
-            self.setup_colors(necolors=len(ecratio))
+            self.setup_ecolors(len(ecratio))
         if vsele is None:
             vertices = range(self._mol.natoms)
         else:
@@ -329,13 +396,19 @@ class acab(base):
                     name = consname
                 )
         if set_ecratios: self.ecratios = ecratios
+        if len(ecratio) > 0:
+            label = "dec" + len(ecratio)*"%d" % tuple(ecratio)
+            if vsele is not None:
+                label += "s"
+            self.constrlabels.append(label)
+        return
 
     def setup_vcratio_per_edge(self, vcratio, esele=None, set_vcratios=True):
         """
-        N.B.: there are always two vertex per edge
+        N.B.: there are always two vertices per edge
         """
         if not hasattr(self,"nvcolors"):
-            self.setup_colors(nvcolors=len(vcratio))
+            self.setup_vcolors(len(vcratio))
         if esele is not None:
             raise NotImplementedError
         #if sele is None:
@@ -365,6 +438,18 @@ class acab(base):
                     name = consname
                 )
         if set_vcratios: self.vcratios = vcratios
+        if len(vcratio) > 0:
+            if len(vcratio) > 1:
+                label = "dvc" + len(vcratio)*"%d" % tuple(vcratio)
+                if esele is not None:
+                    label += "s"
+            elif esele is None:
+                label = ""
+            else:
+                label = "dvc1s"
+            if label != "":
+                self.constrlabels.append(label)
+        return
 
     def setup_angle_btw_edges(self, color, theta, sense="min", eps=1e-3, vsele=None):
         """
@@ -390,6 +475,7 @@ class acab(base):
         sele (list of ints or None): selected vertices (if None: all)
 
         """
+        ### assert color < necolors
         if vsele is None:
             vsele = range(self._mol.natoms)
         else:
@@ -421,49 +507,54 @@ class acab(base):
                 prods.append(prod)
             else:
                 prods.append([])
-        if sense in ("min","max","close"):
-            for i,prod in enumerate(prods):
-                if len(prod):
-                    if sense == "min":
-                        ea, eb = np.where(prod - eps < cost)
-                    if sense == "max":
-                        ea, eb = np.where(prod + eps > cost)
-                    if sense == "close":
-                        ea, eb = np.where(cost - eps < prod < cost + eps)
-                    ew = np.where(ea < eb)
-                    pairs = zip(ea[ew], eb[ew])
-                    range_ = range(prod.shape[0])
-                    # wrong which pairs
-                    wpairs = [
-                        j for j in combinations(range_,2)
-                        if j not in pairs
-                    ]
-                    # N.B. trick: pairs are cumulated in only one list
-                    # Easier to code and to read. They are split later
-                    wpairs_ = sum(wpairs,())
-                    # wrong j conn triplet (i,j,pconn) pairs
-                    jpairs_ = [(i,conn[i][j],pconn[i][j]) for j in wpairs_]
-                    # wrong edge pairs
-                    epairs_ = [
-                        (j,k,arr2idx[p],color) if j < k
-                        else (k,j,arr2idx[-p],color)
-                        for j,k,p in jpairs_
-                    ]
-                    epairs = zip(epairs_[0::2], epairs_[1::2]) # split
-                    # edge variable pairs
-                    evpairs_ = [self.evars[e] for e in epairs_]
-                    evpairs = zip(evpairs_[0::2], evpairs_[1::2]) # split
-                    # constraints (finally!)
-                    for iev,(evj,evk) in enumerate(evpairs):
-                        ej,ek = epairs[iev] # here just for naming
-                        self.model.addCons(
-                            evj+evk <= 1, # i.e. they can't be both of the same color!
-                            name="WrongEdgePairs(%s-%s.%s,%s;%s-%s.%s,%s)" % \
-                                (ej[0],ej[1],ej[2],ej[3],
-                                 ek[0],ek[1],ek[2],ek[3])
-                        )
-        else:
+        if sense not in ("min","max","close"):
             raise NotImplementedError("sense \"%s\" not implemented" % sense.__repr__())
+        for i,prod in enumerate(prods):
+            if len(prod):
+                if sense == "min":
+                    ea, eb = np.where(prod - eps < cost)
+                if sense == "max":
+                    ea, eb = np.where(prod + eps > cost)
+                if sense == "close":
+                    ea, eb = np.where(abs(prod-cost) < eps)
+                ew = np.where(ea < eb)
+                pairs = zip(ea[ew], eb[ew])
+                range_ = range(prod.shape[0])
+                # wrong which pairs
+                wpairs = [
+                    j for j in combinations(range_,2)
+                    if j not in pairs
+                ]
+                # N.B. trick: pairs are cumulated in only one list
+                # Easier to code and to read. They are split later
+                wpairs_ = sum(wpairs,())
+                # wrong j conn triplet (i,j,pconn) pairs
+                jpairs_ = [(i,conn[i][j],pconn[i][j]) for j in wpairs_]
+                # wrong edge pairs
+                epairs_ = [
+                    (j,k,arr2idx[p],color) if j < k
+                    else (k,j,arr2idx[-p],color)
+                    for j,k,p in jpairs_
+                ]
+                epairs = zip(epairs_[0::2], epairs_[1::2]) # split
+                # edge variable pairs
+                evpairs_ = [self.evars[e] for e in epairs_]
+                evpairs = zip(evpairs_[0::2], evpairs_[1::2]) # split
+                # constraints (finally!)
+                for iev,(evj,evk) in enumerate(evpairs):
+                    ej,ek = epairs[iev] # here just for naming
+                    self.model.addCons(
+                        evj+evk <= 1, # i.e. they can't be both of the same color!
+                        name="WrongEdgePairs(%s-%s.%s,%s;%s-%s.%s,%s)" % \
+                            (ej[0],ej[1],ej[2],ej[3],
+                             ek[0],ek[1],ek[2],ek[3])
+                    )
+        senselabels = {"min": "u", "max": "d", "close": "c"}
+        label = "e%sax%02d%s" % (color, 10*theta, senselabels[sense])
+        if vsele is not None:
+            label += "s"
+        self.constrlabels.append(label)
+        return
 
 
     ############################################################################
@@ -494,7 +585,7 @@ class acab(base):
         Any symmetry solution subspace belongs to the symmetry space and the 
         subspaces does not overlap each other. In other words, symmetry 
         solution subspaces make a partition of the symmetry solution space.
-        
+
         :TODO:
         - disable symmetry
         """
@@ -640,7 +731,7 @@ class acab(base):
             return False
         else:
             return True
-    
+
     def cycle_loop(self, Nmax=1e4, alpha=3, init_sym=True, span_sym=True,
         use_edge=True, use_vertex=True, constr_edge=True, constr_vertex=True,
         color_equivalence=None, rundir="run", newrundir=True):
@@ -648,13 +739,36 @@ class acab(base):
         cycle model
 
         :Parameters:
-        - Nmax (int): maximum number of iterations
+        - Nmax=10.000 (int): maximum number of iterations
+        - alpha=3 (int): edge ``quantile'' order (see Notes)
+        - init_sym (bool):
+        - span_sym (bool):
+        - use_edge (bool):
+        - use_vertex (bool):
+        - constr_edge (bool):
+        - constr_vertex (bool):
+        - color_equivalence (None or dict):
+        - rundir="rundir" (str):
+        - newrundir (bool):
         :Attributes:
         - N (int): number of iterations
         :Returns:
         - N (int): abs(N)=number of solutions
         if N > 0: EXACT number of solutions (exhaustiveness)
         if N < 0: MINIMUM number of solutions (there may be others)
+
+        :Notes:
+        alpha: for space group symmetry detection, each edge is represented as
+            additional atoms in the between of the source vertex and target
+            vertex.
+            If alpha == 2:
+                ONE edge atom is put in the centroid of the two vertices
+            If alpha >= 3:
+                TWO edge atoms are put in the between of the two vertices as follows:
+                1- Bond segment is divided in ``alpha'' equal parts by alpha-1 points
+                    between the vertices
+                2- The edge atoms lie on the points closest to the vertices, i.e. the
+                    first and the (alpha-1)-th
         """
         logger.info("Run exhaustive search of colorings")
         # assert variables
@@ -700,6 +814,7 @@ class acab(base):
         if self.span_sym:
             logger.warning("Symmetry detection is not implemented here")
         #N = self.filter_cycle(N)
+        self.set_structures_from_colorings()
         self.write_cycle(abs(N))
         return N
 
@@ -714,7 +829,7 @@ class acab(base):
     def report_last(self, i=None):
         """
         report last cycle status
-        
+
         :Parameters:
         - i (int): loop index (if None prints None)
         """
@@ -768,21 +883,137 @@ class acab(base):
             self.colorings = newcolorings
         return N
 
-    def write_cycle(self, N):
-        # N.B.: alpha=2 irrespective to self.alpha by design
+    def set_structures_from_colorings(self):
+        """
+        Set colored net structures from (edge and vertex) colorings
+        Structures are stored in `structures` list attribute as mol instances
+
+        """
         for j,coloring in enumerate(self.colorings):
             ecolors, vcolors = coloring
-            name = "%%0%dd" % len("%d" % N) % j
-            self.write_structure(name, ecolors, vcolors, alpha=2)
+            # N.B.: alpha=2 irrespective to self.alpha by design
+            m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=2)
+            # helping attributes
+            m.coloring = coloring
+            m.ecolors = ecolors
+            m.vcolors = vcolors
+            # store it
+            self.structures.append(m)
 
-    def write_structure(self, name, ecolors=None, vcolors=None, alpha=2):
-        m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=alpha)
-        m.write("%s%s%s.mfpx" % (self.coldir, os.sep, name))
-        m.write("%s%s%s.txyz" % (self.predir, os.sep, name), pbc=False)
-        m.write("%s%s%s.txyz" % (self.pladir, os.sep, name), pbc=False, plain=True)
-        return
+    def write_cycle(self, N, naming="dummy", labels=None):
+        if labels is None and len(self.constrlabels) > 0:
+            sorted_labels = sorted(self.constrlabels)
+            labels = "-".join(sorted_labels)
+        else:
+            labels = ""
+        naming = "mofplus" ### debug
+        fmtsx_naming, fmtdx_naming = self.get_constant_naming(self._mol, N, naming=naming)
+        cnt_naming = fmtsx_naming, labels, fmtdx_naming
+        cnt_naming = [c for c in cnt_naming if c]
+        cst_naming = '_'.join(cnt_naming)
+        # auxiliary indexing for alternative naming schemes ()
+        if naming in ["acab","mofplus"]:
+            spacegroup_numbers = [] # for mofplus
+            for jm in self.structures:
+                jm.addon("spg")
+                jm.spacegroup_number = jm.spg.get_spacegroup()[1]
+                spacegroup_numbers.append(jm.spacegroup_number) # for mofplus
+            if naming == "mofplus":
+                spacegroup_uniquemax = Counter(spacegroup_numbers)
+                spacegroup_unique = {k:0 for k in spacegroup_uniquemax.keys()}
+                for j,jm in enumerate(self.structures):
+                    jspgn = spacegroup_numbers[j]
+                    jspgn_max = spacegroup_uniquemax[jspgn]
+                    if jspgn_max == 1:
+                        spacegroup_label = "%03d" % jspgn
+                    else:
+                        letterbase = int2base(spacegroup_unique[jspgn], maximum=jspgn_max)
+                        spacegroup_label = "%03d%s" % (jspgn, letterbase)
+                        spacegroup_unique[jspgn] += 1
+                    jm.spacegroup_label = spacegroup_label
+        for j,jm in enumerate(self.structures):
+            var_naming = cst_naming % self.get_variable_naming(jm, j, N, naming=naming)
+            jm.write("%s%s%s.mfpx" % (self.coldir, os.sep, var_naming))
+            jm.write("%s%s%s.txyz" % (self.predir, os.sep, var_naming), pbc=False)
+            jm.write("%s%s%s.txyz" % (self.pladir, os.sep, var_naming), pbc=False, plain=True)
+
+    @staticmethod
+    def get_constant_naming(m, N=1, naming="dummy"):
+        """
+        Static method to get constant naming for colored net structures
+        This part of naming is the same for any of the found solutions
+
+        :Arguments:
+        - m (mol): mol object that stores the coloring
+        - N=1 (int): total number of found solutions
+        - naming="dummy" (str): naming scheme to be used (see comments below)
+
+        :Returns:
+        - fmtsx (str): format string at the left side of the constraint labels
+        - fmtdx (str): format string at the right side of the constraint labels
+        """
+        # dummy naming (default): each solution is named after its order of finding
+        if naming == "dummy":
+            fmtsx = "%%0%dd" % len("%d" % N)
+            fmtdx = ""
+        # acab naming (standard): each solution is named after its order of finding,
+        #   the net name, the consecutive supercell indices, the symmetry spacegroup number
+        if naming == "acab":
+            if m.supercell:
+                scell = ''.join([str(s) for s in m.supercell])
+            else:
+                scell = '111' # explicit
+            m.addon("spg")
+            fmtsx = "%%0%dd_%s_%s" % (len("%d" % N), m.name, scell)
+            fmtdx = "%03d"
+        # mofplus naming (suggested): each solution is named after the net name,
+        #   the supercell indices separated by "x", the symmetry spacegroup number and
+        #   disambiguation letter/s for the same symmetry spacegroup number
+        if naming == "mofplus":
+            if m.supercell:
+                scell = '_'+'x'.join([str(s) for s in m.supercell])
+            else:
+                scell = '' # implicit
+            m.addon("spg")
+            fmtsx = m.name + scell
+            fmtdx = "%s"
+        return fmtsx, fmtdx
+
+    @staticmethod
+    def get_variable_naming(m, j=0, N=1, naming="dummy"):
+        """
+        Static method to get variable naming for colored net structures
+        This part of naming is ensured to be different for any of the found solutions
+
+        :Arguments:
+        - m (mol): mol object that stores the coloring
+        - j=0 (int): running solution index tracking the order of finding
+        - N=1 (int): total number of found solutions
+        - naming="dummy" (str): naming scheme to be used (see comments below)
+
+        :Returns:
+        - different returns (see comments below)
+        """
+        # dummy naming (default): the order of finding
+        if naming == "dummy":
+            return j
+        # acab naming (standard): the order of finding and the spacegroup number
+        if naming == "acab":
+            return j, m.spagroup_number
+        # mofplus naming (suggested): the spacegroup number and
+        #   disambiguation letter/s for the same symmetry spacegroup number
+        if naming == "mofplus":
+            return m.spacegroup_label
 
     def make_structure(self, ecolors=None, vcolors=None, alpha=2):
+        """
+        Make structures out of edge colors and vertex colors
+
+        :Arguments:
+        - ecolors:
+        - vcolors:
+        - alpha=2 (int):
+        """
         if ecolors and vcolors:
             if self.constr_edge:
                 ec2e = None
@@ -1025,8 +1256,7 @@ class acab(base):
     #    return
 
     def set_edge_vars(self, necolors, set_necolors=True):
-        ###TBI: test necolors = 0
-        self.assert_ncolors_number(necolors)
+        self.assert_ncolors_number(necolors, strict=True)
         crange = range(necolors)
         etab = self._mol.etab
         evars = {} # dict[(3or4)-tuple] = var... inefficient yet clear
@@ -1070,8 +1300,7 @@ class acab(base):
         return self.evars
 
     def set_vertex_vars(self, nvcolors, set_nvcolors=True):
-        ###TBI: test nvcolors = 0
-        self.assert_ncolors_number(nvcolors)
+        self.assert_ncolors_number(nvcolors, strict=True)
         ratoms = range(self._mol.natoms)
         crange = range(nvcolors)
         vvars = {} # dict(2-tuple->var)inefficient yet clear
@@ -1163,18 +1392,9 @@ class acab(base):
             self.set_vertex_colors()
         else:
             raise Warning("This method cannot be called at this stage")
-    
+
     def get_colors(self):
         return self.ecolors, self.vcolors
-
-    ############################################################################
-    ### CHECK ###
-    # WISHLIST: connectivity checker
-    # - table against list
-    # - i < j for ctab
-
-    def check_():
-        pass
 
     ############################################################################
     ### DOWNLOAD / UPLOAD ###
@@ -1190,7 +1410,7 @@ class acab(base):
 
     ############################################################################
     ### READ / WRITE ###
-    
+
     def read_():
         pass
 
@@ -1199,10 +1419,10 @@ class acab(base):
 
     ############################################################################
     ### UTILS / MISC ###
-    
+
     def setup_vertex2edges(self, sort_flag=True):
         """
-        setup dictionary from vertices to list of edges
+        setup dictionary from vertices to list of edges (convenience)
         keys are integers and values are list of (i,j,p) tuples
         where i,j,p are atom i, atom j, and periodic image index respectively
 
@@ -1224,10 +1444,10 @@ class acab(base):
                 vertex2edges[kv2e].sort()
         self.vertex2edges = dict(vertex2edges)
         return
-        
+
     def setup_edge2vertices(self, sort_flag=True):
         """
-        setup dictionary from edges to list of vertices
+        setup dictionary from edges to list of vertices (convenience)
         keys are (i,j,p) tuples and values are list of integers
         where i,j,p are atom i, atom j, and periodic image index respectively
 
@@ -1256,7 +1476,7 @@ class acab(base):
 
     def setup_vertex2evars(self, sort_flag=True):
         """
-        setup dictionary from vertices to list of edge variables
+        setup dictionary from vertices to list of edge variables (convenience)
         keys are integers and values are list of SCIP variables
 
         :Parameters:
@@ -1276,10 +1496,10 @@ class acab(base):
                 vertex2evars[kv2e].sort(key=lambda x: x.name)
         self.vertex2evars = dict(vertex2evars)
         return
-        
+
     def setup_edge2vvars(self, sort_flag=True):
         """
-        setup dictionary from edges to list of vertex variables
+        setup dictionary from edges to list of vertex variables (convenience)
         keys are (i,j,p) tuples and values are list of SCIP variables
         where i,j,p are atom i, atom j, and periodic image index respectively
 
@@ -1449,43 +1669,79 @@ class acab(base):
 
     ############################################################################
     ### ASSERT ###
-    
+    ### TBI?: assertive decorators? ###
+
     def assert_flag(self,flag):
-        """check if flag is boolean"""
+        """
+        Check if flag is boolean
+
+        flag (object): instance to be checked
+        """
         assert isinstance(flag,bool), "flag must be boolean" \
             "you gave %s and it is %s" % (flag, flag.__class__.__name__)
         return
-    
+
     #def assert_otab_or_oconn(self,otab,oconn):
     #    """check otab/oconn arguments"""
     #    self.assert_otab(otab)
     #    self.assert_oconn(oconn)
     #    assert otab is None or oconn is None, "give colors as either color "\
     #        "table or color connectivity"
-    
+
     def assert_otab(self,otab):
-        """check length of color table"""
+        """
+        Check length of color table # EDGE COLORS
+
+        otab (list of integers): color table to be compared against edge table
+
+        """
         assert len(otab) == len(self._mol.ctab)
         return
-    
+
     def assert_oconn(self,oconn):
-        """check length of color connectivity"""
+        """
+        Check length of color connectivity # VERTEX COLORS
+
+        """
         assert len(oconn) == self._mol.natoms
         return
-    
+
     def assert_hasmodel(self):
-        """check if model is setup in acab"""
+        """
+        Check if model is setup in acab
+
+        TBI: when edge model and vertex model will be separated (here for future)
+        """
         assert hasattr(self, "model"), "model must be setup before this method"
         return
     
-    def assert_ncolors_number(self, ncolors):
-        """check non-negative number of colors"""
-        assert ncolors >= 0,   "number of colors is %s but cannot be negative" % ncolors
+    def assert_ncolors_number(self, ncolors, strict=False):
+        """
+        Check non-negative number of colors
+
+        ncolors (int): number of colors
+        strict=False (bool): strict mode
+            if True, ncolors must be positive (0 is not allowed)
+            if False, ncolors must be non-negative (0 is allowed)
+        """
+        if strict:
+            assert ncolors > 0,   "number of colors is %s but must be positive" % ncolors
+        else:
+            assert ncolors >= 0,   "number of colors is %s but cannot be negative" % ncolors
         return
 
     def assert_nevcolors_number(self, necolors, nvcolors):
-        """check non-negative number of edge colors and vertex colors. At least
-        one must be positive"""
+        """
+        Check non-negative number of edge colors and vertex colors. At least
+        one must be positive
+
+        necolors (int): number of edge colors
+        nvcolors (int): number of vertex colors
+
+        Used when numbers of both edge colors and vertex colors are set with
+            the same method
+
+        """
         self.assert_ncolors_number(necolors)
         self.assert_ncolors_number(nvcolors)
         assert necolors > 0 or nvcolors > 0, \
@@ -1494,8 +1750,14 @@ class acab(base):
         return
 
     def assert_ecratio(self, ecratio):
-        """check edge color ratio: it must be an iterable of numbers with the
-        same length as number of edge colors"""
+        """
+        Check edge color ratio
+        The ratio must be an iterable of numbers with the same length as
+            number of edge colors
+
+        ecratio (iterable): edge color ratio
+
+        """
         assert hasattr(ecratio, "__iter__"), "color ratio must be iterable, " \
             "you gave %s" % ecratio.__class__.__name__
         assert len(ecratio) == self.necolors, "given edge ratio %s is " \
@@ -1506,8 +1768,14 @@ class acab(base):
         return
 
     def assert_vcratio(self, vcratio):
-        """check vertex color ratio: it must be an iterable of numbers with the
-        same length as number of vertex colors"""
+        """
+        Check vertex color ratio
+        The ratio must be an iterable of numbers with the same length as
+            number of vertex colors
+
+        vcratio (iterable): vertex color ratio
+
+        """
         assert hasattr(vcratio, "__iter__"), "color ratio must be iterable, " \
             "you gave %s" % vcratio.__class__.__name__
         assert len(vcratio) == self.nvcolors, "given vertex ratio %s is " \
@@ -1518,18 +1786,34 @@ class acab(base):
         return
 
     def assert_ecolors(self, ecolors):
-        """check length of edge colors"""
+        """
+        Check length of edge colors
+
+        ecolors (list of ints): edge colors
+
+        """
         assert len(ecolors) == len(self._mol.etab), "length of edge colors and " \
         "number of edges mismatch: %d vs %d" % (len(ecolors), len(self._mol.etab))
         return
 
     def assert_vcolors(self, vcolors):
-        """check length of vertex colors"""
+        """
+        Check length of vertex colors
+
+        vcolors (list of ints): vertex colors
+
+        """
         assert len(vcolors) == self._mol.natoms,"length of vertex colors and " \
         "number of vertex mismatch: %d vs %d" % (len(vcolors), self._mol.natoms)
         return
 
     def assert_loop_alpha(self, alpha):
+        """
+        Check alpha order of edge quantile
+
+        alpha (float): alpha
+
+        """
         assert alpha >= 2, "alpha must be >= 2"
         return
 
@@ -1565,7 +1849,7 @@ class acab(base):
 
     ############################################################################
     ### DEBUG ###
-    
+
     def debug_():
         pass
 

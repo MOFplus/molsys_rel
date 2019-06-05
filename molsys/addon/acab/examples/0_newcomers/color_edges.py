@@ -8,7 +8,7 @@ import os
 # net name as in filename or in MOF+ database
 net = "pcu"
 # number unit cell replica in the 3 directions of space
-supercell = [1,1,1]
+supercell = [2,2,2]
 # string of supercell
 scell = ''.join([str(s) for s in supercell])
 # edge color ratio per vertex
@@ -56,6 +56,7 @@ m.acab.setup_ecratio_per_vertex(ecratio) # stricter
 ### setup vertex color ratio as [1] => vertices are colored all the same!
 ### N.B.: w/o this: there is no vertex and edges are not connected!
 m.acab.setup_vcratio_per_edge([1])  
+m.acab.setup_angle_btw_edges(1, 2.7)
 
 ### cycle loop of solutions
 ### N is the number of solutions
