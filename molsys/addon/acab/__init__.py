@@ -1714,7 +1714,7 @@ class acab(base):
         """
         assert hasattr(self, "model"), "model must be setup before this method"
         return
-
+    
     def assert_ncolors_number(self, ncolors, strict=False):
         """
         Check non-negative number of colors
