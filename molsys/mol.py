@@ -1380,7 +1380,7 @@ class mol(mpiobject):
                         offset[i:] += 1
                 self.elems  = np.take(self.elems, goods).tolist()
                 self.atypes = np.take(self.atypes, goods).tolist()
-                if self.fragtypes:
+                if len(self.fragtypes) > 0:
                     self.fragtypes = np.take(self.fragtypes, goods).tolist()
                     self.fragnumbers  = np.take(self.fragnumbers, goods).tolist()
                 if keep_conn:
@@ -1434,9 +1434,6 @@ class mol(mpiobject):
                         # if atom i not in bads
                         for i in range(self.natoms) if i not in bads
                     ]
-                if len(self.fragtypes) > 0:
-                    self.fragtypes = np.take(self.fragtypes, goods)
-                    self.fragnumbers = np.take(self.fragnumbers, goods)
                 self.natoms = len(self.elems)
                 self.xyz    = self.xyz[goods]
                 return
