@@ -6,7 +6,7 @@ Created on Mon Jun 11 14:19:27 2018
 
 
         addon module acab to implement colors for molsys
-        
+
         contains class acab
 """
 from __future__ import print_function
@@ -86,7 +86,7 @@ class acab(base):
     def __init__(self, mol):
         """
         acab addon object to be attached to the parent mol instance
-        
+
         :Parameter:
         - mol (obj): mol or mol-derived (bb, topo, etc.) type object
             it follows the addon implementation in molsys
@@ -158,7 +158,7 @@ class acab(base):
         :Additional Parameters:
         - args: positional arguments of Model.__init__ (cf. Model)
         - kwargs:  keyword arguments of Model.__init__ (cf. Model)
-        
+
         :Caveat:
             ctrlc == False:
                 - implement a KeyboardInterrupt handler of your own!
@@ -193,13 +193,13 @@ class acab(base):
             logger.error("spglib not imported: symmetry is DISABLED")
             self.sym_enabled = False
         return
-    
+
     def setup_colors(self, necolors=0, nvcolors=0, *args, **kwargs):
         """
         setup number of edge colors and/or vertex colors.
         if the number of colors is more than zero, the appropriate edge/vertex
             variable setter is called
-        
+
         :Parameters:
         - necolors (int): number of max edge colors
         - nvcolors (int): number of max vertex colors
@@ -209,7 +209,6 @@ class acab(base):
         - BOTH zero (why would you ever need a model at all? just set them with
             setters or (e.g.) with <yourinstance>.necolors = colors
         """
-        self.assert_hasmodel()
         self.assert_nevcolors_number(necolors, nvcolors)
         if necolors > 0:
             self.setup_ecolors(necolors, *args, **kwargs)
@@ -586,7 +585,7 @@ class acab(base):
         Any symmetry solution subspace belongs to the symmetry space and the 
         subspaces does not overlap each other. In other words, symmetry 
         solution subspaces make a partition of the symmetry solution space.
-        
+
         :TODO:
         - disable symmetry
         """
@@ -732,7 +731,7 @@ class acab(base):
             return False
         else:
             return True
-    
+
     def cycle_loop(self, Nmax=1e4, alpha=3, init_sym=True, span_sym=True,
         use_edge=True, use_vertex=True, constr_edge=True, constr_vertex=True,
         color_equivalence=None, rundir="run", newrundir=True):
@@ -740,13 +739,36 @@ class acab(base):
         cycle model
 
         :Parameters:
-        - Nmax (int): maximum number of iterations
+        - Nmax=10.000 (int): maximum number of iterations
+        - alpha=3 (int): edge ``quantile'' order (see Notes)
+        - init_sym (bool):
+        - span_sym (bool):
+        - use_edge (bool):
+        - use_vertex (bool):
+        - constr_edge (bool):
+        - constr_vertex (bool):
+        - color_equivalence (None or dict):
+        - rundir="rundir" (str):
+        - newrundir (bool):
         :Attributes:
         - N (int): number of iterations
         :Returns:
         - N (int): abs(N)=number of solutions
         if N > 0: EXACT number of solutions (exhaustiveness)
         if N < 0: MINIMUM number of solutions (there may be others)
+
+        :Notes:
+        alpha: for space group symmetry detection, each edge is represented as
+            additional atoms in the between of the source vertex and target
+            vertex.
+            If alpha == 2:
+                ONE edge atom is put in the centroid of the two vertices
+            If alpha >= 3:
+                TWO edge atoms are put in the between of the two vertices as follows:
+                1- Bond segment is divided in ``alpha'' equal parts by alpha-1 points
+                    between the vertices
+                2- The edge atoms lie on the points closest to the vertices, i.e. the
+                    first and the (alpha-1)-th
         """
         logger.info("Run exhaustive search of colorings")
         # assert variables
@@ -807,7 +829,7 @@ class acab(base):
     def report_last(self, i=None):
         """
         report last cycle status
-        
+
         :Parameters:
         - i (int): loop index (if None prints None)
         """
@@ -862,16 +884,21 @@ class acab(base):
         return N
 
     def set_structures_from_colorings(self):
-        """set colored net structures from (edge and vertex) colorings"""
+        """
+        Set colored net structures from (edge and vertex) colorings
+        Structures are stored in `structures` list attribute as mol instances
+
+        """
         for j,coloring in enumerate(self.colorings):
             ecolors, vcolors = coloring
             # N.B.: alpha=2 irrespective to self.alpha by design
             m = self.make_structure(ecolors=ecolors, vcolors=vcolors, alpha=2)
-            self.structures.append(m)
             # helping attributes
             m.coloring = coloring
             m.ecolors = ecolors
             m.vcolors = vcolors
+            # store it
+            self.structures.append(m)
 
     def write_cycle(self, N, naming="dummy", labels=None):
         if labels is None and len(self.constrlabels) > 0:
@@ -1365,7 +1392,7 @@ class acab(base):
             self.set_vertex_colors()
         else:
             raise Warning("This method cannot be called at this stage")
-    
+
     def get_colors(self):
         return self.ecolors, self.vcolors
 
@@ -1383,7 +1410,7 @@ class acab(base):
 
     ############################################################################
     ### READ / WRITE ###
-    
+
     def read_():
         pass
 
@@ -1392,7 +1419,7 @@ class acab(base):
 
     ############################################################################
     ### UTILS / MISC ###
-    
+
     def setup_vertex2edges(self, sort_flag=True):
         """
         setup dictionary from vertices to list of edges (convenience)
@@ -1417,7 +1444,7 @@ class acab(base):
                 vertex2edges[kv2e].sort()
         self.vertex2edges = dict(vertex2edges)
         return
-        
+
     def setup_edge2vertices(self, sort_flag=True):
         """
         setup dictionary from edges to list of vertices (convenience)
@@ -1469,7 +1496,7 @@ class acab(base):
                 vertex2evars[kv2e].sort(key=lambda x: x.name)
         self.vertex2evars = dict(vertex2evars)
         return
-        
+
     def setup_edge2vvars(self, sort_flag=True):
         """
         setup dictionary from edges to list of vertex variables (convenience)
@@ -1642,37 +1669,61 @@ class acab(base):
 
     ############################################################################
     ### ASSERT ###
-    
+    ### TBI?: assertive decorators? ###
+
     def assert_flag(self,flag):
-        """check if flag is boolean"""
+        """
+        Check if flag is boolean
+
+        flag (object): instance to be checked
+        """
         assert isinstance(flag,bool), "flag must be boolean" \
             "you gave %s and it is %s" % (flag, flag.__class__.__name__)
         return
-    
+
     #def assert_otab_or_oconn(self,otab,oconn):
     #    """check otab/oconn arguments"""
     #    self.assert_otab(otab)
     #    self.assert_oconn(oconn)
     #    assert otab is None or oconn is None, "give colors as either color "\
     #        "table or color connectivity"
-    
+
     def assert_otab(self,otab):
-        """check length of color table"""
+        """
+        Check length of color table # EDGE COLORS
+
+        otab (list of integers): color table to be compared against edge table
+
+        """
         assert len(otab) == len(self._mol.ctab)
         return
-    
+
     def assert_oconn(self,oconn):
-        """check length of color connectivity"""
+        """
+        Check length of color connectivity # VERTEX COLORS
+
+        """
         assert len(oconn) == self._mol.natoms
         return
-    
+
     def assert_hasmodel(self):
-        """check if model is setup in acab"""
+        """
+        Check if model is setup in acab
+
+        TBI: when edge model and vertex model will be separated (here for future)
+        """
         assert hasattr(self, "model"), "model must be setup before this method"
         return
     
     def assert_ncolors_number(self, ncolors, strict=False):
-        """check non-negative number of colors"""
+        """
+        Check non-negative number of colors
+
+        ncolors (int): number of colors
+        strict=False (bool): strict mode
+            if True, ncolors must be positive (0 is not allowed)
+            if False, ncolors must be non-negative (0 is allowed)
+        """
         if strict:
             assert ncolors > 0,   "number of colors is %s but must be positive" % ncolors
         else:
@@ -1680,8 +1731,17 @@ class acab(base):
         return
 
     def assert_nevcolors_number(self, necolors, nvcolors):
-        """check non-negative number of edge colors and vertex colors. At least
-        one must be positive"""
+        """
+        Check non-negative number of edge colors and vertex colors. At least
+        one must be positive
+
+        necolors (int): number of edge colors
+        nvcolors (int): number of vertex colors
+
+        Used when numbers of both edge colors and vertex colors are set with
+            the same method
+
+        """
         self.assert_ncolors_number(necolors)
         self.assert_ncolors_number(nvcolors)
         assert necolors > 0 or nvcolors > 0, \
@@ -1690,8 +1750,14 @@ class acab(base):
         return
 
     def assert_ecratio(self, ecratio):
-        """check edge color ratio: it must be an iterable of numbers with the
-        same length as number of edge colors"""
+        """
+        Check edge color ratio
+        The ratio must be an iterable of numbers with the same length as
+            number of edge colors
+
+        ecratio (iterable): edge color ratio
+
+        """
         assert hasattr(ecratio, "__iter__"), "color ratio must be iterable, " \
             "you gave %s" % ecratio.__class__.__name__
         assert len(ecratio) == self.necolors, "given edge ratio %s is " \
@@ -1702,8 +1768,14 @@ class acab(base):
         return
 
     def assert_vcratio(self, vcratio):
-        """check vertex color ratio: it must be an iterable of numbers with the
-        same length as number of vertex colors"""
+        """
+        Check vertex color ratio
+        The ratio must be an iterable of numbers with the same length as
+            number of vertex colors
+
+        vcratio (iterable): vertex color ratio
+
+        """
         assert hasattr(vcratio, "__iter__"), "color ratio must be iterable, " \
             "you gave %s" % vcratio.__class__.__name__
         assert len(vcratio) == self.nvcolors, "given vertex ratio %s is " \
@@ -1714,18 +1786,34 @@ class acab(base):
         return
 
     def assert_ecolors(self, ecolors):
-        """check length of edge colors"""
+        """
+        Check length of edge colors
+
+        ecolors (list of ints): edge colors
+
+        """
         assert len(ecolors) == len(self._mol.etab), "length of edge colors and " \
         "number of edges mismatch: %d vs %d" % (len(ecolors), len(self._mol.etab))
         return
 
     def assert_vcolors(self, vcolors):
-        """check length of vertex colors"""
+        """
+        Check length of vertex colors
+
+        vcolors (list of ints): vertex colors
+
+        """
         assert len(vcolors) == self._mol.natoms,"length of vertex colors and " \
         "number of vertex mismatch: %d vs %d" % (len(vcolors), self._mol.natoms)
         return
 
     def assert_loop_alpha(self, alpha):
+        """
+        Check alpha order of edge quantile
+
+        alpha (float): alpha
+
+        """
         assert alpha >= 2, "alpha must be >= 2"
         return
 
@@ -1761,7 +1849,7 @@ class acab(base):
 
     ############################################################################
     ### DEBUG ###
-    
+
     def debug_():
         pass
 
