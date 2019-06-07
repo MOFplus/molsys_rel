@@ -563,11 +563,18 @@ class mol(mpiobject):
                 logger.warning("Found and merged %d atom duplicates" % len(duplicates))
                 duplicates = list(set(duplicates)) # multiple duplicates are taken once
                 self.natoms -= len(duplicates)
-                self.set_xyz(np.delete(xyz, duplicates,0))
-                self.set_elems(np.delete(elems, duplicates))
-                self.set_atypes(np.delete(self.atypes,duplicates))
-                self.set_fragtypes(np.delete(self.fragtypes,duplicates))
-                self.set_fragnumbers(np.delete(self.fragnumbers,duplicates))
+                # compute
+                xyz = np.delete(xyz, duplicates,0) # no need to make it list
+                elems = np.delete(elems, duplicates).tolist()
+                atypes = np.delete(self.atypes,duplicates).tolist()
+                fragtypes = np.delete(self.fragtypes,duplicates).tolist()
+                fragnumbers = np.delete(self.fragnumbers,duplicates).tolist()
+                # set
+                self.set_xyz(xyz)
+                self.set_elems(elems)
+                self.set_atypes(atypes)
+                self.set_fragtypes(fragtypes)
+                self.set_fragnumbers(fragnumbers)
             self.detect_conn(tresh = tresh)
         else:
             self.set_conn(conn)
