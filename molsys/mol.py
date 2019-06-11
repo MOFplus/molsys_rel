@@ -600,20 +600,81 @@ class mol(mpiobject):
         return
     
     def add_pconn(self):
-        """ generate the pconn from the exisiting conn
-            The pconn contains the image index of the bonded neighbor
-            pconn is really needed only for small unit cells (usually topologies) where vertices
-            can be bonded to itself (next image) or multiple times to the same vertex in different images.
-            """
-        # N.B. add_pconn is not bullet-proof!
-        # It works pretty always for large frameworks
-        # whereas failing quite often with nets
-        # (and quite always with the smaller ones)
-        # JK+RA proposed FIX [work in progress, needs investigation]
-        #for i in self.conn:
-        #    i.sort()
-        #
-        # END FIX
+        """
+        Generate the periodic connectivity from the exisiting connectivity
+        The pconn contains the image index of the bonded neighbor
+        pconn is really needed only for small unit cells (usually topologies) where vertices
+        can be bonded to itself (next image) or multiple times to the same vertex in different images.
+        """
+        # N.B. bullet-proof version of add_pconn!
+        # It works also for nets, particulary the smaller ones [RA]
+        ### NEW ###
+        pimages = []
+        pconn = []
+        for i,c in enumerate(self.conn):
+            uniquec = set(c) # unique connected atoms
+            #    [i,j,k,j,i,i] translates to [i,j,k]
+            if len(uniquec) != len(c):
+                # add periodic connectivity according to occurrence order
+                dc = {iuc:-1 for iuc in set(c)} # dictionary of connectivity order:
+                #    it defaults at -1 so that it gets 0 for the first occurrence,
+                #    1 for the second, 2 for the third, etc.
+                #    this auxiliary dictionary is intended to keep the number of
+                #    occurrences along the running connectivity
+                oc = [-1 for j in c] # occurence unique connectivity: the occurrence
+                #    of that unique atom in the list:
+                #    in the case of:   [i,j,k,j,i,i]
+                #    it translates to: [0,0,0,1,1,2]
+                for ji, j in enumerate(c):
+                    dc[j] += 1
+                    oc[ji] = dc[j]
+                # N.B.: after this, the dictionary contains the order of the
+                #    last occurence so that the number of occurences - 1 is stored:
+                #    [i,j,k,j,i,i] -> {i:2, j:1, k:0}
+            else:
+                # proceed normally
+                dc = {iuc:0 for iuc in set(c)} # dictionary connectivity ### first occurence at 0
+                oc = [0 for j in c] # occurence unique connectivity ### first for all!
+            uimgi = {j:[] for j in c} ### image indices for unique connecting atoms
+            for j in uniquec: ### unique connecting atoms
+                # If an atom or vertex is connected to another one multiple times (in an image), this
+                # will be visible in the self.conn attribute, where the same neighbour will be listed
+                # multiple times.
+                # Sometimes, the distances are a bit different from each other, and in this case, we
+                # have to increase the threshold, until the get_distvec function will find all imgis.
+                n_conns = dc[j]+1 # if summed by 1 you get the number of occurences per unique atom
+                t = 0.01
+                while True:
+                    d,r,imgi = self.get_distvec(i,j,thresh=t)
+                    t += 0.01
+                    if n_conns == len(imgi):
+                        break
+                uimgi[j] = imgi
+            atoms_pconn = []
+            atoms_image = []
+            for ji,j in enumerate(c): ### unique connecting atoms
+                single_imgi = uimgi[j][oc[ji]] ### take the ji-th occurrence wrt. that j index and get
+                #    the unique ordered image for that partcular j-th atom
+                #    [i,j,k,j,i,i] -> [0,0,0,1,1,2] -> [uimgi[0],uimgi[0],uimgi[0],uimgi[1],uimgi[1],uimgi[2]]
+                #$
+                atoms_pconn.append(images[single_imgi])
+                atoms_image.append(single_imgi)
+            pimages.append(atoms_image)
+            pconn.append(atoms_pconn)
+        self.pimages = pimages
+        self.pconn = pconn
+        self.use_pconn= True
+        return
+
+    def add_pconn_old(self):
+        """
+        DEPRECATED: here for reference in case of bug
+        Generate the periodic connectivity from the exisiting connectivity
+        The pconn contains the image index of the bonded neighbor
+        pconn is really needed only for small unit cells (usually topologies) where vertices
+        can be bonded to itself (next image) or multiple times to the same vertex in different images.
+        """
+        ### OLD ###
         pimages = []
         pconn = []
         for i,c in enumerate(self.conn):
