@@ -263,6 +263,7 @@ class conngraph:
                     traceback.print_exc()
                     sys.exit(1)
         else:
+            #return isomorphism(molg1, molg2, **kwargs) ### not enough for vertex label? [RA]
             isom = subgraph_isomorphism(molg1, molg2,
                 vertex_label=(molg1.vp.elem, molg2.vp.elem),
                 subgraph=False, max_n=1, **kwargs)
@@ -590,7 +591,7 @@ class molgraph(conngraph):
         """
         try:
             assert self.clusters
-        except AttributeError:
+        except (AttributeError, AssertionError) as e:
             self.get_clusters()
         tm = molsys.mol()
         tm.force_topo()
@@ -619,7 +620,6 @@ class molgraph(conngraph):
                         if verbose: print(" -> bonded to cluster ", ji)
                         tm.conn[i].append(ji)
                         break
-        ### check for consistence of conn
         for i in range(tm.natoms):
             if len(tm.conn[i]) == 4:
                 elems.append('c')
@@ -627,6 +627,7 @@ class molgraph(conngraph):
                 elems.append('o')
             else:
                 elems.append('n')
+        ### check for consistence of conn
             for j in tm.conn[i]:
                 if j>i:
                     if not i in tm.conn[j]:
@@ -1047,9 +1048,9 @@ class topotyper(object):
         self.api = None
         #molcopy = copy.deepcopy(mol) #prevents mol pollution if restart ###DOES NOT WORK WITH CIF FILES
         molcopy = copy.copy(mol) #prevents mol pollution if restart
-        self.goodinit = False
+        goodinit = False
         self.mg = molgraph(molcopy)
-        while not self.goodinit:
+        while not goodinit:
             if trip is None:
                 trinat = triplenats_on_sphere(isum)
             else:
@@ -1059,15 +1060,19 @@ class topotyper(object):
                 logger.info("Triplet is: "+str(itri))
                 if isum > 3: mol.make_supercell(itri)
                 self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
-            except OverflowError: # specific for supercells
+            except OverflowError as e: # specific for supercells
                 logger.info("Deconstruction failed! Resize original cell")
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
-            except IndexError:
+            except IndexError as e:
+                if len(trinat) > 0: #error is NOT due to low isum (index summation of the supercell=[x,y,z] -> isum=x+y+z) and must be re-raised
+                    import traceback
+                    traceback.print_exc()
+                    raise IndexError(e)
                 isum += 1
                 logger.info("Resizing list is empty! Increase index summation to %i and create new resizing list" % (isum,))
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum)
             else:
-                self.goodinit = True
+                goodinit = True
         return
  
     def deconstruct(self, split_by_org=True, depth=10, max_supercell_size=5):
