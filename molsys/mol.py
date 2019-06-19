@@ -656,6 +656,30 @@ class mol(mpiobject):
         self.set_etab_from_tabs()
         return
 
+    def remove_conn_pbc(self):
+        """
+        Remove periodic connectivity if it crosses cell boundaries
+        """
+        if not self.periodic:
+            return
+        frac = self.get_frac_xyz()
+        self.conn_nopbc = [
+            [
+                j for j in c if (abs(np.around(frac[i]-frac[j])) < 1).all()
+            ]
+            for i,c in enumerate(self.conn)
+        ]
+        ### OLD ###
+        #cellcond = self.cellparams[:3]
+        #self.conn_nopbc = [
+        #    [
+        #        j for j in c if (abs(self.xyz[i]-self.xyz[j]) < cellcond).all()
+        #    ]
+        #    for i,c in enumerate(self.conn)
+        #]
+        self.atoms_withconn_nopbc = [i for i,c in enumerate(self.conn_nopbc) if len(c) > 0]
+        return
+
     def report_conn(self):
         ''' Print information on current connectivity, coordination number
             and the respective atomic distances '''

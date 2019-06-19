@@ -30,5 +30,5 @@ try:
         print("\"m.%s\" addon loaded" % addon)
     m.view(pbc=False)
 except IndexError:
-    print("molsys, sys, and os imported (no mol instance initialized")
+    print("molsys, sys, and os imported (no mol instance initialized)")
 
