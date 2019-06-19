@@ -122,7 +122,78 @@ class mol(mpiobject):
         return
 
     # for future python3 compatibility
-    #def __copy__(self):
+    def __copy__(self):
+        """
+        Shallow copy as for the standard copy.copy function
+        To be tested with python3
+        """
+        m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
+        m.mpi_rank       = self.mpi_rank
+        m.mpi_size       = self.mpi_size
+        m.name           = self.name
+        m.is_bb          = self.is_bb
+        m.is_topo        = self.is_topo
+        m.use_pconn      = self.use_pconn
+        m.periodic       = self.periodic
+        m.bcond          = self.bcond
+        m.natoms         = self.natoms
+        m.nbonds         = self.nbonds
+        m.nfrags         = self.nfrags
+        m.weight         = self.weight
+        m.elems          = copy.copy(self.elems)
+        m.atypes         = copy.copy(self.atypes)
+        m.fragnumbers    = copy.copy(self.fragnumbers)
+        m.fragtypes      = copy.copy(self.fragtypes)
+        m.xyz            = copy.copy(self.xyz)
+        m.cell           = copy.copy(self.cell)
+        m.cellparams     = copy.copy(self.cellparams)
+        m.images_cellvec = copy.copy(self.images_cellvec)
+        m.conn           = copy.copy(self.conn)
+        m.pconn          = copy.copy(self.pconn)
+        m.pimages        = copy.copy(self.pimages)
+        m.ctab           = copy.copy(self.ctab)
+        m._etab          = copy.copy(self._etab)
+        m.ptab           = copy.copy(self.ptab)
+        m.supercell      = copy.copy(self.supercell)
+        m.loaded_addons  = []
+        return m
+
+    def __deepcopy__(self, memo):
+        """
+        Deep copy as for the standard copy.deepcopy function
+        To be tested with python3
+        """
+        m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
+        m.mpi_rank       = self.mpi_rank
+        m.mpi_size       = self.mpi_size
+        m.name           = self.name
+        m.is_bb          = self.is_bb
+        m.is_topo        = self.is_topo
+        m.use_pconn      = self.use_pconn
+        m.periodic       = self.periodic
+        m.bcond          = self.bcond
+        m.natoms         = self.natoms
+        m.nbonds         = self.nbonds
+        m.nfrags         = self.nfrags
+        m.weight         = self.weight
+        m.elems          = copy.deepcopy(self.elems)
+        m.atypes         = copy.deepcopy(self.atypes)
+        m.fragnumbers    = copy.deepcopy(self.fragnumbers)
+        m.fragtypes      = copy.deepcopy(self.fragtypes)
+        m.xyz            = copy.deepcopy(self.xyz)
+        m.cell           = copy.deepcopy(self.cell)
+        m.cellparams     = copy.deepcopy(self.cellparams)
+        m.images_cellvec = copy.deepcopy(self.images_cellvec)
+        m.conn           = copy.deepcopy(self.conn)
+        m.pconn          = copy.deepcopy(self.pconn)
+        m.pimages        = copy.deepcopy(self.pimages)
+        m.ctab           = copy.deepcopy(self.ctab)
+        m._etab          = copy.deepcopy(self._etab)
+        m.ptab           = copy.deepcopy(self.ptab)
+        m.supercell      = copy.deepcopy(self.supercell)
+        m.loaded_addons  = []
+        return m
+
     #    pass
     #def __deepcopy__(self):
     #    pass
@@ -174,7 +245,7 @@ class mol(mpiobject):
 
     @classmethod
     def from_smiles(cls, smile, bbcenter='com', maxiter=500):
-        ''' generates mol object from smiles string, requires openbabel to be installed            
+        ''' generates mol object from smiles string, requires openbabel to be installed
         '''
         try:
             import pybel
@@ -194,7 +265,7 @@ class mol(mpiobject):
         # there is gibberish in the first line of the txyzstring, we need to remove it!
         txyzsl = txyzs.split("\n")
         txyzsl[0] = txyzsl[0].split()[0]
-        txyzs = string.join(txyzsl,'\n')    
+        txyzs = string.join(txyzsl,'\n')
         m = mol.from_string(txyzs,ftype='txyz')
         if smile.count('*') != 0:
             m.addon('bb')
@@ -252,7 +323,7 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         return m
 
-    
+
 
     @classmethod
     def from_abinit(cls, elems, xyz, cell, frac = False, detect_conn = False):
@@ -335,10 +406,10 @@ class mol(mpiobject):
         Kwargs:
             hessian (numpy.ndarray, optional): Defaults to None. Hessian matrix of
                 shape (3N,3N) in kcal/mol/A**2.
-        
+
         Raises:
             ImportError: Raises Import Error when phonopy is not installed
-        
+
         Returns:
             [Phonopy]: Return the phonopy object.
         """
@@ -394,10 +465,10 @@ class mol(mpiobject):
 
         Kwargs:
             ftype(string): name of the filetype, default to mfpx
-        
+
         Raises:
             IOError
-        
+
         Returns:
             string: mol object as string
         """
@@ -598,7 +669,7 @@ class mol(mpiobject):
                 print(d, 20*'#')
                 self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
-    
+
     def add_pconn(self):
         """
         Generate the periodic connectivity from the exisiting connectivity
@@ -720,7 +791,7 @@ class mol(mpiobject):
         self.pimages = pimages
         self.pconn = pconn
         return
-    
+
     def check_need_pconn(self):
         """
         check whether pconn is needed or not
@@ -735,7 +806,7 @@ class mol(mpiobject):
                     pconn_needed = True
             if pconn_needed: break
         return pconn_needed
-    
+
     def omit_pconn(self):
         """
         Omit the pconn (if there is one) if this is acceptable
@@ -746,7 +817,7 @@ class mol(mpiobject):
             self.pconn = []
             self.use_pconn = False
         return
-    
+
     def make_topo(self, check_flag=True):
         """
         Convert this mol obejct to be a topo object.
@@ -757,7 +828,7 @@ class mol(mpiobject):
         if self.check_need_pconn() and check_flag:
             self.add_pconn()
         return
-    
+
     def unmake_topo(self):
         """
         Convert a topo object back to a "normal" mol object
@@ -766,7 +837,7 @@ class mol(mpiobject):
         self.is_topo = True
         self.omit_pconn()
         return
-    
+
     def force_topo(self):
         self.is_topo = True
         self.add_pconn()
@@ -1072,11 +1143,11 @@ class mol(mpiobject):
         ''' 
         apply pbc to the atoms of the system or some external positions
         Note: If pconn is used it is ivalid after this operation and will be reconstructed.
-        
+
         Args:
             xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
             fixidx (int) : for an external system the origin can be defined (all atoms in one image). default=0 which means atom0 is reference, if fixidx=-1 all atoms will be wrapped
-            
+
         Returns:
             xyz, in case xyz is not None (wrapped coordinates are returned) otherwise None is returned
         '''
@@ -1120,12 +1191,12 @@ class mol(mpiobject):
         """
         self.apply_pbc()
         return
-    
+
     def get_cell(self):
         """get cell vectors
-        
+
         Get the cell vectors as a 3x3 matrix, where the rows are the individual cell vectors
-        
+
         Returns:
             numpy.ndarray: the cell matrix cell[0] or cell[0,:] is the first cell vector
         """
@@ -1137,9 +1208,9 @@ class mol(mpiobject):
 
     def get_volume(self):
         """returns volume of the cell
-        
+
         Computes the Volume and returns it in cubic Angstroms
-        
+
         Returns:
             float: Volume
         """
@@ -1148,7 +1219,7 @@ class mol(mpiobject):
 
     def set_volume(self,Volume):
         """rescales the cell to  achieve a given volume
-        
+
         Rescales the unit cell in order to achieve a target volume. 
         Tested only for orthorombic systems!
 
@@ -1217,7 +1288,7 @@ class mol(mpiobject):
         cell = unit_cell.vectors_from_abc(cellparams)
         self.set_cell(cell, cell_only=cell_only)
         return
-    
+
     def set_empty_cell(self):
         ''' set empty cell and related attributes'''
         self.periodic = False
@@ -1228,10 +1299,10 @@ class mol(mpiobject):
     ### rewrite on set_cell ???
     def scale_cell(self, scale, cell_only=False):
         ''' scales the cell by a given factor
-        
+
         Parameters:
             scale: either single float or an array of len 3'''
-            
+
         cell = self.get_cell().copy()
         cell *= scale
         self.set_cell(cell, cell_only=cell_only)
@@ -1239,10 +1310,10 @@ class mol(mpiobject):
 
     def get_frac_xyz(self,xyz=None):
         return self.get_frac_from_xyz(xyz=xyz)
-    
+
     def get_frac_from_xyz(self, xyz=None):
         ''' Returns the fractional atomic coordinates
-        
+
         Parameters:
             xyz=None (array): optional external coordinates
         '''
@@ -1254,7 +1325,7 @@ class mol(mpiobject):
 
     def get_xyz_from_frac(self,frac_xyz):
         ''' returns real coordinates from an array of fractional coordinates using the current cell info 
-        
+
         Args:
             frac_xyz (array): fractional coords to be converted to xyz
         '''
@@ -1262,7 +1333,7 @@ class mol(mpiobject):
 
     def set_xyz_from_frac(self, frac_xyz):
         ''' Sets atomic coordinates based on input fractional coordinates
-        
+
         Arg
             - frac_xyz (array): fractional coords to be converted to xyz
         '''
@@ -1407,7 +1478,7 @@ class mol(mpiobject):
         return m
 
     ##### add and delete atoms and bonds ###########################################################
-    
+
     def add_bond(self,idx1,idx2):
         ''' function necessary for legacy reasons! '''
         self.add_bonds(idx1,idx2)
@@ -1415,24 +1486,24 @@ class mol(mpiobject):
 
     def add_bonds(self, lista1, lista2, many2many=False):
         """ 
-        add bonds/edges/connections to a mol object between exisiting atoms/vertices        
+        add bonds/edges/connections to a mol object between exisiting atoms/vertices
 
         If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
         between atom of list 1 and atom of list 2.
         For many2many == False the length of lista1 and lista2 must be equal
 
-        
+
         For many2many = True a Many-to-many connectivity is used:
         Sets NxM  bonds, where N and M is the number of atoms per each list.
         Each atom of list 1 is connected to each atom of list 2.
         This is rarely wanted unless (at least) one of the lists has got only one atom.
         In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
         Each atom of the "long" list is connected to the atom of the "short" one.
-        
+
         Args:
             lista1(iterable of int): iterable 1 of atom indices
             lista2(iterable of int): iterable 2 of atom indices
-            many2many (boolean):     switch to many2many mode            
+            many2many (boolean):     switch to many2many mode
             """
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
         if not hasattr(lista2,'__iter__'): lista2 = [lista2]
@@ -1447,7 +1518,7 @@ class mol(mpiobject):
                         d,v,imgi = self.get_distvec(a1,a2)
                         self.pconn[a1].append(images[imgi])
                         d,v,imgi = self.get_distvec(a2,a1)
-                        self.pconn[a2].append(images[imgi])                
+                        self.pconn[a2].append(images[imgi])
         else:
             for a1,a2 in zip(lista1, lista2):
                     self.conn[a1].append(a2)
@@ -1456,7 +1527,7 @@ class mol(mpiobject):
                         d,v,imgi = self.get_distvec(a1,a2)
                         self.pconn[a1].append(images[imgi[0]])
                         d,v,imgi = self.get_distvec(a2,a1)
-                        self.pconn[a2].append(images[imgi][0])                
+                        self.pconn[a2].append(images[imgi][0])
         return
 
     def add_shortest_bonds(self,lista1,lista2):
@@ -1466,11 +1537,11 @@ class mol(mpiobject):
 
         in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
         is used
-        
+
         Args:
             lista1 (list) : list of atoms
             lista2 (list) : list of atoms
-        
+
         """
         assert not self.use_pconn
         assert len(lista1) == len(lista2), "only for lists of same length: %dx != %d " % (len(lista1), len(lista2))
@@ -1511,18 +1582,18 @@ class mol(mpiobject):
         self.conn[j].pop(idxi)
         if self.use_pconn:
             self.pconn[i].pop(idxj)
-            self.pconn[j].pop(idxi)            
+            self.pconn[j].pop(idxi)
         return
 
     def add_atom(self, elem, atype, xyz, fragtype='-1', fragnumber=-1):
         """
         add a ato/vertex to the system (unconnected)
-        
+
         Args:
             elem (string):    element symbol
             atype (string):   atom type string
             xyz (ndarry [3]): coordinates
-            
+
         """
         assert type(elem) == str
         assert type(atype)== str
@@ -1547,7 +1618,7 @@ class mol(mpiobject):
         """Inserts an atom in a bond netween i and j
 
         Adds the atom at position between i and j or at xyz if given
-        
+
         Args:
             elem (str): element
             atype (str): atomtype
@@ -1644,7 +1715,7 @@ class mol(mpiobject):
 
     def delete_atom(self,bad, keep_conn=False):
         """deletes an atom and its connections and fixes broken indices of all other atoms
-        
+
         Args:
             bad (integer): atom index to remove
         """
@@ -1699,9 +1770,9 @@ class mol(mpiobject):
     def remove_overlapping_atoms(self, thresh=SMALL_DIST):
         """
         remove atoms/vertices which are closer than thresh
-        
-        Note that it is unpredictable which atom is removed from the overlapping pair.         
-        
+
+        Note that it is unpredictable which atom is removed from the overlapping pair.
+
         Args:
             thresh : distance threshold
         """
@@ -2228,7 +2299,7 @@ class mol(mpiobject):
 
     def get_xyz(self, idx=None):
         ''' returns the xyz Coordinates 
-        
+
         Args:
             idx=None (list): optional list of indices
         '''
@@ -2298,11 +2369,11 @@ class mol(mpiobject):
     def get_atypes(self):
         ''' return the list of atom types '''
         return self.atypes
-    
+
     def get_natypes(self):
         if not self.atypes: return 0
         return len(set(self.atypes))
-        
+
     # just to make compatible with pydlpoly standard API
     def get_atomtypes(self):
         return self.atypes
@@ -2413,7 +2484,7 @@ class mol(mpiobject):
         for i in range(self.natoms):
             self.conn.append([])
         return
-        
+
     def get_conn_as_tab(self, pconn_flag=None):
         """
         gets the connectivity as a table of bonds with shape (nbonds, 2)
@@ -2437,7 +2508,7 @@ class mol(mpiobject):
                     if j > i:
                         ctab.append((i,j))
         return ctab
-        
+
     def set_ctab_from_conn(self, pconn_flag=None):
         if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
         if pconn_flag:
@@ -2457,7 +2528,7 @@ class mol(mpiobject):
             self.conn[i].append(j)
             self.conn[j].append(i)
         return
-    
+
     def get_unique_neighbors(self):
         un = []
         counter = []
@@ -2474,7 +2545,7 @@ class mol(mpiobject):
         for i in range(len(un)):  
             self.unique_neighbors.append([un[i],counter[i]])
         return self.unique_neighbors
-        
+
     ### PERIODIC CONNECTIVITY ###
     def get_pconn(self):
         ''' returns the periodic connectivity of the system '''
@@ -2507,7 +2578,7 @@ class mol(mpiobject):
             self.pconn.append([])
         self.set_empty_pimages()
         return
-        
+
     def set_empty_pimages(self):
         """
         sets an empty list of lists for the periodic connected images
@@ -2516,7 +2587,7 @@ class mol(mpiobject):
         for i in range(self.natoms):
             self.pimages.append([])
         return
-        
+
     def get_pconn_as_tab(self, pconn_flag=None):
         """
         gets the periodic connectivity as a table of bonds with shape (nbonds, 2)
@@ -2542,7 +2613,7 @@ class mol(mpiobject):
                     if j > i:
                         ctab.append([i,j])
         return ctab
-        
+
     def set_ptab_from_pconn(self, pconn_flag=None):
         raise NotImplementedError("Use set_ctab_from_conn w/ pconn_flag=True")
         # TBI: see acab for a suggested implementation [RA]
@@ -2595,7 +2666,7 @@ class mol(mpiobject):
             pconn = self.pconn
         self.pimages = [[arr2idx[j] for j in pconni] for pconni in pconn]
         return
-        
+
     @property
     def etab(self):
         """ edge tab"""

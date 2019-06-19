@@ -324,7 +324,7 @@ class acab(base):
             self.constrlabels.append(label)
         return
 
-    def setup_vcratio(self, vcratio, esele=None, set_vcratio=True):
+    def setup_vcratio(self, vcratio, vsele=None, set_vcratio=True):
         """
         :Parameters:
         - vcratio (None or list of ints): overall vertex color ratio
@@ -335,33 +335,30 @@ class acab(base):
         """
         if not hasattr(self,"nvcolors"):
             self.setup_vcolors(len(vcratio))
-        if esele is not None:
-            raise NotImplementedError
-        #if sele is None:
-        #    sele = range(self._mol.natoms)
-        #else:
-        #    try:
-        #        sele[0]
-        #    except TypeError:
-        #        sele = [sele]
+        if vsele is None:
+            vsele = range(self._mol.natoms)
+        else:
+            try:
+                vsele[0]
+            except TypeError:
+                vsele = [vsele]
         self.assert_vcratio(vcratio)
         vvars = self.vvars
         nvcolors = self.nvcolors
         ### ratio ###
-        nvvars = len(vvars) / nvcolors
+        nvvars = len(vsele)
         crange = range(nvcolors)
-        vcratio = normalize_ratio(vcratio, nvvars)
+        vcration = normalize_ratio(vcratio, nvvars)
         ### loop ###
-        rvvars = range(nvvars) ### == range(self._mol.natoms)
         for c in crange:
             self.model.addCons(
-                quicksum(vvars[v,c] for v in rvvars) == vcratio[c],
-                name = "NVertexColors(%d)=%d" % (c,vcratio[c])
+                quicksum(vvars[v,c] for v in vsele) == vcration[c],
+                name = "NVertexColors(%d)=%d" % (c,vcration[c])
             )
         if set_vcratio: self.vcratio = vcratio
         if len(vcratio) > 0:
             label = "ovc" + len(vcratio)*"%d" % tuple(vcratio)
-            if esele is not None:
+            if vsele is not None:
                 label += "s"
             self.constrlabels.append(label)
         return
@@ -409,24 +406,24 @@ class acab(base):
         """
         if not hasattr(self,"nvcolors"):
             self.setup_vcolors(len(vcratio))
-        if esele is not None:
-            raise NotImplementedError
-        #if sele is None:
-        #    sele = range(self._mol.natoms)
-        #else:
-        #    try:
-        #        sele[0]
-        #    except TypeError:
-        #        sele = [sele]
+        if esele is None:
+            if self._mol.use_pconn:
+                esele = self._mol.etab
+            else:
+                esele = self._mol.ctab
+        else:
+            try:
+                esele[0]
+            except TypeError:
+                esele = [esele]
         self.assert_vcratio(vcratio)
         vvars = self.vvars
         nvcolors = self.nvcolors
         crange = range(nvcolors)
-        edge2vertices = self.edge2vertices
         vcratios = []
         for c in crange:
-            for e in edge2vertices:
-                e2v = edge2vertices[e]
+            for e in esele:
+                e2v = self.edge2vertices[e]
                 nvcratio = normalize_ratio(vcratio,len(e2v))
                 vcratios.append(nvcratio)
                 if self._mol.use_pconn:
