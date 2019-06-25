@@ -22,6 +22,7 @@ from .util import rotations
 from .util import images
 from .util.images import arr2idx, idx2arr, idx2revidx
 from .util.misc import argsorted
+from .util.color import vcolor2elem
 
 from .fileIO import formats
 
@@ -88,6 +89,7 @@ class mol(mpiobject):
 
     def __init__(self, mpi_comm = None, out = None):
         super(mol,self).__init__(mpi_comm, out)
+        self.name=None
         self.natoms=0
         self.nbonds=0
         self.cell=None
@@ -120,7 +122,78 @@ class mol(mpiobject):
         return
 
     # for future python3 compatibility
-    #def __copy__(self):
+    def __copy__(self):
+        """
+        Shallow copy as for the standard copy.copy function
+        To be tested with python3
+        """
+        m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
+        m.mpi_rank       = self.mpi_rank
+        m.mpi_size       = self.mpi_size
+        m.name           = self.name
+        m.is_bb          = self.is_bb
+        m.is_topo        = self.is_topo
+        m.use_pconn      = self.use_pconn
+        m.periodic       = self.periodic
+        m.bcond          = self.bcond
+        m.natoms         = self.natoms
+        m.nbonds         = self.nbonds
+        m.nfrags         = self.nfrags
+        m.weight         = self.weight
+        m.elems          = copy.copy(self.elems)
+        m.atypes         = copy.copy(self.atypes)
+        m.fragnumbers    = copy.copy(self.fragnumbers)
+        m.fragtypes      = copy.copy(self.fragtypes)
+        m.xyz            = copy.copy(self.xyz)
+        m.cell           = copy.copy(self.cell)
+        m.cellparams     = copy.copy(self.cellparams)
+        m.images_cellvec = copy.copy(self.images_cellvec)
+        m.conn           = copy.copy(self.conn)
+        m.pconn          = copy.copy(self.pconn)
+        m.pimages        = copy.copy(self.pimages)
+        m.ctab           = copy.copy(self.ctab)
+        m._etab          = copy.copy(self._etab)
+        m.ptab           = copy.copy(self.ptab)
+        m.supercell      = copy.copy(self.supercell)
+        m.loaded_addons  = []
+        return m
+
+    def __deepcopy__(self, memo):
+        """
+        Deep copy as for the standard copy.deepcopy function
+        To be tested with python3
+        """
+        m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
+        m.mpi_rank       = self.mpi_rank
+        m.mpi_size       = self.mpi_size
+        m.name           = self.name
+        m.is_bb          = self.is_bb
+        m.is_topo        = self.is_topo
+        m.use_pconn      = self.use_pconn
+        m.periodic       = self.periodic
+        m.bcond          = self.bcond
+        m.natoms         = self.natoms
+        m.nbonds         = self.nbonds
+        m.nfrags         = self.nfrags
+        m.weight         = self.weight
+        m.elems          = copy.deepcopy(self.elems)
+        m.atypes         = copy.deepcopy(self.atypes)
+        m.fragnumbers    = copy.deepcopy(self.fragnumbers)
+        m.fragtypes      = copy.deepcopy(self.fragtypes)
+        m.xyz            = copy.deepcopy(self.xyz)
+        m.cell           = copy.deepcopy(self.cell)
+        m.cellparams     = copy.deepcopy(self.cellparams)
+        m.images_cellvec = copy.deepcopy(self.images_cellvec)
+        m.conn           = copy.deepcopy(self.conn)
+        m.pconn          = copy.deepcopy(self.pconn)
+        m.pimages        = copy.deepcopy(self.pimages)
+        m.ctab           = copy.deepcopy(self.ctab)
+        m._etab          = copy.deepcopy(self._etab)
+        m.ptab           = copy.deepcopy(self.ptab)
+        m.supercell      = copy.deepcopy(self.supercell)
+        m.loaded_addons  = []
+        return m
+
     #    pass
     #def __deepcopy__(self):
     #    pass
@@ -167,11 +240,12 @@ class mol(mpiobject):
             logger.error("unsupported format: %s" % ftype)
             raise IOError("Unsupported format")
         f.close()
+        self.name = os.path.basename(os.path.splitext(fname)[0])
         return
 
     @classmethod
     def from_smiles(cls, smile, bbcenter='com', maxiter=500):
-        ''' generates mol object from smiles string, requires openbabel to be installed            
+        ''' generates mol object from smiles string, requires openbabel to be installed
         '''
         try:
             import pybel
@@ -191,7 +265,7 @@ class mol(mpiobject):
         # there is gibberish in the first line of the txyzstring, we need to remove it!
         txyzsl = txyzs.split("\n")
         txyzsl[0] = txyzsl[0].split()[0]
-        txyzs = string.join(txyzsl,'\n')    
+        txyzs = string.join(txyzsl,'\n')
         m = mol.from_string(txyzs,ftype='txyz')
         if smile.count('*') != 0:
             m.addon('bb')
@@ -249,7 +323,7 @@ class mol(mpiobject):
             raise IOError("Unsupported format")
         return m
 
-    
+
 
     @classmethod
     def from_abinit(cls, elems, xyz, cell, frac = False, detect_conn = False):
@@ -332,10 +406,10 @@ class mol(mpiobject):
         Kwargs:
             hessian (numpy.ndarray, optional): Defaults to None. Hessian matrix of
                 shape (3N,3N) in kcal/mol/A**2.
-        
+
         Raises:
             ImportError: Raises Import Error when phonopy is not installed
-        
+
         Returns:
             [Phonopy]: Return the phonopy object.
         """
@@ -391,10 +465,10 @@ class mol(mpiobject):
 
         Kwargs:
             ftype(string): name of the filetype, default to mfpx
-        
+
         Raises:
             IOError
-        
+
         Returns:
             string: mol object as string
         """
@@ -560,11 +634,18 @@ class mol(mpiobject):
                 logger.warning("Found and merged %d atom duplicates" % len(duplicates))
                 duplicates = list(set(duplicates)) # multiple duplicates are taken once
                 self.natoms -= len(duplicates)
-                self.set_xyz(np.delete(xyz, duplicates,0))
-                self.set_elems(np.delete(elems, duplicates))
-                self.set_atypes(np.delete(self.atypes,duplicates))
-                self.set_fragtypes(np.delete(self.fragtypes,duplicates))
-                self.set_fragnumbers(np.delete(self.fragnumbers,duplicates))
+                # compute
+                xyz = np.delete(xyz, duplicates,0) # no need to make it list
+                elems = np.delete(elems, duplicates).tolist()
+                atypes = np.delete(self.atypes,duplicates).tolist()
+                fragtypes = np.delete(self.fragtypes,duplicates).tolist()
+                fragnumbers = np.delete(self.fragnumbers,duplicates).tolist()
+                # set
+                self.set_xyz(xyz)
+                self.set_elems(elems)
+                self.set_atypes(atypes)
+                self.set_fragtypes(fragtypes)
+                self.set_fragnumbers(fragnumbers)
             self.detect_conn(tresh = tresh)
         else:
             self.set_conn(conn)
@@ -573,6 +654,30 @@ class mol(mpiobject):
             self.add_pconn()
         self.set_ctab_from_conn(pconn_flag=self.use_pconn)
         self.set_etab_from_tabs()
+        return
+
+    def remove_conn_pbc(self):
+        """
+        Remove periodic connectivity if it crosses cell boundaries
+        """
+        if not self.periodic:
+            return
+        frac = self.get_frac_xyz()
+        self.conn_nopbc = [
+            [
+                j for j in c if (abs(np.around(frac[i]-frac[j])) < 1).all()
+            ]
+            for i,c in enumerate(self.conn)
+        ]
+        ### OLD ###
+        #cellcond = self.cellparams[:3]
+        #self.conn_nopbc = [
+        #    [
+        #        j for j in c if (abs(self.xyz[i]-self.xyz[j]) < cellcond).all()
+        #    ]
+        #    for i,c in enumerate(self.conn)
+        #]
+        self.atoms_withconn_nopbc = [i for i,c in enumerate(self.conn_nopbc) if len(c) > 0]
         return
 
     def report_conn(self):
@@ -588,22 +693,83 @@ class mol(mpiobject):
                 print(d, 20*'#')
                 self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
-    
+
     def add_pconn(self):
-        """ generate the pconn from the exisiting conn
-            The pconn contains the image index of the bonded neighbor
-            pconn is really needed only for small unit cells (usually topologies) where vertices
-            can be bonded to itself (next image) or multiple times to the same vertex in different images.
-            """
-        # N.B. add_pconn is not bullet-proof!
-        # It works pretty always for large frameworks
-        # whereas failing quite often with nets
-        # (and quite always with the smaller ones)
-        # JK+RA proposed FIX [work in progress, needs investigation]
-        #for i in self.conn:
-        #    i.sort()
-        #
-        # END FIX
+        """
+        Generate the periodic connectivity from the exisiting connectivity
+        The pconn contains the image index of the bonded neighbor
+        pconn is really needed only for small unit cells (usually topologies) where vertices
+        can be bonded to itself (next image) or multiple times to the same vertex in different images.
+        """
+        # N.B. bullet-proof version of add_pconn!
+        # It works also for nets, particulary the smaller ones [RA]
+        ### NEW ###
+        pimages = []
+        pconn = []
+        for i,c in enumerate(self.conn):
+            uniquec = set(c) # unique connected atoms
+            #    [i,j,k,j,i,i] translates to [i,j,k]
+            if len(uniquec) != len(c):
+                # add periodic connectivity according to occurrence order
+                dc = {iuc:-1 for iuc in set(c)} # dictionary of connectivity order:
+                #    it defaults at -1 so that it gets 0 for the first occurrence,
+                #    1 for the second, 2 for the third, etc.
+                #    this auxiliary dictionary is intended to keep the number of
+                #    occurrences along the running connectivity
+                oc = [-1 for j in c] # occurence unique connectivity: the occurrence
+                #    of that unique atom in the list:
+                #    in the case of:   [i,j,k,j,i,i]
+                #    it translates to: [0,0,0,1,1,2]
+                for ji, j in enumerate(c):
+                    dc[j] += 1
+                    oc[ji] = dc[j]
+                # N.B.: after this, the dictionary contains the order of the
+                #    last occurence so that the number of occurences - 1 is stored:
+                #    [i,j,k,j,i,i] -> {i:2, j:1, k:0}
+            else:
+                # proceed normally
+                dc = {iuc:0 for iuc in set(c)} # dictionary connectivity ### first occurence at 0
+                oc = [0 for j in c] # occurence unique connectivity ### first for all!
+            uimgi = {j:[] for j in c} ### image indices for unique connecting atoms
+            for j in uniquec: ### unique connecting atoms
+                # If an atom or vertex is connected to another one multiple times (in an image), this
+                # will be visible in the self.conn attribute, where the same neighbour will be listed
+                # multiple times.
+                # Sometimes, the distances are a bit different from each other, and in this case, we
+                # have to increase the threshold, until the get_distvec function will find all imgis.
+                n_conns = dc[j]+1 # if summed by 1 you get the number of occurences per unique atom
+                t = 0.01
+                while True:
+                    d,r,imgi = self.get_distvec(i,j,thresh=t)
+                    t += 0.01
+                    if n_conns == len(imgi):
+                        break
+                uimgi[j] = imgi
+            atoms_pconn = []
+            atoms_image = []
+            for ji,j in enumerate(c): ### unique connecting atoms
+                single_imgi = uimgi[j][oc[ji]] ### take the ji-th occurrence wrt. that j index and get
+                #    the unique ordered image for that partcular j-th atom
+                #    [i,j,k,j,i,i] -> [0,0,0,1,1,2] -> [uimgi[0],uimgi[0],uimgi[0],uimgi[1],uimgi[1],uimgi[2]]
+                #$
+                atoms_pconn.append(images[single_imgi])
+                atoms_image.append(single_imgi)
+            pimages.append(atoms_image)
+            pconn.append(atoms_pconn)
+        self.pimages = pimages
+        self.pconn = pconn
+        self.use_pconn= True
+        return
+
+    def add_pconn_old(self):
+        """
+        DEPRECATED: here for reference in case of bug
+        Generate the periodic connectivity from the exisiting connectivity
+        The pconn contains the image index of the bonded neighbor
+        pconn is really needed only for small unit cells (usually topologies) where vertices
+        can be bonded to itself (next image) or multiple times to the same vertex in different images.
+        """
+        ### OLD ###
         pimages = []
         pconn = []
         for i,c in enumerate(self.conn):
@@ -649,7 +815,7 @@ class mol(mpiobject):
         self.pimages = pimages
         self.pconn = pconn
         return
-    
+
     def check_need_pconn(self):
         """
         check whether pconn is needed or not
@@ -664,7 +830,7 @@ class mol(mpiobject):
                     pconn_needed = True
             if pconn_needed: break
         return pconn_needed
-    
+
     def omit_pconn(self):
         """
         Omit the pconn (if there is one) if this is acceptable
@@ -675,7 +841,7 @@ class mol(mpiobject):
             self.pconn = []
             self.use_pconn = False
         return
-    
+
     def make_topo(self, check_flag=True):
         """
         Convert this mol obejct to be a topo object.
@@ -686,7 +852,7 @@ class mol(mpiobject):
         if self.check_need_pconn() and check_flag:
             self.add_pconn()
         return
-    
+
     def unmake_topo(self):
         """
         Convert a topo object back to a "normal" mol object
@@ -695,25 +861,150 @@ class mol(mpiobject):
         self.is_topo = True
         self.omit_pconn()
         return
-    
+
     def force_topo(self):
         self.is_topo = True
         self.add_pconn()
         return
 
     ###  periodic systems .. cell manipulation ############
-    
-    #RS  Fix this
-    #    currently if pconn is used we just call the old method from topo.py ... a lot of redundant things could 
-    #    could be removed and all should be merged into one method at some point
-    #
 
-    def make_supercell(self,supercell):
-        ''' Extends the periodic system in all directions by the factors given in the
+    def make_supercell(self,supercell, colorize=False):
+        """
+        Extend the periodic system in all directions by the factors given in the
+            supercell upon preserving the connectivity of the initial system
+        Can be used for systems with and without pconn
+
+        :Args:
+            supercell (iterable of ints): extends the cell three times in x and two times in y
+                example: [2,2,2] or []
+            colorize=False (bool): distinguish the duplicates by different colors
+
+        """
+        self.supercell = tuple(supercell)
+        ntot = np.prod(self.supercell)
+        xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
+        conn =  [copy.deepcopy(self.conn) for i in range(ntot)]
+        if self.use_pconn:
+            pconn = [copy.deepcopy(self.pconn) for i in range(ntot)]
+        if sum(self.supercell) == 3:
+            logger.warning('Generating %i x %i x %i supercell? No need to do that!' % self.supercell)
+            if self.use_pconn:
+                return xyz, conn, pconn
+            else:
+                return xyz, conn
+        logger.info('Generating %i x %i x %i supercell' % self.supercell)
+        img = [np.array(i) for i in images.tolist()]
+        nat = copy.deepcopy(self.natoms)
+        nx, ny, nz = self.supercell
+        elems = copy.deepcopy(self.elems)
+        left,right,front,back,bot,top =  [],[],[],[],[],[]
+        neighs = [[] for i in range(6)]
+        iii = []
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    iii.append(ixyz)
+                    if ix == 0   : left.append(ixyz)
+                    if ix == nx-1: right.append(ixyz)
+                    if iy == 0   : bot.append(ixyz)
+                    if iy == ny-1: top.append(ixyz)
+                    if iz == 0   : front.append(ixyz)
+                    if iz == nz-1: back.append(ixyz)
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    ixyz = ix+nx*iy+nx*ny*iz
+                    # BUG for layers: to be investigated
+                    dispvect = np.sum(self.cell*np.array([ix,iy,iz])[:,np.newaxis],axis=0)
+                    ### THESE DO NOT WORK
+                    #dispvect = np.sum(np.array([ix,iy,iz]*self.cell)[:,np.newaxis],axis=0)
+                    #dispvect = np.sum(np.array([ix,iy,iz])[np.newaxis,:]*self.cell,axis=-1)
+                    #dispvect = np.sum(np.array([ix,iy,iz])[np.newaxis,:]*self.cell,axis=0)
+                    xyz[ixyz] += dispvect
+                    i = copy.copy(ixyz)
+                    for cc in range(len(conn[i])):
+                        for c in range(len(conn[i][cc])):
+                            if self.use_pconn:
+                                allinbox = (pconn[i][cc][c]).all()
+                            else:
+                                pc = self.get_distvec(cc,conn[i][cc][c])[2]
+                                if len(pc) != 1:
+                                    print(self.get_distvec(cc,conn[i][cc][c]))
+                                    print(c,conn[i][cc][c])
+                                    raise ValueError("an Atom is connected to the same atom twice in different cells! \n Use pconn!")
+                                pc = pc[0]
+                                allinbox = pc == 13
+                            if allinbox:
+                                conn[i][cc][c] = int( conn[i][cc][c] + ixyz*nat )
+                                if self.use_pconn:
+                                    pconn[i][cc][c] = np.array([0,0,0])
+                            else:
+                                if self.use_pconn:
+                                    px,py,pz = pconn[i][cc][c]
+                                else:
+                                    px,py,pz = img[pc]
+                                iix,iiy,iiz  = (ix+px)%nx, (iy+py)%ny, (iz+pz)%nz
+                                iixyz= iix+nx*iiy+nx*ny*iiz
+                                conn[i][cc][c] = int( conn[i][cc][c] + iixyz*nat )
+                                if self.use_pconn:
+                                    pconn[i][cc][c] = np.array([0,0,0])
+                                    if ((px == -1) and (left.count(ixyz)  != 0)): pconn[i][cc][c][0] = -1
+                                    if ((px ==  1) and (right.count(ixyz) != 0)): pconn[i][cc][c][0] =  1
+                                    if ((py == -1) and (bot.count(ixyz)   != 0)): pconn[i][cc][c][1] = -1
+                                    if ((py ==  1) and (top.count(ixyz)   != 0)): pconn[i][cc][c][1] =  1
+                                    if ((pz == -1) and (front.count(ixyz) != 0)): pconn[i][cc][c][2] = -1
+                                    if ((pz ==  1) and (back.count(ixyz)  != 0)): pconn[i][cc][c][2] =  1
+        if self.use_pconn:
+            self.conn, self.pconn, self.pimages, self.xyz = [],[],[],[]
+        else:
+            self.conn, self.xyz = [],[]
+        for cc in conn:
+            for c in cc:
+                self.conn.append(c)
+        if self.use_pconn:
+            for pp in pconn:
+                for p in pp:
+                    self.pconn.append(p)
+                    self.pimages.append([arr2idx[ip] for ip in p])
+        self.natoms = nat*ntot
+        self.xyz = np.array(xyz).reshape(nat*ntot,3)
+        cell = self.cell * np.array(self.supercell)[:,np.newaxis]
+        self.set_cell(cell)
+        self.inv_cell = np.linalg.inv(self.cell)
+        if colorize:
+            self.elems += [vcolor2elem[i%len(vcolor2elem)] for i in range(ntot-1) for j in range(nat)]
+        else:
+            self.elems = list(self.elems)*ntot
+        self.atypes=list(self.atypes)*ntot
+        if len(self.fragtypes) > 0:
+            self.fragtypes=list(self.fragtypes)*ntot
+            mfn = max(self.fragnumbers)+1
+            fragnumbers = []
+            for i in range(ntot):
+                fragnumbers += list(np.array(self.fragnumbers)+i*mfn)
+            self.fragnumbers = fragnumbers
+        self.images_cellvec = np.dot(images, self.cell)
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
+        self.set_etab_from_tabs(sort_flag=True)
+        if self.use_pconn:
+            return xyz, conn, pconn
+        else:
+            return xyz, conn
+
+    def make_supercell_old(self,supercell):
+        """
+        DEPRECATED: IT WILL BE REMOVED IN A FEW COMMITS
+        PLEASE ADD/FIX FEATURES/BUGS TO make_supercell
+        here just in case of emergency
+
+        Extends the periodic system in all directions by the factors given in the
             supercell upon preserving the connectivity of the initial system
             Can be used for systems with and without pconn
             Args:
-                supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y'''
+                supercell: List of integers, e.g. [3,2,1] extends the cell three times in x and two times in y
+        """
         # HACK
         if self.use_pconn:
             xyz,conn,pconn = self._make_supercell_pconn(supercell)
@@ -790,9 +1081,13 @@ class mol(mpiobject):
         self.images_cellvec = np.dot(images, self.cell)
         return xyz,conn
 
-
     def _make_supercell_pconn(self, supercell):
-        """ old make_supercell from topo object
+        """
+        DEPRECATED: IT WILL BE REMOVED IN A FEW COMMITS
+        PLEASE ADD/FIX FEATURES/BUGS TO make_supercell
+        here just in case of emergency
+
+        old make_supercell from topo object
         called automatically when pconn exists
         """
         self.supercell = tuple(supercell)
@@ -867,15 +1162,16 @@ class mol(mpiobject):
         self.set_etab_from_tabs(sort_flag=True)
         return xyz,conn,pconn
 
+
     def apply_pbc(self, xyz=None, fixidx=0):
         ''' 
         apply pbc to the atoms of the system or some external positions
         Note: If pconn is used it is ivalid after this operation and will be reconstructed.
-        
+
         Args:
             xyz (numpy array) : external positions, if None then self.xyz is wrapped into the box
             fixidx (int) : for an external system the origin can be defined (all atoms in one image). default=0 which means atom0 is reference, if fixidx=-1 all atoms will be wrapped
-            
+
         Returns:
             xyz, in case xyz is not None (wrapped coordinates are returned) otherwise None is returned
         '''
@@ -919,12 +1215,12 @@ class mol(mpiobject):
         """
         self.apply_pbc()
         return
-    
+
     def get_cell(self):
         """get cell vectors
-        
+
         Get the cell vectors as a 3x3 matrix, where the rows are the individual cell vectors
-        
+
         Returns:
             numpy.ndarray: the cell matrix cell[0] or cell[0,:] is the first cell vector
         """
@@ -936,9 +1232,9 @@ class mol(mpiobject):
 
     def get_volume(self):
         """returns volume of the cell
-        
+
         Computes the Volume and returns it in cubic Angstroms
-        
+
         Returns:
             float: Volume
         """
@@ -947,7 +1243,7 @@ class mol(mpiobject):
 
     def set_volume(self,Volume):
         """rescales the cell to  achieve a given volume
-        
+
         Rescales the unit cell in order to achieve a target volume. 
         Tested only for orthorombic systems!
 
@@ -1016,7 +1312,7 @@ class mol(mpiobject):
         cell = unit_cell.vectors_from_abc(cellparams)
         self.set_cell(cell, cell_only=cell_only)
         return
-    
+
     def set_empty_cell(self):
         ''' set empty cell and related attributes'''
         self.periodic = False
@@ -1027,10 +1323,10 @@ class mol(mpiobject):
     ### rewrite on set_cell ???
     def scale_cell(self, scale, cell_only=False):
         ''' scales the cell by a given factor
-        
+
         Parameters:
             scale: either single float or an array of len 3'''
-            
+
         cell = self.get_cell().copy()
         cell *= scale
         self.set_cell(cell, cell_only=cell_only)
@@ -1038,10 +1334,10 @@ class mol(mpiobject):
 
     def get_frac_xyz(self,xyz=None):
         return self.get_frac_from_xyz(xyz=xyz)
-    
+
     def get_frac_from_xyz(self, xyz=None):
         ''' Returns the fractional atomic coordinates
-        
+
         Parameters:
             xyz=None (array): optional external coordinates
         '''
@@ -1053,7 +1349,7 @@ class mol(mpiobject):
 
     def get_xyz_from_frac(self,frac_xyz):
         ''' returns real coordinates from an array of fractional coordinates using the current cell info 
-        
+
         Args:
             frac_xyz (array): fractional coords to be converted to xyz
         '''
@@ -1061,7 +1357,7 @@ class mol(mpiobject):
 
     def set_xyz_from_frac(self, frac_xyz):
         ''' Sets atomic coordinates based on input fractional coordinates
-        
+
         Arg
             - frac_xyz (array): fractional coords to be converted to xyz
         '''
@@ -1206,7 +1502,7 @@ class mol(mpiobject):
         return m
 
     ##### add and delete atoms and bonds ###########################################################
-    
+
     def add_bond(self,idx1,idx2):
         ''' function necessary for legacy reasons! '''
         self.add_bonds(idx1,idx2)
@@ -1214,24 +1510,24 @@ class mol(mpiobject):
 
     def add_bonds(self, lista1, lista2, many2many=False):
         """ 
-        add bonds/edges/connections to a mol object between exisiting atoms/vertices        
+        add bonds/edges/connections to a mol object between exisiting atoms/vertices
 
         If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
         between atom of list 1 and atom of list 2.
         For many2many == False the length of lista1 and lista2 must be equal
 
-        
+
         For many2many = True a Many-to-many connectivity is used:
         Sets NxM  bonds, where N and M is the number of atoms per each list.
         Each atom of list 1 is connected to each atom of list 2.
         This is rarely wanted unless (at least) one of the lists has got only one atom.
         In that case, sets Nx1=N bonds, where N is the number of atoms of the "long" list.
         Each atom of the "long" list is connected to the atom of the "short" one.
-        
+
         Args:
             lista1(iterable of int): iterable 1 of atom indices
             lista2(iterable of int): iterable 2 of atom indices
-            many2many (boolean):     switch to many2many mode            
+            many2many (boolean):     switch to many2many mode
             """
         if not hasattr(lista1,'__iter__'): lista1 = [lista1]
         if not hasattr(lista2,'__iter__'): lista2 = [lista2]
@@ -1246,7 +1542,7 @@ class mol(mpiobject):
                         d,v,imgi = self.get_distvec(a1,a2)
                         self.pconn[a1].append(images[imgi])
                         d,v,imgi = self.get_distvec(a2,a1)
-                        self.pconn[a2].append(images[imgi])                
+                        self.pconn[a2].append(images[imgi])
         else:
             for a1,a2 in zip(lista1, lista2):
                     self.conn[a1].append(a2)
@@ -1255,7 +1551,7 @@ class mol(mpiobject):
                         d,v,imgi = self.get_distvec(a1,a2)
                         self.pconn[a1].append(images[imgi[0]])
                         d,v,imgi = self.get_distvec(a2,a1)
-                        self.pconn[a2].append(images[imgi][0])                
+                        self.pconn[a2].append(images[imgi][0])
         return
 
     def add_shortest_bonds(self,lista1,lista2):
@@ -1265,11 +1561,11 @@ class mol(mpiobject):
 
         in the 2x2 case, simple choice is used whereas for larger sets the hungarian method
         is used
-        
+
         Args:
             lista1 (list) : list of atoms
             lista2 (list) : list of atoms
-        
+
         """
         assert not self.use_pconn
         assert len(lista1) == len(lista2), "only for lists of same length: %dx != %d " % (len(lista1), len(lista2))
@@ -1310,18 +1606,18 @@ class mol(mpiobject):
         self.conn[j].pop(idxi)
         if self.use_pconn:
             self.pconn[i].pop(idxj)
-            self.pconn[j].pop(idxi)            
+            self.pconn[j].pop(idxi)
         return
 
     def add_atom(self, elem, atype, xyz, fragtype='-1', fragnumber=-1):
         """
         add a ato/vertex to the system (unconnected)
-        
+
         Args:
             elem (string):    element symbol
             atype (string):   atom type string
             xyz (ndarry [3]): coordinates
-            
+
         """
         assert type(elem) == str
         assert type(atype)== str
@@ -1346,7 +1642,7 @@ class mol(mpiobject):
         """Inserts an atom in a bond netween i and j
 
         Adds the atom at position between i and j or at xyz if given
-        
+
         Args:
             elem (str): element
             atype (str): atomtype
@@ -1378,7 +1674,7 @@ class mol(mpiobject):
                         offset[i:] += 1
                 self.elems  = np.take(self.elems, goods).tolist()
                 self.atypes = np.take(self.atypes, goods).tolist()
-                if self.fragtypes:
+                if len(self.fragtypes) > 0:
                     self.fragtypes = np.take(self.fragtypes, goods).tolist()
                     self.fragnumbers  = np.take(self.fragnumbers, goods).tolist()
                 if keep_conn:
@@ -1432,9 +1728,6 @@ class mol(mpiobject):
                         # if atom i not in bads
                         for i in range(self.natoms) if i not in bads
                     ]
-                if len(self.fragtypes) > 0:
-                    self.fragtypes = np.take(self.fragtypes, goods)
-                    self.fragnumbers = np.take(self.fragnumbers, goods)
                 self.natoms = len(self.elems)
                 self.xyz    = self.xyz[goods]
                 return
@@ -1446,7 +1739,7 @@ class mol(mpiobject):
 
     def delete_atom(self,bad, keep_conn=False):
         """deletes an atom and its connections and fixes broken indices of all other atoms
-        
+
         Args:
             bad (integer): atom index to remove
         """
@@ -1501,9 +1794,9 @@ class mol(mpiobject):
     def remove_overlapping_atoms(self, thresh=SMALL_DIST):
         """
         remove atoms/vertices which are closer than thresh
-        
-        Note that it is unpredictable which atom is removed from the overlapping pair.         
-        
+
+        Note that it is unpredictable which atom is removed from the overlapping pair.
+
         Args:
             thresh : distance threshold
         """
@@ -2030,7 +2323,7 @@ class mol(mpiobject):
 
     def get_xyz(self, idx=None):
         ''' returns the xyz Coordinates 
-        
+
         Args:
             idx=None (list): optional list of indices
         '''
@@ -2100,11 +2393,11 @@ class mol(mpiobject):
     def get_atypes(self):
         ''' return the list of atom types '''
         return self.atypes
-    
+
     def get_natypes(self):
         if not self.atypes: return 0
         return len(set(self.atypes))
-        
+
     # just to make compatible with pydlpoly standard API
     def get_atomtypes(self):
         return self.atypes
@@ -2215,7 +2508,7 @@ class mol(mpiobject):
         for i in range(self.natoms):
             self.conn.append([])
         return
-        
+
     def get_conn_as_tab(self, pconn_flag=None):
         """
         gets the connectivity as a table of bonds with shape (nbonds, 2)
@@ -2239,7 +2532,7 @@ class mol(mpiobject):
                     if j > i:
                         ctab.append((i,j))
         return ctab
-        
+
     def set_ctab_from_conn(self, pconn_flag=None):
         if pconn_flag is None: pconn_flag = getattr(self,"use_pconn",False)
         if pconn_flag:
@@ -2259,7 +2552,7 @@ class mol(mpiobject):
             self.conn[i].append(j)
             self.conn[j].append(i)
         return
-    
+
     def get_unique_neighbors(self):
         un = []
         counter = []
@@ -2276,7 +2569,7 @@ class mol(mpiobject):
         for i in range(len(un)):  
             self.unique_neighbors.append([un[i],counter[i]])
         return self.unique_neighbors
-        
+
     ### PERIODIC CONNECTIVITY ###
     def get_pconn(self):
         ''' returns the periodic connectivity of the system '''
@@ -2309,7 +2602,7 @@ class mol(mpiobject):
             self.pconn.append([])
         self.set_empty_pimages()
         return
-        
+
     def set_empty_pimages(self):
         """
         sets an empty list of lists for the periodic connected images
@@ -2318,7 +2611,7 @@ class mol(mpiobject):
         for i in range(self.natoms):
             self.pimages.append([])
         return
-        
+
     def get_pconn_as_tab(self, pconn_flag=None):
         """
         gets the periodic connectivity as a table of bonds with shape (nbonds, 2)
@@ -2344,7 +2637,7 @@ class mol(mpiobject):
                     if j > i:
                         ctab.append([i,j])
         return ctab
-        
+
     def set_ptab_from_pconn(self, pconn_flag=None):
         raise NotImplementedError("Use set_ctab_from_conn w/ pconn_flag=True")
         # TBI: see acab for a suggested implementation [RA]
@@ -2397,7 +2690,7 @@ class mol(mpiobject):
             pconn = self.pconn
         self.pimages = [[arr2idx[j] for j in pconni] for pconni in pconn]
         return
-        
+
     @property
     def etab(self):
         """ edge tab"""

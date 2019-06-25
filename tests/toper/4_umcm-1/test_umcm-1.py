@@ -9,8 +9,6 @@ infolder = "struct"
 infile = "%s%s%s" % (infolder, os.sep, "UMCM-1_dioxole.cif")
 m = molsys.mol.from_file(infile)
 
-scell = [2,2,2]
-strscell = "".join([str(i) for i in scell])
 
 scell_net = [5,5,2]
 strscell_net = "".join([str(i) for i in scell_net])
@@ -44,9 +42,9 @@ def test_write_no_organicity_bbs():
     m_net.write(outfile + ".txyz", pbc=False)
 
 def test_write():
-
+    scell = [2,2,2]
     m.make_supercell(scell)
-
+    strscell = "".join([str(i) for i in scell])
     outstruct = "%s%s%s%s" % (outfolder, os.sep, "UMCM-1_", strscell)
     m.write(outstruct + ".mfpx")
     m.write(outstruct + ".txyz", pbc=False)

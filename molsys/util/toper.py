@@ -263,6 +263,7 @@ class conngraph:
                     traceback.print_exc()
                     sys.exit(1)
         else:
+            #return isomorphism(molg1, molg2, **kwargs) ### not enough for vertex label? [RA]
             isom = subgraph_isomorphism(molg1, molg2,
                 vertex_label=(molg1.vp.elem, molg2.vp.elem),
                 subgraph=False, max_n=1, **kwargs)
@@ -580,6 +581,37 @@ class molgraph(conngraph):
                     break
         return self.clusters
 
+    def get_unique_clusters(self):
+        """
+        get unique clusters
+        return their cluster types
+        """
+        try:
+            clusters = self.clusters
+        except AttributeError:
+            clusters = self.get_clusters()
+        logger.info("Get unique building blocks which are distinct by connectivity")
+        ms = [self.mol.new_mol_by_index(c) for c in clusters]
+        mgs = [molgraph(m) for m in ms]
+        molgs = [mg.molg for mg in mgs]
+        unique_ms = []
+        type_ms = []
+        for i,molgi in enumerate(molgs):
+            new = True
+            for j in unique_ms:
+                molgj = molgs[j]
+                iso = subgraph_isomorphism(molgi, molgj, vertex_label=(molgi.vp.elem, molgj.vp.elem), max_n=1,
+                        subgraph=False)
+                if iso != []:
+                    new = False
+                    break
+            if new:
+                type_ms.append(len(unique_ms))
+                unique_ms.append(i)
+            else:
+                type_ms.append(type_ms[j])
+        return type_ms
+
     def make_topograph(self, verbose=True, allow_2conns=False):
         """
         Create the topograph of the topology of the MOF.
@@ -590,7 +622,7 @@ class molgraph(conngraph):
         """
         try:
             assert self.clusters
-        except AttributeError:
+        except (AttributeError, AssertionError) as e:
             self.get_clusters()
         tm = molsys.mol()
         tm.force_topo()
@@ -598,6 +630,7 @@ class molgraph(conngraph):
         tm.set_empty_conn()
         xyz = []
         elems = []
+        type_clusters = self.get_unique_clusters()
         for i, cluster_atoms in enumerate(self.clusters):
             ext_bond = []
             cidx = []
@@ -619,7 +652,6 @@ class molgraph(conngraph):
                         if verbose: print(" -> bonded to cluster ", ji)
                         tm.conn[i].append(ji)
                         break
-        ### check for consistence of conn
         for i in range(tm.natoms):
             if len(tm.conn[i]) == 4:
                 elems.append('c')
@@ -627,6 +659,7 @@ class molgraph(conngraph):
                 elems.append('o')
             else:
                 elems.append('n')
+        ### check for consistence of conn
             for j in tm.conn[i]:
                 if j>i:
                     if not i in tm.conn[j]:
@@ -639,6 +672,10 @@ class molgraph(conngraph):
         tm.add_pconn()
         tm.set_ctab_from_conn(pconn_flag=True)
         tm.set_etab()
+        ### MOVE ELSEWHERE [RA] ###
+        from molsys.util.color import vcolor2elem
+        tm.elems = [vcolor2elem[i] for i in type_clusters]
+        ### MOVE ELSEWHERE [RA] ###
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
         if verbose: print(self.threshes)
@@ -1047,9 +1084,9 @@ class topotyper(object):
         self.api = None
         #molcopy = copy.deepcopy(mol) #prevents mol pollution if restart ###DOES NOT WORK WITH CIF FILES
         molcopy = copy.copy(mol) #prevents mol pollution if restart
-        self.goodinit = False
+        goodinit = False
         self.mg = molgraph(molcopy)
-        while not self.goodinit:
+        while not goodinit:
             if trip is None:
                 trinat = triplenats_on_sphere(isum)
             else:
@@ -1059,15 +1096,19 @@ class topotyper(object):
                 logger.info("Triplet is: "+str(itri))
                 if isum > 3: mol.make_supercell(itri)
                 self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
-            except OverflowError: # specific for supercells
+            except OverflowError as e: # specific for supercells
                 logger.info("Deconstruction failed! Resize original cell")
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
-            except IndexError:
+            except IndexError as e:
+                if len(trinat) > 0: #error is NOT due to low isum (index summation of the supercell=[x,y,z] -> isum=x+y+z) and must be re-raised
+                    import traceback
+                    traceback.print_exc()
+                    raise IndexError(e)
                 isum += 1
                 logger.info("Resizing list is empty! Increase index summation to %i and create new resizing list" % (isum,))
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum)
             else:
-                self.goodinit = True
+                goodinit = True
         return
  
     def deconstruct(self, split_by_org=True, depth=10, max_supercell_size=5):

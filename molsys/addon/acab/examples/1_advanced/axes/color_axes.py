@@ -31,6 +31,7 @@ rundir = "run%saxes-%2.0f_%s_%s" % (os.sep, theta*10, net, scell)
 ### MAIN #######################################################################
 #.. old part (settings and constraints) ........................................
 m = molsys.mol.from_file(net)
+m.make_supercell(supercell)
 m.addon("acab")
 m.acab.setup_model()
 m.acab.setup_ecratio_per_vertex(ecratio) # applies to EACH vertices (3-c & 6-c)
