@@ -12,7 +12,7 @@ from mofplus import user_api
 from string import ascii_lowercase
 from collections import Counter
 
-from molsys.util.color import make_mol
+from molsys.util.color import make_mol, vcolor2elem
 from molsys.util.sysmisc import _makedirs, _checkrundir
 from molsys.util.misc import argsorted, triplenats_on_sphere
 
@@ -405,6 +405,37 @@ class molgraph(conngraph):
         self.molg.clear_filters()
         self.clusters = clusters
         return clusters
+
+    def get_unique_clusters(self):
+        """
+        get unique clusters
+        return their cluster types
+        """
+        try:
+            clusters = self.clusters
+        except AttributeError:
+            clusters = self.get_clusters()
+        logger.info("Get unique building blocks which are distinct by connectivity")
+        ms = [self.mol.new_mol_by_index(c) for c in clusters]
+        mgs = [molgraph(m) for m in ms]
+        molgs = [mg.molg for mg in mgs]
+        unique_ms = []
+        type_ms = []
+        for i,molgi in enumerate(molgs):
+            new = True
+            for j in unique_ms:
+                molgj = molgs[j]
+                iso = subgraph_isomorphism(molgi, molgj, vertex_label=(molgi.vp.elem, molgj.vp.elem), max_n=1,
+                        subgraph=False)
+                if iso != []:
+                    new = False
+                    break
+            if new:
+                type_ms.append(len(unique_ms))
+                unique_ms.append(i)
+            else:
+                type_ms.append(type_ms[j])
+        return type_ms
     
     def get_cluster_atoms(self):
         """
@@ -581,38 +612,7 @@ class molgraph(conngraph):
                     break
         return self.clusters
 
-    def get_unique_clusters(self):
-        """
-        get unique clusters
-        return their cluster types
-        """
-        try:
-            clusters = self.clusters
-        except AttributeError:
-            clusters = self.get_clusters()
-        logger.info("Get unique building blocks which are distinct by connectivity")
-        ms = [self.mol.new_mol_by_index(c) for c in clusters]
-        mgs = [molgraph(m) for m in ms]
-        molgs = [mg.molg for mg in mgs]
-        unique_ms = []
-        type_ms = []
-        for i,molgi in enumerate(molgs):
-            new = True
-            for j in unique_ms:
-                molgj = molgs[j]
-                iso = subgraph_isomorphism(molgi, molgj, vertex_label=(molgi.vp.elem, molgj.vp.elem), max_n=1,
-                        subgraph=False)
-                if iso != []:
-                    new = False
-                    break
-            if new:
-                type_ms.append(len(unique_ms))
-                unique_ms.append(i)
-            else:
-                type_ms.append(type_ms[j])
-        return type_ms
-
-    def make_topograph(self, verbose=True, allow_2conns=False):
+    def make_topograph(self, verbose=True, allow_2conns=False, color_clusters=True):
         """
         Create the topograph of the topology of the MOF.
         
@@ -630,7 +630,6 @@ class molgraph(conngraph):
         tm.set_empty_conn()
         xyz = []
         elems = []
-        type_clusters = self.get_unique_clusters()
         for i, cluster_atoms in enumerate(self.clusters):
             ext_bond = []
             cidx = []
@@ -672,10 +671,9 @@ class molgraph(conngraph):
         tm.add_pconn()
         tm.set_ctab_from_conn(pconn_flag=True)
         tm.set_etab()
-        ### MOVE ELSEWHERE [RA] ###
-        from molsys.util.color import vcolor2elem
-        tm.elems = [vcolor2elem[i] for i in type_clusters]
-        ### MOVE ELSEWHERE [RA] ###
+        if color_clusters:
+            type_clusters = self.get_unique_clusters()
+            tm.elems = [vcolor2elem[i] for i in type_clusters]
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
         if verbose: print(self.threshes)
