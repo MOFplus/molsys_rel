@@ -94,6 +94,7 @@ class mol(mpiobject):
         self.nbonds=0
         self.cell=None
         self.cellparams=None
+        self.inv_cell=None
         self.images_cellvec=None
         self.bcond = 0
         self.xyz=None
@@ -127,72 +128,92 @@ class mol(mpiobject):
         Shallow copy as for the standard copy.copy function
         To be tested with python3
         """
-        m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
-        m.mpi_rank       = self.mpi_rank
-        m.mpi_size       = self.mpi_size
-        m.name           = self.name
-        m.is_bb          = self.is_bb
-        m.is_topo        = self.is_topo
-        m.use_pconn      = self.use_pconn
-        m.periodic       = self.periodic
-        m.bcond          = self.bcond
-        m.natoms         = self.natoms
-        m.nbonds         = self.nbonds
-        m.nfrags         = self.nfrags
-        m.weight         = self.weight
-        m.elems          = copy.copy(self.elems)
-        m.atypes         = copy.copy(self.atypes)
-        m.fragnumbers    = copy.copy(self.fragnumbers)
-        m.fragtypes      = copy.copy(self.fragtypes)
-        m.xyz            = copy.copy(self.xyz)
-        m.cell           = copy.copy(self.cell)
-        m.cellparams     = copy.copy(self.cellparams)
-        m.images_cellvec = copy.copy(self.images_cellvec)
-        m.conn           = copy.copy(self.conn)
-        m.pconn          = copy.copy(self.pconn)
-        m.pimages        = copy.copy(self.pimages)
-        m.ctab           = copy.copy(self.ctab)
-        m._etab          = copy.copy(self._etab)
-        m.ptab           = copy.copy(self.ptab)
-        m.supercell      = copy.copy(self.supercell)
-        m.loaded_addons  = []
-        return m
+        try: #python3 # check
+            newone = type(self)(self.mol.__class__())
+        except: #python2
+            newone = type(self)()
+        newdict = newone.__dict__
+        newdict.update(self.__dict__)
+        for key, val in newdict.items():
+            newdict[copy.copy(key)] = copy.copy(val)
+        return newone
+        #m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
+        #m.mpi_rank       = self.mpi_rank
+        #m.mpi_size       = self.mpi_size
+        #m.name           = self.name
+        #m.is_bb          = self.is_bb
+        #m.is_topo        = self.is_topo
+        #m.use_pconn      = self.use_pconn
+        #m.periodic       = self.periodic
+        #m.bcond          = self.bcond
+        #m.natoms         = self.natoms
+        #m.nbonds         = self.nbonds
+        #m.nfrags         = self.nfrags
+        #m.weight         = self.weight
+        #m.elems          = copy.copy(self.elems)
+        #m.atypes         = copy.copy(self.atypes)
+        #m.fragnumbers    = copy.copy(self.fragnumbers)
+        #m.fragtypes      = copy.copy(self.fragtypes)
+        #m.xyz            = copy.copy(self.xyz)
+        #m.cell           = copy.copy(self.cell)
+        #m.cellparams     = copy.copy(self.cellparams)
+        #m.inv_cell       = copy.copy(self.inv_cell)
+        #m.images_cellvec = copy.copy(self.images_cellvec)
+        #m.conn           = copy.copy(self.conn)
+        #m.pconn          = copy.copy(self.pconn)
+        #m.pimages        = copy.copy(self.pimages)
+        #m.ctab           = copy.copy(self.ctab)
+        #m._etab          = copy.copy(self._etab)
+        #m.ptab           = copy.copy(self.ptab)
+        #m.supercell      = copy.copy(self.supercell)
+        #m.loaded_addons  = []
+        #return m
 
     def __deepcopy__(self, memo):
         """
         Deep copy as for the standard copy.deepcopy function
         To be tested with python3
         """
-        m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
-        m.mpi_rank       = self.mpi_rank
-        m.mpi_size       = self.mpi_size
-        m.name           = self.name
-        m.is_bb          = self.is_bb
-        m.is_topo        = self.is_topo
-        m.use_pconn      = self.use_pconn
-        m.periodic       = self.periodic
-        m.bcond          = self.bcond
-        m.natoms         = self.natoms
-        m.nbonds         = self.nbonds
-        m.nfrags         = self.nfrags
-        m.weight         = self.weight
-        m.elems          = copy.deepcopy(self.elems)
-        m.atypes         = copy.deepcopy(self.atypes)
-        m.fragnumbers    = copy.deepcopy(self.fragnumbers)
-        m.fragtypes      = copy.deepcopy(self.fragtypes)
-        m.xyz            = copy.deepcopy(self.xyz)
-        m.cell           = copy.deepcopy(self.cell)
-        m.cellparams     = copy.deepcopy(self.cellparams)
-        m.images_cellvec = copy.deepcopy(self.images_cellvec)
-        m.conn           = copy.deepcopy(self.conn)
-        m.pconn          = copy.deepcopy(self.pconn)
-        m.pimages        = copy.deepcopy(self.pimages)
-        m.ctab           = copy.deepcopy(self.ctab)
-        m._etab          = copy.deepcopy(self._etab)
-        m.ptab           = copy.deepcopy(self.ptab)
-        m.supercell      = copy.deepcopy(self.supercell)
-        m.loaded_addons  = []
-        return m
+        try: #python3 # check
+            newone = type(self)(self.mol.__class__())
+        except: #python2
+            newone = type(self)()
+        newdict = newone.__dict__
+        newdict.update(self.__dict__)
+        for key, val in newdict.items():
+            newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
+        return newone
+        #m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
+        #m.mpi_rank       = self.mpi_rank
+        #m.mpi_size       = self.mpi_size
+        #m.name           = self.name
+        #m.is_bb          = self.is_bb
+        #m.is_topo        = self.is_topo
+        #m.use_pconn      = self.use_pconn
+        #m.periodic       = self.periodic
+        #m.bcond          = self.bcond
+        #m.natoms         = self.natoms
+        #m.nbonds         = self.nbonds
+        #m.nfrags         = self.nfrags
+        #m.weight         = self.weight
+        #m.elems          = copy.deepcopy(self.elems)
+        #m.atypes         = copy.deepcopy(self.atypes)
+        #m.fragnumbers    = copy.deepcopy(self.fragnumbers)
+        #m.fragtypes      = copy.deepcopy(self.fragtypes)
+        #m.xyz            = copy.deepcopy(self.xyz)
+        #m.cell           = copy.deepcopy(self.cell)
+        #m.cellparams     = copy.deepcopy(self.cellparams)
+        #m.inv_cell       = copy.deepcopy(self.inv_cell)
+        #m.images_cellvec = copy.deepcopy(self.images_cellvec)
+        #m.conn           = copy.deepcopy(self.conn)
+        #m.pconn          = copy.deepcopy(self.pconn)
+        #m.pimages        = copy.deepcopy(self.pimages)
+        #m.ctab           = copy.deepcopy(self.ctab)
+        #m._etab          = copy.deepcopy(self._etab)
+        #m.ptab           = copy.deepcopy(self.ptab)
+        #m.supercell      = copy.deepcopy(self.supercell)
+        #m.loaded_addons  = []
+        #return m
 
     #    pass
     #def __deepcopy__(self):
@@ -665,18 +686,10 @@ class mol(mpiobject):
         frac = self.get_frac_xyz()
         self.conn_nopbc = [
             [
-                j for j in c if (abs(np.around(frac[i]-frac[j])) < 1).all()
+                j for j in c if (abs(np.around(frac[i]-frac[j])) < 0.5).all()
             ]
             for i,c in enumerate(self.conn)
         ]
-        ### OLD ###
-        #cellcond = self.cellparams[:3]
-        #self.conn_nopbc = [
-        #    [
-        #        j for j in c if (abs(self.xyz[i]-self.xyz[j]) < cellcond).all()
-        #    ]
-        #    for i,c in enumerate(self.conn)
-        #]
         self.atoms_withconn_nopbc = [i for i,c in enumerate(self.conn_nopbc) if len(c) > 0]
         return
 
