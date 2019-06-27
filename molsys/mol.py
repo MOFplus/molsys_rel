@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#-*- coding: utf-8 -*-
 ### overload print in parallel case (needs to be the first line) [RS] ###
 from __future__ import print_function
 
@@ -716,7 +716,6 @@ class mol(mpiobject):
         """
         # N.B. bullet-proof version of add_pconn!
         # It works also for nets, particulary the smaller ones [RA]
-        ### NEW ###
         pimages = []
         pconn = []
         for i,c in enumerate(self.conn):
@@ -1459,60 +1458,67 @@ class mol(mpiobject):
         Args:
             idx (list) : list of indices to be extracted as a new mol object
         """
-        assert not self.use_pconn, "This method can not be used with pconn!"
+        ### NEW ### pconn-aware method
         m = mol()
-        m.set_natoms(len(idx))
-        d = {}
-        elems = []
-        xyz = []
-        atypes = []
-        for n,i in enumerate(idx):
-            d[i] = n
-            elems.append(self.elems[i])
-            xyz.append(self.xyz[i,:])
-            atypes.append(self.atypes[i])
-        m.set_elems(elems)
-        m.set_xyz(np.array(xyz))
-        m.set_atypes(atypes)
-        conn = []
-        for i in idx:
-            this_conn = []
-            for j in self.conn[i]:
-                try:
-                    this_conn.append(d[j])
-                except KeyError:
-                    pass
-            conn.append(this_conn)
-        m.set_conn(conn)
-        # handle periodic boundary conditions
-        if type(self.cell) != type(None):
-            m.set_cell(self.cell)
-            m.periodic = True
-            """ ###SOURCE OF BUG, YET NOT STUDIED
-            stop = False
-            while not stop:
-                stop = True
-                for i, conns in enumerate(m.conn):
-                    for j in conns:
-                        d, r, imgi = m.get_distvec(i, j)
-                        if imgi != [13]:
-                            stop = False
-                            for ik, k in enumerate(self.cell):
-                                m.xyz[j] += k * images[imgi][0][ik]
-                            break
-            """
-            ### it SEEMS to work now without the while loop, NO WARRANTY (RA+MD)
-            for i, conns in enumerate(m.conn):
-                for j in conns:
-                    d, r, imgi = m.get_distvec(i, j)
-                    if imgi != [13]:
-                        for ik, k in enumerate(self.cell):
-                            m.xyz[j] += k * images[imgi][0][ik]
-                        break
-            m.cell = None
-            m.cellparams = None
-            m.periodic = False
+        m = copy.deepcopy(self)
+        bads = [i for i in range(self.natoms) if i not in idx]
+        m.delete_atoms(bads)
         return m
+        ### DEPRECATED ###
+        #assert not self.use_pconn, "This method can not be used with pconn!"
+        #m.set_natoms(len(idx))
+        #d = {}
+        #elems = []
+        #xyz = []
+        #atypes = []
+        #for n,i in enumerate(idx):
+        #    d[i] = n
+        #    elems.append(self.elems[i])
+        #    xyz.append(self.xyz[i,:])
+        #    atypes.append(self.atypes[i])
+        #m.set_elems(elems)
+        #m.set_xyz(np.array(xyz))
+        #m.set_atypes(atypes)
+        #conn = []
+        #import pdb; pdb.set_trace()
+        #for i in idx:
+        #    this_conn = []
+        #    for j in self.conn[i]:
+        #        try:
+        #            this_conn.append(d[j])
+        #        except KeyError:
+        #            pass
+        #    conn.append(this_conn)
+        #m.set_conn(conn)
+        ## handle periodic boundary conditions
+        #if type(self.cell) != type(None):
+        #    m.set_cell(self.cell)
+        #    m.periodic = True
+        #    """ ###SOURCE OF BUG, YET NOT STUDIED
+        #    stop = False
+        #    while not stop:
+        #        stop = True
+        #        for i, conns in enumerate(m.conn):
+        #            for j in conns:
+        #                d, r, imgi = m.get_distvec(i, j)
+        #                if imgi != [13]:
+        #                    stop = False
+        #                    for ik, k in enumerate(self.cell):
+        #                        m.xyz[j] += k * images[imgi][0][ik]
+        #                    break
+        #    """
+        #    ### it SEEMS to work now without the while loop, NO WARRANTY (RA+MD)
+        #    for i, conns in enumerate(m.conn):
+        #        for j in conns:
+        #            d, r, imgi = m.get_distvec(i, j)
+        #            if imgi != [13]:
+        #                for ik, k in enumerate(self.cell):
+        #                    m.xyz[j] += k * images[imgi][0][ik]
+        #                break
+        #    m.cell = None
+        #    m.cellparams = None
+        #    m.periodic = False
+        #return m
 
     ##### add and delete atoms and bonds ###########################################################
 
@@ -1677,78 +1683,74 @@ class mol(mpiobject):
         ''' 
         deletes an atom and its connections and fixes broken indices of all other atoms
         if keep_conn == True: connectivity is kept when atoms are in the middle of two others '''
-        if hasattr(bads, '__iter__'):
-            if len(bads) >= 2:
-                bads.sort()
-                goods = [i for i in range(self.natoms) if i not in bads]
-                offset = np.zeros(self.natoms, 'int')
-                for i in range(self.natoms):
-                    if i in bads:
-                        offset[i:] += 1
-                self.elems  = np.take(self.elems, goods).tolist()
-                self.atypes = np.take(self.atypes, goods).tolist()
-                if len(self.fragtypes) > 0:
-                    self.fragtypes = np.take(self.fragtypes, goods).tolist()
-                    self.fragnumbers  = np.take(self.fragnumbers, goods).tolist()
-                if keep_conn:
-                    #works ONLY for edges: ERROR for terminal atoms and TRASH for the rest
-                    if self.use_pconn: #must go before setting self.conn
-                        self.pconn = [
-                            [
-                                # get image jp in i-th pconn if j-th atom of i-th conn not in bads
-                                jp if self.conn[i][j] not in bads else
-                                [
-                                # else (j-th atom of i-th con in bads) get image kp
-                                # in the pconn of j-th atom in ith conn
-                                #    and get the first (TBI: all) among atoms associated to each kp different than i
-                                    kp for k,kp in enumerate(self.pconn[self.conn[i][j]])
-                                        if self.conn[self.conn[i][j]][k] != i
-                                ][0] #works only for edges
-                                for j,jp in enumerate(self.pconn[i])
-                            ]
-                            # if i-th atom not in bads
-                            for i in range(self.natoms) if i not in bads
-                        ]
-                    self.conn = [
+        if not hasattr(bads, '__iter__'):
+            self.delete_atoms([bads], keep_conn=keep_conn)
+            return
+        bads.sort()
+        goods = [i for i in range(self.natoms) if i not in bads]
+        offset = np.zeros(self.natoms, 'int')
+        for i in range(self.natoms):
+            if i in bads:
+                offset[i:] += 1
+        self.elems  = np.take(self.elems, goods).tolist()
+        self.atypes = np.take(self.atypes, goods).tolist()
+        if len(self.fragtypes) > 0:
+            self.fragtypes = np.take(self.fragtypes, goods).tolist()
+            self.fragnumbers  = np.take(self.fragnumbers, goods).tolist()
+        if keep_conn:
+            #works ONLY for edges: ERROR for terminal atoms and TRASH for the rest
+            if self.use_pconn: #must go before setting self.conn
+                self.pconn = [
+                    [
+                        # get image jp in i-th pconn if j-th atom of i-th conn not in bads
+                        jp if self.conn[i][j] not in bads else
                         [
-                            # subtract the j-th offset to atom j in i-th conn if j not in bads
-                            j-offset[j] if j not in bads else
-                            # else (j in bads) subtract the k-th offset to atom k in j-th conn
-                            #    and get the first (TBI: all) among atoms different than i
-                            [
-                                k-offset[k] for k in self.conn[j] if k != i
-                            ][0] #works only for edges
-                            for j in self.conn[i]
-                        ]
-                        # if atom i not in bads
-                        for i in range(self.natoms) if i not in bads
+                        # else (j-th atom of i-th con in bads) get image kp
+                        # in the pconn of j-th atom in ith conn
+                        #    and get the first (TBI: all) among atoms associated to each kp different than i
+                            kp for k,kp in enumerate(self.pconn[self.conn[i][j]])
+                                if self.conn[self.conn[i][j]][k] != i
+                        ][0] #works only for edges
+                        for j,jp in enumerate(self.pconn[i])
                     ]
-                else:
-                    if self.use_pconn: #must go before setting self.conn
-                        self.pconn = [
-                            [
-                                # get image jp in i-th pconn if j-th atom of i-th conn not in bads
-                                jp for j,jp in enumerate(self.pconn[i]) if self.conn[i][j] not in bads
-                            ]
-                            # if atom i not in bads
-                            for i in range(self.natoms) if i not in bads
-                        ]
-                    self.conn = [
-                        [
-                            # subtract the j-th offset to atom j in i-th conn if j not in bads
-                            j-offset[j] for j in self.conn[i] if j not in bads
-                        ]
-                        # if atom i not in bads
-                        for i in range(self.natoms) if i not in bads
-                    ]
-                self.natoms = len(self.elems)
-                self.xyz    = self.xyz[goods]
-                return
-            else:
-                if len(bads) != 0:
-                    self.delete_atom(bads[0], keep_conn=keep_conn)
+                    # if i-th atom not in bads
+                    for i in range(self.natoms) if i not in bads
+                ]
+            self.conn = [
+                [
+                    # subtract the j-th offset to atom j in i-th conn if j not in bads
+                    j-offset[j] if j not in bads else
+                    # else (j in bads) subtract the k-th offset to atom k in j-th conn
+                    #    and get the first (TBI: all) among atoms different than i
+                    [
+                        k-offset[k] for k in self.conn[j] if k != i
+                    ][0] #works only for edges
+                    for j in self.conn[i]
+                ]
+                # if atom i not in bads
+                for i in range(self.natoms) if i not in bads
+            ]
         else:
-            self.delete_atom(bads)
+            if self.use_pconn: #must go before setting self.conn
+                self.pconn = [
+                    [
+                        # get image jp in i-th pconn if j-th atom of i-th conn not in bads
+                        jp for j,jp in enumerate(self.pconn[i]) if self.conn[i][j] not in bads
+                    ]
+                    # if atom i not in bads
+                    for i in range(self.natoms) if i not in bads
+                ]
+            self.conn = [
+                [
+                    # subtract the j-th offset to atom j in i-th conn if j not in bads
+                    j-offset[j] for j in self.conn[i] if j not in bads
+                ]
+                # if atom i not in bads
+                for i in range(self.natoms) if i not in bads
+            ]
+        self.natoms = len(self.elems)
+        self.xyz    = self.xyz[goods]
+        return
 
     def delete_atom(self,bad, keep_conn=False):
         """deletes an atom and its connections and fixes broken indices of all other atoms
@@ -1756,39 +1758,7 @@ class mol(mpiobject):
         Args:
             bad (integer): atom index to remove
         """
-        new_xyz = []
-        new_elems = []
-        new_atypes = []
-        new_conn = []
-        new_pconn = []
-        for i in range(self.natoms):
-            if i != bad:
-                new_xyz.append(self.xyz[i].tolist())
-                new_elems.append(self.elems[i])
-                new_atypes.append(self.atypes[i])
-                new_conn.append(self.conn[i])
-                if self.use_pconn:
-                    new_pconn.append(self.pconn[i])
-                for j in range(len(new_conn[-1])):
-                    if new_conn[-1].count(bad) != 0:
-                        idx = new_conn[-1].index(bad)
-                        new_conn[-1].pop(idx)
-                        if self.use_pconn:
-                            new_pconn[-1].pop(idx)
-        self.xyz = np.array(new_xyz, "d")
-        self.elems = new_elems
-        self.natoms = len(self.elems)
-        self.atypes = new_atypes
-        for i in range(len(new_conn)):
-            #try:
-                #len(new_conn[i])
-            #except:
-                #new_conn[i] = [new_conn[i]]
-            for j in range(len(new_conn[i])):
-                if new_conn[i][j] >= bad:
-                    new_conn[i][j]=new_conn[i][j]-1
-        self.conn = new_conn
-        self.pconn = new_pconn
+        self.delete_atoms([bad], keep_conn=keep_conn)
         return
 
     def remove_dummies(self, labels=['x','xx'], keep_conn=False):
@@ -1801,7 +1771,6 @@ class mol(mpiobject):
                 badlist.append(i)
         logger.info('removing '+ str(badlist[::-1]))
         self.delete_atoms(badlist, keep_conn=keep_conn)
-        #for i in badlist[::-1]: self.delete_atom(i)
         return
 
     def remove_overlapping_atoms(self, thresh=SMALL_DIST):
