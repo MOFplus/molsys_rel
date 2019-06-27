@@ -624,6 +624,16 @@ class molgraph(conngraph):
             assert self.clusters
         except (AttributeError, AssertionError) as e:
             self.get_clusters()
+        if len(self.clusters) == 1:
+            if verbose: print("only one cluster is found!")
+            tm = copy.deepcopy(self.mol)
+            if color_clusters:
+                type_clusters = self.get_unique_clusters()
+                tm.elems = [vcolor2elem[i] for i in type_clusters]
+            tg = topograph(self.mol, allow_2conns)
+            tg.make_graph()
+            if verbose: print(self.threshes)
+            return tg
         tm = molsys.mol()
         tm.force_topo()
         tm.natoms = len(self.clusters)
@@ -900,7 +910,10 @@ class topograph(conngraph):
 
     def compute_wells_symbol(self, clist):
         symbol = ""
-        clist = np.array(clist)[:,0].tolist()
+        if list(clist) == []:
+            clist = []
+        else:
+            clist = np.array(clist)[:,0].tolist()
         sclist = sorted(set(clist))
         for i, s in enumerate(sclist):
             count = clist.count(s)
