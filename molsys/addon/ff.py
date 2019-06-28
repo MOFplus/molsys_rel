@@ -1304,7 +1304,7 @@ class ff(base):
         else:
             ref_mol_strs = {}
         if self._mol.mpi_size > 1:
-            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_str, root = 0)
+            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_strs, root = 0)
         for ref in self.scan_ref:
 #            if self._mol.mpi_rank == 0:
 #                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
