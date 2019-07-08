@@ -2642,12 +2642,15 @@ class mol(mpiobject):
         if not self.use_pconn:
             self.etab = self.ctab
             return
-        ### else... ###
         if conn is None and pimages is None:
             conn = self.conn
             pimages = self.pimages
         elif conn is None or pimages is None:
             raise ValueError("conn and pimages can't both be None")
+        ### if conn length is 0: etab is ctab, then return ###
+        if len(conn) == 0:
+            self.etab = self.ctab
+            return
         # all the possible edges (redudant)
         etab_red = sum([[(ii,j,pimages[ii][jj]) for jj,j in enumerate(i)] for ii,i in enumerate(conn)],[])
         # edit by convention:
