@@ -2667,8 +2667,6 @@ class mol(mpiobject):
                 etab_red[ii] = (i,j,k)
                 etab_selfcount += 1
         etab_unique = set(etab_red)
-        # edges appear uniquely twice apart from
-        assert len(etab_red) - etab_selfcount == (len(etab_unique) - etab_selfcount)*2
         etab_unique = sorted(list(etab_unique)) # by convention
         ictab, jctab, ptab = zip(*etab_unique)
         ctab = zip(ictab, jctab)
