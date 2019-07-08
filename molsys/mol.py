@@ -100,19 +100,15 @@ class mol(mpiobject):
         self.xyz=None
         self.elems=[]
         self.atypes=[]
+        self.amass=[]
         self.conn=[]
         self.ctab=[]
         self.fragtypes=[]
         self.fragnumbers=[]
         self.nfrags = 0
-        self.periodic=False
-        self.is_bb=False
         self.weight=1
         self.loaded_addons =  []
         self.set_logger_level()
-        # defaults
-        self.is_topo = False # this flag replaces the old topo object derived from mol
-        self.use_pconn = False # extra flag .. we could have toper that do not need pconn
         self.pconn = []
         self.pimages = []
         self.ptab  = []
@@ -120,6 +116,11 @@ class mol(mpiobject):
         self.aprops = {}
         self.bprops = {}
         self._etab = []
+        # defaults
+        self.periodic=False
+        self.is_bb=False
+        self.is_topo = False # this flag replaces the old topo object derived from mol
+        self.use_pconn = False # extra flag .. we could have toper that do not need pconn
         return
 
     # for future python3 compatibility
@@ -137,37 +138,6 @@ class mol(mpiobject):
         for key, val in newdict.items():
             newdict[copy.copy(key)] = copy.copy(val)
         return newone
-        #m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
-        #m.mpi_rank       = self.mpi_rank
-        #m.mpi_size       = self.mpi_size
-        #m.name           = self.name
-        #m.is_bb          = self.is_bb
-        #m.is_topo        = self.is_topo
-        #m.use_pconn      = self.use_pconn
-        #m.periodic       = self.periodic
-        #m.bcond          = self.bcond
-        #m.natoms         = self.natoms
-        #m.nbonds         = self.nbonds
-        #m.nfrags         = self.nfrags
-        #m.weight         = self.weight
-        #m.elems          = copy.copy(self.elems)
-        #m.atypes         = copy.copy(self.atypes)
-        #m.fragnumbers    = copy.copy(self.fragnumbers)
-        #m.fragtypes      = copy.copy(self.fragtypes)
-        #m.xyz            = copy.copy(self.xyz)
-        #m.cell           = copy.copy(self.cell)
-        #m.cellparams     = copy.copy(self.cellparams)
-        #m.inv_cell       = copy.copy(self.inv_cell)
-        #m.images_cellvec = copy.copy(self.images_cellvec)
-        #m.conn           = copy.copy(self.conn)
-        #m.pconn          = copy.copy(self.pconn)
-        #m.pimages        = copy.copy(self.pimages)
-        #m.ctab           = copy.copy(self.ctab)
-        #m._etab          = copy.copy(self._etab)
-        #m.ptab           = copy.copy(self.ptab)
-        #m.supercell      = copy.copy(self.supercell)
-        #m.loaded_addons  = []
-        #return m
 
     def __deepcopy__(self, memo):
         """
@@ -181,43 +151,11 @@ class mol(mpiobject):
         newdict = newone.__dict__
         newdict.update(self.__dict__)
         for key, val in newdict.items():
-            newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
+            try:
+                newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
+            except Exception as e: # if not deepcopy-able
+                newdict[copy.deepcopy(key, memo)] = copy.copy(val)
         return newone
-        #m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
-        #m.mpi_rank       = self.mpi_rank
-        #m.mpi_size       = self.mpi_size
-        #m.name           = self.name
-        #m.is_bb          = self.is_bb
-        #m.is_topo        = self.is_topo
-        #m.use_pconn      = self.use_pconn
-        #m.periodic       = self.periodic
-        #m.bcond          = self.bcond
-        #m.natoms         = self.natoms
-        #m.nbonds         = self.nbonds
-        #m.nfrags         = self.nfrags
-        #m.weight         = self.weight
-        #m.elems          = copy.deepcopy(self.elems)
-        #m.atypes         = copy.deepcopy(self.atypes)
-        #m.fragnumbers    = copy.deepcopy(self.fragnumbers)
-        #m.fragtypes      = copy.deepcopy(self.fragtypes)
-        #m.xyz            = copy.deepcopy(self.xyz)
-        #m.cell           = copy.deepcopy(self.cell)
-        #m.cellparams     = copy.deepcopy(self.cellparams)
-        #m.inv_cell       = copy.deepcopy(self.inv_cell)
-        #m.images_cellvec = copy.deepcopy(self.images_cellvec)
-        #m.conn           = copy.deepcopy(self.conn)
-        #m.pconn          = copy.deepcopy(self.pconn)
-        #m.pimages        = copy.deepcopy(self.pimages)
-        #m.ctab           = copy.deepcopy(self.ctab)
-        #m._etab          = copy.deepcopy(self._etab)
-        #m.ptab           = copy.deepcopy(self.ptab)
-        #m.supercell      = copy.deepcopy(self.supercell)
-        #m.loaded_addons  = []
-        #return m
-
-    #    pass
-    #def __deepcopy__(self):
-    #    pass
 
     #####  I/O stuff ######################################################################################
 
@@ -1694,6 +1632,8 @@ class mol(mpiobject):
                 offset[i:] += 1
         self.elems  = np.take(self.elems, goods).tolist()
         self.atypes = np.take(self.atypes, goods).tolist()
+        if len(self.amass) > 0:
+            self.amass  = np.take(self.amass, goods).tolist()
         if len(self.fragtypes) > 0:
             self.fragtypes = np.take(self.fragtypes, goods).tolist()
             self.fragnumbers  = np.take(self.fragnumbers, goods).tolist()
@@ -2270,7 +2210,10 @@ class mol(mpiobject):
             amass = np.array(self.amass)[idx]
         if pbc: xyz = self.apply_pbc(xyz, 0)
         if np.sum(amass) > 0.0:
-            center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+            try:
+                center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+            except ValueError:
+                import pdb; pdb.set_trace()
         else: #every atom is dummy!
             center = np.sum(xyz,axis=0)
         return center
