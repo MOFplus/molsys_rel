@@ -1,5 +1,4 @@
 import numpy
-import string
 import molsys.util.unit_cell as unit_cell
 
 def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
@@ -14,13 +13,13 @@ def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
     while not stop:
         line = f.readline()
         if "ITEM: NUMBER OF ATOMS" in line:
-            natoms = int(string.split(f.readline())[0])
+            natoms = int(f.readline().split()[0])
         elif "ITEM: BOX BOUNDS" in line:
             cell = numpy.zeros([3,3])
             if triclinic is not True:
-                cell[0,0] = float(string.split(f.readline())[1])
-                cell[1,1] = float(string.split(f.readline())[1])
-                cell[2,2] = float(string.split(f.readline())[1])
+                cell[0,0] = float(f.readline().split()[1])
+                cell[1,1] = float(f.readline().split()[1])
+                cell[2,2] = float(f.readline().split()[1])
             else:
                 c1 = [float(x) for x in f.readline().split() if x != '']
                 c2 = [float(x) for x in f.readline().split() if x != '']
@@ -58,7 +57,7 @@ def read(mol,f,triclinic=False,atom_offset=0,idx_map={}):
             for i in range(natoms): elems.append("c")
             for i in range(natoms): atypes.append("c")
             for i in range(natoms):
-                sline = string.split(f.readline()) 
+                sline = f.readline().split()
                 idx = int(sline[0]) -1 - atom_offset
                 if len(idx_map.keys()) != 0:
                     idx = idx_map[idx]

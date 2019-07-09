@@ -2,6 +2,7 @@ import numpy
 import string
 import molsys.util.images as images
 from collections import Counter
+import copy
 import pprint
 import logging
 
@@ -277,12 +278,31 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
     natoms      = mol.natoms
     atypes      = mol.atypes
     if mol.cellparams is not None and not pbc:
-        cellcond = .5*numpy.array(mol.cellparams[:3])
-        cnct = [ [i for i in c if (abs(xyz[i]-xyz[e]) < cellcond).all()] for e,c in enumerate(cnct)]
+        cnct = mol.conn_nopbc[:]
+        atoms_withconn = mol.atoms_withconn_nopbc[:]
+        offset = numpy.zeros(natoms, 'int')
+        for i in range(natoms):
+            if i not in atoms_withconn:
+                offset[i:] += 1
+        cnct = [
+            [
+                # subtract the j-th offset to atom j in i-th conn if j in atoms_withconn
+                j-offset[j] for j in cnct[i] if j in atoms_withconn
+            ]
+            # if atom i in atoms_withconn
+            for i in range(natoms) if i in atoms_withconn
+        ]
+        natoms = len(atoms_withconn)
+        xyz    = xyz[atoms_withconn]
+        elems  = numpy.take(elems, atoms_withconn).tolist()
+        atypes = numpy.take(atypes, atoms_withconn).tolist()
+        if frags:
+            fragtypes   = numpy.take(fragtypes, atoms_withconn).tolist()
+            fragnumbers = numpy.take(fragnumbers, atoms_withconn).tolist()
     if plain:
         if frags:
-            fragtypes = [None]*len(mol.atypes)
-            fragnumbers = [None]*len(mol.atypes)
+            fragtypes = [None]*len(atypes)
+            fragnumbers = [None]*len(atypes)
             oldatypes = list(zip(atypes, fragtypes, fragnumbers))
         else:
             oldatypes = atypes[:]
@@ -294,7 +314,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
         atypes = [a if str(a).isdigit() else o2n_atypes[a] for a in oldatypes]
         frags = False ### encoded in one column only
     xyzl = xyz.tolist()
-    for i in range(mol.natoms):
+    for i in range(natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             (i+1, elems[i], xyzl[i][0], xyzl[i][1], xyzl[i][2], atypes[i])
         if frags == True:
@@ -347,7 +367,12 @@ def write(mol, f, topo = False, frags = False, pbc=True, plain=False):
     ### write func ###
     cellparams = mol.cellparams
     if cellparams is not None:
-        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+list(cellparams)))
+        if pbc:
+            natoms = mol.natoms
+        else:
+            mol.remove_conn_pbc()
+            natoms = len(mol.atoms_withconn_nopbc)
+        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)
     write_body(f, mol, topo=topo, frags=frags, pbc=pbc, plain=plain)

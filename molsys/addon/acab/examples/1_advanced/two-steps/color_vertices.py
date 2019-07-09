@@ -8,7 +8,7 @@ import os
 # net name as in filename or in MOF+ database
 net = "nbo-b"
 # number unit cell replica in the 3 directions of space
-supercell = [2,2,2]
+supercell = [1,1,1]
 # string of supercell
 scell = ''.join([str(s) for s in supercell])
 # edge color ratio

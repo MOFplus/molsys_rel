@@ -163,10 +163,9 @@ def make_mol(m, alpha=2, ecolors=None, vcolors=None, etab=None,
     if both edges and vertices, it takes care of the connectivity too
     """
     if use_edge and use_vertex:
-        me = make_emol(m, alpha=alpha, ecolors=ecolors, etab=etab, ec2e=ec2e)
-        ne = me.natoms
+        mm = make_emol(m, alpha=alpha, ecolors=ecolors, etab=etab, ec2e=ec2e)
+        ne = mm.natoms # at the moment just edge mol
         mv = make_vmol(m, vcolors=vcolors, vc2e=vc2e)
-        mm = copy.copy(me)
         mm.add_mol(mv) # N.B.: in THIS EXACT ORDER, otherwise KO connectivity
         ### connectivity ###
         ctab = []
