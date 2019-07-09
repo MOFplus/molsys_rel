@@ -122,7 +122,7 @@ def write(mol, f,vel=None):
         f.write("%i %2s %f %f %f %f %f %f \n" % (i, mol.elems[i],
             mol.xyz[i][0], mol.xyz[i][1], mol.xyz[i][2],
             vel[i][0], vel[i][1], vel[i][2]))
-    f.close()
+    #f.close()
     return
 
 
