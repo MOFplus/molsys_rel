@@ -7,6 +7,38 @@ import numpy as np
 import logging
 logger = logging.getLogger('molsys.ff')
 
+class api_cache(object):
+
+    def __init__(self, api = None):
+        self._api = api
+        self._ref_dic = []
+        self._ref_mol_strs = {}
+        self._ref_params = {}
+        self._special_atypes = {}
+        return
+
+    def list_FFrefs(self,ffname):
+        if len(self._ref_dic)==0:
+            self._ref_dic = self._api.list_FFrefs(ffname)
+        return self._ref_dic
+
+    def get_FFrefs_graph(self,scan_ref):
+        if len(self._ref_mol_strs.keys()) == 0:
+            self._ref_mol_strs  = self._api.get_FFrefs_graph(scan_ref, out ="str")
+        return self._ref_mol_strs
+
+    def get_ref_params(self, scan_ref, ffname):
+        if len(self._ref_params.keys()) == 0:
+            for ref in scan_ref:
+                ref_par = self._api.get_params_from_ref(ffname, ref)
+                self._ref_params[ref] = ref_par
+        return self._ref_params
+    
+    def list_special_atypes(self):
+        if len(self._ref_params.keys()) == 0:
+            self._special_atypes = self._api.list_special_atypes()
+        return self._special_atypes
+
 class potentials(dict):
     """
     Class to store the parameter values, multiple ff objects can use the same par instance
