@@ -13,7 +13,7 @@ Created on Thu Mar 23 11:25:43 2017
         contains class ff
 
 """
-
+import sys
 def string2bool(s):
     return s.lower() in ("True", "true", "yes")
 
@@ -828,7 +828,7 @@ class ff(base):
                 if len(special_atypes) == 0: special_atypes = self.cache.list_special_atypes()
             else:
                 self.cache = None
-                pecial_atypes = None
+                special_atypes = None
             if self._mol.mpi_size > 1:
                 special_atypes = self._mol.mpi_comm.bcast(special_atypes, root = 0)
             #if self._mol.mpi_rank == 0:
@@ -1387,9 +1387,9 @@ class ff(base):
         if self._mol.mpi_rank == 0:
             self.ref_params = self.cache.get_ref_params(self.scan_ref, self.par.FF)
         else:
-            self.ref_params == None
+            self.ref_params = None
         if self._mol.mpi_size > 1:
-            slef.ref_params = self._mol.mpi_comm.bcast(self.ref_params, root=0)
+            self.ref_params = self._mol.mpi_comm.bcast(self.ref_params, root=0)
 
         #self.ref_params = {}
         #for ref in self.scan_ref:
