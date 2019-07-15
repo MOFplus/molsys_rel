@@ -154,7 +154,7 @@ class mol(mpiobject):
             try:
                 newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
             except Exception as e: # if not deepcopy-able
-                newdict[copy.deepcopy(key, memo)] = copy.copy(val)
+                newdict[copy.deepcopy(key, memo)] = val
         return newone
 
     #####  I/O stuff ######################################################################################
@@ -504,11 +504,13 @@ class mol(mpiobject):
                 try: ### get the addon attribute, initialize it and set as self attribute
                     addinit = getattr(addon, addmod)(self, *args, **kwargs)
                     setattr(self, addmod, addinit)
+                ### COMMENT THIS BLOCK FOR DEBUGGING ADDONS [RA] ###
                 except TypeError as e: ### HACK when 'from molsys.addon.addmod import something'
                     # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
                     # the 'getattr' to get molsys.addon.ff.ff
                     addinit = getattr(getattr(addon, addmod),addmod)(self, *args, **kwargs)
                     setattr(self, addmod, addinit)
+                ####################################################
                 except Exception as e: ### unexpected error! bugfix needed or addon used improperly
                     import traceback
                     traceback.print_exc()
@@ -2023,11 +2025,23 @@ class mol(mpiobject):
         self.xyz = rotations.rotate_by_triple(self.xyz, triple)
         return
 
-    def center_com(self, check_periodic=True, pbc = True):
-        ''' centers the molsys at the center of mass '''
+    def center_com(self, idx=None, check_periodic=True, pbc = True):
+        ''' centers the molsys at the center of mass
+            optionally: of given atomic indices
+        '''
         if check_periodic:
             if self.periodic: return
-        center = self.get_com(check_periodic=check_periodic, pbc = pbc)
+        center = self.get_com(idx=idx, check_periodic=check_periodic, pbc = pbc)
+        self.translate(-center)
+        return
+
+    def center_coc(self, idx=None, check_periodic=True, pbc = True):
+        ''' centers the molsys at the center of mass
+            optionally: of given atomic indices
+        '''
+        if check_periodic:
+            if self.periodic: return
+        center = self.get_coc(idx=idx, check_periodic=check_periodic, pbc = pbc)
         self.translate(-center)
         return
 
@@ -2196,9 +2210,8 @@ class mol(mpiobject):
         Parameters:
             idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
-        if hasattr(self,'masstype') == False: self.set_real_mass()
-        #if self.masstype == 'unit': logger.info('Unit mass is used for COM calculation')
-        #if self.masstype == 'real': logger.info('Real mass is used for COM calculation')
+        if hasattr(self,'masstype') == False:
+            self.set_real_mass()
         if xyz is not None:
             amass = np.array(self.amass)[idx]
         elif idx is None:
@@ -2210,12 +2223,30 @@ class mol(mpiobject):
             amass = np.array(self.amass)[idx]
         if pbc: xyz = self.apply_pbc(xyz, 0)
         if np.sum(amass) > 0.0:
-            try:
-                center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
-            except ValueError:
-                import pdb; pdb.set_trace()
-        else: #every atom is dummy!
-            center = np.sum(xyz,axis=0)
+            center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+        else: #every atom is dummy! so it counts as one
+            center = np.sum(xyz,axis=0)/float(len(amass))
+        return center
+
+    def get_coc(self, idx = None, xyz = None, check_periodic=True, pbc = True):
+        """
+        returns the center of coordinates (centroid) of the mol object.
+
+        Parameters:
+            idx  (list): list of atomindices to calculate the center of coordinates of a subset of atoms
+        """
+        if xyz is not None:
+            natoms = len(idx)
+        elif idx is None:
+            if self.periodic and check_periodic: return None
+            xyz = self.get_xyz()
+            natoms = self.natoms
+        else:
+            xyz = self.get_xyz()[idx]
+            natoms = len(idx)
+        if pbc:
+            xyz = self.apply_pbc(xyz, 0)
+        center = np.sum(xyz,axis=0)/float(natoms)
         return center
 
     def shift_by_com(self, alpha=2, **kwargs):
