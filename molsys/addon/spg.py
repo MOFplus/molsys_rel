@@ -32,50 +32,9 @@ import logging
 logger = logging.getLogger("molsys.spg")
 logger.setLevel(logging.INFO)
 
+from molsys.util.misc import sort_by_columns, argsort_by_columns, sort_by_columns_in_place
 from molsys.util.sysmisc import isatty
 from molsys.util.timing import timer, Timer #to be removed
-
-### UTIL ### please move to molsys.util module!
-def sort_by_columns(arr, vf='<f8', of='f', dtype=np.float, argsort=False):
-    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
-    keeping rows. No straightforward way to do that in simple numpy.
-    Arbitrary number of columns. It works with float by default."""
-    n = arr.shape[1]
-    vfmt = ','.join([vf]*n)
-    ofmt = ['%s%s' % (of,i) for i in range(n)]
-    sortd = np.sort(arr.view(vfmt), order=ofmt, axis=0).view(dtype)
-    if argsort:
-        argsortd = np.argsort(arr.view(vfmt), order=ofmt, axis=0).view(np.int).T
-        assert (sortd == arr[argsortd][0]).all() 
-        return sortd, argsortd
-    else:
-        return sortd
-
-def argsort_by_columns(arr, vf='<f8', of='f', dtype=np.float, sort=False):
-    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
-    keeping rows. No straightforward way to do that in simple numpy.
-    Arbitrary number of columns. It works with float by default."""
-    n = arr.shape[1]
-    vfmt = ','.join([vf]*n)
-    ofmt = ['%s%s' % (of,i) for i in range(n)]
-    argsortd = np.argsort(arr.view(vfmt), order=ofmt, axis=0).view(np.int).T
-    if sort:
-        sortd = np.sort(arr.view(vfmt), order=ofmt, axis=0).view(dtype)
-        assert (sortd == arr[argsortd][0]).all() 
-        return sortd, argsortd
-    else:
-        return argsortd
-
-def sort_by_columns_in_place(arr, vf='<f8', of='f', dtype=np.float):
-    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
-    keeping rows. No straightforward way to do that in simple numpy.
-    Arbitrary number of columns. It works with float by default.
-    In place! Faster! Returns None!"""
-    n = arr.shape[1]
-    vfmt = ','.join([vf]*n)
-    ofmt = ['%s%s' % (of,i) for i in range(n)]
-    arr.view(vfmt).sort(order=ofmt, axis=0)
-    return
 
 def get_frac_match(frac, sym, thresh=5e-6, eps=1e-8):
     symperm = []
