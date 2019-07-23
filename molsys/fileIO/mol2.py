@@ -362,7 +362,8 @@ def read(mol, f):
     mol.set_ctab(ctab, conn_flag=True)
     if any(cellparams):
         mol.set_cellparams(cellparams)
-        if _crysin.spgn > 1: # not P1 -> apply spg operators
+        ### TODO: investigate spgn > 231
+        if 1 < _crysin.spgn < 231: # not P1 -> apply spg operators
             mol.addon("spg")
             mol.spg.make_P1(spgnum=_crysin.spgn, sg_setting=_crysin.spgx)
     ### keeping ###

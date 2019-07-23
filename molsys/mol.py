@@ -547,12 +547,12 @@ class mol(mpiobject):
                 if i not in conn[j]: return False
         return True
 
-    def detect_conn(self, tresh = 0.1,remove_duplicates = False, fixed_dist=False):
+    def detect_conn(self, thresh = 0.1,remove_duplicates = False, fixed_dist=False):
         """
         detects the connectivity of the system, based on covalent radii.
 
         Args:
-            tresh (float): additive treshhold
+            thresh (float): additive threshhold
             remove_duplicates (bool): flag for the detection of duplicates
             fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance
                 replaces covalent radii (for blueprints use 1.0)
@@ -582,16 +582,16 @@ class mol(mpiobject):
             conn_local = []
             if remove_duplicates == True:
                 for j in range(i,natoms):
-                    if i != j and dist[j] < tresh:
+                    if i != j and dist[j] < thresh:
                         logger.debug("atom %i is duplicate of atom %i" % (j,i))
                         duplicates.append(j)
             else:
                 for j in range(natoms):
                     if fixed_dist is False:
-                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
+                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+thresh:
                             conn_local.append(j)
                     else:
-                        if i!= j and dist[j] <= fixed_dist+tresh:
+                        if i!= j and dist[j] <= fixed_dist+thresh:
                             conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
         if remove_duplicates:
@@ -611,7 +611,7 @@ class mol(mpiobject):
                 self.set_atypes(atypes)
                 self.set_fragtypes(fragtypes)
                 self.set_fragnumbers(fragnumbers)
-            self.detect_conn(tresh = tresh, remove_duplicates=False)
+            self.detect_conn(thresh = thresh, remove_duplicates=False)
         else:
             self.set_conn(conn)
         if self.use_pconn:
@@ -1857,7 +1857,7 @@ class mol(mpiobject):
         :Arguments:
         sele(list of int): selection list of atom indices
             if sele is None: find molecules in the whole mol
-            else: find molecules just in the selection, countin non-connected
+            else: find molecules just in the selection, counting non-connected
                 atoms as separated molecules (e.g. if you select just the
                 COO of a paddlewheel you get 4 molecules)
 

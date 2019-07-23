@@ -185,7 +185,10 @@ class spg:
         dataset = spglib.get_symmetry_from_database(spgnum)
         #print(dataset)
         
-        self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
+        try:
+            self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3)
+        except Exception:
+            self.sg = Spacegroup(spgnum)#,sprec = 1e-3)
         
         new_xyz = []
         new_elems = []
@@ -255,7 +258,7 @@ class spg:
             self.mol.remove_duplicates()
             return True
         else:
-            self.mol.detect_conn(tresh = conn_thresh, remove_duplicates = True)
+            self.mol.detect_conn(thresh = conn_thresh, remove_duplicates = True)
             return True
 
     def get_primitive_cell(self):
