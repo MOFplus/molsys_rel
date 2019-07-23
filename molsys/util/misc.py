@@ -111,10 +111,11 @@ def compare_coords(xyzi, xyzj, rtol=1e-03, atol=1e-03):
     jsh = xyzj.shape
     assert ish == jsh, "Shape mismatch not supported: %s != %s" % (ish, jsh)
     dist_xyz = xyzi[:,np.newaxis]-xyzj[np.newaxis,:]
+    dist_xyz -= np.around(dist_xyz) ### pbc
     dist = np.linalg.norm(dist_xyz, axis=2)
     idxi, idxj = hungarian(dist)
     assert np.allclose(idxi, np.arange(idxi.size)), "Unexpected hungarian return"
-    if np.allclose(xyzi, xyzj[idxj], rtol=1e-03, atol=1e-03):
+    if np.allclose(dist[idxi,idxj], np.zeros(ish[0]), rtol=rtol, atol=atol):
         return list(idxj) # so truth value is unambigous
     else:
         return []

@@ -556,6 +556,9 @@ class mol(mpiobject):
             remove_duplicates (bool): flag for the detection of duplicates
             fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance
                 replaces covalent radii (for blueprints use 1.0)
+
+        Todo:
+            refactoring
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -608,7 +611,7 @@ class mol(mpiobject):
                 self.set_atypes(atypes)
                 self.set_fragtypes(fragtypes)
                 self.set_fragnumbers(fragnumbers)
-            self.detect_conn(tresh = tresh)
+            self.detect_conn(tresh = tresh, remove_duplicates=False)
         else:
             self.set_conn(conn)
         if self.use_pconn:
@@ -1733,6 +1736,39 @@ class mol(mpiobject):
                 if d < thresh:
                     badlist.append(j)
         self.delete_atoms(badlist)
+        return
+
+    def get_duplicates(self, xyz=None, rtol=1e-03, atol=1e-03):
+        """
+        get duplicate atoms within given tolerances
+        as separated method from remove_duplicates so it can accept custom xyz
+        see also util.misc.compare_coords
+        native numpy faster than explicit loops
+        """
+        if xyz is None:
+            if self.periodic:
+                x = self.get_frac_xyz()
+            else:
+                x = self.get_xyz()
+        else:
+            x = xyz
+        dx = x[:,np.newaxis]-x[np.newaxis,:] # coordinates distance
+        if self.periodic:
+            dx -= np.around(dx) # pbc
+        d = np.linalg.norm(dx, axis=2) # Euclidean distance
+        wd = np.where(np.isclose(d, 0, rtol=rtol, atol=atol)) # where of duplicates
+        ### print(np.vstack(wd).T) # for debug
+        idx = np.where(wd[0] < wd[1]) # index of duplicates
+        duplicates = wd[1][idx]
+        duplicates = sorted(duplicates) # not needed but clearer; alto transform to list
+        return duplicates
+
+    def remove_duplicates(self, rtol=1e-03, atol=1e-03):
+        """
+        remove duplicate atoms within given tolerances
+        """
+        duplicates = self.get_duplicates(rtol=rtol, atol=atol)
+        self.delete_atoms(duplicates)
         return
 
     def merge_atoms(self, sele=None, parent_index=0, molecules_flag=False):
