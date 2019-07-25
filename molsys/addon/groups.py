@@ -132,7 +132,7 @@ class group(object):
         elif hasattr(idx, '__iter__'):
             return [self.occurences[x] for x in idx]
         else:
-            print 'print provide valid idx'
+            print('print provide valid idx')
             return []
     
     def get_noccurences(self):

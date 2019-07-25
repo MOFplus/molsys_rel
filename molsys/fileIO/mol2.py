@@ -14,7 +14,7 @@ def read(mol, f, delimiter=','):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     s = f.read().splitlines()
     bonds,atoms=0,0
@@ -55,7 +55,7 @@ def write(mol, f):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
 
     print('NOT YET IMPLEMENTED!')

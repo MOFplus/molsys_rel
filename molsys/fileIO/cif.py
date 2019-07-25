@@ -18,9 +18,9 @@ def write(mol,f, name='', write_bonds=True):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
-    f.write("data_mofplus.org:%s\n" % name)
+    f.write("data_%s\n" % name)
     f.write("_symmetry_cell_setting           triclinic \n")
     f.write("_symmetry_space_group_name_H-M   'P 1' \n")
     f.write("_symmetry_Int_Tables_number      1 \n")

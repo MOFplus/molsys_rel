@@ -3,7 +3,7 @@
 import numpy
 import numpy as np
 import string
-import cPickle as pickle
+import pickle as pickle
 import os
 import sys
 #import matplotlib.pyplot as plt
@@ -87,7 +87,7 @@ def make_upload_dictionary(m,name=None,
             penalties = f.scan_vertex_penalties()
             data['penalties'] = penalties
         except:
-            print 'vertex penalties not available'
+            print('vertex penalties not available')
             
     return data
 
@@ -125,7 +125,7 @@ def make_conn_entry(m):
             atypes_of_conn1 = [m.atypes[x] for x in m.conn[idx1]]
             count = atypes_of_conn1.count(m.atypes[idx0])
             conn.append([[un[0][1],un[0][0]],count])
-    print 'conn:', conn
+    print('conn:', conn)
     #for i,c in enumerate(conn):
     #    print i,c
     #    c[0][0] = int(c[0][0])
@@ -159,7 +159,7 @@ def write_ptxyz(m,filename=False):
             pass
     ff.write('%i %16.10f %16.10f %16.10f %10.6f %10.6f %10.6f\n' % (len(newxyz),m.cellparams[0],m.cellparams[1],m.cellparams[2],m.cellparams[3],m.cellparams[4],m.cellparams[5]) )
 
-    for i in xrange(newn):
+    for i in range(newn):
         line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
             tuple([i+1]+[newatype[i]]+ newxyz[i] + [newkinds[i]])
         conn = (numpy.array(newconn[i])+1).tolist()
@@ -243,7 +243,7 @@ class net(object):
         self.references = [lines.pop(0) for i in range(nrefs)]
         t = lines.pop(0).split()
         self.sg_name,self.sg_number = t[0],int(t[1])
-        self.cell = numpy.array(map(float,lines.pop(0).split()))
+        self.cell = numpy.array(list(map(float,lines.pop(0).split())))
         self.make_cellvec()
         
         nverts = int(lines.pop(0))
@@ -254,7 +254,7 @@ class net(object):
         self.order = []
         for i in range(nverts):
             self.node_coordination.append(int(lines.pop(0).split()[-1]))
-            self.node.append(map(float,lines.pop(0).split()))
+            self.node.append(list(map(float,lines.pop(0).split())))
             self.symbolic.append(lines.pop(0))
             self.wyckoff.append(lines.pop(0))
             self.symmetry.append(lines.pop(0))
@@ -268,7 +268,7 @@ class net(object):
     
         for i in range(nedges):
             temp = lines.pop(0)
-            self.edge_center.append(map(float,lines.pop(0).split()))
+            self.edge_center.append(list(map(float,lines.pop(0).split())))
             self.center_symbolic.append(lines.pop(0))
             self.center_wyckoff.append(lines.pop(0))
             self.center_symmetry.append(lines.pop(0))
@@ -377,7 +377,7 @@ class net(object):
         ff.write('%i %16.10f %16.10f %16.10f %10.6f %10.6f %10.6f\n' % (len(self.xyz),self.cell[0],self.cell[1],self.cell[2],self.cell[3],self.cell[4],self.cell[5]) )
         #ff.write('BLUEPRINT FOR '+self.name+'\n')
         #for i,x in enumerate(self.xyz)
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
                tuple([i+1]+[vertex_names[self.node_coordination[self.kinds[i]]]]+ self.xyz[i].tolist() + [self.kinds[i]])
             conn = (numpy.array(self.conn[i])+1).tolist()
@@ -391,7 +391,7 @@ class net(object):
         if not filename: filename=self.name+'.topo'
         ff=open(filename,'w')
         ff.write('%i %16.10f %16.10f %16.10f %10.6f %10.6f %10.6f\n' % (len(self.xyz),self.cell[0],self.cell[1],self.cell[2],self.cell[3],self.cell[4],self.cell[5]) )
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
                tuple([i+1]+[vertex_names[self.node_coordination[self.kinds[i]]]]+ self.xyz[i].tolist() + [self.kinds[i]])
             conn = (numpy.array(self.conn[i])+1).tolist()
@@ -449,7 +449,7 @@ class net(object):
         #print newxyz
         #print newn, len(newatype), len(newconn), len(newxyz), len(newkinds)
         #print newkinds
-        for i in xrange(newn):
+        for i in range(newn):
             line = ("%3d %-3s" + 3*"%12.6f" + " %5s") % \
                tuple([i+1]+[newatype[i]]+ newxyz[i] + [newkinds[i]])
             conn = (numpy.array(newconn[i])+1).tolist()
@@ -491,7 +491,7 @@ class net(object):
             for j,c in enumerate(self.conn[idx]):
                 ckind = self.kinds[c]
                 ddict.update({(i,ckind):ddict[(i,ckind)]+1}) # sum up No conns to each kind
-            for k in ddict.keys():
+            for k in list(ddict.keys()):
                 self.uniconns.append([k, ddict[k]])
         
         #seems to work, WARNING: connections to the same kind are not stored redundantly
@@ -503,7 +503,7 @@ class net(object):
         #print cc
         for i,c in enumerate(cc):
             if c != self.node_coordination[i]:
-                print 'warning, inconsisitent uniconns at net:', self.name
+                print('warning, inconsisitent uniconns at net:', self.name)
         # nice, works for all 'good.pickle' nets, 10.5.2016    
         return 
     
@@ -553,7 +553,7 @@ class net(object):
         d    = []
         conn = [[] for i in range(len(self.node_coordination))]
         for i,un in enumerate(self.unique_neighbors):
-            print i,un
+            print(i,un)
             #conn.update({un[1][0]:un[1][1]})
             conn[un[0][1][0]].append(un[0][1][1])
             if un[0][1][0] != un[0][1][1]:
@@ -598,20 +598,20 @@ class net(object):
                         self.sg_name = self.sg_name[0:self.sg_name.find(':')]
                     #print self.name
                 if s[0] == 'CELL':
-                    self.cell = numpy.array(map(float,s[1:]))
+                    self.cell = numpy.array(list(map(float,s[1:])))
                     self.cellvec = unit_cell.vectors_from_abc(self.cell)
                     self.images_cellvec = numpy.dot(images,self.cellvec)
                     #print self.cell
                 if s[0] == 'NODE':
-                    self.node.append(map(float,s[3:]))
+                    self.node.append(list(map(float,s[3:])))
                     self.node_coordination.append(int(s[2]))
                 if s[0] == 'EDGE':
-                    self.edge1.append(map(float,s[1:4]))
-                    self.edge2.append(map(float,s[4:7]))
+                    self.edge1.append(list(map(float,s[1:4])))
+                    self.edge2.append(list(map(float,s[4:7])))
                 try:
                     blubb=s[1]
                     if s[1] == 'EDGE_CENTER':
-                        self.edge_center.append(map(float,s[2:]))
+                        self.edge_center.append(list(map(float,s[2:])))
                 except IndexError:
                     pass
             self.verts = copy.copy(self.node_coordination)
@@ -627,14 +627,14 @@ class net(object):
             try:
                 self.xyz, self.kinds = self.sg.equivalent_sites(self.node,symprec=sprec)
             except ase.spacegroup.spacegroup.SpacegroupValueError:
-                print self.name,'has', self.sg_name, self.sg_number, ': something is wrong with its spacegroup!!'
+                print(self.name,'has', self.sg_name, self.sg_number, ': something is wrong with its spacegroup!!')
                 self.sg=[]
                 self.error.append('xyz_expansion_failed1')
             except ValueError:
-                print self.name,': valueError at get_xyz()'
+                print(self.name,': valueError at get_xyz()')
                 self.error.append('xyz_expansion_failed2')
         else:
-            print 'spacegroup could not be determined !'
+            print('spacegroup could not be determined !')
             self.sgerror = True
         self.natoms = len(self.xyz)
         self.n = self.natoms
@@ -647,14 +647,14 @@ class net(object):
             try:
                 xyz, kinds = self.sg.equivalent_sites(self.node,symprec=sprec)
             except ase.spacegroup.spacegroup.SpacegroupValueError:
-                print self.name,'has', self.sg_name, self.sg_number, ': something is wrong with its spacegroup!!'
+                print(self.name,'has', self.sg_name, self.sg_number, ': something is wrong with its spacegroup!!')
                 self.sg=[]
                 self.error.append('xyz_expansion_failed1')
             except ValueError:
-                print self.name,': valueError at get_xyz()'
+                print(self.name,': valueError at get_xyz()')
                 self.error.append('xyz_expansion_failed2')
         else:
-            print 'spacegroup could not be determined !'
+            print('spacegroup could not be determined !')
             self.sgerror = True
         self.natoms = len(self.xyz)
         self.n = self.natoms
@@ -687,24 +687,24 @@ class net(object):
                     self.edges1.append(e1)
                     self.ekinds1.append(k1)
                 except ase.spacegroup.spacegroup.SpacegroupValueError:
-                    print self.name,'has', self.sg_name, ': something is wrong with its edge1 !!'  
-                    print self.edge1
+                    print(self.name,'has', self.sg_name, ': something is wrong with its edge1 !!')
+                    print(self.edge1)
             for i,e in enumerate(self.edge2):
                 try:
                     e1,k1 =self.sg.equivalent_sites(e,symprec=sprec)
                     self.edges2.append(e1)
                     self.ekinds2.append(k1)
                 except ase.spacegroup.spacegroup.SpacegroupValueError:
-                    print self.name,'has', self.sg_name, ': something is wrong with its edge2 !!'  
-                    print self.edge2
+                    print(self.name,'has', self.sg_name, ': something is wrong with its edge2 !!')
+                    print(self.edge2)
             for i,e in enumerate(self.edge_center):
                 try:
                     e1,k1 =self.sg.equivalent_sites(e,symprec=sprec)
                     self.centers.append(e1)
                     self.ckinds.append(k1)
                 except ase.spacegroup.spacegroup.SpacegroupValueError:
-                    print self.name,'has', self.sg_name, ': something is wrong with its edge_center !!'  
-                    print self.edge_center
+                    print(self.name,'has', self.sg_name, ': something is wrong with its edge_center !!')
+                    print(self.edge_center)
         else:
             self.sgerror=True
             pass
@@ -714,15 +714,15 @@ class net(object):
     
     def report(self):
         for i in self.xyz:
-            print i
-        print '-- edges --'
+            print(i)
+        print('-- edges --')
         for i in range(len(self.edges1)):
             for j in range(len(self.edges1[i])):
-                print i, self.edges1[i][j]
+                print(i, self.edges1[i][j])
             for j in range(len(self.edges2[i])):
-                print i, self.edges2[i][j]
+                print(i, self.edges2[i][j])
             for j in self.centers[i]:
-                print i, j
+                print(i, j)
     
     
     def get_spacegroup(self,sg_setting=2):
@@ -737,7 +737,7 @@ class net(object):
             try:
                 self.sg = Spacegroup(spgnum,setting=1)
             except:
-                print self.name, 'failed to get its spacegroup class setup'
+                print(self.name, 'failed to get its spacegroup class setup')
                 return False
         return True
 
@@ -755,11 +755,11 @@ class net(object):
         self.conn = []
         self.pconn=[]
         self.use_pconn=True
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.conn.append([])
             if self.use_pconn: self.pconn.append([])
-        for i in xrange(self.natoms):
-            for j in xrange(i+1,self.natoms):
+        for i in range(self.natoms):
+            for j in range(i+1,self.natoms):
                 d,r,imgi=self.get_distvec(i,j)
                 bond = False
                 if fixed_cutoff:
@@ -777,7 +777,7 @@ class net(object):
                             #break 
                 if bond:
                     if len(imgi)>1 and not self.use_pconn:
-                        raise ValueError, "Error in connectivity detection: use pconn!!!"
+                        raise ValueError("Error in connectivity detection: use pconn!!!")
                     for ii in imgi:
                         self.conn[i].append(j)
                         self.conn[j].append(i)
@@ -791,15 +791,15 @@ class net(object):
         self.conn = []
         self.pconn = []
         self.use_pconn=True
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.conn.append([])
             if self.use_pconn: self.pconn.append([])
         dxyz =  numpy.zeros((self.natoms,self.natoms))
         vxyz =  numpy.zeros((self.natoms,self.natoms,3))
         ixyz = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             ixyz.append([])
-            for j in xrange(self.natoms):
+            for j in range(self.natoms):
                 d,r,imgi=self.get_distvec(i,j)
                 ixyz[i].append(imgi)
                 dxyz[i,j] = d
@@ -831,7 +831,7 @@ class net(object):
         #print numpy.array2string(dc,precision=4)
         #print numpy.array2string(v,precision=4)
         #print numpy.array2string(dc,precision=4)
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             dsort = numpy.argsort(dxyz[:,i])#[1:]
             #print dsort
             target = self.node_coordination[self.kinds[i]]
@@ -882,24 +882,24 @@ class net(object):
         self.conn = []
         self.pconn = []
         self.use_pconn=True
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.conn.append([])
             if self.use_pconn: self.pconn.append([])
         dxyz =  numpy.zeros((self.natoms,self.natoms))
         vxyz =  numpy.zeros((self.natoms,self.natoms,3))
         ixyz = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             ixyz.append([])
-            for j in xrange(self.natoms):
+            for j in range(self.natoms):
                 d,r,imgi=self.get_distvec(i,j)
                 ixyz[i].append(imgi)
                 dxyz[i,j] = d
                 vxyz[i,j,:] = r
                 #vxyz[j,i,:] = -r
         if numpy.max(abs(dxyz -dxyz.T)) > 0.01:
-            print 'distance matrix broken!!!!! ------------------------------------------------------'
+            print('distance matrix broken!!!!! ------------------------------------------------------')
         ic = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             dsort = numpy.argsort(dxyz[:,i])[1:]
             target = self.node_coordination[self.kinds[i]]
             mxiter = 2*target
@@ -959,7 +959,7 @@ class net(object):
         dc_subspace = numpy.min([self.natoms,dc_subspace])
         self.conn = []
         self.pconn = []
-        for i in xrange(self.natoms):
+        for i in range(self.natoms):
             self.conn.append([])
             if self.use_pconn: self.pconn.append([])
         centers=[]
@@ -1011,12 +1011,12 @@ class net(object):
             for i, kinds in enumerate(self.kinds):
                 nbonds += self.node_coordination[kinds]
         except AttributeError:
-            print 'kinds not there'
+            print('kinds not there')
             self.good=False
             return False
         if nbonds != ncenters * 2:
             self.good = False
-            print 'number of bonds not equal to number of centers *2 !!!'
+            print('number of bonds not equal to number of centers *2 !!!')
             return False
         return True
 
@@ -1102,9 +1102,9 @@ class net(object):
         supercell = numpy.array(supercell)
         cellfact = supercell.prod()
         new_xyz = []
-        for a in xrange(supercell[0]):
-            for b in xrange(supercell[1]):
-                for c in xrange(supercell[2]):
+        for a in range(supercell[0]):
+            for b in range(supercell[1]):
+                for c in range(supercell[2]):
                     dispvect = numpy.sum(self.cellvec*numpy.array([a,b,c])[:,numpy.newaxis],axis=0)
                     new_xyz += (self.xyz+dispvect).tolist()
         self.xyz = numpy.array(new_xyz, "d") 
@@ -1116,9 +1116,9 @@ class net(object):
         supercell = numpy.array(supercell)
         cellfact = supercell.prod()
         new_xyz = []
-        for a in xrange(supercell[0]):
-            for b in xrange(supercell[1]):
-                for c in xrange(supercell[2]):
+        for a in range(supercell[0]):
+            for b in range(supercell[1]):
+                for c in range(supercell[2]):
                     dispvect = numpy.sum(self.cellvec*numpy.array([a-1,b-1,c-1])[:,numpy.newaxis],axis=0)
                     new_xyz += (self.xyz+dispvect).tolist()
         if out:
@@ -1132,12 +1132,12 @@ class net(object):
         cellfact = supercell.prod()
         new_xyz = []
         new_index = []
-        for a in xrange(supercell[0]):
-            for b in xrange(supercell[1]):
-                for c in xrange(supercell[2]):
+        for a in range(supercell[0]):
+            for b in range(supercell[1]):
+                for c in range(supercell[2]):
                     dispvect = numpy.sum(self.cellvec*numpy.array([a-1,b-1,c-1])[:,numpy.newaxis],axis=0)
                     new_xyz += (self.xyz+dispvect).tolist()
-                    new_index.append(range(self.n))
+                    new_index.append(list(range(self.n)))
         #self.xyz = numpy.array(new_xyz, "d") 
         #self.n *= cellfact
         return numpy.array(new_xyz, "d"), new_index
@@ -1165,7 +1165,7 @@ class net(object):
         for i in range(self.n):
             for j in range(i,self.n):
                 self.distmat[i,j] = self.get_distvec(i,j)[0]
-        print numpy.array2string(self.distmat+self.distmat.T, precision = 4)
+        print(numpy.array2string(self.distmat+self.distmat.T, precision = 4))
         return
     
     def make_supercell_centers(self, supercell,shift=False):
@@ -1173,9 +1173,9 @@ class net(object):
         cellfact = supercell.prod()
         for i in range(len(self.centers)):
             new_centers = []
-            for a in xrange(supercell[0]):
-                for b in xrange(supercell[1]):
-                    for c in xrange(supercell[2]):
+            for a in range(supercell[0]):
+                for b in range(supercell[1]):
+                    for c in range(supercell[2]):
                         if shift:
                             dispvect = numpy.sum(self.cellvec*numpy.array([a-1,b-1,c-1])[:,numpy.newaxis],axis=0)
                         else:
@@ -1184,9 +1184,9 @@ class net(object):
             self.centers[i] = numpy.array(new_centers, "d")
         for i in range(len(self.edges1)):
             new_centers = []
-            for a in xrange(supercell[0]):
-                for b in xrange(supercell[1]):
-                    for c in xrange(supercell[2]):
+            for a in range(supercell[0]):
+                for b in range(supercell[1]):
+                    for c in range(supercell[2]):
                         if shift:
                             dispvect = numpy.sum(self.cellvec*numpy.array([a-1,b-1,c-1])[:,numpy.newaxis],axis=0)
                         else:
@@ -1195,9 +1195,9 @@ class net(object):
             self.edges1[i] = numpy.array(new_centers, "d")
         for i in range(len(self.edges2)):
             new_centers = []
-            for a in xrange(supercell[0]):
-                for b in xrange(supercell[1]):
-                    for c in xrange(supercell[2]):
+            for a in range(supercell[0]):
+                for b in range(supercell[1]):
+                    for c in range(supercell[2]):
                         if shift:
                             dispvect = numpy.sum(self.cellvec*numpy.array([a-1,b-1,c-1])[:,numpy.newaxis],axis=0)
                         else:
@@ -1244,7 +1244,7 @@ class net(object):
         xyz=numpy.array(self.xyz)
         cc=numpy.array(self.centers)
         for i in range(len(cc)):
-            print 'center', i, 'magnitude:', len(cc[i])
+            print('center', i, 'magnitude:', len(cc[i]))
             c=cc[i]
             ax.scatter(c[:,0],c[:,1],c[:,2],color=col[i],alpha=0.5,marker='^')
             if labels:
@@ -1314,7 +1314,7 @@ class netbase(object):
         self.tdall = []
         if not path: path = self.rcsrpath+'3dall.txt'
         txt = open(path,'r').read().split('start')[1:-1] #yields raw text including '\n'
-        print str(len(txt))+' nets in '+path.split('/')[-1]
+        print(str(len(txt))+' nets in '+path.split('/')[-1])
         for i in txt:
             n = nets.net()
             n.parse_3dall(i)
@@ -1360,7 +1360,7 @@ class netbase(object):
                     good.append(n)
                     n.conn_level = level 
             if n.conn_level != -1: g += 1     
-            if i % 20 == 0: print g, '/', i, 'level: '+str(level)
+            if i % 20 == 0: print(g, '/', i, 'level: '+str(level))
         return good, bad
     
     def make_allconn(self):
@@ -1398,7 +1398,7 @@ class netbase(object):
         if self.print_status >= stat:
             for i in range(len(pstr)):
                 pp += str(pstr[i])+' '
-            print pp
+            print(pp)
         return
     
     def add_nets(self,net_list):
@@ -1437,19 +1437,19 @@ class netbase(object):
         for i,pp in enumerate(pens):
             penn = {}
             if pp[0] != self.nets[i].name:
-                print pp[0], self.nets[i].name
-                print 'ERROR, there is something wrong with the enumeration scheme!'
+                print(pp[0], self.nets[i].name)
+                print('ERROR, there is something wrong with the enumeration scheme!')
                 return 
             num = -1
             if pp[1][0] == False:
-                print i, pp[1][1]
+                print(i, pp[1][1])
                 self.errors.append([i,pp[1][1]])
                 continue
-            print i,pp
+            print(i,pp)
             for j,P in enumerate(pp[1].keys()):
                 #if num == -1: num = p[1]
                 p=pp[1][P]
-                print i,j,p
+                print(i,j,p)
                 # now every entry of p is the set of penalty evaluations for one vertex
                 try:
                     v = p[0][1]# alt: v=P
@@ -1463,7 +1463,7 @@ class netbase(object):
                     self.errors.append(j)
             self.penf.update({pp[0]: penn})
                 #for k, o in enumerate(p):
-        print 'no error with enumeration scheme, self.penf[i] belongs to net[i], hf'
+        print('no error with enumeration scheme, self.penf[i] belongs to net[i], hf')
         pass
     
             
@@ -1471,7 +1471,7 @@ class netbase(object):
         if name:
             for i,n in enumerate(self.nets):
                 if n.name == name:
-                    print 'net number', i, n.name
+                    print('net number', i, n.name)
                     return n
         return None
     
@@ -1480,15 +1480,15 @@ class netbase(object):
         for i in range(self.nnets):
         #for i in range(11):
             try:
-                print '  -----  starting net', i,self.nets[i].name, '     -----     '
+                print('  -----  starting net', i,self.nets[i].name, '     -----     ')
                 f =self.weaver_instance(i)
                 self.penalties.append([self.nets[i].name,f.scan_bb_models(self)])
             except KeyboardInterrupt:
                 return
             except:
-                print '-------------------------NET', i, self.nets[i].name, 'failed----------------------------------'
+                print('-------------------------NET', i, self.nets[i].name, 'failed----------------------------------')
                 exc = sys.exc_info()
-                print exc
+                print(exc)
                 self.penalties.append([self.nets[i].name,[False, exc[0:-1]]])
         return
     
@@ -1497,15 +1497,15 @@ class netbase(object):
         for i,n in enumerate(nets):
         #for i in range(11):
             try:
-                print '  -----  starting net', i,n.name, '     -----     '
+                print('  -----  starting net', i,n.name, '     -----     ')
                 f =self.weaver_instance(n)
                 self.penalties.update({n.name:f.scan_bb_models(self)})
             except KeyboardInterrupt:
                 return
             except:
-                print '-------------------------NET', i, n.name, 'failed----------------------------------'
+                print('-------------------------NET', i, n.name, 'failed----------------------------------')
                 exc = sys.exc_info()
-                print exc
+                print(exc)
                 self.penalties.append([n.name,[False, exc[0:-1]]])
         return
     
@@ -1548,7 +1548,7 @@ class netbase(object):
              rot = rotator(copy.copy(s1.connector_xyz),copy.copy(s2.connector_xyz))
              penalty,_,_ = rot.screen_orientations(50,51,0.1)
              bbstats.update({self.vertex_models[v1].name:penalty})
-        print bbstats
+        print(bbstats)
         return bbstats
              
         
@@ -1563,12 +1563,12 @@ class netbase(object):
                     s1,s2 = self.vertex_models[v1].bb,self.vertex_models[v2].bb
                     rot = rotator(copy.copy(s1.connector_xyz),copy.copy(s2.connector_xyz))
                     penalty,_,_ = rot.screen_orientations(75,76,0.1)
-                    print i,j,k,v1,v2,s1.name,s2.name,penalty
+                    print(i,j,k,v1,v2,s1.name,s2.name,penalty)
                     self.vertex_corr[i][j,j+k] = penalty
                     self.vertex_corr[i][j+k,j] = penalty
             if len(self.vertex_corr[i] != 0):
                 print([self.vertex_models[st].name for st in self.vertices_with_conn[i]])
-                print self.vertex_corr[i]
+                print(self.vertex_corr[i])
                 
     def debug(self):
         #okay, 3-tshaped and 4-squareplanar does not work properly, why?
@@ -1636,8 +1636,8 @@ class netbase(object):
     
     def upload_bb_penalties(self,bb):
         self.connect_api()
-        print 'MAKE SURE THE BB DATA IS THERE!!!!'
-        print  '----------_____ %s _____----------' % bb
+        print('MAKE SURE THE BB DATA IS THERE!!!!')
+        print('----------_____ %s _____----------' % bb)
         data = {'name':bb}
         data['penalties'] = self.bbs[bb].penalties
         
@@ -1654,7 +1654,7 @@ class vertex_model(object):
         self.name = fname.split('-')[1].rsplit('.',1)[0]
         self.nconn = int(fname.split('-')[0])
         self.bb = []
-        print fname, self.name, self.nconn, self.fname
+        print(fname, self.name, self.nconn, self.fname)
         self.assign_bb(self.fname)
         
     def __str__(self):
@@ -1687,7 +1687,7 @@ class rcsr(object):
     
     def read_arc(self,fname):
         f = open(fname, 'r')
-        for line in f.xreadlines():
+        for line in f:
             sline = line.split()
             if len(sline)>0:
                 if sline[0] == 'key':
@@ -1732,14 +1732,14 @@ class rcsr(object):
             elif sline[0] == 'CELL':
                 dic['CELL'] = sline[1:7]
             elif sline[0] == 'NODE':
-                nodes.append(map(float,sline[3:]))
+                nodes.append(list(map(float,sline[3:])))
             elif sline[0] == 'EDGE':
-                edges.append(map(float,sline[1:]))
+                edges.append(list(map(float,sline[1:])))
             elif sline[0] == 'END':
                 break
         dic['nodes'] = nodes
         dic['edges'] = edges
-        if name in self._nets.keys():
+        if name in list(self._nets.keys()):
             self._nets[name]['cgd'] = dic
         else:
             self._nets[name] = {'cgd':dic}
@@ -1805,7 +1805,7 @@ class rcsr(object):
         # no sg_number, new wallpaper group name
         ndic['wg_name'] = lines.pop(0).split()
         ndic['sg_name'] = lines.pop(0).split()
-        ndic['cell'] = numpy.array(map(float,lines.pop(0).split()))
+        ndic['cell'] = numpy.array(list(map(float,lines.pop(0).split())))
         # new in 2d
         nkinds = lines.pop(0).split()
         ndic['nverts'] = int(nkinds[0])
@@ -1837,7 +1837,7 @@ class rcsr(object):
             except ValueError:
                 # assumption, same as the one before the last
                 ndic['node_coordination'][-1] = int(ndic['node_coordination'][-2])
-            ndic['node'].append(map(float,lines.pop(0).split()))
+            ndic['node'].append(list(map(float,lines.pop(0).split())))
             ndic['symbolic'].append(lines.pop(0).split()[0])
             ndic['cs'].append(map(int, lines.pop(0).split())[:-1])
             ndic['vs'].append(lines.pop(0).split()[0])
@@ -1870,7 +1870,7 @@ class rcsr(object):
         #for i in range(nverts):
         #    ndic['vs'].append(lines.pop(0).split()[0])
         # put ndic into the overall _nets dictionaray
-        if self._nets.keys().count(name) == 0:
+        if list(self._nets.keys()).count(name) == 0:
             self._nets[name] = ndic
         else:
             self._nets[name].update(ndic)
@@ -1910,7 +1910,7 @@ class rcsr(object):
         t = lines.pop(0).split()
         ndic['sg_name'] = t[0]
         ndic['sg_number'] = t[1]
-        ndic['cell'] = numpy.array(map(float,lines.pop(0).split()))
+        ndic['cell'] = numpy.array(list(map(float,lines.pop(0).split())))
         #self.make_cellvec()
         
         nverts = int(lines.pop(0))
@@ -1926,7 +1926,7 @@ class rcsr(object):
 
         for i in range(nverts):
             ndic['node_coordination'].append(int(lines.pop(0).split()[-1]))
-            ndic['node'].append(map(float,lines.pop(0).split()))
+            ndic['node'].append(list(map(float,lines.pop(0).split())))
             ndic['symbolic'].append(lines.pop(0).split()[0])
             ndic['wyckoff'].append(lines.pop(0).split()[0])
             ndic['symmetry'].append(lines.pop(0).split()[0])
@@ -1940,7 +1940,7 @@ class rcsr(object):
         ndic['edge_center']       = []
         for i in range(nedges):
             temp = lines.pop(0)
-            ndic['edge_center'].append(map(float,lines.pop(0).split()))
+            ndic['edge_center'].append(list(map(float,lines.pop(0).split())))
             ndic['center_symbolic'].append(lines.pop(0))
             ndic['center_wyckoff'].append(lines.pop(0))
             ndic['center_symmetry'].append(lines.pop(0))
@@ -1952,7 +1952,7 @@ class rcsr(object):
         for i in range(nverts):
             ndic['vs'].append(lines.pop(0).split()[0])
         # put ndic into the overall _nets dictionaray
-        if self._nets.keys().count(name) == 0:
+        if list(self._nets.keys()).count(name) == 0:
             self._nets[name] = ndic
         else:
             self._nets[name].update(ndic)

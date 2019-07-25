@@ -12,7 +12,7 @@ def read(mol, f, cycle = 0):
     try:
         f.readline ### do nothing
     except AttributeError:
-        raise IOError, "%s is not readable" % f
+        raise IOError("%s is not readable" % f)
     ### read func ###
     done=False
     elems,xyz = [],[]
@@ -59,7 +59,7 @@ def write(mol, f):
     try:
         f.write ### do nothing
     except AttributeError:
-        raise IOError, "%s is not writable" % f
+        raise IOError("%s is not writable" % f)
     ### write func ###
 #    if mol.periodic:
 #        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n\n" % tuple([mol.natoms]+mol.cellparams))

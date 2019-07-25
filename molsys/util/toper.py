@@ -10,8 +10,9 @@ import numpy as np
 import copy
 from mofplus import user_api
 from string import ascii_lowercase
+from collections import Counter
 
-from molsys.util.color import make_mol
+from molsys.util.color import make_mol, vcolor2elem
 from molsys.util.sysmisc import _makedirs, _checkrundir
 from molsys.util.misc import argsorted, triplenats_on_sphere
 
@@ -38,8 +39,8 @@ class conngraph:
         self.molg = Graph(directed=False)
         ig = 0
         # setup vertices
-        self.molg.vp.fix = self.molg.new_vertex_property("short")
-        self.molg.vp.midx = self.molg.new_vertex_property("short")
+        self.molg.vp.fix = self.molg.new_vertex_property("int64_t")
+        self.molg.vp.midx = self.molg.new_vertex_property("int64_t")
         self.molg.vp.elem = self.molg.new_vertex_property("string")
         self.molg.vp.coord = self.molg.new_vertex_property("vector<double>")
         self.molg.vp.filled = self.molg.new_vertex_property("bool") # boolean for flood fill
@@ -54,7 +55,7 @@ class conngraph:
                 self.molg.vp.fix[ig] = 0
         # setup edges
         self.molg.ep.act = self.molg.new_edge_property("bool")
-        self.molg.ep.Nk = self.molg.new_edge_property("short")
+        self.molg.ep.Nk = self.molg.new_edge_property("int64_t")
         for i in range(self.mol.natoms):
             for j in self.mol.conn[i]:
                 if j > i:
@@ -262,7 +263,11 @@ class conngraph:
                     traceback.print_exc()
                     sys.exit(1)
         else:
-            return isomorphism(molg1, molg2, **kwargs)
+            #return isomorphism(molg1, molg2, **kwargs) ### not enough for vertex label? [RA]
+            isom = subgraph_isomorphism(molg1, molg2,
+                vertex_label=(molg1.vp.elem, molg2.vp.elem),
+                subgraph=False, max_n=1, **kwargs)
+            return bool(isom) # is there any isomorphism? True/False
             # THIS does not work: WHY? investigate #
             # it is needed w/ different element per vertex (e.g. bipartite case)
             #return isomorphism(molg1, molg2,
@@ -400,6 +405,37 @@ class molgraph(conngraph):
         self.molg.clear_filters()
         self.clusters = clusters
         return clusters
+
+    def get_unique_clusters(self):
+        """
+        get unique clusters
+        return their cluster types
+        """
+        try:
+            clusters = self.clusters
+        except AttributeError:
+            clusters = self.get_clusters()
+        logger.info("Get unique building blocks which are distinct by connectivity")
+        ms = [self.mol.new_mol_by_index(c) for c in clusters]
+        mgs = [molgraph(m) for m in ms]
+        molgs = [mg.molg for mg in mgs]
+        unique_ms = []
+        type_ms = []
+        for i,molgi in enumerate(molgs):
+            new = True
+            for j in unique_ms:
+                molgj = molgs[j]
+                iso = subgraph_isomorphism(molgi, molgj, vertex_label=(molgi.vp.elem, molgj.vp.elem), max_n=1,
+                        subgraph=False)
+                if iso != []:
+                    new = False
+                    break
+            if new:
+                type_ms.append(len(unique_ms))
+                unique_ms.append(i)
+            else:
+                type_ms.append(type_ms[j])
+        return type_ms
     
     def get_cluster_atoms(self):
         """
@@ -575,8 +611,8 @@ class molgraph(conngraph):
                 if not stop:
                     break
         return self.clusters
-    
-    def make_topograph(self, verbose=True, allow_2conns=False):
+
+    def make_topograph(self, verbose=True, allow_2conns=False, color_clusters=True):
         """
         Create the topograph of the topology of the MOF.
         
@@ -586,8 +622,18 @@ class molgraph(conngraph):
         """
         try:
             assert self.clusters
-        except AttributeError:
+        except (AttributeError, AssertionError) as e:
             self.get_clusters()
+        if len(self.clusters) == 1:
+            if verbose: print("only one cluster is found!")
+            tm = copy.deepcopy(self.mol)
+            if color_clusters:
+                type_clusters = self.get_unique_clusters()
+                tm.elems = [vcolor2elem[i] for i in type_clusters]
+            tg = topograph(self.mol, allow_2conns)
+            tg.make_graph()
+            if verbose: print(self.threshes)
+            return tg
         tm = molsys.mol()
         tm.force_topo()
         tm.natoms = len(self.clusters)
@@ -615,7 +661,6 @@ class molgraph(conngraph):
                         if verbose: print(" -> bonded to cluster ", ji)
                         tm.conn[i].append(ji)
                         break
-        ### check for consistence of conn
         for i in range(tm.natoms):
             if len(tm.conn[i]) == 4:
                 elems.append('c')
@@ -623,6 +668,7 @@ class molgraph(conngraph):
                 elems.append('o')
             else:
                 elems.append('n')
+        ### check for consistence of conn
             for j in tm.conn[i]:
                 if j>i:
                     if not i in tm.conn[j]:
@@ -635,6 +681,9 @@ class molgraph(conngraph):
         tm.add_pconn()
         tm.set_ctab_from_conn(pconn_flag=True)
         tm.set_etab()
+        if color_clusters:
+            type_clusters = self.get_unique_clusters()
+            tm.elems = [vcolor2elem[i] for i in type_clusters]
         tg = topograph(tm, allow_2conns)
         tg.make_graph()
         if verbose: print(self.threshes)
@@ -861,7 +910,10 @@ class topograph(conngraph):
 
     def compute_wells_symbol(self, clist):
         symbol = ""
-        clist = np.array(clist)[:,0].tolist()
+        if list(clist) == []:
+            clist = []
+        else:
+            clist = np.array(clist)[:,0].tolist()
         sclist = sorted(set(clist))
         for i, s in enumerate(sclist):
             count = clist.count(s)
@@ -932,7 +984,7 @@ class topograph(conngraph):
         assert cn.count(pattern[0]) == cn.count(pattern[1]) == 0
         ### build subgraph
         patg = Graph(directed=False)
-        patg.vp.cn = patg.new_vertex_property("short")
+        patg.vp.cn = patg.new_vertex_property("int64_t")
         patg.vp.type = patg.new_vertex_property("string")
         for i in pattern:
             v = patg.add_vertex()
@@ -960,7 +1012,7 @@ class topograph(conngraph):
             cns.append(cn)
         mol.addon("graph")
         mol.graph.make_graph()
-        mol.graph.molg.vp.cn = mol.graph.molg.new_vertex_property("short")
+        mol.graph.molg.vp.cn = mol.graph.molg.new_vertex_property("int64_t")
         for v in mol.graph.molg.vertices():
             mol.graph.molg.vp.cn[v] = cns[int(v)]
             mol.graph.molg.vp.type[v] = types[int(v)]
@@ -968,7 +1020,7 @@ class topograph(conngraph):
 
     def search_coordination_pattern(self,patg):
         assert type(patg) == Graph
-        self.molg.vp.cn = self.molg.new_vertex_property("short")
+        self.molg.vp.cn = self.molg.new_vertex_property("int64_t")
         for v in self.molg.vertices():
             self.molg.vp.cn[v] = len(list(v.out_neighbours()))
         maps = subgraph_isomorphism(patg, self.molg, vertex_label =
@@ -1043,9 +1095,9 @@ class topotyper(object):
         self.api = None
         #molcopy = copy.deepcopy(mol) #prevents mol pollution if restart ###DOES NOT WORK WITH CIF FILES
         molcopy = copy.copy(mol) #prevents mol pollution if restart
-        self.goodinit = False
+        goodinit = False
         self.mg = molgraph(molcopy)
-        while not self.goodinit:
+        while not goodinit:
             if trip is None:
                 trinat = triplenats_on_sphere(isum)
             else:
@@ -1055,15 +1107,19 @@ class topotyper(object):
                 logger.info("Triplet is: "+str(itri))
                 if isum > 3: mol.make_supercell(itri)
                 self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
-            except OverflowError: # specific for supercells
+            except OverflowError as e: # specific for supercells
                 logger.info("Deconstruction failed! Resize original cell")
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
-            except IndexError:
+            except IndexError as e:
+                if len(trinat) > 0: #error is NOT due to low isum (index summation of the supercell=[x,y,z] -> isum=x+y+z) and must be re-raised
+                    import traceback
+                    traceback.print_exc()
+                    raise IndexError(e)
                 isum += 1
                 logger.info("Resizing list is empty! Increase index summation to %i and create new resizing list" % (isum,))
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum)
             else:
-                self.goodinit = True
+                goodinit = True
         return
  
     def deconstruct(self, split_by_org=True, depth=10, max_supercell_size=5):
@@ -1448,11 +1504,51 @@ class topotyper(object):
         self.organicity = organicity
         self.set_atom2bb()
         self.set_bb2ubb()
+        self.detect_connectors()
         ### BUG HERE ###
         #self.detect_all_connectors()
         #self.set_conn2bb()
         return
 
+    def detect_connectors(self):
+        for ubbs in self.unique_bbs:
+            ubb = ubbs[0] # assumption
+            bb = self.bbs[ubb]
+            bbatoms_mg = self.mg.clusters[ubb]
+            if bb.elems != [self.mg.mol.elems[i] for i in bbatoms_mg]: # this is the assumption
+                bb = self.mg.mol.new_mol_by_index(bbatoms_mg)
+                self.bbs[ubb] = bb # NOT SURE
+            connectors = [] # to be converted later
+            connector_atoms = []
+            connectors_sign = []
+            connectors_type = []
+            for ii,(i,j) in enumerate(self.mg.mol.ctab):
+                iin = i in bbatoms_mg
+                jin = j in bbatoms_mg
+                if not iin ^ jin: #both or none
+                    continue
+                if jin: # reverse
+                    i,j = j,i
+                ie, je = self.mg.mol.elems[i], self.mg.mol.elems[j]
+                iabb, jabb = self.abb[i], self.abb[j]
+                iubb, jubb = self.bb2ubb[iabb], self.bb2ubb[jabb]
+                connectors.append(bbatoms_mg.index(i))
+                connector_atoms.append([bbatoms_mg.index(i)])
+                connectors_sign.append((ie,je,iubb,jubb))
+            connectors_signtype = Counter(connectors_sign).keys()
+            sign2type = dict([(e,i) for i,e in enumerate(connectors_signtype)])
+            connectors_type = [sign2type[e] for e in connectors_sign]
+            bb.addon("bb")
+            bb.is_bb = True
+            bb.connectors = connectors
+            bb.connector_atoms = connector_atoms
+            bb.connectors_type = connectors_type
+            bb.center_point = 'coc'
+            bb.set_cell(self.mg.mol.cell)
+            bb.periodic = True
+            bb.center_com(check_periodic=False)
+            bb.wrap_in_box()
+    
     def write_bbs(self, foldername="bbs", index_run=False, org_flag="_ORG", ino_flag="_INO"):
         """
         Write the clusters of the molgraph into the folder specified in the parameters.
@@ -1490,7 +1586,8 @@ class topotyper(object):
             # set cell for a moment to center block in the cell
             # otherwise atom distances are lost if block is at the boundary of the cell
             m.set_cell(self.mg.mol.cell)
-            m.shift_by_com()
+            m.center_com()
+            #m.shift_by_com()
             # reset empty cell
             m.set_empty_cell()
             m.write(foldername+"/"+self.cluster_names[n]+self.organicity[i[0]]+".mfpx", "mfpx")

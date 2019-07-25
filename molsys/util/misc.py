@@ -1,4 +1,7 @@
+from functools import cmp_to_key
 import itertools
+import string
+digs = string.ascii_uppercase # max base == 26
 
 def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
     """Return the index that would sort a sequence. (python2.7 fashion)
@@ -13,15 +16,34 @@ def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
     sort_flag (bool): if True: sort sequence in place as the standard `sort` method
     """
     if key is None:
-        argsorted = sorted(
-            range(len(seq)), cmp=cmp, reverse=reverse,
-            key=seq.__getitem__)
+        try:
+            argsorted = sorted(
+                range(len(seq)), cmp=cmp, reverse=reverse,
+                key=seq.__getitem__)
+        except TypeError as e: ### python3
+            if cmp is not None:
+                raise TypeError(e)
+            argsorted = sorted(
+                range(len(seq)), reverse=reverse,
+                key=seq.__getitem__)
     else:
-        argsorted = sorted(
-            range(len(seq)), cmp=cmp, reverse=reverse,
-            key=lambda x: key(seq.__getitem__(x)) )
+        try:
+            argsorted = sorted(
+                range(len(seq)), cmp=cmp, reverse=reverse,
+                key=lambda x: key(seq.__getitem__(x)) )
+        except TypeError as e: ### python3
+            if cmp is not None:
+                raise TypeError(e)
+            argsorted = sorted(
+                range(len(seq)), reverse=reverse,
+                key=lambda x: key(seq.__getitem__(x)) )
     if sort_flag:
-        seq.sort(cmp=cmp, key=key, reverse=reverse)
+        try:
+            seq.sort(cmp=cmp, key=key, reverse=reverse)
+        except TypeError as e: ### python3
+            if cmp is not None:
+                raise TypeError(e)
+            seq.sort(key=key, reverse=reverse)
     return argsorted
 
 def normalize_ratio(cratio, total):
@@ -70,4 +92,47 @@ def triplenats_on_sphere(trisum, trimin=1):
         if sum(itri) == trisum:
             trinat.append(itri)
     return trinat
+
+def int2base(value, base=None, maximum=None):
+    """credits: A. Martelli"""
+    if base is None:
+        base = len(digs)
+    if maximum is not None:
+        return int2base_spaced(value, base, maximum)
+    assert 0 <= base <= len(digs), "Not enough digits"
+    if value < 0:
+        sign = -1
+    elif value == 0:
+        return digs[0]
+    else:
+        sign = 1
+
+    value *= sign
+    digits = []
+
+    while value:
+        digits.append(digs[int(value % base)])
+        value = int(value / base)
+
+    if sign < 0:
+        digits.append('-')
+
+    digits.reverse()
+
+    return ''.join(digits)
+
+def int2base_spaced(value, base=None, maximum=None):
+    if base is None:
+        base = len(digs)
+    if maximum is None:
+        return int2base(value, base)
+    assert base <= len(digs), "Not enough digits"
+
+    vb = int2base(value, base)
+    mb = int2base(maximum-1, base)
+
+    addl = max([len(mb) - len(vb), 0])
+    add = digs[0]*addl
+
+    return add+vb
 
