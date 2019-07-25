@@ -45,6 +45,7 @@ __all__ = [
     "ric", ### ff, base
     "acab", ### base
     "spg", ### base
+    "ptg", ### base
     "bb",
     "molecules",
     "groups",

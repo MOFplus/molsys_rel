@@ -1,7 +1,54 @@
-from functools import cmp_to_key
+import numpy as np
+from scipy.optimize import linear_sum_assignment as hungarian # for comparison
 import itertools
+from functools import cmp_to_key
 import string
 digs = string.ascii_uppercase # max base == 26
+
+### SORTING ####################################################################
+
+def sort_by_columns(arr, vf='<f8', of='f', dtype=np.float, argsort=False):
+    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
+    keeping rows. No straightforward way to do that in simple numpy.
+    Arbitrary number of columns. It works with float by default."""
+    n = arr.shape[1]
+    vfmt = ','.join([vf]*n)
+    ofmt = ['%s%s' % (of,i) for i in range(n)]
+    newarr = arr.copy()
+    sortd = np.sort(newarr.view(vfmt), order=ofmt, axis=0).view(dtype)
+    if argsort:
+        argsortd = np.argsort(newarr.view(vfmt), order=ofmt, axis=0).view(np.int).T
+        assert (sortd == newarr[argsortd][0]).all()
+        return sortd, argsortd
+    else:
+        return sortd
+
+def argsort_by_columns(arr, vf='<f8', of='f', dtype=np.float, sort=False):
+    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
+    keeping rows. No straightforward way to do that in simple numpy.
+    Arbitrary number of columns. It works with float by default."""
+    n = arr.shape[1]
+    vfmt = ','.join([vf]*n)
+    ofmt = ['%s%s' % (of,i) for i in range(n)]
+    newarr = arr.copy()
+    argsortd = np.argsort(newarr.view(vfmt), order=ofmt, axis=0).view(np.int).T
+    if sort:
+        sortd = np.sort(newarr.view(vfmt), order=ofmt, axis=0).view(dtype)
+        assert (sortd == newarr[argsortd][0]).all()
+        return sortd, argsortd
+    else:
+        return argsortd
+
+def sort_by_columns_in_place(arr, vf='<f8', of='f', dtype=np.float):
+    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
+    keeping rows. No straightforward way to do that in simple numpy.
+    Arbitrary number of columns. It works with float by default.
+    In place! Faster! Returns None!"""
+    n = arr.shape[1]
+    vfmt = ','.join([vf]*n)
+    ofmt = ['%s%s' % (of,i) for i in range(n)]
+    arr.view(vfmt).sort(order=ofmt, axis=0)
+    return
 
 def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
     """Return the index that would sort a sequence. (python2.7 fashion)
@@ -46,6 +93,35 @@ def argsorted(seq, cmp=None, key=None, reverse=False, sort_flag=False):
             seq.sort(key=key, reverse=reverse)
     return argsorted
 
+### COMPARE COORDINATES ########################################################
+
+def compare_coords(xyzi, xyzj, rtol=1e-03, atol=1e-03):
+    """
+    Compare same-shape arrays to get
+    This algorithm is more robust than previous comparison implementations
+    like lexical sort or numpy viewing. It may not be robust for overlapping atoms
+
+    :Parameters:
+    - xyzi (numpy array): coordinates of the first species
+    - xyzj (numpy array): coordinates of the second species
+    - rtol=.001 (float) relative tolerance for comparison
+    - atol=.001 (float) absolute tolerance for comparison
+    """
+    ish = xyzi.shape
+    jsh = xyzj.shape
+    assert ish == jsh, "Shape mismatch not supported: %s != %s" % (ish, jsh)
+    dist_xyz = xyzi[:,np.newaxis]-xyzj[np.newaxis,:]
+    dist_xyz -= np.around(dist_xyz) ### pbc
+    dist = np.linalg.norm(dist_xyz, axis=2)
+    idxi, idxj = hungarian(dist)
+    assert np.allclose(idxi, np.arange(idxi.size)), "Unexpected hungarian return"
+    if np.allclose(dist[idxi,idxj], np.zeros(ish[0]), rtol=rtol, atol=atol):
+        return list(idxj) # so truth value is unambigous
+    else:
+        return []
+
+### RATIO NORMALIZATION ########################################################
+
 def normalize_ratio(cratio, total):
     """ TBI: update documentation! this is not only for colors! [RA]
     return normalized color ratio so that:
@@ -83,6 +159,8 @@ def normalize_ratio(cratio, total):
     norm_cratio = ret.values()
     return norm_cratio # already ordered
 
+### NATURAL NUMBERS ON A SPHERE ################################################
+
 def triplenats_on_sphere(trisum, trimin=1):
     """returns triplets of natural numbers on a sphere
     trisum(int):the summation of the triples must be equal to trisum
@@ -92,6 +170,8 @@ def triplenats_on_sphere(trisum, trimin=1):
         if sum(itri) == trisum:
             trinat.append(itri)
     return trinat
+
+### ARBITRARY NUMBER BASE CONVERTION ###########################################
 
 def int2base(value, base=None, maximum=None):
     """credits: A. Martelli"""
