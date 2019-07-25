@@ -32,6 +32,7 @@ from . import addon
 from .prop import Property
 
 import random
+from collections import Counter
 
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
@@ -103,19 +104,15 @@ class mol(mpiobject):
         self.xyz=None
         self.elems=[]
         self.atypes=[]
+        self.amass=[]
         self.conn=[]
         self.ctab=[]
         self.fragtypes=[]
         self.fragnumbers=[]
         self.nfrags = 0
-        self.periodic=False
-        self.is_bb=False
         self.weight=1
         self.loaded_addons =  []
         self.set_logger_level()
-        # defaults
-        self.is_topo = False # this flag replaces the old topo object derived from mol
-        self.use_pconn = False # extra flag .. we could have toper that do not need pconn
         self.pconn = []
         self.pimages = []
         self.ptab  = []
@@ -123,7 +120,11 @@ class mol(mpiobject):
         self.aprops = {}
         self.bprops = {}
         self._etab = []
-        self.name = ""
+        # defaults
+        self.periodic=False
+        self.is_bb=False
+        self.is_topo = False # this flag replaces the old topo object derived from mol
+        self.use_pconn = False # extra flag .. we could have toper that do not need pconn
         return
 
     # for future python3 compatibility
@@ -141,37 +142,6 @@ class mol(mpiobject):
         for key, val in newdict.items():
             newdict[copy.copy(key)] = copy.copy(val)
         return newone
-        #m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
-        #m.mpi_rank       = self.mpi_rank
-        #m.mpi_size       = self.mpi_size
-        #m.name           = self.name
-        #m.is_bb          = self.is_bb
-        #m.is_topo        = self.is_topo
-        #m.use_pconn      = self.use_pconn
-        #m.periodic       = self.periodic
-        #m.bcond          = self.bcond
-        #m.natoms         = self.natoms
-        #m.nbonds         = self.nbonds
-        #m.nfrags         = self.nfrags
-        #m.weight         = self.weight
-        #m.elems          = copy.copy(self.elems)
-        #m.atypes         = copy.copy(self.atypes)
-        #m.fragnumbers    = copy.copy(self.fragnumbers)
-        #m.fragtypes      = copy.copy(self.fragtypes)
-        #m.xyz            = copy.copy(self.xyz)
-        #m.cell           = copy.copy(self.cell)
-        #m.cellparams     = copy.copy(self.cellparams)
-        #m.inv_cell       = copy.copy(self.inv_cell)
-        #m.images_cellvec = copy.copy(self.images_cellvec)
-        #m.conn           = copy.copy(self.conn)
-        #m.pconn          = copy.copy(self.pconn)
-        #m.pimages        = copy.copy(self.pimages)
-        #m.ctab           = copy.copy(self.ctab)
-        #m._etab          = copy.copy(self._etab)
-        #m.ptab           = copy.copy(self.ptab)
-        #m.supercell      = copy.copy(self.supercell)
-        #m.loaded_addons  = []
-        #return m
 
     def __deepcopy__(self, memo):
         """
@@ -185,43 +155,11 @@ class mol(mpiobject):
         newdict = newone.__dict__
         newdict.update(self.__dict__)
         for key, val in newdict.items():
-            newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
+            try:
+                newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
+            except Exception as e: # if not deepcopy-able
+                newdict[copy.deepcopy(key, memo)] = copy.copy(val)
         return newone
-        #m = self.__class__(mpi_comm = self.mpi_comm, out = self.out)
-        #m.mpi_rank       = self.mpi_rank
-        #m.mpi_size       = self.mpi_size
-        #m.name           = self.name
-        #m.is_bb          = self.is_bb
-        #m.is_topo        = self.is_topo
-        #m.use_pconn      = self.use_pconn
-        #m.periodic       = self.periodic
-        #m.bcond          = self.bcond
-        #m.natoms         = self.natoms
-        #m.nbonds         = self.nbonds
-        #m.nfrags         = self.nfrags
-        #m.weight         = self.weight
-        #m.elems          = copy.deepcopy(self.elems)
-        #m.atypes         = copy.deepcopy(self.atypes)
-        #m.fragnumbers    = copy.deepcopy(self.fragnumbers)
-        #m.fragtypes      = copy.deepcopy(self.fragtypes)
-        #m.xyz            = copy.deepcopy(self.xyz)
-        #m.cell           = copy.deepcopy(self.cell)
-        #m.cellparams     = copy.deepcopy(self.cellparams)
-        #m.inv_cell       = copy.deepcopy(self.inv_cell)
-        #m.images_cellvec = copy.deepcopy(self.images_cellvec)
-        #m.conn           = copy.deepcopy(self.conn)
-        #m.pconn          = copy.deepcopy(self.pconn)
-        #m.pimages        = copy.deepcopy(self.pimages)
-        #m.ctab           = copy.deepcopy(self.ctab)
-        #m._etab          = copy.deepcopy(self._etab)
-        #m.ptab           = copy.deepcopy(self.ptab)
-        #m.supercell      = copy.deepcopy(self.supercell)
-        #m.loaded_addons  = []
-        #return m
-
-    #    pass
-    #def __deepcopy__(self):
-    #    pass
 
     #####  I/O stuff ######################################################################################
 
@@ -286,7 +224,7 @@ class mol(mpiobject):
         #        smile = smile.replace(c,dummies[i])
         om = pybel.readstring("smi", smile)
         om.make3D(forcefield='UFF', steps=maxiter)
-        txyzs = om.write('txyz') 
+        txyzs = om.write('txyz')
         # there is gibberish in the first line of the txyzstring, we need to remove it!
         txyzsl = txyzs.split("\n")
         txyzsl[0] = txyzsl[0].split()[0]
@@ -617,7 +555,7 @@ class mol(mpiobject):
         Args:
             tresh (float): additive treshhold
             remove_duplicates (bool): flag for the detection of duplicates
-            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance 
+            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance
                 replaces covalent radii (for blueprints use 1.0)
         """
 
@@ -774,7 +712,8 @@ class mol(mpiobject):
             pconn.append(atoms_pconn)
         self.pimages = pimages
         self.pconn = pconn
-        self.use_pconn= True
+        self.use_pconn = True
+        self.set_etab_from_conns()
         return
 
     def add_pconn_old(self):
@@ -1180,7 +1119,7 @@ class mol(mpiobject):
 
 
     def apply_pbc(self, xyz=None, fixidx=0):
-        ''' 
+        '''
         apply pbc to the atoms of the system or some external positions
         Note: If pconn is used it is ivalid after this operation and will be reconstructed.
 
@@ -1260,7 +1199,7 @@ class mol(mpiobject):
     def set_volume(self,Volume):
         """rescales the cell to  achieve a given volume
 
-        Rescales the unit cell in order to achieve a target volume. 
+        Rescales the unit cell in order to achieve a target volume.
         Tested only for orthorombic systems!
 
         Parameters:
@@ -1364,7 +1303,7 @@ class mol(mpiobject):
         return np.dot(xyz, cell_inv)
 
     def get_xyz_from_frac(self,frac_xyz):
-        ''' returns real coordinates from an array of fractional coordinates using the current cell info 
+        ''' returns real coordinates from an array of fractional coordinates using the current cell info
 
         Args:
             frac_xyz (array): fractional coords to be converted to xyz
@@ -1532,7 +1471,7 @@ class mol(mpiobject):
         return
 
     def add_bonds(self, lista1, lista2, many2many=False):
-        """ 
+        """
         add bonds/edges/connections to a mol object between exisiting atoms/vertices
 
         If lists have got just one atom per each, sets 1 bond (gracefully collapses to add_bond)
@@ -1684,7 +1623,7 @@ class mol(mpiobject):
         return
 
     def delete_atoms(self, bads, keep_conn=False):
-        ''' 
+        '''
         deletes an atom and its connections and fixes broken indices of all other atoms
         if keep_conn == True: connectivity is kept when atoms are in the middle of two others '''
         if not hasattr(bads, '__iter__'):
@@ -1698,6 +1637,8 @@ class mol(mpiobject):
                 offset[i:] += 1
         self.elems  = np.take(self.elems, goods).tolist()
         self.atypes = np.take(self.atypes, goods).tolist()
+        if len(self.amass) > 0:
+            self.amass  = np.take(self.amass, goods).tolist()
         if len(self.fragtypes) > 0:
             self.fragtypes = np.take(self.fragtypes, goods).tolist()
             self.fragnumbers  = np.take(self.fragnumbers, goods).tolist()
@@ -1897,7 +1838,6 @@ class mol(mpiobject):
         except ImportError:
             raise ImportError("install graph-tool via 'pip install graph-tool'")
         from molsys.util.toper import molgraph
-        from collections import Counter
         if sele is None:
             mg = molgraph(self)
         else:
@@ -1947,38 +1887,6 @@ class mol(mpiobject):
         conn[sele_original] = conn[sele][:]
         self.set_conn(conn.tolist())
         return sele2sele_original
-
-    def get_separated_molecules(self, sele = None):
-        """
-        get lists of indices of atoms which are connected together inside the
-        list and not connected outside the list.
-        same as get islands (see toper) with a native graph-tools algorithm
-
-        >>> import molsys
-        >>> m = molsys.mol.from_file("molecules.mfpx")
-        >>> molecules_idx = m.get_separated_molecules()
-        >>> for m_idx in molecules_idx:
-        >>>     m.new_mol_by_idx(m_idx).view()
-        >>> # if in trouble: CTRL+Z and "kill %%"
-        """
-        try:
-            from graph_tool.topology import label_components
-        except ImportError:
-            raise ImportError("install graph-tool via 'pip install graph-tool'")
-        from molsys.util.topos import molgraph
-        from collections import Counter
-        if sele is None:
-            mg = molgraph(self)
-        else:
-            m = self.new_mol_by_index(sele)
-            mg = molgraph(m)
-        labels = label_components(mg.molg)[0].a.tolist()
-        unique_labels = Counter(labels).keys()
-        if sele is None:
-            molidx = [[j for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
-        else:
-            molidx = [[sele[j] for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
-        return molidx
 
 ### property interface #########################################################
 
@@ -2274,7 +2182,10 @@ class mol(mpiobject):
             amass = np.array(self.amass)[idx]
         if pbc: xyz = self.apply_pbc(xyz, 0)
         if np.sum(amass) > 0.0:
-            center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+            try:
+                center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)
+            except ValueError:
+                import pdb; pdb.set_trace()
         else: #every atom is dummy!
             center = np.sum(xyz,axis=0)
         return center
@@ -2308,7 +2219,7 @@ class mol(mpiobject):
         return
 
     def get_xyz(self, idx=None):
-        ''' returns the xyz Coordinates 
+        ''' returns the xyz Coordinates
 
         Args:
             idx=None (list): optional list of indices
@@ -2430,7 +2341,7 @@ class mol(mpiobject):
             - fragnumbers: the fragment numbers to be set (list of integers)'''
         assert len(fragnumbers) == self.natoms
         self.fragnumbers = fragnumbers
-        self.nfrags = np.max(self.fragnumbers)+1 
+        self.nfrags = np.max(self.fragnumbers)+1
 
     def get_nfrags(self):
         """
@@ -2545,7 +2456,7 @@ class mol(mpiobject):
         for i,c in enumerate(self.conn):
             for j,cc in enumerate(c):
                 neighs = sorted([self.atypes[i], self.atypes[cc]])
-                try: 
+                try:
                     ii=un.index(neighs)
                     counter[ii] += 1
                 except:
@@ -2640,12 +2551,30 @@ class mol(mpiobject):
             - ptab   : list of peridioc images per bond (nbonds, 2)
         """
         assert hasattr(self, "ctab"), "ctab is needed for the method"
-        self.set_empty_pconn()
+        #self.set_empty_pconn()
+        conn = [[-1 for ic in c] for c in self.conn]
         pconn = [[None for ic in c] for c in self.conn]
+        # unique bond occurrence
+        uctab = set(self.ctab)
+        # keep bond occurrence
+        dctab = {uc:-1 for uc in uctab}
+        # count occurrence
+        cctab = [-1 for i in self.ctab]
+        # store old occurrence
+        octab = [(0,0) for i in self.ctab]
+        for i,ic in enumerate(self.ctab):
+            dctab[ic] += 1
+            cctab[i] = dctab[ic]
         for k,p in enumerate(ptab):
             i,j = self.ctab[k]
-            ij = self.conn[i].index(j)
-            ji = self.conn[j].index(i)
+            ij,ji = 0,0 # for first occurrence
+            #print(k,p)
+            # get w-th occurrence
+            for w in range(cctab[k]+1):
+                ij = self.conn[i].index(j,ij) + 1 # add 1 to get next
+                ji = self.conn[j].index(i,ji) + 1 # add 1 to get next
+                #print(w, ij,ji)
+            ij,ji = ij-1, ji-1 # back to last finding
             pconn[i][ij] =  idx2arr[p]
             pconn[j][ji] = -idx2arr[p]
         self.pconn = pconn
@@ -2709,6 +2638,44 @@ class mol(mpiobject):
             self.set_conn_from_tab(self.ctab)
             self.set_pconn_from_tab(self.ptab)
         return
+
+    def set_etab_from_conns(self, conn=None, pimages=None, set_tabs=False):
+        """set etab from connectivity tables"""
+        ### if no pconn: etab is ctab, then return ###
+        if not self.use_pconn:
+            self.etab = self.ctab
+            return
+        if conn is None and pimages is None:
+            conn = self.conn
+            pimages = self.pimages
+        elif conn is None or pimages is None:
+            raise ValueError("conn and pimages can't both be None")
+        ### if conn length is 0: etab is ctab, then return ###
+        if len(conn) == 0:
+            self.etab = self.ctab
+            return
+        # all the possible edges (redudant)
+        etab_red = sum([[(ii,j,pimages[ii][jj]) for jj,j in enumerate(i)] for ii,i in enumerate(conn)],[])
+        # edit by convention:
+        #    1)i < j
+        #    2)k <= 13 if i == j
+        etab_selfcount = 0 # here only for future assertion
+        for ii,(i,j,k) in enumerate(etab_red):
+            if i > j: # convention
+                i,j = j,i
+                k = idx2revidx[k]
+                etab_red[ii] = (i,j,k)
+            elif i == j and k > 13: # convention
+                k = idx2revidx[k]
+                etab_red[ii] = (i,j,k)
+                etab_selfcount += 1
+        etab_unique = set(etab_red)
+        etab_unique = sorted(list(etab_unique)) # by convention
+        ictab, jctab, ptab = zip(*etab_unique)
+        ctab = zip(ictab, jctab)
+        self.ctab = list(ctab)
+        self.ptab = list(ptab)
+        self.etab = etab_unique # already a list
 
     def set_etab(self, ctab=None, ptab=None, set_tabs=False):
         """set etab without sorting (sorting is default for etab.setter)"""

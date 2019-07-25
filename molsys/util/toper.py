@@ -1102,24 +1102,20 @@ class topotyper(object):
                 trinat = triplenats_on_sphere(isum)
             else:
                 trinat = trip
-            try:
+            if len(trinat) > 0:
                 itri = trinat.pop()
                 logger.info("Triplet is: "+str(itri))
                 if isum > 3: mol.make_supercell(itri)
-                self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
-            except OverflowError as e: # specific for supercells
-                logger.info("Deconstruction failed! Resize original cell")
-                self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
-            except IndexError as e:
-                if len(trinat) > 0: #error is NOT due to low isum (index summation of the supercell=[x,y,z] -> isum=x+y+z) and must be re-raised
-                    import traceback
-                    traceback.print_exc()
-                    raise IndexError(e)
+                try:
+                    self.deconstruct(split_by_org, depth=depth, max_supercell_size=max_supercell_size)
+                    goodinit = True
+                except OverflowError as e: # specific for supercells
+                    logger.info("Deconstruction failed! Resize original cell")
+                    self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum,trip=trinat)
+            else:
                 isum += 1
                 logger.info("Resizing list is empty! Increase index summation to %i and create new resizing list" % (isum,))
                 self.__init__(mol,split_by_org,depth=depth, max_supercell_size=max_supercell_size, isum=isum)
-            else:
-                goodinit = True
         return
  
     def deconstruct(self, split_by_org=True, depth=10, max_supercell_size=5):
