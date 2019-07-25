@@ -32,50 +32,9 @@ import logging
 logger = logging.getLogger("molsys.spg")
 logger.setLevel(logging.INFO)
 
+from molsys.util.misc import sort_by_columns, argsort_by_columns, sort_by_columns_in_place
 from molsys.util.sysmisc import isatty
 from molsys.util.timing import timer, Timer #to be removed
-
-### UTIL ### please move to molsys.util module!
-def sort_by_columns(arr, vf='<f8', of='f', dtype=np.float, argsort=False):
-    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
-    keeping rows. No straightforward way to do that in simple numpy.
-    Arbitrary number of columns. It works with float by default."""
-    n = arr.shape[1]
-    vfmt = ','.join([vf]*n)
-    ofmt = ['%s%s' % (of,i) for i in range(n)]
-    sortd = np.sort(arr.view(vfmt), order=ofmt, axis=0).view(dtype)
-    if argsort:
-        argsortd = np.argsort(arr.view(vfmt), order=ofmt, axis=0).view(np.int).T
-        assert (sortd == arr[argsortd][0]).all() 
-        return sortd, argsortd
-    else:
-        return sortd
-
-def argsort_by_columns(arr, vf='<f8', of='f', dtype=np.float, sort=False):
-    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
-    keeping rows. No straightforward way to do that in simple numpy.
-    Arbitrary number of columns. It works with float by default."""
-    n = arr.shape[1]
-    vfmt = ','.join([vf]*n)
-    ofmt = ['%s%s' % (of,i) for i in range(n)]
-    argsortd = np.argsort(arr.view(vfmt), order=ofmt, axis=0).view(np.int).T
-    if sort:
-        sortd = np.sort(arr.view(vfmt), order=ofmt, axis=0).view(dtype)
-        assert (sortd == arr[argsortd][0]).all() 
-        return sortd, argsortd
-    else:
-        return argsortd
-
-def sort_by_columns_in_place(arr, vf='<f8', of='f', dtype=np.float):
-    """sorts by columns in ascending order (the 1st, the 2nd, the 3rd...)
-    keeping rows. No straightforward way to do that in simple numpy.
-    Arbitrary number of columns. It works with float by default.
-    In place! Faster! Returns None!"""
-    n = arr.shape[1]
-    vfmt = ','.join([vf]*n)
-    ofmt = ['%s%s' % (of,i) for i in range(n)]
-    arr.view(vfmt).sort(order=ofmt, axis=0)
-    return
 
 def get_frac_match(frac, sym, thresh=5e-6, eps=1e-8):
     symperm = []
@@ -231,6 +190,8 @@ class spg:
         new_xyz = []
         new_elems = []
         new_atypes = []
+        new_fragtypes = []
+        new_fragnumbers = []
         frac_xyz = self.mol.get_frac_xyz()
         try:
             new_xyz,kinds = self.sg.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
@@ -242,18 +203,60 @@ class spg:
         for i,k in enumerate(kinds):
             new_elems.append(self.mol.elems[k])
             new_atypes.append(self.mol.atypes[k])
-            # fragtypes = self.mol.fragtypes[k]  #### Q: work on this here? they there?
-        ## now we try to get the connectivity right and find duplicates during the search
+            new_fragtypes.append(self.mol.fragtypes[k])
+            new_fragnumbers.append(0)
+        # keep to detect new connectivity
+        elems = self.mol.elems[:]
+        ctab = self.mol.ctab[:]
         self.mol.set_natoms(len(new_xyz))
+        self.mol.set_xyz_from_frac(new_xyz)
         self.mol.set_elems(new_elems)
         self.mol.set_atypes(new_atypes)
-        self.mol.set_xyz_from_frac(new_xyz)
-        self.mol.set_nofrags()
-        
-        #self.mol.elems  = new_elems
-        #self.mol.atypes = new_atypes
-        self.mol.detect_conn(tresh = conn_thresh, remove_duplicates = True)
-        return True
+        self.mol.set_fragtypes(new_fragtypes)
+        self.mol.set_fragnumbers(new_fragnumbers)
+        self.mol.set_empty_conn() # for debugging
+        # now we try to get the connectivity right and find duplicates during the search
+        # detect connectivity
+        if len(ctab) > 0:
+            new_ctab = []
+            #find allowed bond types
+            iatoms, jatoms = zip(*ctab)
+            iatoms = list(iatoms)
+            jatoms = list(jatoms)
+            dx = frac_xyz[jatoms] - frac_xyz[iatoms]
+            d = np.linalg.norm(dx,axis=1)
+            du = np.unique(d.round(4)) # unique distances (fourth decimal) -> unique bond types
+            btypes = []
+            for u in du:
+                k = np.where(np.isclose(u, d, atol=1e-3))[0][0] # the first
+                ik, jk = iatoms[k], jatoms[k]
+                iat, jat = elems[ik], elems[jk]
+                btypes.append([u]+sorted([iat, jat]))
+            #find symmetrized bonds
+            new_elems = self.mol.elems[:]
+            dx = new_xyz[:,np.newaxis]-new_xyz[np.newaxis,:]
+            dx -= np.around(dx)
+            d = np.linalg.norm(dx,axis=2)
+            for u,iat,jat in btypes:
+                dev = abs(d-u)
+                bwhere = np.where(np.isclose(dev, 0, atol=1e-4))
+                bselect = bwhere[0] < bwhere[1] # prevent double bonds
+                bwhere = bwhere[0][bselect].tolist(), bwhere[1][bselect].tolist()
+                bonds = zip(*bwhere)
+                bt = [iat, jat]
+                #check whether the bonds connect the right couple of elements
+                #N.B.: reverse list so that last can be removed w/o messing with idxs
+                for k in range(len(bonds))[::-1]:
+                    i,j = bonds[k]
+                    if sorted([new_elems[i], new_elems[j]]) != bt: #then remove
+                        bonds.pop(k)
+                new_ctab += bonds
+            self.mol.set_ctab(new_ctab, conn_flag=True)
+            self.mol.remove_duplicates()
+            return True
+        else:
+            self.mol.detect_conn(tresh = conn_thresh, remove_duplicates = True)
+            return True
 
     def get_primitive_cell(self):
         """
