@@ -1119,7 +1119,6 @@ class mol(mpiobject):
         self.set_etab_from_tabs(sort_flag=True)
         return xyz,conn,pconn
 
-
     def apply_pbc(self, xyz=None, fixidx=0):
         '''
         apply pbc to the atoms of the system or some external positions
