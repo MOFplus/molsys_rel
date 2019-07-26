@@ -156,6 +156,7 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
         if disorder:
             # select according to given disorder
             elems = [e for i,e in enumerate(elems) if i in select]
+            atypes = [e for i,e in enumerate(atypes) if i in select]
             x = [e for i,e in enumerate(x) if i in select]
             y = [e for i,e in enumerate(y) if i in select]
             z = [e for i,e in enumerate(z) if i in select]
