@@ -125,6 +125,7 @@ class mol(mpiobject):
         return
 
     # for future python3 compatibility
+    # TODO: mpicomm compatibility?
     def __copy__(self):
         """
         Shallow copy as for the standard copy.copy function
@@ -1119,7 +1120,6 @@ class mol(mpiobject):
         self.set_etab_from_tabs(sort_flag=True)
         return xyz,conn,pconn
 
-
     def apply_pbc(self, xyz=None, fixidx=0):
         '''
         apply pbc to the atoms of the system or some external positions
@@ -1339,12 +1339,6 @@ class mol(mpiobject):
 
 
     ###  add mol objects and copy ##########################################
-
-    # TODO: this might not work anymore because of the mpi communicator
-    #       is it needed?
-    #def copy(self):
-    #    ''' returns a copy of the whole mol object'''
-    #    return copy.deepcopy(self)
 
     def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None,rotmat=None):
         ''' adds a  nonperiodic mol object to the current one ... self can be both
@@ -1848,6 +1842,43 @@ class mol(mpiobject):
                     sele[i] = [j-offset[j] for j in s]
         return # will never get it, here for clarity
 
+    def shuffle_atoms(self, sele=None):
+        """
+        shuffle atom indices, debug purpose
+
+        :Arguments:
+        sele(list of int): selection list of atom indices
+            if sele is None: all the atoms are shuffled
+
+        many methods should be INVARIANT wrt. atom sorting
+        N.B.: using numpy array since for readability
+        """
+        if sele is None:
+            sele = range(self.natoms)
+        sele_original = sele[:]
+        random.shuffle(sele)
+        # selection to original dictionary
+        sele2sele_original = dict(zip(sele,sele_original))
+        # coordinates #
+        self.xyz[sele_original] = self.xyz[sele]
+        # elements #
+        elems = np.array(self.elems)
+        elems[sele_original] = elems[sele]
+        self.elems = [str(e) for e in elems.tolist()]
+        # atomtypes #
+        atypes = np.array(self.atypes)
+        atypes[sele_original] = atypes[sele]
+        self.atypes = [str(e) for e in atypes]
+        # connectivity #
+        conn = copy.deepcopy(self.conn)
+        for i,ic in enumerate(conn):
+            ic = [sele2sele_original[j] if j in sele else j for j in ic]
+            conn[i] = ic
+        conn = np.array(conn)
+        conn[sele_original] = conn[sele][:]
+        self.set_conn(conn.tolist())
+        return sele2sele_original
+
     def get_separated_molecules(self, sele = None):
         """
         get lists of indices of atoms which are connected together inside the
@@ -1886,124 +1917,37 @@ class mol(mpiobject):
             molidx = [[sele[j] for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
         return molidx
 
-    def shuffle_atoms(self, sele=None):
+    def check_periodic(self, set_periodic=False):
         """
-        shuffle atom indices, debug purpose
+        check whether mol is periodic
 
         :Arguments:
-        sele(list of int): selection list of atom indices
-            if sele is None: all the atoms are shuffled
+            set_periodic=False (bool): if True, set periodic as checked
 
-        many methods should be INVARIANT wrt. atom sorting
-        N.B.: using numpy array since for readability
+        :Returns:
+            periodic (bool): flag according to found periodicity
         """
-        if sele is None:
-            sele = range(self.natoms)
-        sele_original = sele[:]
-        random.shuffle(sele)
-        # selection to original dictionary
-        sele2sele_original = dict(zip(sele,sele_original))
-        # coordinates #
-        self.xyz[sele_original] = self.xyz[sele]
-        # elements #
-        elems = np.array(self.elems)
-        elems[sele_original] = elems[sele]
-        self.elems = [str(e) for e in elems.tolist()]
-        # atomtypes #
-        atypes = np.array(self.atypes)
-        atypes[sele_original] = atypes[sele]
-        self.atypes = [str(e) for e in atypes]
-        # connectivity #
-        conn = copy.deepcopy(self.conn)
-        for i,ic in enumerate(conn):
-            ic = [sele2sele_original[j] if j in sele else j for j in ic]
-            conn[i] = ic
-        conn = np.array(conn)
-        conn[sele_original] = conn[sele][:]
-        self.set_conn(conn.tolist())
-        return sele2sele_original
-
-### property interface #########################################################
-
-    def get_atom_property(self, pname):
-        return self.aprops[pname]
-
-    def set_atom_property(self, pname):
-        self[pname] = Property(pname, self.natoms, "atom")
-        self.aprops[pname] = self[pname]
-        return
-
-    def del_atom_property(self, pname):
-        del self.aprops[pname]
-        del self[pname]
-        return
-
-    def list_atom_properties(self):
-        if not self.aprops:
-            print("No atom property")
-            return
-        print("Atom properties:")
-        for prop in self.aprops:
-            print(prop)
-        return
-
-    def get_bond_property(self, pname):
-        return self.bprops[pname]
-
-    def set_bond_property(self, pname):
-        prop = Property(pname, self.nbonds, "bonds")
-        setattr(self, pname, prop)
-        self.bprops[pname] = getattr(self, pname)
-        return
-
-    def del_bond_property(self, pname):
-        del self.bprops[pname]
-        del self[pname]
-        return
-
-    def list_bond_properties(self):
-        if not self.bprops:
-            print("No bond property")
-            return
-        print("Bond properties:")
-        for prop in self.bprops:
-            print(prop)
-        return
-
-    def get_property(self, pname, ptype):
-        if ptype.lower() == "atom":
-            return self.get_atom_property(pname)
-        elif ptype.lower() == "bond":
-            return self.get_bond_property(pname)
+        # unit cell
+        idxs_unit = self.get_separated_molecules()
+        len_unit = [len(i) for i in idxs_unit]
+        ulen_unit = set(len_unit)
+        # supercell
+        m = copy.deepcopy(self)
+        m.make_supercell([3,3,3])
+        idxs_super = m.get_separated_molecules()
+        len_super = [len(i) for i in idxs_super]
+        ulen_super = set(len_super)
+        # compare
+        if ulen_unit != ulen_super:
+            periodic = True
         else:
-            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+            periodic = False
+        if set_periodic:
+            self.periodic = periodic
+        return periodic
+        
 
-    def set_property(self, pname, ptype):
-        if ptype.lower() == "atom":
-            self.set_atom_property(pname)
-        elif ptype.lower() == "bond":
-            self.set_bond_property(pname)
-        else:
-            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
-        return
-
-    def del_property(self, pname, ptype):
-        if ptype.lower() == "atom":
-            self.del_atom_property(pname)
-        elif ptype.lower() == "bond":
-            self.del_bond_property(pname)
-        else:
-            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
-        return
-
-    def list_properties(self):
-        print("Properties:")
-        self.list_atom_properties()
-        self.list_bond_properties()
-        return
-
-    ##### manipulate geomtry #######################################################
-
+    ### MANIPULATE GEOMETRY ########################################################
 
     def randomize_coordinates(self,maxdr=1.0):
         """randomizes existing  coordinates
@@ -2050,7 +1994,23 @@ class mol(mpiobject):
         self.translate(-center)
         return
 
-    ##### distance measurements #####################
+    # ??? needed? collapse into center_com? [RA]
+    def shift_by_com(self, alpha=2, **kwargs):
+        """
+        shift by center of mass
+        alpha is needed otherwise atom distance is lost for excerpt of former
+        periodic structures (e.g. a block)
+        """
+        ralpha = 1./alpha
+        com = self.get_com(check_periodic=False, **kwargs)
+        if self.periodic:
+            shift = np.dot( np.dot(com, self.inv_cell)%ralpha, self.cell)
+        else: # N.B.: reverse alpha has a different meaning
+            shift = com*ralpha
+        self.xyz -= shift
+        return
+
+    ### DISTANCE MEASUREMENTS #######################
 
     def get_distvec(self, i, j, thresh=SMALL_DIST):
         """ vector from i to j
@@ -2254,23 +2214,7 @@ class mol(mpiobject):
         center = np.sum(xyz,axis=0)/float(natoms)
         return center
 
-    def shift_by_com(self, alpha=2, **kwargs):
-        """
-        shift by center of mass
-        alpha is needed otherwise atom distance is lost for excerpt of former
-        periodic structures (e.g. a block)
-        """
-        ralpha = 1./alpha
-        com = self.get_com(check_periodic=False, **kwargs)
-        if self.periodic:
-            shift = np.dot( np.dot(com, self.inv_cell)%ralpha, self.cell)
-        else: # N.B.: reverse alpha has a different meaning
-            shift = com*ralpha
-        self.xyz -= shift
-        return
-
-
-    ###### get/set  core datastructures ###########################
+    ### CORE DATASTRUCTURES #######################################
 
     def get_natoms(self):
         ''' returns the number of Atoms '''
@@ -2438,7 +2382,8 @@ class mol(mpiobject):
         self.fragtypes += fragtypes
         return
 
-    ### CONNECTIVITY ###
+    ### CONNECTIVITY ###########################################################
+
     def get_conn(self):
         ''' returns the connectivity of the system '''
         return self.conn
@@ -2850,3 +2795,83 @@ class mol(mpiobject):
     def get_weight(self):
         ''' gets the weight of the system. Default: 1.'''
         return self.weight
+
+    ### PROPERTIES #############################################################
+
+    def get_atom_property(self, pname):
+        return self.aprops[pname]
+
+    def set_atom_property(self, pname):
+        self[pname] = Property(pname, self.natoms, "atom")
+        self.aprops[pname] = self[pname]
+        return
+
+    def del_atom_property(self, pname):
+        del self.aprops[pname]
+        del self[pname]
+        return
+
+    def list_atom_properties(self):
+        if not self.aprops:
+            print("No atom property")
+            return
+        print("Atom properties:")
+        for prop in self.aprops:
+            print(prop)
+        return
+
+    def get_bond_property(self, pname):
+        return self.bprops[pname]
+
+    def set_bond_property(self, pname):
+        prop = Property(pname, self.nbonds, "bonds")
+        setattr(self, pname, prop)
+        self.bprops[pname] = getattr(self, pname)
+        return
+
+    def del_bond_property(self, pname):
+        del self.bprops[pname]
+        del self[pname]
+        return
+
+    def list_bond_properties(self):
+        if not self.bprops:
+            print("No bond property")
+            return
+        print("Bond properties:")
+        for prop in self.bprops:
+            print(prop)
+        return
+
+    def get_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            return self.get_atom_property(pname)
+        elif ptype.lower() == "bond":
+            return self.get_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+
+    def set_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            self.set_atom_property(pname)
+        elif ptype.lower() == "bond":
+            self.set_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+        return
+
+    def del_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            self.del_atom_property(pname)
+        elif ptype.lower() == "bond":
+            self.del_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+        return
+
+    def list_properties(self):
+        print("Properties:")
+        self.list_atom_properties()
+        self.list_bond_properties()
+        return
+
