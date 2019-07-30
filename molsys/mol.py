@@ -497,39 +497,44 @@ class mol(mpiobject):
             *args          : positional arguments for the addon instantiator
             **kwargs       :    keyword arguments for the addon instantiator
         """
-        loaded = False
         if addmod in self.loaded_addons:
-            logger.warning("%s addon is already available as attribute of mol instance!" % addmod)
-            return
+            logger.warning("\"%s\" addon is already available as attribute of mol instance!" % addmod)
+            loaded = False
+            return loaded
         if addmod in addon.__all__: ### addon is enabled: try to set it
-            if getattr(addon, addmod, None) is not None: ### no error raised during addon/__init__.py import
+            addclass = getattr(addon, addmod, None)
+            if addclass is not None: ### no error raised during addon/__init__.py import
                 try: ### get the addon attribute, initialize it and set as self attribute
-                    addinit = getattr(addon, addmod)(self, *args, **kwargs)
-                    setattr(self, addmod, addinit)
+                    addinst = addclass(self, *args, **kwargs)
+                    setattr(self, addmod, addinst)
+                    loaded = True ### the addon is now available as self.addmod
                 ### COMMENT THIS BLOCK FOR DEBUGGING ADDONS [RA] ###
                 except TypeError as e: ### HACK when 'from molsys.addon.addmod import something'
                     # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
                     # the 'getattr' to get molsys.addon.ff.ff
-                    addinit = getattr(getattr(addon, addmod),addmod)(self, *args, **kwargs)
-                    setattr(self, addmod, addinit)
+                    assert type(addclass) is type(os)
+                    addclass = getattr(addclass, addmod)
+                    addinst = addclass(self, *args, **kwargs)
+                    setattr(self, addmod, addinst)
+                    loaded = True ### the addon is now available as self.addmod
                 ####################################################
                 except Exception as e: ### unexpected error! bugfix needed or addon used improperly
                     import traceback
                     traceback.print_exc()
-                    logger.error("%s addon is not available: something unexpectable went wrong!" % addmod)
-                else: ### kudos! the addon is now available as self.addmod
-                    loaded = True
-                    logger.info("%s addon is now available as attribute of mol instance" % addmod)
+                    logger.error("\"%s\" addon is not available: something unexpectable went wrong!" % addmod)
+                    loaded = False
             else: ### error raised during addon/__init__.py import
                 print(addon._errortrace[addmod])
-                logger.error("%s addon is not imported: check addon module" % addmod)
+                logger.error("\"%s\" addon is not imported: check addon module" % addmod)
         else: ### addon in unknown or disabled in addon.__all__
-            logger.error("%s addon is unknown/disabled: check addon.__all__ in addon module" % addmod)
+            logger.error("\"%s\" addon is unknown/disabled: check addon.__all__ in addon module" % addmod)
+            loaded = False
         if loaded:
             ### addmod added to loaded_addons (to prevent further adding)
+            logger.info("\"%s\" addon is now available as attribute of mol instance" % addmod)
             self.loaded_addons.append(addmod)
         #assert addmod in self.loaded_addons, "%s not available" % addmod ### KEEP for testing
-        return
+        return loaded
 
     ##### connectivity ########################################################################################
 
