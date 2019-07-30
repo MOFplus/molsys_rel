@@ -46,7 +46,8 @@ class Timer:
 
     """
 
-    def __init__(self, print_levels=1000):
+    def __init__(self, name = "", print_levels=1000):
+        self.name = name
         self.timers = {}
         self.timercalls = {}
         self.t0 = time.time()
@@ -129,7 +130,11 @@ class Timer:
         n = max([len(names[-1]) + len(names) for names in self.timers]) + 1
         line = '=' * (n + 37) + '\n'
         out.write(line)
-        out.write('%-*s     calls     incl.     excl.\n' % (n, 'Timing:'))
+        if self.name != "":
+            headname = self.name + ":"
+        else:
+            headname = 'Timing:'
+        out.write('%-*s     calls     incl.     excl.\n' % (n, headname))
         out.write(line)
         tother = tot
 

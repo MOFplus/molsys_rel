@@ -59,13 +59,16 @@ vdw = """# Suppoerted types
 
 vdwpr = ""
 
+chapr = ""
+
 desc = {"bnd": bnd,
         "ang": ang,
         "dih": dih,
         "oop": oop,
         "cha": cha,
         "vdw": vdw,
-        "vdwpr": vdwpr
+        "vdwpr": vdwpr,
+        "chapr": chapr
         }
 
 
