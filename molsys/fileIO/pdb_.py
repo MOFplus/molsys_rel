@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
+### filename pdb_ instead of pdb is meant
+### to avoid conflict w/ pdb = python debugger [RA]
+
 
 def write(mol, f, resnames = None, residx = None, end = True):
     if resnames is None:

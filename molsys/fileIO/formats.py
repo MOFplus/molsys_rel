@@ -26,7 +26,7 @@ write = {
         'plain':plain.write,
         'turbo':turbo.write,
         'lammpstrj':lammpstrj.write,
-        'pdb':pdb_.write,
+        'pdb':pdb_.write, # to avoid conflict w/ pdb = python debugger
 }
 
 #def read(mol, filename, fmt, **kwargs):
