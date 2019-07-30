@@ -3,6 +3,7 @@ import string
 import numpy
 import copy
 import molsys.mol
+from molsys.molsys_mpi import mpiobject
 # molecules module
 
 # atm it is just those routines that are removed from the old molsys stored here as backup
@@ -10,9 +11,10 @@ import logging
 logger = logging.getLogger("molsys.molecules")
 
 
-class molecules(object):
+class molecules(mpiobject):
 
-    def __init__(self, mol):
+    def __init__(self, mol,mpi_comm=None,out=None):
+        super(molecules,self).__init__(mpi_comm, out)
         self._mol = mol
         self._molecules = {}
         self._nmols = {}
@@ -39,7 +41,13 @@ class molecules(object):
 
         offset = self._mol.natoms -1
         for i in range(nmols):
-            rndxyz = self._mol.get_xyz_from_frac(numpy.random.uniform(0,1,(3,)))
+            if self.mpi_rank == 0:
+                rndxyz = self._mol.get_xyz_from_frac(numpy.random.uniform(0,1,(3,)))
+            else:
+                rndxyz = None
+            if self.mpi_size > 1:
+                rndxyz = self.mpi_comm.bcast(rndxyz)
+            print (rndxyz)
             self._mol.add_mol(newmol,translate=rndxyz)
         #self.nmols += nmols
 
