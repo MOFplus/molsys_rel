@@ -63,3 +63,8 @@ def test_read(fmt):
 def test_load_addon(addon):
     m.addon(addon)
 
+@pytest.mark.parametrize("addon", molsys.addon.__all__)
+def test_load_wrong_addon(addon):
+    m.addon("")
+    m.addon("_"+addon+"_")
+

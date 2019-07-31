@@ -125,6 +125,7 @@ class mol(mpiobject):
         return
 
     # for future python3 compatibility
+    # TODO: mpicomm compatibility?
     def __copy__(self):
         """
         Shallow copy as for the standard copy.copy function
@@ -496,39 +497,44 @@ class mol(mpiobject):
             *args          : positional arguments for the addon instantiator
             **kwargs       :    keyword arguments for the addon instantiator
         """
-        loaded = False
         if addmod in self.loaded_addons:
-            logger.warning("%s addon is already available as attribute of mol instance!" % addmod)
-            return
+            logger.warning("\"%s\" addon is already available as attribute of mol instance!" % addmod)
+            loaded = False
+            return loaded
         if addmod in addon.__all__: ### addon is enabled: try to set it
-            if getattr(addon, addmod, None) is not None: ### no error raised during addon/__init__.py import
+            addclass = getattr(addon, addmod, None)
+            if addclass is not None: ### no error raised during addon/__init__.py import
                 try: ### get the addon attribute, initialize it and set as self attribute
-                    addinit = getattr(addon, addmod)(self, *args, **kwargs)
-                    setattr(self, addmod, addinit)
+                    addinst = addclass(self, *args, **kwargs)
+                    setattr(self, addmod, addinst)
+                    loaded = True ### the addon is now available as self.addmod
                 ### COMMENT THIS BLOCK FOR DEBUGGING ADDONS [RA] ###
                 except TypeError as e: ### HACK when 'from molsys.addon.addmod import something'
                     # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
                     # the 'getattr' to get molsys.addon.ff.ff
-                    addinit = getattr(getattr(addon, addmod),addmod)(self, *args, **kwargs)
-                    setattr(self, addmod, addinit)
+                    assert type(addclass) is type(os)
+                    addclass = getattr(addclass, addmod)
+                    addinst = addclass(self, *args, **kwargs)
+                    setattr(self, addmod, addinst)
+                    loaded = True ### the addon is now available as self.addmod
                 ####################################################
                 except Exception as e: ### unexpected error! bugfix needed or addon used improperly
                     import traceback
                     traceback.print_exc()
-                    logger.error("%s addon is not available: something unexpectable went wrong!" % addmod)
-                else: ### kudos! the addon is now available as self.addmod
-                    loaded = True
-                    logger.info("%s addon is now available as attribute of mol instance" % addmod)
+                    logger.error("\"%s\" addon is not available: something unexpectable went wrong!" % addmod)
+                    loaded = False
             else: ### error raised during addon/__init__.py import
                 print(addon._errortrace[addmod])
-                logger.error("%s addon is not imported: check addon module" % addmod)
+                logger.error("\"%s\" addon is not imported: check addon module" % addmod)
         else: ### addon in unknown or disabled in addon.__all__
-            logger.error("%s addon is unknown/disabled: check addon.__all__ in addon module" % addmod)
+            logger.error("\"%s\" addon is unknown/disabled: check addon.__all__ in addon module" % addmod)
+            loaded = False
         if loaded:
             ### addmod added to loaded_addons (to prevent further adding)
+            logger.info("\"%s\" addon is now available as attribute of mol instance" % addmod)
             self.loaded_addons.append(addmod)
         #assert addmod in self.loaded_addons, "%s not available" % addmod ### KEEP for testing
-        return
+        return loaded
 
     ##### connectivity ########################################################################################
 
@@ -547,15 +553,18 @@ class mol(mpiobject):
                 if i not in conn[j]: return False
         return True
 
-    def detect_conn(self, tresh = 0.1,remove_duplicates = False, fixed_dist=False):
+    def detect_conn(self, thresh = 0.1,remove_duplicates = False, fixed_dist=False):
         """
         detects the connectivity of the system, based on covalent radii.
 
         Args:
-            tresh (float): additive treshhold
+            thresh (float): additive threshhold
             remove_duplicates (bool): flag for the detection of duplicates
             fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance
                 replaces covalent radii (for blueprints use 1.0)
+
+        Todo:
+            refactoring
         """
 
         logger.info("detecting connectivity by distances ... ")
@@ -579,16 +588,16 @@ class mol(mpiobject):
             conn_local = []
             if remove_duplicates == True:
                 for j in range(i,natoms):
-                    if i != j and dist[j] < tresh:
+                    if i != j and dist[j] < thresh:
                         logger.debug("atom %i is duplicate of atom %i" % (j,i))
                         duplicates.append(j)
             else:
                 for j in range(natoms):
                     if fixed_dist is False:
-                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
+                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+thresh:
                             conn_local.append(j)
                     else:
-                        if i!= j and dist[j] <= fixed_dist+tresh:
+                        if i!= j and dist[j] <= fixed_dist+thresh:
                             conn_local.append(j)
             if remove_duplicates == False: conn.append(conn_local)
         if remove_duplicates:
@@ -608,7 +617,7 @@ class mol(mpiobject):
                 self.set_atypes(atypes)
                 self.set_fragtypes(fragtypes)
                 self.set_fragnumbers(fragnumbers)
-            self.detect_conn(tresh = tresh)
+            self.detect_conn(thresh = thresh, remove_duplicates=False)
         else:
             self.set_conn(conn)
         if self.use_pconn:
@@ -1116,7 +1125,6 @@ class mol(mpiobject):
         self.set_etab_from_tabs(sort_flag=True)
         return xyz,conn,pconn
 
-
     def apply_pbc(self, xyz=None, fixidx=0):
         '''
         apply pbc to the atoms of the system or some external positions
@@ -1336,12 +1344,6 @@ class mol(mpiobject):
 
 
     ###  add mol objects and copy ##########################################
-
-    # TODO: this might not work anymore because of the mpi communicator
-    #       is it needed?
-    #def copy(self):
-    #    ''' returns a copy of the whole mol object'''
-    #    return copy.deepcopy(self)
 
     def add_mol(self, other, translate=None,rotate=None, scale=None, roteuler=None,rotmat=None):
         ''' adds a  nonperiodic mol object to the current one ... self can be both
@@ -1735,6 +1737,39 @@ class mol(mpiobject):
         self.delete_atoms(badlist)
         return
 
+    def get_duplicates(self, xyz=None, rtol=1e-03, atol=1e-03):
+        """
+        get duplicate atoms within given tolerances
+        as separated method from remove_duplicates so it can accept custom xyz
+        see also util.misc.compare_coords
+        native numpy faster than explicit loops
+        """
+        if xyz is None:
+            if self.periodic:
+                x = self.get_frac_xyz()
+            else:
+                x = self.get_xyz()
+        else:
+            x = xyz
+        dx = x[:,np.newaxis]-x[np.newaxis,:] # coordinates distance
+        if self.periodic:
+            dx -= np.around(dx) # pbc
+        d = np.linalg.norm(dx, axis=2) # Euclidean distance
+        wd = np.where(np.isclose(d, 0, rtol=rtol, atol=atol)) # where of duplicates
+        ### print(np.vstack(wd).T) # for debug
+        idx = np.where(wd[0] < wd[1]) # index of duplicates
+        duplicates = wd[1][idx]
+        duplicates = sorted(duplicates) # not needed but clearer; alto transform to list
+        return duplicates
+
+    def remove_duplicates(self, rtol=1e-03, atol=1e-03):
+        """
+        remove duplicate atoms within given tolerances
+        """
+        duplicates = self.get_duplicates(rtol=rtol, atol=atol)
+        self.delete_atoms(duplicates)
+        return
+
     def merge_atoms(self, sele=None, parent_index=0, molecules_flag=False):
         """
         merge selected atoms
@@ -1812,44 +1847,6 @@ class mol(mpiobject):
                     sele[i] = [j-offset[j] for j in s]
         return # will never get it, here for clarity
 
-    def get_separated_molecules(self, sele = None):
-        """
-        get lists of indices of atoms which are connected together inside the
-        list and not connected outside the list.
-        same as get islands (see toper) with a native graph-tools algorithm
-
-        :Arguments:
-        sele(list of int): selection list of atom indices
-            if sele is None: find molecules in the whole mol
-            else: find molecules just in the selection, countin non-connected
-                atoms as separated molecules (e.g. if you select just the
-                COO of a paddlewheel you get 4 molecules)
-
-        >>> import molsys
-        >>> m = molsys.mol.from_file("molecules.mfpx")
-        >>> molecules_idx = m.get_separated_molecules()
-        >>> for m_idx in molecules_idx:
-        >>>     m.new_mol_by_index(m_idx).view()
-        >>> # if in trouble: CTRL+Z and "kill %%"
-        """
-        try:
-            from graph_tool.topology import label_components
-        except ImportError:
-            raise ImportError("install graph-tool via 'pip install graph-tool'")
-        from molsys.util.toper import molgraph
-        if sele is None:
-            mg = molgraph(self)
-        else:
-            m = self.new_mol_by_index(sele)
-            mg = molgraph(m)
-        labels = label_components(mg.molg)[0].a.tolist()
-        unique_labels = Counter(labels).keys()
-        if sele is None:
-            molidx = [[j for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
-        else:
-            molidx = [[sele[j] for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
-        return molidx
-
     def shuffle_atoms(self, sele=None):
         """
         shuffle atom indices, debug purpose
@@ -1887,87 +1884,75 @@ class mol(mpiobject):
         self.set_conn(conn.tolist())
         return sele2sele_original
 
-### property interface #########################################################
+    def get_separated_molecules(self, sele = None):
+        """
+        get lists of indices of atoms which are connected together inside the
+        list and not connected outside the list.
+        same as get islands (see toper) with a native graph-tools algorithm
 
-    def get_atom_property(self, pname):
-        return self.aprops[pname]
+        :Arguments:
+        sele(list of int): selection list of atom indices
+            if sele is None: find molecules in the whole mol
+            else: find molecules just in the selection, counting non-connected
+                atoms as separated molecules (e.g. if you select just the
+                COO of a paddlewheel you get 4 molecules)
 
-    def set_atom_property(self, pname):
-        self[pname] = Property(pname, self.natoms, "atom")
-        self.aprops[pname] = self[pname]
-        return
-
-    def del_atom_property(self, pname):
-        del self.aprops[pname]
-        del self[pname]
-        return
-
-    def list_atom_properties(self):
-        if not self.aprops:
-            print("No atom property")
-            return
-        print("Atom properties:")
-        for prop in self.aprops:
-            print(prop)
-        return
-
-    def get_bond_property(self, pname):
-        return self.bprops[pname]
-
-    def set_bond_property(self, pname):
-        prop = Property(pname, self.nbonds, "bonds")
-        setattr(self, pname, prop)
-        self.bprops[pname] = getattr(self, pname)
-        return
-
-    def del_bond_property(self, pname):
-        del self.bprops[pname]
-        del self[pname]
-        return
-
-    def list_bond_properties(self):
-        if not self.bprops:
-            print("No bond property")
-            return
-        print("Bond properties:")
-        for prop in self.bprops:
-            print(prop)
-        return
-
-    def get_property(self, pname, ptype):
-        if ptype.lower() == "atom":
-            return self.get_atom_property(pname)
-        elif ptype.lower() == "bond":
-            return self.get_bond_property(pname)
+        >>> import molsys
+        >>> m = molsys.mol.from_file("molecules.mfpx")
+        >>> molecules_idx = m.get_separated_molecules()
+        >>> for m_idx in molecules_idx:
+        >>>     m.new_mol_by_index(m_idx).view()
+        >>> # if in trouble: CTRL+Z and "kill %%"
+        """
+        try:
+            from graph_tool.topology import label_components
+        except ImportError:
+            raise ImportError("install graph-tool via 'pip install graph-tool'")
+        from molsys.util.toper import molgraph
+        if sele is None:
+            mg = molgraph(self)
         else:
-            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
-
-    def set_property(self, pname, ptype):
-        if ptype.lower() == "atom":
-            self.set_atom_property(pname)
-        elif ptype.lower() == "bond":
-            self.set_bond_property(pname)
+            m = self.new_mol_by_index(sele)
+            mg = molgraph(m)
+        labels = label_components(mg.molg)[0].a.tolist()
+        unique_labels = Counter(labels).keys()
+        if sele is None:
+            molidx = [[j for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
         else:
-            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
-        return
+            molidx = [[sele[j] for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
+        return molidx
 
-    def del_property(self, pname, ptype):
-        if ptype.lower() == "atom":
-            self.del_atom_property(pname)
-        elif ptype.lower() == "bond":
-            self.del_bond_property(pname)
+    def check_periodic(self, set_periodic=False):
+        """
+        check whether mol is periodic
+
+        :Arguments:
+            set_periodic=False (bool): if True, set periodic as checked
+
+        :Returns:
+            periodic (bool): flag according to found periodicity
+        """
+        # unit cell
+        idxs_unit = self.get_separated_molecules()
+        len_unit = [len(i) for i in idxs_unit]
+        ulen_unit = set(len_unit)
+        # supercell
+        m = copy.deepcopy(self)
+        m.make_supercell([3,3,3])
+        idxs_super = m.get_separated_molecules()
+        len_super = [len(i) for i in idxs_super]
+        ulen_super = set(len_super)
+        # compare
+        if ulen_unit != ulen_super:
+            periodic = True
         else:
-            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
-        return
+            periodic = False
+        if set_periodic:
+            self.periodic = periodic
+        return periodic
+        
 
-    def list_properties(self):
-        print("Properties:")
-        self.list_atom_properties()
-        self.list_bond_properties()
-        return
-
-    ##### manipulate geomtry #######################################################
-
+    ### MANIPULATE GEOMETRY ########################################################
 
     def randomize_coordinates(self,maxdr=1.0):
         """randomizes existing  coordinates
@@ -2014,7 +1999,23 @@ class mol(mpiobject):
         self.translate(-center)
         return
 
-    ##### distance measurements #####################
+    # ??? needed? collapse into center_com? [RA]
+    def shift_by_com(self, alpha=2, **kwargs):
+        """
+        shift by center of mass
+        alpha is needed otherwise atom distance is lost for excerpt of former
+        periodic structures (e.g. a block)
+        """
+        ralpha = 1./alpha
+        com = self.get_com(check_periodic=False, **kwargs)
+        if self.periodic:
+            shift = np.dot( np.dot(com, self.inv_cell)%ralpha, self.cell)
+        else: # N.B.: reverse alpha has a different meaning
+            shift = com*ralpha
+        self.xyz -= shift
+        return
+
+    ### DISTANCE MEASUREMENTS #######################
 
     def get_distvec(self, i, j, thresh=SMALL_DIST):
         """ vector from i to j
@@ -2218,23 +2219,7 @@ class mol(mpiobject):
         center = np.sum(xyz,axis=0)/float(natoms)
         return center
 
-    def shift_by_com(self, alpha=2, **kwargs):
-        """
-        shift by center of mass
-        alpha is needed otherwise atom distance is lost for excerpt of former
-        periodic structures (e.g. a block)
-        """
-        ralpha = 1./alpha
-        com = self.get_com(check_periodic=False, **kwargs)
-        if self.periodic:
-            shift = np.dot( np.dot(com, self.inv_cell)%ralpha, self.cell)
-        else: # N.B.: reverse alpha has a different meaning
-            shift = com*ralpha
-        self.xyz -= shift
-        return
-
-
-    ###### get/set  core datastructures ###########################
+    ### CORE DATASTRUCTURES #######################################
 
     def get_natoms(self):
         ''' returns the number of Atoms '''
@@ -2402,7 +2387,8 @@ class mol(mpiobject):
         self.fragtypes += fragtypes
         return
 
-    ### CONNECTIVITY ###
+    ### CONNECTIVITY ###########################################################
+
     def get_conn(self):
         ''' returns the connectivity of the system '''
         return self.conn
@@ -2814,3 +2800,83 @@ class mol(mpiobject):
     def get_weight(self):
         ''' gets the weight of the system. Default: 1.'''
         return self.weight
+
+    ### PROPERTIES #############################################################
+
+    def get_atom_property(self, pname):
+        return self.aprops[pname]
+
+    def set_atom_property(self, pname):
+        self[pname] = Property(pname, self.natoms, "atom")
+        self.aprops[pname] = self[pname]
+        return
+
+    def del_atom_property(self, pname):
+        del self.aprops[pname]
+        del self[pname]
+        return
+
+    def list_atom_properties(self):
+        if not self.aprops:
+            print("No atom property")
+            return
+        print("Atom properties:")
+        for prop in self.aprops:
+            print(prop)
+        return
+
+    def get_bond_property(self, pname):
+        return self.bprops[pname]
+
+    def set_bond_property(self, pname):
+        prop = Property(pname, self.nbonds, "bonds")
+        setattr(self, pname, prop)
+        self.bprops[pname] = getattr(self, pname)
+        return
+
+    def del_bond_property(self, pname):
+        del self.bprops[pname]
+        del self[pname]
+        return
+
+    def list_bond_properties(self):
+        if not self.bprops:
+            print("No bond property")
+            return
+        print("Bond properties:")
+        for prop in self.bprops:
+            print(prop)
+        return
+
+    def get_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            return self.get_atom_property(pname)
+        elif ptype.lower() == "bond":
+            return self.get_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+
+    def set_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            self.set_atom_property(pname)
+        elif ptype.lower() == "bond":
+            self.set_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+        return
+
+    def del_property(self, pname, ptype):
+        if ptype.lower() == "atom":
+            self.del_atom_property(pname)
+        elif ptype.lower() == "bond":
+            self.del_bond_property(pname)
+        else:
+            raise AttributeError("No \"%s\" property name: please use \"atom\" or \"bond\"" % pname)
+        return
+
+    def list_properties(self):
+        print("Properties:")
+        self.list_atom_properties()
+        self.list_bond_properties()
+        return
+

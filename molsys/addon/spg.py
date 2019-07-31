@@ -132,7 +132,144 @@ class spg:
             logger.info('detected spacegroup %s %i with symprec=%5.4f' % (symbol, number, self.symprec))
         return (symbol, number)
 
-    def make_P1(self, spgnum=-1, sg_setting=1, onduplicates="replace", conn_thresh=0.1):
+    def equivalent_sites(self, scaled_positions, onduplicates='error',
+                         symprec=1e-3):
+        """Returns the scaled positions and all their equivalent sites.
+		Shamelessly and gratefully copied from ase.spacegroup
+        Parameters:
+
+        scaled_positions: list | array
+            List of non-equivalent sites given in unit cell coordinates.
+        onduplicates : 'keep' | 'replace' | 'warn' | 'error'
+            Action if `scaled_positions` contain symmetry-equivalent
+            positions:
+
+            'keep'
+               ignore additional symmetry-equivalent positions
+            'replace'
+                replace
+            'warn'
+                like 'keep', but issue an UserWarning
+            'error'
+                raises a SpacegroupValueError
+
+        symprec: float
+            Minimum "distance" betweed two sites in scaled coordinates
+            before they are counted as the same site.
+
+        Returns:
+
+        sites: array
+            A NumPy array of equivalent sites.
+        kinds: list
+            A list of integer indices specifying which input site is
+            equivalent to the corresponding returned site.
+
+        Example:
+
+        >>> from ase.spacegroup import Spacegroup
+        >>> sg = Spacegroup(225)  # fcc
+        >>> sites, kinds = sg.equivalent_sites([[0, 0, 0], [0.5, 0.0, 0.0]])
+        >>> sites
+        array([[ 0. ,  0. ,  0. ],
+               [ 0. ,  0.5,  0.5],
+               [ 0.5,  0. ,  0.5],
+               [ 0.5,  0.5,  0. ],
+               [ 0.5,  0. ,  0. ],
+               [ 0. ,  0.5,  0. ],
+               [ 0. ,  0. ,  0.5],
+               [ 0.5,  0.5,  0.5]])
+        >>> kinds
+        [0, 0, 0, 0, 1, 1, 1, 1]
+        """
+        scaled = np.array(scaled_positions, ndmin=2)
+        ### EXPERIMENTAL #######################################################
+        rots, transs = zip(*self.sg.get_symop())
+        rots = np.array(rots, ndmin=3)
+        transs = np.array(transs, ndmin=2)
+        batchdot = np.einsum('aij,bj->abi', rots, scaled)
+        #### TO DEBUG / DEMONSTRATE THIS ###
+        #allfine = True
+        #for i,rot in enumerate(rots):
+        #    for j,pos in enumerate(scaled):
+        #        standard = np.dot(rot,pos)
+        #        experimental = batchdot[i,j]
+        #        if np.all(standard == experimental):
+        #            print("ERROR: dot product standard[%i,%i] != experimental[%i,%i]:\n    %s != %s" % (i,j,i,j,standard,experimental))
+        #            allfine = False
+        #            import pdb; pdb.set_trace()
+        #if not allfine:
+        #    import pdb; pdb.set_trace()
+        #### END DEBUG / DEMONSTRATION #####
+        sites = np.mod(batchdot + transs[:,np.newaxis], 1.)
+        ### TRY 1 ###
+        #diff = sites[:,np.newaxis,:] - sites[:,:,np.newaxis]
+        #mask = np.all(abs(diff) < symprec, axis=-1) | np.all(abs(abs(diff)-1) < symprec, axis=-1)
+        #inds = np.argwhere(mask)
+        ### meanings of columns of inds ###
+        ### inds[:,0] -> symmetry operations
+        ### inds[:,1] -> source of equivalence
+        ### inds[:,2] -> target of equivalence
+        #where = np.where(inds[:,1] < inds[:,2]) # to avoid redundancies
+        #couples = inds[:,1:]
+        #couples = inds[where,1:][0]
+        #sortd = np.sort(couples, axis=-1)
+        #uniq = np.unique(sortd, axis=0)
+        ### TRY 2 ###
+        diff = (scaled[np.newaxis,:] - sites)
+        diff -= (diff + 0.5) // 1
+        mask = np.all(abs(diff) < symprec, axis=-1) # which elements project to 
+        where = np.argwhere(mask)
+        ########################################################################
+        kinds = []
+        kinds_all = []
+        kinds_table = -np.ones(batchdot.shape[:2], dtype=int)
+        sites = []
+        for kind, pos in enumerate(scaled):
+            for rot, trans in self.sg.get_symop():
+                site = np.mod(np.dot(rot, pos) + trans, 1.)
+                if not sites:
+                    sites.append(site)
+                    kinds.append(kind)
+                    kinds_all.append(set([kind]))
+                    continue
+                t = site - sites
+                mask = np.all((abs(t) < symprec) |
+                              (abs(abs(t) - 1.0) < symprec), axis=1)
+                if np.any(mask):
+                    inds = np.argwhere(mask)[0]
+                    ind = inds[0] # the first
+                    if kinds[ind] == kind:
+                        pass
+                    elif onduplicates == 'keep':
+                        pass
+                    elif onduplicates == 'replace':
+                        kinds[ind] = kind
+                    elif onduplicates == 'warn':
+                        warnings.warn('scaled_positions %d and %d '
+                                      'are equivalent' % (kinds[ind], kind))
+                    elif onduplicates == 'error':
+                        raise SpacegroupValueError(
+                            'scaled_positions %d and %d are equivalent' % (
+                                kinds[ind], kind))
+                    elif onduplicates == 'return': # new, count as "keep" for kinds
+                        kinds_all[ind].add(kind)
+                    else:
+                        raise SpacegroupValueError(
+                            'Argument "onduplicates" must be one of: '
+                            '"keep", "replace", "warn" or "error".')
+                else:
+                    sites.append(site)
+                    kinds.append(kind)
+                    kinds_all.append(set([kind]))
+        self.rotations = rots
+        self.translations = transs
+        if onduplicates == 'return': # new
+            return np.array(sites), kinds, kinds_all
+        else:
+            return np.array(sites), kinds
+
+    def make_P1(self, spgnum=-1, sg_setting=1, onduplicates="keep", conn_thresh=0.1):
         """
         to be implemented by Julian from his topo tools
 
@@ -185,34 +322,112 @@ class spg:
         dataset = spglib.get_symmetry_from_database(spgnum)
         #print(dataset)
         
-        self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3) 
+        try:
+            self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3)
+        except Exception:
+            self.sg = Spacegroup(spgnum)#,sprec = 1e-3)
         
         new_xyz = []
         new_elems = []
         new_atypes = []
+        new_fragtypes = []
+        new_fragnumbers = []
         frac_xyz = self.mol.get_frac_xyz()
-        try:
-            new_xyz,kinds = self.sg.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
-        except:
-            import sys
-            logger.error('could not get equivalent sites, '+str(sys.exc_info()[1]))
-            return False
+        ### EXPERIMENTAL/DEBUG ###
+        if onduplicates == "return":
+            new_xyz, kinds, kinds_all = self.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
+        else:
+            new_xyz,kinds = self.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
+        ### ORIGINAL ###
+        #try:
+        #    if onduplicates == "return":
+        #        new_xyz,kinds, kinds_all = self.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
+        #    else:
+        #        new_xyz,kinds = self.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
+        #except:
+        #    import sys
+        #    logger.error('could not get equivalent sites, '+str(sys.exc_info()[1]))
+        #    return False
         #now do the new elems and stuff:
         for i,k in enumerate(kinds):
             new_elems.append(self.mol.elems[k])
             new_atypes.append(self.mol.atypes[k])
-            # fragtypes = self.mol.fragtypes[k]  #### Q: work on this here? they there?
-        ## now we try to get the connectivity right and find duplicates during the search
+            new_fragtypes.append(self.mol.fragtypes[k])
+            new_fragnumbers.append(0)
+        # keep to detect new connectivity
+        elems = self.mol.elems[:]
+        ctab = self.mol.ctab[:]
         self.mol.set_natoms(len(new_xyz))
+        self.mol.set_xyz_from_frac(new_xyz)
         self.mol.set_elems(new_elems)
         self.mol.set_atypes(new_atypes)
-        self.mol.set_xyz_from_frac(new_xyz)
-        self.mol.set_nofrags()
-        
-        #self.mol.elems  = new_elems
-        #self.mol.atypes = new_atypes
-        self.mol.detect_conn(tresh = conn_thresh, remove_duplicates = True)
-        return True
+        self.mol.set_fragtypes(new_fragtypes)
+        self.mol.set_fragnumbers(new_fragnumbers)
+        self.mol.set_empty_conn() # for debugging
+        # now we try to get the connectivity right and find duplicates during the search
+        if len(ctab) == 0:
+            for kall in kinds_all:
+                pass
+            loop = self.mol.cifdata.GetLoop("_geom_bond_atom_site_label_1")
+            ilabel = loop["_geom_bond_atom_site_label_1"]
+            jlabel = loop["_geom_bond_atom_site_label_2"]
+            isym = loop["_geom_bond_site_symmetry_1"]
+            jsym = loop["_geom_bond_site_symmetry_2"]
+            isym_ar = np.array(isym, str)
+            isym_split = np.char.split(isym_ar,'_')
+            isym_list = isym_split.tolist()
+            iop, ipos = zip(*isym_list)
+### symmetry operations
+            iop = np.array(iop, dtype=int)
+            iop -= 1 # python convention
+### symmetry positions
+            ipos = np.array(ipos, dtype=int)
+            iapos = ipos//100
+            ibpos = ipos//10  -  10*iapos
+            icpos = ipos      - 100*iapos - 10*ibpos
+            iabc = np.vstack([iapos, ibpos, icpos]).T
+            iabc -= 5 # cif convention
+        # detect connectivity
+        if len(ctab) > 0:
+            new_ctab = []
+            #find allowed bond types
+            iatoms, jatoms = zip(*ctab)
+            iatoms = list(iatoms)
+            jatoms = list(jatoms)
+            dx = frac_xyz[jatoms] - frac_xyz[iatoms]
+            d = np.linalg.norm(dx,axis=1)
+            du = np.unique(d.round(4)) # unique distances (fourth decimal) -> unique bond types
+            btypes = []
+            for u in du:
+                k = np.where(np.isclose(u, d, atol=1e-3))[0][0] # the first
+                ik, jk = iatoms[k], jatoms[k]
+                iat, jat = elems[ik], elems[jk]
+                btypes.append([u]+sorted([iat, jat]))
+            #find symmetrized bonds
+            new_elems = self.mol.elems[:]
+            dx = new_xyz[:,np.newaxis]-new_xyz[np.newaxis,:]
+            dx -= np.around(dx)
+            d = np.linalg.norm(dx,axis=2)
+            for u,iat,jat in btypes:
+                dev = abs(d-u)
+                bwhere = np.where(np.isclose(dev, 0, atol=1e-4))
+                bselect = bwhere[0] < bwhere[1] # prevent double bonds
+                bwhere = bwhere[0][bselect].tolist(), bwhere[1][bselect].tolist()
+                bonds = zip(*bwhere)
+                bt = [iat, jat]
+                #check whether the bonds connect the right couple of elements
+                #N.B.: reverse list so that last can be removed w/o messing with idxs
+                for k in range(len(bonds))[::-1]:
+                    i,j = bonds[k]
+                    if sorted([new_elems[i], new_elems[j]]) != bt: #then remove
+                        bonds.pop(k)
+                new_ctab += bonds
+            self.mol.set_ctab(new_ctab, conn_flag=True)
+            self.mol.remove_duplicates()
+            return True
+        else:
+            self.mol.detect_conn(thresh = conn_thresh, remove_duplicates = True)
+            return True
 
     def get_primitive_cell(self):
         """

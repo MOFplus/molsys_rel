@@ -6,8 +6,6 @@ class Bunch:
     def __init__(self, **kwds):
         self.__dict__.update(kwds)
 
-fname = sys.argv[1]
-
 ### CONSTANTS ###
 
 digits = list('0123456789')
@@ -161,6 +159,7 @@ def MOL2_setup_ATOM(block_atom):
     ### edit ###
     # back to python indexing
     aidxs = [i-1 for i in aidxs]
+    resids = [i-1 for i in resids]
 
     ### return ###
     block.natoms   = natoms
@@ -360,10 +359,11 @@ def read(mol, f):
     mol.set_atypes(_atom.atypes)
     mol.set_fragtypes(_atom.resnames)
     mol.set_fragnumbers(_atom.resids)
-    mol.set_ctab(ctab , conn_flag=True)
+    mol.set_ctab(ctab, conn_flag=True)
     if any(cellparams):
         mol.set_cellparams(cellparams)
-        if _crysin.spgn > 1: # not P1 -> apply spg operators
+        ### TODO: investigate spgn > 231
+        if 1 < _crysin.spgn < 231: # not P1 -> apply spg operators
             mol.addon("spg")
             mol.spg.make_P1(spgnum=_crysin.spgn, sg_setting=_crysin.spgx)
     ### keeping ###

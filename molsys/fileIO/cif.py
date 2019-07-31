@@ -134,6 +134,7 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
         else:
             disorder = None
 
+    ### elems ##################################################################
     try:
         elems = [str(i) for i in cf.GetItemValue('_atom_site_type_symbol')]
     except KeyError as e:
@@ -144,6 +145,9 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
         else:
             raise(e)
     elems = [i.lower() for i in elems]
+    ### atypes #################################################################
+    atypes = [str(i) for i in cf.GetItemValue('_atom_site_label')]
+    ### xyz ####################################################################
     x = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_x')]
     y = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_y')]
     z = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_z')]
@@ -152,30 +156,34 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
         if disorder:
             # select according to given disorder
             elems = [e for i,e in enumerate(elems) if i in select]
+            atypes = [e for i,e in enumerate(atypes) if i in select]
             x = [e for i,e in enumerate(x) if i in select]
             y = [e for i,e in enumerate(y) if i in select]
             z = [e for i,e in enumerate(z) if i in select]
         else:
             logger.warning("auto disorder detection failed!")
 
+    ### cellparams #############################################################
     a = format_float(cf.GetItemValue('_cell_length_a'))
     b = format_float(cf.GetItemValue('_cell_length_b'))
     c = format_float(cf.GetItemValue('_cell_length_c'))
     alpha = format_float(cf.GetItemValue('_cell_angle_alpha'))
     beta = format_float(cf.GetItemValue('_cell_angle_beta'))
     gamma = format_float(cf.GetItemValue('_cell_angle_gamma'))
+
+    ### set ####################################################################
     mol.set_natoms(len(elems))
     mol.set_cellparams([a,b,c,alpha,beta,gamma])
     mol.set_xyz_from_frac(numpy.array([x,y,z]).T)
     #mol.wrap_in_box()
     mol.set_elems(elems)
-    mol.set_atypes(['-1']*len(elems))
+    mol.set_atypes(atypes)
     mol.set_nofrags()
     mol.set_empty_conn()
     mol.cifdata = cf
     if make_P1: 
         mol.addon('spg')
-        mol.proper_cif = mol.spg.make_P1(conn_thresh=conn_thresh)
+        mol.proper_cif = mol.spg.make_P1(conn_thresh=conn_thresh, onduplicates="return")
     if detect_conn:
         mol.detect_conn()
     return

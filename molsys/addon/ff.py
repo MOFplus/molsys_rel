@@ -678,6 +678,7 @@ class ff(base):
                     "cha": {},
                     "vdw": {},
                     "vdwpr": {},
+                    "chapr": {},
                     "bnd": {},
                     "ang": {},
                     "dih": {},
@@ -747,7 +748,7 @@ class ff(base):
     @timer("assign multi parameters")
     def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}, smallring = False, generic = None):
         """
-        Method to orchestrate the parameter assignment fo the curent system using multiple force fields
+        Method to orchestrate the parameter assignment for the current system using multiple force fields
         defined in FFs by getting the corresponding data from the webAPI.
 
         Args:
@@ -1127,7 +1128,7 @@ class ff(base):
 
     def set_def_sig(self,ind):
         """
-        Method to set default parameters for gassuain width for the the charges
+        Method to set default parameters for gaussian width for the the charges
         :Parameters:
             - ind(int): atom index
         """
@@ -1162,7 +1163,7 @@ class ff(base):
 
     def varnames2par(self):
         """
-        Forces the paramters in the variables dictionary to be wriiten in the internal
+        Forces the paramters in the variables dictionary to be written in the internal
         data structures
         """
         if hasattr(self, 'do_not_varnames2par'): return
@@ -1207,6 +1208,7 @@ class ff(base):
         """
         # one could improve this via an additional dictionary like structure using the vdwpr 
         self.vdwdata = {}
+        self.chadata = {}
         self.types2numbers = {} #equivalent to self.dlp_types
         types = self.par["vdw"].keys()
         for i, t in enumerate(types):
@@ -1215,19 +1217,29 @@ class ff(base):
         ntypes = len(types)
         for i in range(ntypes):
             for j in range(i, ntypes):
-                #TODO check availability of an explicit paramerter
-                #if len(self.par["vdwpr"].keys()) > 0:
-                #    _,_,ti = self.split_parname(types[i])
-                #    _,_,tj = self.split_parname(types[j])
-                #    ti =ti[0]
-                #    tj = tj[0]
-                #    parname = self.build_parname("vdwpr", "buck6d", "leg", [ti,tj])
-                #    if parname in self.par["vdwpr"].keys():
-                #        # got it
-                #        par_ij = self.par["vdwpr"][parname]
-                #        self.vdwdata[types[i]+":"+types[j]] = par_ij
-                #        self.vdwdata[types[j]+":"+types[i]] = par_ij
-                #        continue
+                if "vdwpr" in self.par and len(self.par["vdwpr"].keys()) > 0:
+                    poti,refi,ti = self.split_parname(types[i])
+                    potj,refj,tj = self.split_parname(types[j])
+                    assert poti == potj
+                    assert refi == refj
+                    parname = self.build_parname("vdwpr", poti, refi, [ti[0],tj[0]])
+                    if parname in self.par["vdwpr"].keys():
+                        # found an explicit parameter
+                        par_ij = self.par["vdwpr"][parname]
+                        self.vdwdata[types[i]+":"+types[j]] = par_ij
+                        self.vdwdata[types[j]+":"+types[i]] = par_ij
+                        continue
+                if "chapr" in self.par and len(self.par["chapr"].keys()) > 0:
+                    poti,refi,ti = self.split_parname(types[i])
+                    potj,refj,tj = self.split_parname(types[j])
+                    assert poti == potj
+                    assert refi == refj
+                    parname = self.build_parname("chapr", poti, refi, [ti[0],tj[0]])
+                    if parname in self.par["chapr"].keys():
+                        par_ij = self.par["chapr"][parname]
+                        self.chadata[types[i]+":"+types[j]] = par_ij
+                        self.chadata[types[j]+":"+types[i]] = par_ij
+                        continue                
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]
@@ -1269,6 +1281,9 @@ class ff(base):
                 # all combinations are symmetric .. store pairs bith ways
                 self.vdwdata[types[i]+":"+types[j]] = par_ij
                 self.vdwdata[types[j]+":"+types[i]] = par_ij   
+
+                self.chadata[types[i]+":"+types[j]] = par_ij
+                self.chadata[types[j]+":"+types[i]] = par_ij  
         #import pdb; pdb.set_trace()
         self.pair_potentials_initalized = True
         return
@@ -1693,7 +1708,7 @@ class ff(base):
         """
         # dummy dicts to assign a number to the type
         par_types = {}
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw","vdwpr"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw","vdwpr","chapr"]:
             ptyp = {}
             i = 1
             for ind in self.par[ic]:
@@ -1759,7 +1774,7 @@ class ff(base):
         for k,v in self.settings.items():
             f.write("%-15s %s\n" % (k, str(v)))
         f.write("\n")
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr","chapr"]:
             ptyp = par_types[ic]
             par = self.par[ic]
             f.write(ff_desc[ic])
@@ -1798,8 +1813,8 @@ class ff(base):
         """
         hash = None
         fric = open(fname+".ric", "r")
-        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]
-        ric_len  = [2    , 3    , 4    , 4    , 1    , 1      ,2     ]
+        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr", "chapr"]
+        ric_len  = [2    , 3    , 4    , 4    , 1    , 1      ,2     ,2       ]
         ric      = {}
         # read in ric first, store the type as an attribute in the first place
         stop = False
@@ -1948,7 +1963,7 @@ class ff(base):
                         else:
                             t2ident[itype] = [ident]
                     # now all types are read in: set up the parind datastructure of the ric
-                    if curric != "vdwpr":
+                    if curric != "vdwpr" and curric != "chapr":
                         parind = self.parind[curric]
                         for i,r in enumerate(self.ric_type[curric]):
                             parind[i] = t2ident[r.type]
