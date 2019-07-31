@@ -183,7 +183,7 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
     mol.cifdata = cf
     if make_P1: 
         mol.addon('spg')
-        mol.proper_cif = mol.spg.make_P1(conn_thresh=conn_thresh)
+        mol.proper_cif = mol.spg.make_P1(conn_thresh=conn_thresh, onduplicates="return")
     if detect_conn:
         mol.detect_conn()
     return
