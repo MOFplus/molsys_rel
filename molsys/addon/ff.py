@@ -1864,8 +1864,9 @@ class ff(base):
         self._init_data(cha=ric["cha"], vdw=ric["vdw"])
         self._init_pardata()
         # check if molid has been read from ric file and set to molid in the parent mol object
+        # NOTE: the ic is a list with attributes that never return an error .. non exisiting attributes are returned as None
         rt_vdw = self.ric_type["vdw"]
-        if hasattr(rt_vdw[0], "molid"):
+        if rt_vdw[0].molid is not None:
             self._mol.molid = np.array([x.molid for x in rt_vdw])
         # now open and read in the par file
         if fit:
