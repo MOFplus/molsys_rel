@@ -4,6 +4,7 @@ import numpy
 import copy
 import molsys.mol
 from molsys.addon import base
+#from molsys.molsys_mpi import mpiobject
 # molecules module
 
 # atm it is just those routines that are removed from the old molsys stored here as backup
