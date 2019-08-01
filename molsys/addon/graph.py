@@ -15,7 +15,7 @@ import copy
 import logging
 logger = logging.getLogger("molsys.graph")
 
-class graph:
+class graph(object):
 
     def __init__(self, mol):
         """
@@ -26,6 +26,9 @@ class graph:
              - mol : a mol type object (can be a derived type like bb or topo as well)
         """
         self._mol = mol
+        self.molg = Graph(directed=False)
+        self.molg.vp.type = self.molg.new_vertex_property("string")
+        self.molg.vp.molid = self.molg.new_vertex_property("int")
         logger.debug("generated the graph addon")
         return
 
@@ -37,9 +40,7 @@ class graph:
 
         """
         if idx is None: idx = range(self._mol.natoms)
-        self.molg = Graph(directed=False)
         # now add vertices
-        self.molg.vp.type = self.molg.new_vertex_property("string")
         self.vert2atom = [] # this list maps vertex indices to the real atoms becasue we omit the hydrogens in the graph
         ig = 0
         for i in idx:
@@ -213,3 +214,11 @@ class graph:
         self.molg.set_vertex_filter(filter)
         return
 
+    def get_components(self):
+        """Get all the components aka molecules from the atomic graph
+
+        it adds a property map molid to the graph
+
+        """
+        label_components(self.molg, vprop=self.molg.vp.molid)
+        return
