@@ -120,6 +120,7 @@ class mol(mpiobject):
         self.aprops = {}
         self.bprops = {}
         self._etab = []
+        self.molid = None
         # defaults
         self.periodic=False
         self.is_bb=False
@@ -1391,6 +1392,16 @@ class mol(mpiobject):
         #self.fragtypes += other.fragtypes
         #start_fragnumber = sorted(self.fragnumbers)[-1]+1
         #self.fragnumbers += list(np.array(other.fragnumbers)+start_fragnumber)
+        # update molid if present
+        if self.molid is not None:
+            # add the other molecules molid
+            nmols = self.molid.max()+1
+            if other.molid is not None:
+                new_molid = list(self.molid)+list(other.molid+nmols)
+            else:
+                # in this case the added molecule had no molid -> MUST be only one molecule
+                new_molid = list(self.molid)+other.get_natoms()*[nmols]
+            self.molid = np.array(new_molid)
         return
 
     def new_mol_by_index(self, idx):
