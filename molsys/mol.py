@@ -45,18 +45,21 @@ from collections import Counter
 #        master node writes INFO to stdout
 # TBI: colored logging https://stackoverflow.com/a/384125
 import logging
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
 if molsys_mpi.size > 1:
     logger_file_name = "molsys.%d.log" % molsys_mpi.rank
 else:
     logger_file_name = "molsys.log"
-fhandler  = logging.FileHandler(logger_file_name)
-fhandler.setLevel(logging.DEBUG)
-#fhandler.setLevel(logging.WARNING)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
-fhandler.setFormatter(formatter)
-logger.addHandler(fhandler)
+# check if environment variable MOLSYS_LOG is set
+if "MOLSYS_LOG" in os.environ:
+    fhandler  = logging.FileHandler(logger_file_name)
+    # TBI if os.environ["MOLSYS_LOG"] in ("DEBUG", "WARNING", "INFO"):
+    fhandler.setLevel(logging.DEBUG)
+    #fhandler.setLevel(logging.WARNING)
+    fhandler.setFormatter(formatter)
+    logger.addHandler(fhandler)
 if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
     shandler.setLevel(logging.INFO)
@@ -117,6 +120,7 @@ class mol(mpiobject):
         self.aprops = {}
         self.bprops = {}
         self._etab = []
+        self.molid = None
         # defaults
         self.periodic=False
         self.is_bb=False
@@ -1392,6 +1396,16 @@ class mol(mpiobject):
         #self.fragtypes += other.fragtypes
         #start_fragnumber = sorted(self.fragnumbers)[-1]+1
         #self.fragnumbers += list(np.array(other.fragnumbers)+start_fragnumber)
+        # update molid if present
+        if self.molid is not None:
+            # add the other molecules molid
+            nmols = self.molid.max()+1
+            if other.molid is not None:
+                new_molid = list(self.molid)+list(other.molid+nmols)
+            else:
+                # in this case the added molecule had no molid -> MUST be only one molecule
+                new_molid = list(self.molid)+other.get_natoms()*[nmols]
+            self.molid = np.array(new_molid)
         return
 
     def new_mol_by_index(self, idx):
