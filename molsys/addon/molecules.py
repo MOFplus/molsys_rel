@@ -55,8 +55,6 @@ class mgroup:
         else:
             self.detect_molecules_nograph()
         return
- 
-
 
     def detect_molecules_nograph(self):
         ''' Detects independent (not connected) fragments and stores them
@@ -136,7 +134,6 @@ class mgroup:
         assert len(self.whichmol) == self.parent_mol.natoms
         return
 
-
 class molecules(base):
 
     def __init__(self, mol):
@@ -153,6 +150,25 @@ class molecules(base):
         '''
         return
 
+    def __getattr__(self,name):
+        ''' Overridden for temporary back compatibility
+        
+        Since both, pydlpoly and pylmps rely on mol.molecules.[lots of attributes], we map here
+        the attributes of the default molecule group to the molecules instanace.
+        may interfere at some point when mgroups[molecules] and this class have same named attributes
+        currently this is not the case.
+
+        Args:
+            self (base): molecules instance
+            name (str): attribute to be obtainde from the underlying mgroup
+        
+        Returns:
+            varying: whatever the value of name is
+        '''
+        try:
+            return object.__getattribute__(self,name)
+        except:
+            return getattr(self.mgroups[self.default_mgroup],name)
 
     def add_molecule(self, newmol, nmols=1):
         """Adds a molecule to the parent mol object
@@ -191,6 +207,24 @@ class molecules(base):
                         self._mol.ff.ric_type[k] += [ic(rictype)]
                         self._mol.ff.parind[k] += newmol.ff.parind[k]
         return
+
+    def get_names(self,legacy=True):
+        """get a list of the molecule names stored in the default molecules dictionary
+        
+        Args:
+            legacy (bool, optional): Defaults to True. if True, remove the name of the parent mol
+        
+        Returns:
+            list: list of strings of molecule names
+        """
+        namelist = list(set(self.mgroups[self.default_mgroup].molnames))
+        if legacy is True:
+            namelist.remove(self.mgroups[self.default_mgroup].parent_mol.name)
+        return namelist
+
+
+
+
 
 
 
