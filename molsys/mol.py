@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 #from scipy.optimize import linear_sum_assignment as hungarian
-#import types
+import types
 import string
 import copy
 import os
@@ -507,25 +507,24 @@ class mol(mpiobject):
             return loaded
         if addmod in addon.__all__: ### addon is enabled: try to set it
             addclass = getattr(addon, addmod, None)
-            if addclass is not None: ### no error raised during addon/__init__.py import
-                try: ### get the addon attribute, initialize it and set as self attribute
+            if type(addclass) is not None: ### no error raised during addon/__init__.py import
+                if isinstance(addclass, (type, types.ClassType)):
+                    ### get the addon attribute, initialize it and set as self attribute
                     addinst = addclass(self, *args, **kwargs)
                     setattr(self, addmod, addinst)
                     loaded = True ### the addon is now available as self.addmod
-                ### COMMENT THIS BLOCK FOR DEBUGGING ADDONS [RA] ###
-                except TypeError as e: ### HACK when 'from molsys.addon.addmod import something'
+                elif isinstance(addclass, (type, types.ModuleType)):
+                    ### to enable syntax: 'from molsys.addon.addmod import addmod'
                     # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
                     # the 'getattr' to get molsys.addon.ff.ff
-                    assert type(addclass) is type(os)
                     addclass = getattr(addclass, addmod)
                     addinst = addclass(self, *args, **kwargs)
                     setattr(self, addmod, addinst)
                     loaded = True ### the addon is now available as self.addmod
-                ####################################################
-                except Exception as e: ### unexpected error! bugfix needed or addon used improperly
+                else:
                     import traceback
                     traceback.print_exc()
-                    logger.error("\"%s\" addon is not available: something unexpectable went wrong!" % addmod)
+                    logger.error("\"%s\" addon is not available: %s" % (addmod, sys.exc_info()[1]) )
                     loaded = False
             else: ### error raised during addon/__init__.py import
                 print(addon._errortrace[addmod])
