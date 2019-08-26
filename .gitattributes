@@ -1,2 +1,3 @@
 tests/* linguist-vendored
 doc/* linguist-documentation
+*.arc linguist-detectable=false
