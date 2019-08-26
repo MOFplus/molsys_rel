@@ -74,7 +74,7 @@ class pdlpio2(mpiobject):
         super(pdlpio2, self).__init__(mpi_comm,out)
         self.verbose = 0
         # helper object for hdf5 variable length strings
-        self.str_dt = h5py.new_vlen(str)
+        self.str_dt = h5py.special_dtype(vlen=str)
         #
         self.fname = fname
         # check if this file exists or should be generated
@@ -372,7 +372,12 @@ class pdlpio2(mpiobject):
                 OK = False
             else:
                 sgroup = self.h5file.create_group(stage)
-                sgroup.create_group("restart")
+                rgroup = sgroup.create_group("restart")
+                # generate restart arrays for xyz, cell and vel
+                na = self.ffe.get_natoms()
+                rgroup.require_dataset("xyz",shape=(na,3), dtype="float64")
+                rgroup.require_dataset("vel",shape=(na,3), dtype="float64")
+                rgroup.require_dataset("cell",shape=(3,3), dtype="float64")
         OK = self.mpi_comm.bcast(OK)
         return OK
 
