@@ -134,9 +134,7 @@ class lqg_test(unittest.TestCase):
         assert_allclose(arcs, self.h5file[netname]['ref']['arcs'].value,
                 atol = 10**-12)
 
-if __name__ == '__main__':
-    # only aab/pto/qtz/tbo/ths available for this test...
-    netname = sys.argv[1]
+def main(netname):
     suite = unittest.TestSuite()
     suite.addTest(lqg_test("test_cycle_basis",netname))
     suite.addTest(lqg_test("test_cocycle_basis",netname))
@@ -146,3 +144,9 @@ if __name__ == '__main__':
     suite.addTest(lqg_test("test_cell",netname))
     suite.addTest(lqg_test("test_arcs",netname))
     unittest.TextTestRunner(verbosity = 3).run(suite)
+
+if __name__ == '__main__':
+    # only a few nets available for this test...
+    nets = ["aab", "pto", "qtz", "tbo", "ths"]
+    for net in nets:
+        main(net)
