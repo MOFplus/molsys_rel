@@ -866,6 +866,13 @@ class ff(base):
             for i, a in enumerate(self._mol.get_atypes()):
                 self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
             self.timer.stop()
+            # add molid info to ic["vdw"]
+            self.timer.start("make atypes")
+            self._mol.graph.get_components()
+            for i, at in enumerate(self.ric_type["vdw"]):
+                at.molid = self._mol.graph.molg.vp.molid[i]
+            self._mol.molid = self._mol.graph.molg.vp.molid.get_array()
+            self.timer.stop()
         # detect refsystems
         self.find_refsystems_new(plot=plot)
         with self.timer("parameter assignement loop"):
@@ -1747,6 +1754,10 @@ class ff(base):
             filt = None
             if ic == "dih":
                 filt = ["ring"]
+            elif ic == "vdw":
+                filt = ["molid"]
+            else:
+                pass
             ric = self.ric_type[ic]
             parind = self.parind[ic]
             ptyp = par_types[ic]
@@ -1852,6 +1863,11 @@ class ff(base):
         # time to init the data structures .. supply vdw and cha here
         self._init_data(cha=ric["cha"], vdw=ric["vdw"])
         self._init_pardata()
+        # check if molid has been read from ric file and set to molid in the parent mol object
+        # NOTE: the ic is a list with attributes that never return an error .. non exisiting attributes are returned as None
+        rt_vdw = self.ric_type["vdw"]
+        if rt_vdw[0].molid is not None:
+            self._mol.molid = np.array([x.molid for x in rt_vdw])
         # now open and read in the par file
         if fit:
             nkeys={}
