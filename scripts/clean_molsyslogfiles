@@ -1,0 +1,12 @@
+rm molsys.*.log
+rm molsys.log
+rm */molsys.*.log
+rm */molsys.log
+rm */*/molsys.*.log
+rm */*/molsys.log
+rm */*/molsys.*.log
+rm */*/molsys.log
+rm */*/*/molsys.*.log
+rm */*/*/molsys.log
+rm */*/*/*/molsys.*.log
+rm */*/*/*/molsys.log
