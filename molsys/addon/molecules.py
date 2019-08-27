@@ -256,13 +256,13 @@ class molecules(base):
             temp_ric_type = copy.copy(newmol.ff.ric_type)
             for k in temp_ric_type.keys():
                 for moli in range(nmols):    
-					for i in range(len(temp_ric_type[k])):
-						rictype = []
-						for j in range(len(temp_ric_type[k][i])):
-							rictype.append(temp_ric_type[k][i][j] + offset + (moli*newmol.natoms) +1)
-						if rictype != []:
-							self._mol.ff.ric_type[k] += [ic(rictype)]
-							self._mol.ff.parind[k] += newmol.ff.parind[k]
+                    for i in range(len(temp_ric_type[k])):
+                        rictype = []
+                        for j in range(len(temp_ric_type[k][i])):
+                            rictype.append(temp_ric_type[k][i][j] + offset + (moli*newmol.natoms) +1)
+                        if rictype != []:
+                            self._mol.ff.ric_type[k] += [ic(rictype)]
+                        self._mol.ff.parind[k] += newmol.ff.parind[k]
         # finish up packing
         if pack:
             self._mol.set_xyz(pack_xyz)
