@@ -103,7 +103,8 @@ class ic(list):
             return None
         else:
             return self.__dict__[name]
-            
+        
+
     def to_string(self, width=None, filt=None, inc=0):
         """
         Method to generate a string representation of the ic.
@@ -2140,6 +2141,13 @@ class ff(base):
                     parind[i] = t2ident[ri.type]
         return
 
+
+    def update_molid(self):
+        """helper function to update molid attribute in the vdw ics after things have changed in the parent mol's molid
+        """
+        for i, at in enumerate(self.ric_type["vdw"]):
+            at.molid = self._mol.molid[i]
+        return
 
 
 

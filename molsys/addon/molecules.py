@@ -257,12 +257,20 @@ class molecules(base):
             for k in temp_ric_type.keys():
                 for moli in range(nmols):    
                     for i in range(len(temp_ric_type[k])):
+                        # get attributes of ric
+                        atrs = temp_ric_type[k][i].__dict__
                         rictype = []
                         for j in range(len(temp_ric_type[k][i])):
                             rictype.append(temp_ric_type[k][i][j] + offset + (moli*newmol.natoms) +1)
                         if rictype != []:
-                            self._mol.ff.ric_type[k] += [ic(rictype)]
+                            new_ric = ic(rictype)
+                            for a in atrs.keys():
+                                if (a != "used") and (a != "type"):
+                                    new_ric.__dict__[a] = atrs[a]
+                            self._mol.ff.ric_type[k] += [new_ric]
                         self._mol.ff.parind[k] += newmol.ff.parind[k]
+            ### molid has been updated using self._mol.add_mol => update the molid in ff
+            self._mol.ff.update_molid()
         # finish up packing
         if pack:
             self._mol.set_xyz(pack_xyz)
