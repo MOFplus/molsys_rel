@@ -366,6 +366,7 @@ class pdlpio2(mpiobject):
         if stage == "system":
             self.pprint("PDLP ERROR: Stage name system is not allowed!")
             raise IOError
+        self.open()
         OK = True
         if self.is_master:
             if stage in list(self.h5file.keys()):
