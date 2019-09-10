@@ -414,7 +414,7 @@ class pdlpio2(mpiobject):
             raise IOError
         return
 
-    def prepare_stage(self, stage, traj_data, traj_nstep, data_nstep=1, thermo_values=[], prec="float64", tstep=0.001):
+    def prepare_stage(self, stage, traj_data, traj_nstep, data_nstep=1, thermo_values=[], prec="float32", tstep=0.001):
         """prepare a stage for trajectory writing
         
         Args:
