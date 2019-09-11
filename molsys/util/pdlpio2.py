@@ -46,6 +46,7 @@ import numpy as np
 
 import types
 import os
+import string
 
 from molsys import mpiobject
 import molsys
@@ -366,6 +367,7 @@ class pdlpio2(mpiobject):
         if stage == "system":
             self.pprint("PDLP ERROR: Stage name system is not allowed!")
             raise IOError
+        self.open()
         OK = True
         if self.is_master:
             if stage in list(self.h5file.keys()):
@@ -412,7 +414,7 @@ class pdlpio2(mpiobject):
             raise IOError
         return
 
-    def prepare_stage(self, stage, traj_data, traj_nstep, data_nstep=1, prec="float64", tstep=0.001):
+    def prepare_stage(self, stage, traj_data, traj_nstep, data_nstep=1, thermo_values=[], prec="float32", tstep=0.001):
         """prepare a stage for trajectory writing
         
         Args:
@@ -420,6 +422,7 @@ class pdlpio2(mpiobject):
             traj_data (list of strings): name of the data to be written
             traj_nstep (int): frequency in steps to write
             data_nstep (int or list of ints), optional): Defaults to 1. freq to write each datatype
+            thermo_values (list): Defaults to [], list of strings of thermodynamic data ... each code needs to know what is meant here
             prec (str, optional): Defaults to "float64". precision to use in writing traj data
             tstep (float, optional): Defaults to 0.001. Timestep in ps
         """ 
@@ -430,7 +433,7 @@ class pdlpio2(mpiobject):
             data_nstep = len(traj_data)*[data_nstep]
         OK=True
         if self.is_master:
-            if stage not in list(self.h5file.keys()):
+            if stage not in list(self.h5file.keys()):      
                 OK = False
             else:
                 traj = self.h5file.require_group(stage+"/traj")
@@ -447,6 +450,18 @@ class pdlpio2(mpiobject):
                                     dtype=prec)
                     pdlp_data[...] = data
                     pdlp_data.attrs["nstep"] = dnstep
+                if len(thermo_values)>0:
+                    # write thermodynamic data .. size of array is length of list
+                    nthermo = len(thermo_values)
+                    pdlp_data = traj.require_dataset("thermo",
+                                    shape=(1, nthermo),
+                                    maxshape=(None, nthermo),
+                                    chunks=(1, nthermo),
+                                    dtype=prec,
+                                    )
+                    # TBI .. get thermo data in ffe on python level
+                    pdlp_data[...] = 0.0
+                    pdlp_data.attrs["labels"] = string.join(thermo_values, " ")
         OK = self.mpi_comm.bcast(OK)
         if not OK:
             self.pprint("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
