@@ -173,7 +173,7 @@ class molecules(base):
         except:
             return getattr(self.mgroups[self.default_mgroup],name)
 
-    def add_molecule(self, newmol, nmols=1, pack=False, packbound=0.5):
+    def add_molecule(self, newmol, nmols=1, pack=False, packbound=0.5,ff=None):
         """Adds a molecule to the parent mol object
 
         A molecules is a sub mol object that can be added to the parent system many times
@@ -182,8 +182,17 @@ class molecules(base):
             - mol (molsys obeject): nonperiodic molecule to be added (must be ONE connected molecule)
             - pack (boolean): defaults to False: if True use packmol to pack (needs to be installed and in the path)
             - packbound (float): defaults to 0.5: distance in Angstrom to reduce the box for packmol filling
+            - ff (None):  dummy variable added for legacy reasons
         """
-        # if pack is True we first try to use packmol to generate proper xyz coords and keep them. 
+        
+        # temporary hook to get legacy scripts running (JK)
+        if type(newmol) == type('string'):
+            name = newmol
+            newmol = molsys.mol.from_file(name+'.mfpx')
+            newmol.addon('ff')
+            newmol.ff.read(name)
+        
+        # if pack is True we first try to use packmol to generate proper xyz coords and keep them.        
         if pack:
             assert self._mol.get_bcond() < 3
             # assume pydlpoly boundary conditions (orig in the center of box) -- this is what we get from MOF+ 
