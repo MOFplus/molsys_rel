@@ -1598,6 +1598,7 @@ class mol(mpiobject):
         assert type(elem) == str
         assert type(atype)== str
         assert np.shape(xyz) == (3,)
+        xyz = copy.copy(xyz)
         self.natoms += 1
         self.elems.append(elem)
         self.atypes.append(atype)
