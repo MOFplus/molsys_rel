@@ -548,6 +548,14 @@ vdw_prm = {
         "na" : [2.550, 0.007],
         "ni" : [2.200, 0.020]}
 
+maxbond = {
+        "c" : 4,
+        "h" : 1,
+        "o" : 2,
+        "n" : 3,
+}
+
+
 
 def get_covdistance(elements):
     ''' get covalent bond distances based on elems.py cov_radii
