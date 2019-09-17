@@ -8,7 +8,7 @@ import types
 import string
 import copy
 import os
-#import sys
+import sys
 import subprocess
 try:
     from cStringIO import StringIO

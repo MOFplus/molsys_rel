@@ -560,6 +560,14 @@ metals = set([
             'ac', 'th', 'pa', 'u',  'np', 'pu', 'am', 'cm', 'bk', 'cf', 'es', 'fm', 'md', 'no', 'lr'
 ])
 
+maxbond = {
+        "c" : 4,
+        "h" : 1,
+        "o" : 2,
+        "n" : 3,
+}
+
+
 def get_covdistance(elements):
     ''' get covalent bond distances based on elems.py cov_radii
     :Parameters:

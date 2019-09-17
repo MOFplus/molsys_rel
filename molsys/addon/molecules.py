@@ -4,6 +4,9 @@ import numpy
 import copy
 import molsys.mol
 from molsys.addon import base
+
+import os
+import tempfile
 #from molsys.molsys_mpi import mpiobject
 # molecules module
 
@@ -170,14 +173,77 @@ class molecules(base):
         except:
             return getattr(self.mgroups[self.default_mgroup],name)
 
-    def add_molecule(self, newmol, nmols=1):
+    def add_molecule(self, newmol, nmols=1, pack=False, packbound=0.5,ff=None):
         """Adds a molecule to the parent mol object
 
         A molecules is a sub mol object that can be added to the parent system many times
 
         Args:
             - mol (molsys obeject): nonperiodic molecule to be added (must be ONE connected molecule)
+            - pack (boolean): defaults to False: if True use packmol to pack (needs to be installed and in the path)
+            - packbound (float): defaults to 0.5: distance in Angstrom to reduce the box for packmol filling
+            - ff (None):  dummy variable added for legacy reasons
         """
+        
+        # temporary hook to get legacy scripts running (JK)
+        if type(newmol) == type('string'):
+            name = newmol
+            newmol = molsys.mol.from_file(name+'.mfpx')
+            newmol.addon('ff')
+            newmol.ff.read(name)
+        
+        # if pack is True we first try to use packmol to generate proper xyz coords and keep them.        
+        if pack:
+            assert self._mol.get_bcond() < 3
+            # assume pydlpoly boundary conditions (orig in the center of box) -- this is what we get from MOF+ 
+            cell = self._mol.get_cell().diagonal()
+            cellh = (cell*0.5)-packbound
+            box = (-cellh).tolist()
+            box += cellh.tolist()
+            # make a temp file and go there
+            tmpd = tempfile.mkdtemp()
+            cwd  = os.getcwd()
+            os.chdir(tmpd)
+            # write parent periodic mol as xyz
+            self._mol.write("self.xyz")
+            # write to be added mol
+            newmol.write("newmol.xyz")
+            packmolf = """
+                tolerance 2.0
+                output final.xyz
+                filetype xyz
+
+                structure self.xyz
+                    filetype xyz
+                    number 1
+                    fixed 0.0 0.0 0.0 0.0 0.0 0.0
+                end structure
+
+                structure newmol.xyz
+                    filetype xyz
+                    number %d
+                    inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f
+                end structure
+            """ % tuple([nmols]+box)
+            with open("pack.inp", "w") as packf:
+                packf.write(packmolf)
+            # now try to execute packmol
+            os.system("packmol <pack.inp > pack.out")
+            # check if final.xyz has been generated ... if not it probably failed becasue packmol is not installed or other reasons
+            if os.path.isfile("final.xyz"):
+                tempm = molsys.mol.from_file("final.xyz")
+                pack_xyz = tempm.get_xyz()
+                del(tempm)
+                remove_files = ["self.xyz", "newmol.xyz", "pack.inp", "pack.out", "final.xyz"]
+                for f in remove_files:
+                    os.remove(tmpd+"/"+f)
+                os.rmdir(tmpd)
+                logger.info("Molecules packed with packmol")
+            else:
+                self._mol.pprint("packing with packmol failed. Temporary files at %s" % tmpd)
+                logger.warning("packing with packmol failed. Temporary files at %s" % tmpd)
+                pack = False
+            os.chdir(cwd)
         # TBI verify that the added molecule is really only one molecule ... 
         from molsys.addon.ff import ic
         # add newmol to parent mol
@@ -194,18 +260,29 @@ class molecules(base):
             ### par update
             for k in newmol.ff.par.keys():
                 self._mol.ff.par[k].update(newmol.ff.par[k])
-            logger.info('ff information of molecule %s red' % (newmol.name,))
+            logger.info('ff information of molecule %s read in' % (newmol.name,))
             ### ric_type update
             temp_ric_type = copy.copy(newmol.ff.ric_type)
             for k in temp_ric_type.keys():
                 for moli in range(nmols):    
-                    rictype = []
                     for i in range(len(temp_ric_type[k])):
+                        # get attributes of ric
+                        atrs = temp_ric_type[k][i].__dict__
+                        rictype = []
                         for j in range(len(temp_ric_type[k][i])):
-                            rictype.append(temp_ric_type[k][i][j] + offset + moli+1)
-                    if rictype != []:
-                        self._mol.ff.ric_type[k] += [ic(rictype)]
+                            rictype.append(temp_ric_type[k][i][j] + offset + (moli*newmol.natoms) +1)
+                        if rictype != []:
+                            new_ric = ic(rictype)
+                            for a in atrs.keys():
+                                if (a != "used") and (a != "type"):
+                                    new_ric.__dict__[a] = atrs[a]
+                            self._mol.ff.ric_type[k] += [new_ric]
                         self._mol.ff.parind[k] += newmol.ff.parind[k]
+            ### molid has been updated using self._mol.add_mol => update the molid in ff
+            self._mol.ff.update_molid()
+        # finish up packing
+        if pack:
+            self._mol.set_xyz(pack_xyz)
         return
 
     def get_names(self,legacy=True):
