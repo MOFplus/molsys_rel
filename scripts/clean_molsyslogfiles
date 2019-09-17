@@ -1,12 +1,3 @@
-rm molsys.*.log
-rm molsys.log
-rm */molsys.*.log
-rm */molsys.log
-rm */*/molsys.*.log
-rm */*/molsys.log
-rm */*/molsys.*.log
-rm */*/molsys.log
-rm */*/*/molsys.*.log
-rm */*/*/molsys.log
-rm */*/*/*/molsys.*.log
-rm */*/*/*/molsys.log
+#!/bin/bash
+find -name 'molsys.log' -delete
+find -name 'molsys.*.log' -delete
