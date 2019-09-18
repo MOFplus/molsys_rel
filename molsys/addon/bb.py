@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
-#from molsys import mol
 import molsys.util.elems as elements
 import molsys.util.rotations as rotations
 import string
 import copy
+from collections import Counter
 import numpy as np
-numpy = np
 
 
 import logging
@@ -201,17 +200,24 @@ class bb:
         ### TODO has been tested for m-bdc and some others to work, test for others aswell! 
         self.center()
         if use_connxyz == True:
-            xyz = numpy.array(self.mol.xyz[self.mol.connectors])
+            xyz = np.array(self.mol.xyz[self.mol.connectors])
         else:
-            xyz = numpy.array(self.mol.xyz)
+            xyz = np.array(self.mol.xyz)
             self.mol.xyz = rotations.align_pax(xyz)
             #self.mol.view(program='vmdx')
             return
         eigval,eigvec = rotations.pax(xyz)
-        eigorder = numpy.argsort(eigval)
+        eigorder = np.argsort(eigval)
         rotmat = eigvec[:,eigorder] #  sort the column vectors in the order of the eigenvalues to have largest on x, second largest on y, ... 
         self.mol.xyz = rotations.apply_mat(rotmat,self.mol.xyz)
-        #import pdb; pdb.set_trace()
         return
 
-
+    @staticmethod
+    def sort_connectors_type(connectors_type):
+        counter = Counter(connectors_type)
+        counter_keys = counter.keys()[::-1]
+        counter_types = {e:i for i,e in enumerate(counter_keys)}
+        cotype = [counter_types[c] for c in connectors_type]
+        conn_type = np.sort(cotype)
+        conn_argsort = np.argsort(cotype)
+        return conn_type, conn_argsort

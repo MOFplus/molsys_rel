@@ -468,6 +468,30 @@ class pdlpio2(mpiobject):
             raise IOError
         return
 
+    def add_bondtab(self, stage, nbondsmax):
+        """generates a bondtab/bondorder entry in the trajectory group of the current stage for ReaxFF
+        
+        Args:
+            stage (string): name of the current stage     
+            nbondsmax (int): size of the tables
+        """
+        if self.is_master:
+            st = self.h5file[stage]
+            traj = st["traj"]
+            bondtab = traj.require_dataset("bondtab",
+                            shape=(1,nbondsmax,2),
+                            maxshape=(None, nbondsmax,2),
+                            chunks=(1,nbondsmax,2),
+                            dtype = "int32")
+            bondord = traj.require_dataset("bondord",
+                            shape=(1,nbondsmax),
+                            maxshape=(None, nbondsmax),
+                            chunks=(1,nbondsmax),
+                            dtype = "float32")
+            bondtab[...] = 0
+            bondord[...] = 0.0
+        return
+
         
     def __call__(self, force_wrest=False):
         """ this generic routine is called to save restart info to the hdf5 file

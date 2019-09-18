@@ -163,6 +163,16 @@ class mol(mpiobject):
                 newdict[copy.deepcopy(key, memo)] = val
         return newone
 
+    def clone(self):
+        """
+        Clone molecule
+        Here as convenience method instead of copy.deepcopy
+
+        :Return:
+        - self (mol): cloned molecule
+        """
+        return copy.deepcopy(self)
+
     #####  I/O stuff ######################################################################################
 
     def set_logger_level(self,level='WARNING'):
@@ -1285,6 +1295,23 @@ class mol(mpiobject):
         self.cellparams = None
         self.images_cellvec = None
 
+    def get_wrapping_cell(self, alpha=0.2):
+        '''set wrapping cell for non-periodic molecule'''
+        assert self.cell is None, "no cell around a non-periodic molecule!"
+        self.periodic = True
+        lenghts = self.xyz.max(0) - self.xyz.min(0)
+        lenghts *= 1+alpha
+        angles = [90., 90., 90.]
+        cellparams = lenghts.tolist() + angles
+        cell = unit_cell.vectors_from_abc(cellparams)
+        return cell
+
+    def set_wrapping_cell(self, alpha=0.2):
+        '''set wrapping cell for non-periodic molecule'''
+        assert self.cell is None, "no cell around a non-periodic molecule!"
+        self.set_cell(self.get_wrapping_cell(alpha=alpha))
+        return
+
     ### rewrite on set_cell ???
     def scale_cell(self, scale, cell_only=False):
         ''' scales the cell by a given factor
@@ -1966,6 +1993,20 @@ class mol(mpiobject):
             self.periodic = periodic
         return periodic
         
+    def unwrap_box(self, check_periodic=False):
+        if check_periodic:
+            assert self.check_periodic
+        m = copy.deepcopy(self)
+        m.make_supercell([3,3,3])
+        idxs_super = m.get_separated_molecules()
+        for i,idxs in enumerate(idxs_super):
+            m_super = m.new_mol_by_index(idxs)
+            target_imgs = set(m_super.ptab)
+            if target_imgs == {13} or len(target_imgs) == 0: # only infra-cell bonds
+                m_unwrapped = m.new_mol_by_index(idxs)
+                m_unwrapped.set_empty_cell()
+                return m_unwrapped
+        return self
 
     ### MANIPULATE GEOMETRY ########################################################
 
@@ -2668,7 +2709,7 @@ class mol(mpiobject):
             self.set_pconn_from_tab(self.ptab)
         return
 
-    def set_etab_from_conns(self, conn=None, pimages=None, set_tabs=False):
+    def set_etab_from_conns(self, conn=None, pimages=None):
         """set etab from connectivity tables"""
         ### if no pconn: etab is ctab, then return ###
         if not self.use_pconn:
@@ -2705,8 +2746,9 @@ class mol(mpiobject):
         self.ctab = list(ctab)
         self.ptab = list(ptab)
         self.etab = etab_unique # already a list
+        return
 
-    def set_etab(self, ctab=None, ptab=None, set_tabs=False):
+    def set_etab(self, ctab=None, ptab=None):
         """set etab without sorting (sorting is default for etab.setter)"""
         if ctab is None and ptab is None:
             ctab = self.ctab
