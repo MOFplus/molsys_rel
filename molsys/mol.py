@@ -1610,7 +1610,8 @@ class mol(mpiobject):
         self.conn.append([])
         if self.use_pconn:
             self.pconn.append([])
-        if len(self.fragtypes) > 0:
+
+        if ((len(self.fragtypes) > 0) or (self.natoms == 1)): 
             self.fragtypes.append(fragtype)
             self.fragnumbers.append(fragnumber)
         return self.natoms-1
