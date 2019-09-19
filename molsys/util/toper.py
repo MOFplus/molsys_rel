@@ -42,12 +42,14 @@ class conngraph:
         self.molg.vp.fix = self.molg.new_vertex_property("int64_t")
         self.molg.vp.midx = self.molg.new_vertex_property("int64_t")
         self.molg.vp.elem = self.molg.new_vertex_property("string")
+        self.molg.vp.atype = self.molg.new_vertex_property("string")
         self.molg.vp.coord = self.molg.new_vertex_property("vector<double>")
         self.molg.vp.filled = self.molg.new_vertex_property("bool") # boolean for flood fill
         for i in range(self.mol.natoms):
             ig = self.molg.add_vertex()
             self.molg.vp.coord[ig] = self.mol.xyz[i,:]
             self.molg.vp.elem[ig] = self.mol.elems[i]
+            self.molg.vp.atype[ig] = self.mol.atypes[i]
             self.molg.vp.midx[ig] = i
             if int(ig) in forbidden:
                 self.molg.vp.fix[ig] = 1
