@@ -1625,6 +1625,7 @@ class mol(mpiobject):
         assert type(elem) == str
         assert type(atype)== str
         assert np.shape(xyz) == (3,)
+        xyz = copy.copy(xyz)
         self.natoms += 1
         self.elems.append(elem)
         self.atypes.append(atype)
@@ -1636,7 +1637,8 @@ class mol(mpiobject):
         self.conn.append([])
         if self.use_pconn:
             self.pconn.append([])
-        if len(self.fragtypes) > 0:
+
+        if ((len(self.fragtypes) > 0) or (self.natoms == 1)): 
             self.fragtypes.append(fragtype)
             self.fragnumbers.append(fragnumber)
         return self.natoms-1
