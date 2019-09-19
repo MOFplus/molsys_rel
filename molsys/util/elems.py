@@ -548,6 +548,25 @@ vdw_prm = {
         "na" : [2.550, 0.007],
         "ni" : [2.200, 0.020]}
 
+metals = set([
+    'li', 'be',
+    'na', 'mg', 'al',
+    'k',  'ca', 'sc', 'ti', 'v',  'cr', 'mn', 'fe', 'co', 'ni', 'cu', 'zn', 'ga',
+    'rb', 'sr', 'y',  'zr', 'nb', 'mo', 'tc', 'ru', 'rh', 'pd', 'ag', 'cd', 'in', 'sn',
+    'cs', 'ba',
+            'la', 'ce', 'pr', 'nd', 'pm', 'sm', 'eu', 'gd', 'tb', 'dy', 'ho', 'er', 'tm', 'yb', 'lu',
+        'hf', 'ta', 'w', 're', 'os', 'ir', 'pt', 'au', 'hg', 'tl', 'pb', 'bi',
+    'fr', 'ra',
+            'ac', 'th', 'pa', 'u',  'np', 'pu', 'am', 'cm', 'bk', 'cf', 'es', 'fm', 'md', 'no', 'lr'
+])
+
+maxbond = {
+        "c" : 4,
+        "h" : 1,
+        "o" : 2,
+        "n" : 3,
+}
+
 
 def get_covdistance(elements):
     ''' get covalent bond distances based on elems.py cov_radii

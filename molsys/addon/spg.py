@@ -188,37 +188,23 @@ class spg:
         rots = np.array(rots, ndmin=3)
         transs = np.array(transs, ndmin=2)
         batchdot = np.einsum('aij,bj->abi', rots, scaled)
-        #### TO DEBUG / DEMONSTRATE THIS ###
+        #### TO DEBUG / TO DEMONSTRATE THIS ### -> put elsewhee [RA]
         #allfine = True
         #for i,rot in enumerate(rots):
         #    for j,pos in enumerate(scaled):
         #        standard = np.dot(rot,pos)
         #        experimental = batchdot[i,j]
-        #        if np.all(standard == experimental):
-        #            print("ERROR: dot product standard[%i,%i] != experimental[%i,%i]:\n    %s != %s" % (i,j,i,j,standard,experimental))
+        #        if not np.all(np.isclose(standard, experimental, atol=symprec)):
+        #            print("ERROR: dot product standard[%i,%i] != experimental[%i,%i]:\n\
+        #                %s != %s" % (i,j,i,j,standard,experimental))
         #            allfine = False
-        #            import pdb; pdb.set_trace()
         #if not allfine:
         #    import pdb; pdb.set_trace()
         #### END DEBUG / DEMONSTRATION #####
         sites = np.mod(batchdot + transs[:,np.newaxis], 1.)
-        ### TRY 1 ###
-        #diff = sites[:,np.newaxis,:] - sites[:,:,np.newaxis]
-        #mask = np.all(abs(diff) < symprec, axis=-1) | np.all(abs(abs(diff)-1) < symprec, axis=-1)
-        #inds = np.argwhere(mask)
-        ### meanings of columns of inds ###
-        ### inds[:,0] -> symmetry operations
-        ### inds[:,1] -> source of equivalence
-        ### inds[:,2] -> target of equivalence
-        #where = np.where(inds[:,1] < inds[:,2]) # to avoid redundancies
-        #couples = inds[:,1:]
-        #couples = inds[where,1:][0]
-        #sortd = np.sort(couples, axis=-1)
-        #uniq = np.unique(sortd, axis=0)
-        ### TRY 2 ###
-        diff = (scaled[np.newaxis,:] - sites)
-        diff -= (diff + 0.5) // 1
-        mask = np.all(abs(diff) < symprec, axis=-1) # which elements project to 
+        diff = scaled[np.newaxis,:] - sites
+        diff -= (diff + 0.5 + symprec) // 1. + symprec
+        mask = np.all(abs(diff) < 2*symprec, axis=-1) # which elements project to 
         where = np.argwhere(mask)
         ########################################################################
         kinds = []
@@ -269,7 +255,94 @@ class spg:
         else:
             return np.array(sites), kinds
 
-    def make_P1(self, spgnum=-1, sg_setting=1, onduplicates="keep", conn_thresh=0.1):
+    def cif_connectivity(self, new_xyz, atypes):
+        def cif_column(column):
+            """
+            label: labels of atoms involved in the bonds according to unsymmetrized cif file
+            sym: symmetries of positions of atoms in the bonds
+            op: symmetry operations as per order of symmetry
+            pos: image positions according to CIF convention
+            abc: image position according to molsys convention
+            frac: fractional coordinates of bonding atoms
+            rots: rotations of atoms in the bonds
+            transs: translations of atoms in the bonds
+            atoms: atoms in the bonds
+            xyz: coordinates of atoms in the bonds
+            diff: difference in coordinates between the new symmetric sites and the seleceted
+                bonding atoms
+            mask: True if
+            """
+            label = self.mol.cifdata["_geom_bond_atom_site_label_%i" % (column + 1)]
+            sym = self.mol.cifdata["_geom_bond_site_symmetry_%i" % (column + 1)]
+            sym_ar = np.array(sym, str)
+            sym_split = np.char.split(sym_ar,'_')
+            sym_list = sym_split.tolist()
+            op, pos = zip(*sym_list)
+            op = np.array(op, dtype=int)
+            op -= 1 # python convention
+            ### symmetry positions 1
+            pos = np.array(pos, dtype=int)
+            apos = pos//100
+            bpos = pos//10  -  10*apos
+            cpos = pos      - 100*apos - 10*bpos
+            abc = np.vstack([apos, bpos, cpos]).T
+            abc -= 5 # cif convention
+            abc = abc.astype(float)
+            ### general ###
+            frac = np.vstack([atypes2frac[k] for k in label])
+            rots = self.rotations[op]
+            transs = self.translations[op]
+            #find allowed bond types
+            atoms = [unsym_label.index(i) for i in label]
+            xyz = frac_xyz[atoms]
+            xyz = np.einsum('aij,aj->ai', rots, xyz) + transs
+            diff = xyz[:,np.newaxis] - new_xyz
+            diff -= (diff + 0.5) // 1
+            mask = np.all(abs(diff) < self.symprec, axis=-1) # which elements project to 
+            where = np.argwhere(mask)
+            import pdb; pdb.set_trace()
+            return where[:,1]
+        frac_xyz = self.mol.get_frac_xyz()
+        atypes2frac = dict(zip(atypes, frac_xyz))
+        unsym_label = self.mol.cifdata['_atom_site_label']
+        iwhere = cif_column(0)
+        jwhere = cif_column(1)
+        import pdb; pdb.set_trace()
+        return new_ctab
+    
+    def cif_connectivity_alternative(self):
+        # get made bonds -> extend at all possible bonds with found symmetry.
+        raise NotImplementedError
+        dx = frac_xyz[jatoms] - frac_xyz[iatoms]
+        d = np.linalg.norm(dx,axis=1)
+        du = np.unique(d.round(4)) # unique distances (fourth decimal) -> unique bond types
+        btypes = []
+        for u in du:
+            k = np.where(np.isclose(u, d, atol=1e-3))[0][0] # the first
+            ik, jk = iatoms[k], jatoms[k]
+            iat, jat = elems[ik], elems[jk]
+            btypes.append([u]+sorted([iat, jat]))
+        #find symmetrized bonds
+        new_elems = self.mol.elems[:]
+        dx = new_xyz[:,np.newaxis]-new_xyz[np.newaxis,:]
+        dx -= np.around(dx)
+        d = np.linalg.norm(dx,axis=2)
+        for u,iat,jat in btypes:
+            dev = abs(d-u)
+            bwhere = np.where(np.isclose(dev, 0, atol=1e-4))
+            bselect = bwhere[0] < bwhere[1] # prevent double bonds
+            bwhere = bwhere[0][bselect].tolist(), bwhere[1][bselect].tolist()
+            bonds = zip(*bwhere)
+            bt = [iat, jat]
+            #check whether the bonds connect the right couple of elements
+            #N.B.: reverse list so that last can be removed w/o messing with idxs
+            for k in range(len(bonds))[::-1]:
+                i,j = bonds[k]
+                if sorted([new_elems[i], new_elems[j]]) != bt: #then remove
+                    bonds.pop(k)
+            new_ctab += bonds
+
+    def make_P1(self, spgnum=-1, sg_setting=1, onduplicates="keep", conn_thresh=0.1, symprec=1e-6):
         """
         to be implemented by Julian from his topo tools
 
@@ -280,6 +353,8 @@ class spg:
         :KNOWN BUGS:
             - scaled_positions could be equivalent from a cif file, so it fails to make_P1
         """
+        if onduplicates == "return":
+            raise NotImplementedError("\"return\" mode on duplicates")
         # how to convert international spgnum to hall number
         # apply operations to self.mol and generate a new mol object
         # use detect_conn etc to complete it.
@@ -320,7 +395,7 @@ class spg:
                     return False
         
         dataset = spglib.get_symmetry_from_database(spgnum)
-        #print(dataset)
+        #print(dataset) ### DEBUG
         
         try:
             self.sg = Spacegroup(spgnum,setting=sg_setting)#,sprec = 1e-3)
@@ -333,21 +408,20 @@ class spg:
         new_fragtypes = []
         new_fragnumbers = []
         frac_xyz = self.mol.get_frac_xyz()
-        ### EXPERIMENTAL/DEBUG ###
-        if onduplicates == "return":
-            new_xyz, kinds, kinds_all = self.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
-        else:
-            new_xyz,kinds = self.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
-        ### ORIGINAL ###
-        #try:
-        #    if onduplicates == "return":
-        #        new_xyz,kinds, kinds_all = self.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
-        #    else:
-        #        new_xyz,kinds = self.equivalent_sites(frac_xyz,symprec=1.0e-6, onduplicates=onduplicates)
-        #except:
-        #    import sys
-        #    logger.error('could not get equivalent sites, '+str(sys.exc_info()[1]))
-        #    return False
+        old_atypes = self.mol.atypes[:]
+        try:
+            if onduplicates == "return":
+                new_xyz, kinds, kinds_all = self.equivalent_sites(frac_xyz, symprec=symprec, onduplicates=onduplicates)
+                kinds_all = [tuple(k) for k in kinds_all]
+                dkinds_ = {tuple(ka):k for ka,k in zip(kinds_all,kinds)}
+                dkinds = {v:k for k,v in dkinds_.items()}
+                assert len(dkinds) == len(dkinds_)
+            else:
+                new_xyz, kinds = self.equivalent_sites(frac_xyz, symprec=symprec, onduplicates=onduplicates)
+        except Exception as e:
+            import sys
+            logger.error('could not get equivalent sites, '+str(sys.exc_info()[1]))
+            return False
         #now do the new elems and stuff:
         for i,k in enumerate(kinds):
             new_elems.append(self.mol.elems[k])
@@ -365,63 +439,8 @@ class spg:
         self.mol.set_fragnumbers(new_fragnumbers)
         self.mol.set_empty_conn() # for debugging
         # now we try to get the connectivity right and find duplicates during the search
-        if len(ctab) == 0:
-            for kall in kinds_all:
-                pass
-            loop = self.mol.cifdata.GetLoop("_geom_bond_atom_site_label_1")
-            ilabel = loop["_geom_bond_atom_site_label_1"]
-            jlabel = loop["_geom_bond_atom_site_label_2"]
-            isym = loop["_geom_bond_site_symmetry_1"]
-            jsym = loop["_geom_bond_site_symmetry_2"]
-            isym_ar = np.array(isym, str)
-            isym_split = np.char.split(isym_ar,'_')
-            isym_list = isym_split.tolist()
-            iop, ipos = zip(*isym_list)
-### symmetry operations
-            iop = np.array(iop, dtype=int)
-            iop -= 1 # python convention
-### symmetry positions
-            ipos = np.array(ipos, dtype=int)
-            iapos = ipos//100
-            ibpos = ipos//10  -  10*iapos
-            icpos = ipos      - 100*iapos - 10*ibpos
-            iabc = np.vstack([iapos, ibpos, icpos]).T
-            iabc -= 5 # cif convention
-        # detect connectivity
-        if len(ctab) > 0:
-            new_ctab = []
-            #find allowed bond types
-            iatoms, jatoms = zip(*ctab)
-            iatoms = list(iatoms)
-            jatoms = list(jatoms)
-            dx = frac_xyz[jatoms] - frac_xyz[iatoms]
-            d = np.linalg.norm(dx,axis=1)
-            du = np.unique(d.round(4)) # unique distances (fourth decimal) -> unique bond types
-            btypes = []
-            for u in du:
-                k = np.where(np.isclose(u, d, atol=1e-3))[0][0] # the first
-                ik, jk = iatoms[k], jatoms[k]
-                iat, jat = elems[ik], elems[jk]
-                btypes.append([u]+sorted([iat, jat]))
-            #find symmetrized bonds
-            new_elems = self.mol.elems[:]
-            dx = new_xyz[:,np.newaxis]-new_xyz[np.newaxis,:]
-            dx -= np.around(dx)
-            d = np.linalg.norm(dx,axis=2)
-            for u,iat,jat in btypes:
-                dev = abs(d-u)
-                bwhere = np.where(np.isclose(dev, 0, atol=1e-4))
-                bselect = bwhere[0] < bwhere[1] # prevent double bonds
-                bwhere = bwhere[0][bselect].tolist(), bwhere[1][bselect].tolist()
-                bonds = zip(*bwhere)
-                bt = [iat, jat]
-                #check whether the bonds connect the right couple of elements
-                #N.B.: reverse list so that last can be removed w/o messing with idxs
-                for k in range(len(bonds))[::-1]:
-                    i,j = bonds[k]
-                    if sorted([new_elems[i], new_elems[j]]) != bt: #then remove
-                        bonds.pop(k)
-                new_ctab += bonds
+        if onduplicates == "return":
+            new_ctab = self.cif_connectivity(new_xyz, old_atypes)
             self.mol.set_ctab(new_ctab, conn_flag=True)
             self.mol.remove_duplicates()
             return True

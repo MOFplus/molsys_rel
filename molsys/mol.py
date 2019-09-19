@@ -4,11 +4,11 @@ from __future__ import print_function
 
 import numpy as np
 #from scipy.optimize import linear_sum_assignment as hungarian
-#import types
+import types
 import string
 import copy
 import os
-#import sys
+import sys
 import subprocess
 try:
     from cStringIO import StringIO
@@ -45,18 +45,21 @@ from collections import Counter
 #        master node writes INFO to stdout
 # TBI: colored logging https://stackoverflow.com/a/384125
 import logging
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
 logger    = logging.getLogger("molsys")
 logger.setLevel(logging.DEBUG)
 if molsys_mpi.size > 1:
     logger_file_name = "molsys.%d.log" % molsys_mpi.rank
 else:
     logger_file_name = "molsys.log"
-fhandler  = logging.FileHandler(logger_file_name)
-fhandler.setLevel(logging.DEBUG)
-#fhandler.setLevel(logging.WARNING)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m-%d %H:%M')
-fhandler.setFormatter(formatter)
-logger.addHandler(fhandler)
+# check if environment variable MOLSYS_LOG is set
+if "MOLSYS_LOG" in os.environ:
+    fhandler  = logging.FileHandler(logger_file_name)
+    # TBI if os.environ["MOLSYS_LOG"] in ("DEBUG", "WARNING", "INFO"):
+    fhandler.setLevel(logging.DEBUG)
+    #fhandler.setLevel(logging.WARNING)
+    fhandler.setFormatter(formatter)
+    logger.addHandler(fhandler)
 if molsys_mpi.rank == 0:
     shandler  = logging.StreamHandler()
     shandler.setLevel(logging.INFO)
@@ -117,6 +120,7 @@ class mol(mpiobject):
         self.aprops = {}
         self.bprops = {}
         self._etab = []
+        self.molid = None
         # defaults
         self.periodic=False
         self.is_bb=False
@@ -158,6 +162,16 @@ class mol(mpiobject):
             except Exception as e: # if not deepcopy-able
                 newdict[copy.deepcopy(key, memo)] = val
         return newone
+
+    def clone(self):
+        """
+        Clone molecule
+        Here as convenience method instead of copy.deepcopy
+
+        :Return:
+        - self (mol): cloned molecule
+        """
+        return copy.deepcopy(self)
 
     #####  I/O stuff ######################################################################################
 
@@ -503,25 +517,24 @@ class mol(mpiobject):
             return loaded
         if addmod in addon.__all__: ### addon is enabled: try to set it
             addclass = getattr(addon, addmod, None)
-            if addclass is not None: ### no error raised during addon/__init__.py import
-                try: ### get the addon attribute, initialize it and set as self attribute
+            if type(addclass) is not None: ### no error raised during addon/__init__.py import
+                if isinstance(addclass, (type, types.ClassType)):
+                    ### get the addon attribute, initialize it and set as self attribute
                     addinst = addclass(self, *args, **kwargs)
                     setattr(self, addmod, addinst)
                     loaded = True ### the addon is now available as self.addmod
-                ### COMMENT THIS BLOCK FOR DEBUGGING ADDONS [RA] ###
-                except TypeError as e: ### HACK when 'from molsys.addon.addmod import something'
+                elif isinstance(addclass, (type, types.ModuleType)):
+                    ### to enable syntax: 'from molsys.addon.addmod import addmod'
                     # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
                     # the 'getattr' to get molsys.addon.ff.ff
-                    assert type(addclass) is type(os)
                     addclass = getattr(addclass, addmod)
                     addinst = addclass(self, *args, **kwargs)
                     setattr(self, addmod, addinst)
                     loaded = True ### the addon is now available as self.addmod
-                ####################################################
-                except Exception as e: ### unexpected error! bugfix needed or addon used improperly
+                else:
                     import traceback
                     traceback.print_exc()
-                    logger.error("\"%s\" addon is not available: something unexpectable went wrong!" % addmod)
+                    logger.error("\"%s\" addon is not available: %s" % (addmod, sys.exc_info()[1]) )
                     loaded = False
             else: ### error raised during addon/__init__.py import
                 print(addon._errortrace[addmod])
@@ -1282,6 +1295,23 @@ class mol(mpiobject):
         self.cellparams = None
         self.images_cellvec = None
 
+    def get_wrapping_cell(self, alpha=0.2):
+        '''set wrapping cell for non-periodic molecule'''
+        assert self.cell is None, "no cell around a non-periodic molecule!"
+        self.periodic = True
+        lenghts = self.xyz.max(0) - self.xyz.min(0)
+        lenghts *= 1+alpha
+        angles = [90., 90., 90.]
+        cellparams = lenghts.tolist() + angles
+        cell = unit_cell.vectors_from_abc(cellparams)
+        return cell
+
+    def set_wrapping_cell(self, alpha=0.2):
+        '''set wrapping cell for non-periodic molecule'''
+        assert self.cell is None, "no cell around a non-periodic molecule!"
+        self.set_cell(self.get_wrapping_cell(alpha=alpha))
+        return
+
     ### rewrite on set_cell ???
     def scale_cell(self, scale, cell_only=False):
         ''' scales the cell by a given factor
@@ -1393,6 +1423,16 @@ class mol(mpiobject):
         #self.fragtypes += other.fragtypes
         #start_fragnumber = sorted(self.fragnumbers)[-1]+1
         #self.fragnumbers += list(np.array(other.fragnumbers)+start_fragnumber)
+        # update molid if present
+        if self.molid is not None:
+            # add the other molecules molid
+            nmols = self.molid.max()+1
+            if other.molid is not None:
+                new_molid = list(self.molid)+list(other.molid+nmols)
+            else:
+                # in this case the added molecule had no molid -> MUST be only one molecule
+                new_molid = list(self.molid)+other.get_natoms()*[nmols]
+            self.molid = np.array(new_molid)
         return
 
     def new_mol_by_index(self, idx):
@@ -1951,6 +1991,20 @@ class mol(mpiobject):
             self.periodic = periodic
         return periodic
         
+    def unwrap_box(self, check_periodic=False):
+        if check_periodic:
+            assert self.check_periodic
+        m = copy.deepcopy(self)
+        m.make_supercell([3,3,3])
+        idxs_super = m.get_separated_molecules()
+        for i,idxs in enumerate(idxs_super):
+            m_super = m.new_mol_by_index(idxs)
+            target_imgs = set(m_super.ptab)
+            if target_imgs == {13} or len(target_imgs) == 0: # only infra-cell bonds
+                m_unwrapped = m.new_mol_by_index(idxs)
+                m_unwrapped.set_empty_cell()
+                return m_unwrapped
+        return self
 
     ### MANIPULATE GEOMETRY ########################################################
 
@@ -2653,7 +2707,7 @@ class mol(mpiobject):
             self.set_pconn_from_tab(self.ptab)
         return
 
-    def set_etab_from_conns(self, conn=None, pimages=None, set_tabs=False):
+    def set_etab_from_conns(self, conn=None, pimages=None):
         """set etab from connectivity tables"""
         ### if no pconn: etab is ctab, then return ###
         if not self.use_pconn:
@@ -2690,8 +2744,9 @@ class mol(mpiobject):
         self.ctab = list(ctab)
         self.ptab = list(ptab)
         self.etab = etab_unique # already a list
+        return
 
-    def set_etab(self, ctab=None, ptab=None, set_tabs=False):
+    def set_etab(self, ctab=None, ptab=None):
         """set etab without sorting (sorting is default for etab.setter)"""
         if ctab is None and ptab is None:
             ctab = self.ctab

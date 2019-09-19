@@ -103,7 +103,8 @@ class ic(list):
             return None
         else:
             return self.__dict__[name]
-            
+        
+
     def to_string(self, width=None, filt=None, inc=0):
         """
         Method to generate a string representation of the ic.
@@ -865,6 +866,13 @@ class ff(base):
             self.aftypes = []
             for i, a in enumerate(self._mol.get_atypes()):
                 self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
+            self.timer.stop()
+            # add molid info to ic["vdw"]
+            self.timer.start("make atypes")
+            self._mol.graph.get_components()
+            for i, at in enumerate(self.ric_type["vdw"]):
+                at.molid = self._mol.graph.molg.vp.molid[i]
+            self._mol.molid = self._mol.graph.molg.vp.molid.get_array()
             self.timer.stop()
         # detect refsystems
         self.find_refsystems_new(plot=plot)
@@ -1747,6 +1755,10 @@ class ff(base):
             filt = None
             if ic == "dih":
                 filt = ["ring"]
+            elif ic == "vdw":
+                filt = ["molid"]
+            else:
+                pass
             ric = self.ric_type[ic]
             parind = self.parind[ic]
             ptyp = par_types[ic]
@@ -1852,6 +1864,11 @@ class ff(base):
         # time to init the data structures .. supply vdw and cha here
         self._init_data(cha=ric["cha"], vdw=ric["vdw"])
         self._init_pardata()
+        # check if molid has been read from ric file and set to molid in the parent mol object
+        # NOTE: the ic is a list with attributes that never return an error .. non exisiting attributes are returned as None
+        rt_vdw = self.ric_type["vdw"]
+        if rt_vdw[0].molid is not None:
+            self._mol.molid = np.array([x.molid for x in rt_vdw])
         # now open and read in the par file
         if fit:
             nkeys={}
@@ -1997,13 +2014,13 @@ class ff(base):
         par_types = self.enumerate_types()
         # pack the RICs first
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
-            # pack rics
             ric = self.ric_type[ic]
             n = len(ric)
             if n > 0:
                 l = len(ric[0])+1
                 filt = None
-                if ic == "dih":
+                # increment for attributes
+                if ic == "dih" or ic == "vdw":
                     l += 1
                 parind = self.parind[ic]
                 ptyp = par_types[ic]
@@ -2019,9 +2036,16 @@ class ff(base):
                             line += [r.ring]
                         else:
                             line += [0]
+                    # add molid attribute if it is a vdw (per atom)
+                    if ic=="vdw":
+                        if r.molid is not None:
+                            line += [r.molid]
+                        else:
+                            # we need a -1 because molid=0 is possible
+                            line += [-1]
                     ric_data[i] = np.array(line)
                 data[ic] = ric_data
-            # pack params
+            # now pack PARams
             par = self.par[ic]
             npar = len(par)
             if npar > 0:
@@ -2050,7 +2074,8 @@ class ff(base):
                     ptype, values = par[i]
                     pars[j,:npars[j,0]] = np.array(values)
                 data[ic+"_par"] = (ptypes, names, npars, pars)
-            data["FF"] = self.par.FF
+        # keep FF name
+        data["FF"] = self.par.FF
         return data
 
     def unpack(self, data):
@@ -2065,14 +2090,19 @@ class ff(base):
                 rdata = data[r]
                 nric = rdata.shape[0]                
                 rlen  = rdata.shape[1]
-                if r == "dih":
-                    rlen -= 1 # in dih the ring attribute is stored as an additional column
+                if r == "dih" or r == "vdw":
+                    rlen -= 1 # in dih the ring attribute and for vdw the molid is stored as an additional column
                 for i in xrange(nric):
                     rtype = rdata[i,0]
                     aind  = rdata[i,1:rlen]
                     if r == "dih":
                         if rdata[i,-1] != 0:
                             icl = ic(aind, type=rtype, ring=rdata[i,-1])
+                        else:
+                            icl = ic(aind, type=rtype)
+                    elif r == "vdw":
+                        if rdata[i,-1] >= 0:
+                            icl = ic(aind, type=rtype, molid=rdata[i,-1])
                         else:
                             icl = ic(aind, type=rtype)
                     else:
@@ -2086,7 +2116,7 @@ class ff(base):
         self._init_pardata()
         # now do par part
         self.par.FF = data["FF"]
-        for r in ric_type:
+        for r in ric_type + ["vdwpr", "chapr"]:
             par = self.par[r]
             if r+"_par" in data:
                 ptypes, names, npars, pars = data[r+"_par"]
@@ -2111,6 +2141,13 @@ class ff(base):
                     parind[i] = t2ident[ri.type]
         return
 
+
+    def update_molid(self):
+        """helper function to update molid attribute in the vdw ics after things have changed in the parent mol's molid
+        """
+        for i, at in enumerate(self.ric_type["vdw"]):
+            at.molid = self._mol.molid[i]
+        return
 
 
 
