@@ -643,7 +643,7 @@ class mol(mpiobject):
         self.set_etab_from_tabs()
         return
 
-    def remove_conn_pbc(self):
+    def set_conn_nopbc(self):
         """
         Remove periodic connectivity if it crosses cell boundaries
         """
@@ -656,7 +656,7 @@ class mol(mpiobject):
             ]
             for i,c in enumerate(self.conn)
         ]
-        self.atoms_withconn_nopbc = [i for i,c in enumerate(self.conn_nopbc) if len(c) > 0]
+        #self.atoms_withconn_nopbc = [i for i,c in enumerate(self.conn_nopbc) if len(c) > 0]
         return
 
     def report_conn(self):
