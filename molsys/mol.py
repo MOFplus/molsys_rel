@@ -142,7 +142,10 @@ class mol(mpiobject):
         newdict = newone.__dict__
         newdict.update(self.__dict__)
         for key, val in newdict.items():
-            newdict[copy.copy(key)] = copy.copy(val)
+            try:
+                newdict[copy.copy(key)] = copy.copy(val)
+            except Exception as e: # if not copiable
+                newdict[copy.copy(key)] = val
         return newone
 
     def __deepcopy__(self, memo):
@@ -159,7 +162,7 @@ class mol(mpiobject):
         for key, val in newdict.items():
             try:
                 newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
-            except Exception as e: # if not deepcopy-able
+            except Exception as e: # if not deep-copiable
                 newdict[copy.deepcopy(key, memo)] = val
         return newone
 
