@@ -159,7 +159,7 @@ class conngraph:
         else:
             # ok we have multiple islands, time to find out what we have here.
             # first we sort the islands by size
-            island_sizes = map(len, islands)
+            island_sizes = list(map(len, islands))
             sort_indices = np.array(island_sizes).argsort()
             biggest_size = island_sizes[sort_indices[-1]]
             remove_list = []
@@ -183,7 +183,7 @@ class conngraph:
     def get_islands(self):
         """ Finds all islands. """
         self.molg.vp.filled.set_value(False)
-        remain_list = range(self.molg.num_vertices())
+        remain_list = list(range(self.molg.num_vertices()))
         islands = []
         while len(remain_list) > 0:
             l = self.flood_fill(self.molg, self.molg.vertex(remain_list[0]), [])
@@ -402,7 +402,7 @@ class molgraph(conngraph):
             vidx = list(self.molg.vp.filled.get_array()).index(0)
             vstart = self.molg.vertex(vidx)
             cluster = self.flood_fill(self.molg, self.molg.vertex(vstart), [])
-            cluster = map(int, cluster)
+            cluster = list(map(int, cluster))
             clusters.append(cluster)
         self.molg.clear_filters()
         self.clusters = clusters
@@ -757,7 +757,7 @@ class topograph(conngraph):
                     found_atypes.append(self.mol.atypes[i])
                     vertexlist.append(i)
         else:
-            vertexlist = range(self.mol.natoms)
+            vertexlist = list(range(self.mol.natoms))
         cs_list = []
         for i in vertexlist:
             cs = self.get_cs(depth, i)
@@ -842,7 +842,7 @@ class topograph(conngraph):
                     found_atypes.append(self.mol.atypes[i])
                     vertexlist.append(i)
         else:
-            vertexlist = range(self.mol.natoms)
+            vertexlist = list(range(self.mol.natoms))
         vs_list = []
         supercells = [None, copy.deepcopy(self.mol)]
         keep = copy.deepcopy(self.mol)
@@ -897,7 +897,7 @@ class topograph(conngraph):
                     append_list = []
                     for p1 in asp:
                         path = p1.tolist()
-                        path = map(int, path)
+                        path = list(map(int, path))
                         p2 = [start_vertex]+path
                         vol = self.get_cycle_voltage(p2)
                         if vol.any() != np.zeros(3).any():
@@ -1172,7 +1172,7 @@ class topotyper(object):
         ###############################
         """
         list2c = self.tg.midx_2conns
-        vertex_bb_list = range(len(self.mg.clusters))
+        vertex_bb_list = list(range(len(self.mg.clusters)))
         for i in reversed(sorted(list2c)):
             del vertex_bb_list[vertex_bb_list.index(i)]
         colorsigns = {} # color signatures
@@ -1226,8 +1226,8 @@ class topotyper(object):
             # sort colors according to color signature lexsorting
             # it is invariant wrt. order of occurrence
             # it sorts just the colortypes
-            keys, items = zip(*colorsigns.items())
-            sorting_dict = dict(zip(items,argsorted(keys)))
+            keys, items = list(zip(*list(colorsigns.items())))
+            sorting_dict = dict(list(zip(items,argsorted(keys))))
             self.tg.molg.ep.color.a = [sorting_dict[i] for i in self.tg.molg.ep.color]
         return
 
@@ -1340,7 +1340,7 @@ class topotyper(object):
         """
         logger.info('Compute all atom sequences')
         if clusters is None:
-            clusters = range(self.nbbs)
+            clusters = list(range(self.nbbs))
         atomseqs = []
         for i in clusters:
             atomseq = self.get_atomseq(depth, i)
@@ -1434,7 +1434,7 @@ class topotyper(object):
                 organicity.append(ino_flag)
         # prepare vertex_bb_list (to translate indices of a list with 2-connected clusters to those of one without them)
         list2c = self.tg.midx_2conns
-        vertex_bb_list = range(len(self.mg.clusters))
+        vertex_bb_list = list(range(len(self.mg.clusters)))
         for i in reversed(sorted(list2c)):
             del vertex_bb_list[vertex_bb_list.index(i)]
         # Use the atomtypes to identify "vertex" BBs
@@ -1533,7 +1533,7 @@ class topotyper(object):
                 connectors.append(bbatoms_mg.index(i))
                 connector_atoms.append([bbatoms_mg.index(i)])
                 connectors_sign.append((ie,je,iubb,jubb))
-            connectors_signtype = Counter(connectors_sign).keys()
+            connectors_signtype = list(Counter(connectors_sign).keys())
             sign2type = dict([(e,i) for i,e in enumerate(connectors_signtype)])
             connectors_type = [sign2type[e] for e in connectors_sign]
             bb.addon("bb")
