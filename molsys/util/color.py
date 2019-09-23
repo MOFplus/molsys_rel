@@ -119,12 +119,12 @@ def make_emol(m, alpha=2, ecolors=None, etab=None, ec2e=None):
         else:
             new_etab = etab[:]
     else:
-        ctab = [(i,i+me.natoms/2) for i in range(me.natoms/2)]
+        ctab = [(i,i+me.natoms//2) for i in range(me.natoms//2)]
         me.set_ctab(ctab, conn_flag=True)
         if m.use_pconn:
             pimg = me.get_frac_xyz()//1
             me.xyz -= np.dot(pimg,me.cell)
-            ptab = [arr2idx[pimg[i+me.natoms/2]-pimg[i]] for i in range(me.natoms/2)]
+            ptab = [arr2idx[pimg[i+me.natoms//2]-pimg[i]] for i in range(me.natoms//2)]
             me.set_ptab(ptab, pconn_flag=True)
             for k,(i,j,p) in enumerate(etab):
                 newe1 = i,k,arr2idx[pimg[k]]

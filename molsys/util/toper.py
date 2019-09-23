@@ -1232,7 +1232,7 @@ class topotyper(object):
         return
 
     def write_colors(self, foldername="colors", index_run=False, scell=None, sort_flag=True):
-        if not hasattr(self.tg.molg.ep, "color"):
+        if not "color" in self.tg.molg.ep:
             self.compute_colors(sort_flag=sort_flag)
         if index_run:
             foldername = _checkrundir(foldername)
