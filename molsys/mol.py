@@ -2769,8 +2769,8 @@ class mol(mpiobject):
                 revert the image to an index lower than 13 (the current cell)
         N.B. this sorting is stable.
         """
-        ctab = self.ctab
         etab = self.etab
+        ctab = self.ctab
         if self.use_pconn:
             ptab = self.ptab
             for ii,(i,j) in enumerate(ctab):
@@ -2779,11 +2779,13 @@ class mol(mpiobject):
                     ptab[ii] = idx2revidx[ptab[ii]]
                 if i == j and ptab[ii] > 13:
                     ptab[ii] = idx2revidx[ptab[ii]]
+            tosort = zip(*(zip(*ctab)+[ptab]))
         else:
             for ii,(i,j) in enumerate(ctab):
                 if i > j:
                     ctab[ii] = ctab[ii][::-1]
-        asorted = argsorted(ctab)
+            tosort = ctab
+        asorted = argsorted(tosort)
         ctab_ = [ctab[i] for i in asorted]
         self.set_ctab(ctab_, conn_flag=conn_flag)
         if self.use_pconn:

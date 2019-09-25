@@ -10,6 +10,8 @@ import copy
 from math import fmod
 from molsys.util import RCSR
 
+from molsys.util import systrekey
+
 class reader(object):
 
     def __init__(self):
@@ -73,6 +75,7 @@ class lqg(object):
         return pgr
 
     def get_lqg_from_topo(self,topo):
+        assert topo.is_topo
         # be careful not working for nets where an vertex is connected to itself
         self.dim = 3
         self.nvertices = topo.get_natoms()
@@ -96,6 +99,12 @@ class lqg(object):
         self.nedges = len(edges)
         self.nvertices = nvertices
         return
+
+    def get_systrekey(self):
+        """method calls javascript systreKey (must be installed) and computes the systreKey
+        """
+        skey = systrekey.run_systrekey(self.edges, self.labels)
+        return skey
 
     def build_lqg(self):
         self.nbasevec = self.nedges - self.nvertices + 1
