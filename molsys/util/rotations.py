@@ -4,8 +4,8 @@
 #except ImportError:
 
 
-
 from numpy import *
+import copy
 import numpy
 outerproduct = outer
 
@@ -226,6 +226,34 @@ def rotate_around_bond(m,atom1,atom2,degrees=5.0):
     xyz[inds,:] = numpy.dot(xyz[inds,:] - xyz[atom2,:],R)+xyz[atom2,:]
     m.xyz = xyz
     return xyz
+
+def rotate_xyz_around_vector(xyz,vector,origin=[0.0,0.0,0.0],degrees=5.0):
+    """(JK) Rotates the xyz coordinates by n degrees around any given vector
+    
+    Arguments:
+        xyz (numpy.ndarray(3,)} -- the coordinates to apply the operation 
+        vector {numpy.ndarray(3,)} -- direction vector along which to apply the rotation
+    
+    Keyword Arguments:
+        origin {numpy.ndarray(3,)} -- origin of the rotation vector, defaults to cartesian origin 
+        degrees {float} -- rotation in degrees (default: {5.0})
+    """
+    ### detect the atoms that are subject to the rotation 
+    ### rhs
+    #import pdb;  pdb.set_trace()
+    xyz = copy.copy(xyz)
+    origin = numpy.array(origin)
+    vect = vector
+    vect /=  numpy.linalg.norm(vect)
+    a,n1,n2,n3 = numpy.deg2rad(degrees),vect[0],vect[1],vect[2]
+    ### formula from wikipedia https://de.wikipedia.org/wiki/Drehmatrix
+    R= numpy.array([[n1*n1*(1-cos(a))+   cos(a), n1*n2*(1-cos(a))-n3*sin(a) , n1*n3*(1-cos(a))+n2*sin(a)],
+                    [n2*n1*(1-cos(a))+n3*sin(a), n2*n2*(1-cos(a))+   cos(a) , n2*n3*(1-cos(a))-n1*sin(a)],
+                    [n3*n1*(1-cos(a))-n2*sin(a), n3*n2*(1-cos(a))+n1*sin(a) , n3*n3*(1-cos(a))+   cos(a)]])
+    xyz -= origin
+    xyz = numpy.dot(xyz,R)
+    xyz += origin
+    return xyz 
 
 def rotate_around_vector(m,vector,origin=[0.0,0.0,0.0],degrees=5.0):
     """(JK) Rotates the xyz coordinates by n degrees around any given vector
