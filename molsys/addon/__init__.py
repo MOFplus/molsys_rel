@@ -50,7 +50,8 @@ __all__ = [
     "molecules",
     "groups",
     "zmat",
-    "wannier"
+    "wannier",
+    "topo"
 ]
 
 _importfunc = {k:None for k in __all__}
