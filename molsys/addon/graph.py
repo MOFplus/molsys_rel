@@ -335,7 +335,7 @@ class graph(object):
                 # print "cut at bond %d %d" % (int(e.source()), int(e.target()))
         self.decomp_split = True
         # DEBUG DEBUG DEBUG
-        self.plot_graph("topo", g=self.moldg, label="elem", method="sfdb")
+        # self.plot_graph("topo", g=self.moldg, label="elem", method="sfdb")
         return
 
     def get_net(self, mode="coc"):
@@ -349,43 +349,71 @@ class graph(object):
                                  coc - center of connectors
         """
         assert self.decomp_split is True
+        # label the BBs -> this generates the BBid valid for both vertices and edges
         label_components(self.moldg, vprop=self.moldg.vp.bb)
         self.moldg.set_edge_filter(None)
         # prepare lists with mappings for the vertices to the BBs (which atom is in which vertex BB etc)
-        self.decomp_nv = self.moldg.vp.bb.a.max()+1
-        self.decomp_net_conn = []
-        self.decomp_map_atoms = []
-        self.decomp_map_cons = []
-        for i in range(self.decomp_nv):
-            self.decomp_net_conn.append([])
-            self.decomp_map_atoms.append([])
-            self.decomp_map_cons.append([])
-        # now check all split edges and register con and add to net connection table
+        # Note:
+        #    the number of vertices nv is not equal to the number of BBs (nbb) since some BBs sit on edges
+        #    we thus need a mapping from BBs to atom indices and another mapping of vertices to BBs
+        self.decomp_nbb = self.moldg.vp.bb.a.max()+1
+        # now we make a temporary graph bbg for the BBs
+        self.bbg = Graph(directed=False)
+        for b in range(self.decomp_nbb):
+            self.bbg.add_vertex()  # vertices of thsi graph can be indexed by bbid (it contains also the 2c edges)
+        # now check all split edges, register the connected atoms and add edges to the bbg graph
         for e in self.moldg.edges():
             if self.moldg.ep.filt[e] == False:
-                i = e.source()
+                i = e.source() 
                 j = e.target()
                 # also add the connector info as a string because we could have multiple
                 self.moldg.vp.con[i] += "%d " % j
                 self.moldg.vp.con[j] += "%d " % i
                 ibb = self.moldg.vp.bb[i]
                 jbb = self.moldg.vp.bb[j]
-                self.decomp_net_conn[ibb].append(jbb)
-                self.decomp_net_conn[jbb].append(ibb)
-        # now compute the vertex positions of the BBs as the scaled embedding depending on the mode
-        # first generate the mappings
+                # print ("bond %d-%d for bbs %d %d" % (i, j, ibb, jbb))
+                # TBI if we have two bonds between BBs we get edges twice here ... we could check if the edge is already there
+                self.bbg.add_edge(self.bbg.vertex(ibb),self.bbg.vertex(jbb))
+        # add vertex and edge properties for bbs and init them (edges are -1 by default => no bb)
+        self.bbg.vp.bb = self.bbg.new_vertex_property("int")
+        self.bbg.ep.bb = self.bbg.new_edge_property("int")
+        self.bbg.vp.bb.a = np.arange(self.bbg.num_vertices())
+        self.bbg.ep.bb.a = -1
+        self.decomp_map_bb2atoms = []
+        self.decomp_map_bb2cons = []
+        for i in range(self.decomp_nbb):
+            self.decomp_map_bb2atoms.append([])
+            self.decomp_map_bb2cons.append([])
+        # iterate over all vertices of the moldg 
         for v in self.moldg.vertices():
             vbb = self.moldg.vp.bb[v]
-            self.decomp_map_atoms[vbb].append(int(v))
+            self.decomp_map_bb2atoms[vbb].append(int(v))
             if len(self.moldg.vp.con[v]) > 0:
                 # this is a connector
-                self.decomp_map_cons[vbb].append(int(v))
-        # now compute the centers
+                self.decomp_map_bb2cons[vbb].append(int(v))
+        # DEBUG
+        # self.plot_graph("bbg_before", g=self.bbg, label="bb")
+        # TBI at this point we could check if two edge (2c) bbs are connected to each other. in this case they need to be merged
+        #
+        # now reduce the graph to its basis without the edges (edge bbs go into the ep.bb)
+        remove_v = []
+        for v in self.bbg.vertices():
+            if v.out_degree() == 2:
+                remove_v.append(v)
+                i, j = v.all_neighbors()
+                new_edge = self.bbg.add_edge(self.bbg.vertex(i), self.bbg.vertex(j))
+                self.bbg.ep.bb[new_edge] = self.bbg.vp.bb[v]
+        self.bbg.remove_vertex(remove_v)
+        self.decomp_nv = self.bbg.num_vertices()
+        # DEBUG
+        # self.plot_graph("bbg_after", g=self.bbg, label="bb")
+        # now compute the vertex positions of the BBs as the scaled embedding depending on the mode
         vpos = np.zeros([self.decomp_nv, 3], dtype="float64")
-        for i in range(self.decomp_nv):
+        for v in self.bbg.vertices():
             if mode == "coc":
                 # compute by centroid of connectors (note that this considers pbc correctly but we might have to wrap)
-                vpos[i] = self._mol.get_coc(idx = self.decomp_map_cons[i])
+                bbid = self.bbg.vp.bb[v]
+                vpos[int(v)] = self._mol.get_coc(idx = self.decomp_map_bb2cons[bbid])
             else:
                 print("unknown mode in get_net")
                 raise
@@ -393,6 +421,15 @@ class graph(object):
         self.decomp_net = molsys.mol.from_array(vpos)
         # since this is the unscaled embedding we can directly take the cell from the parent mol
         self.decomp_net.set_cell(self._mol.get_cell())
+        # now generate a net_conn from the edges of the bbg graph
+        self.decomp_net_conn = []
+        for i in range(self.decomp_nv):
+            self.decomp_net_conn.append([])
+        for e in self.bbg.edges():
+            i = int(e.source())
+            j = int(e.target())
+            self.decomp_net_conn[i].append(j)
+            self.decomp_net_conn[j].append(i)
         # IMPROVE: this is the element map stolen from lqg.py --> lqg should evetnually go into a topo addon .. make more smart
         elems_map = {2:'x',3:'n',4:'s',5:'p',6:'o',8:'c'}
         vert_elems = []
@@ -402,6 +439,7 @@ class graph(object):
         self.decomp_net.set_conn(self.decomp_net_conn)
         self.decomp_net.make_topo()
         return self.decomp_net
+
 
 
 
