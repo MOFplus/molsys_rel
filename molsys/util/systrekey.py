@@ -39,23 +39,30 @@ class systre_db:
 
     def read_arc(self):
         global db_key2name, db_name2key, arc_read
-        f = open(arc_file, 'r')
-        for line in f:
-            sline = line.split()
-            if len(sline)>0:
-                if sline[0] == 'key':
-                    key = sline[1:]
-                elif sline[0] == 'id':
-                    name = sline[1]
-                elif sline[0] == "end":
-                    # end of record .. store in directories only 3dim nets
-                    if key[0] == "3":
-                        key = string.join(key)
-                        db_key2name[key] = name
-                        db_name2key[name] = key
-                else:
-                    pass
-        f.close()
+        if os.path.isfile(arc_file):
+            f = open(arc_file, 'r')
+            for line in f:
+                sline = line.split()
+                if len(sline)>0:
+                    if sline[0] == 'key':
+                        key = sline[1:]
+                    elif sline[0] == 'id':
+                        name = sline[1]
+                    elif sline[0] == "end":
+                        # end of record .. store in directories only 3dim nets
+                        if key[0] == "3":
+                            key = string.join(key)
+                            db_key2name[key] = name
+                            db_name2key[name] = key
+                    else:
+                        pass
+            f.close()
+        else:
+            print("""
+            WARNING: the file RCSR.arc is not available.
+            Please download the current arc file from RCSR.net/systre into
+            the molsys/util directory and softlink it to RCSR.arc
+            """)
         arc_read=True
         return
 
