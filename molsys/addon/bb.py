@@ -15,7 +15,7 @@ logger = logging.getLogger("molsys.bb")
 class bb:
 
     def __init__(self,mol):
-        '''
+        """        '''
         initialize data structure for mol object so it can handle building block files
         beware, there is a litte chaos in the writing of bb files. what is needed is:
         - is_mol=True i.o. to write
@@ -23,6 +23,9 @@ class bb:
         - mol.connector_atoms as a list of lists of the atoms (inner list) belonging to the connector (outer list)
         - mol.connectors_type a list if type indices, nconn*[0] for no special connectors, otherwise something like [0,0,0,0,1,1]. needs to be ordered ascendingly:w
         '''
+        Args:
+            mol (molsys.mol): mol instance where this addon is added to
+        """
 #        if mol.is_bb == False:
 #            raise IOError,("No bb info available!")
         self.mol = mol
@@ -30,6 +33,7 @@ class bb:
         self.mol.connectors = []
         self.mol.connector_dummies=[]
         self.mol.connector_atoms = []
+        self.mol.connectors_type = []
         return
 
     def __mildcopy__(self, memo):
@@ -52,6 +56,17 @@ class bb:
 
 
     def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=1, label = None, no_rot=False):
+        """Method called by weaver to setup the data necessary for the first stage of an RTA run.
+        
+        Args:
+            name (str, optional): Name of the BB. Defaults to 'default'.
+            specific_conn (list of ints, optional): If given, treat the connectors as inequal. Defaults to None.
+            linker (bool, optional): defines whether BB should be treated as 'linker' or not, usually done for divalent BBs. Defaults to False.
+            zflip (bool, optional): Can only be enabled for linkers. If true, mirror the coordinates along xy. Defaults to False.
+            nrot (int, optional): if given, use nrot equally spaced rotations around the connector axis. Defaults to 1.
+            label (string, optional): Label. Defaults to None.
+            no_rot (bool, optional): Set to true to disable orientation detection and use the current coordinates. Defaults to False.
+        """
         self.mol.specific_conn = specific_conn  # that should be obtained from the file itself ?!!?
         self.mol.linker = linker
         self.mol.name = name
@@ -70,6 +85,11 @@ class bb:
         return
 
     def center(self):
+        """Centers the coordinates of the current mol to the point given as 'center_point'
+        center_point has to be 'com', 'coc', or 'special'. In the latter case, also mol.special_center_point' has to be defined
+        Raises:
+            IOError: If center point is not given or has an illegal value, exit
+        """
         if self.mol.center_point == "com":
             self.mol.set_real_mass()
             center = self.mol.get_com()
@@ -91,10 +111,6 @@ class bb:
         self.mol.set_mass(mass, masstype)
         return coc
 
-    #def get_radius(self):
-    #    coc = self.get_coc()
-    #    self.mol.connector_xyz[:,0:]
-
     def hide_dummy_atoms(self):
         ''' depreciated, has been used to remove dummies, requires them to be the last atoms
             we now remove dummies after construction using remove_dummies() in mol.py'''
@@ -108,6 +124,8 @@ class bb:
         return
 
     def extract_connector_xyz(self):
+        """ Internal function, that extracts the BB vector set needed by weaver.
+        """
         conn_xyz = []
         self.mol.conn_elems = []
         for c in self.mol.connectors:
@@ -119,7 +137,7 @@ class bb:
             conn_xyz = [np.mean(cc,axis=0) for cc in conn_xyz]
             self.mol.connector_xyz = np.array(conn_xyz,"d")
         self.mol.conn_dist = np.sqrt(np.sum(self.mol.connector_xyz*self.mol.connector_xyz,axis=1))
-
+        return
 
 
     def rotate_on_z(self):
@@ -135,10 +153,14 @@ class bb:
         return
 
     def is_superpose(self, other, thresh=1.0e-1):
-        """ we test if two molecular systems are equal (superimpose) by way of calculating the rmsd
-        :Parameters:
-            - other      : mol instance of the system in question
-            - thresh=0.1 : allowed deviation of rmsd between self and other mconnecl
+        """we test if two molecular systems are equal (superimpose) by way of calculating the rmsd
+        
+        Args:
+            other (molsys.mol): mol instance to be compared to
+            thresh (float, optional): threshold in the rmsd detection to decide whether they are equal or not. Defaults to 1.0e-1.
+        
+        Returns:
+            [list: [bool,float]]: returns the decision if they are equal or not as 0st argument and the rmsd value as 1st argument
         """
         if self.mol.natoms != other.natoms: return False
         rmsd = 0.0
@@ -155,6 +177,14 @@ class bb:
 
 
     def calc_centers(self,shift_to_original=True):
+        """Internal function to compute the center of each connector, if they are composed of more than one atom.
+        
+        Args:
+            shift_to_original (bool, optional): shift. Defaults to True.
+        
+        Returns:
+            [list]: list of centers
+        """
         centers = []
         for i,d  in enumerate(self.mol.connecting_atoms):
             ci = np.sum(self.mol.xyz[d],axis=0)/float(len(d))
@@ -166,10 +196,13 @@ class bb:
         return centers
     
     def add_bb_info(self,conn_identifier = 'He',center_point='coc'):
-        '''
-        use for quick conversion of a chemdraw-built MM3 tinker txyz file into a BB file type
-        the connecting atom is next to a He atom, it is beign deleted and 
-        '''
+        """ Converts a mol object with a given atom as conn_identifier label to a BB.
+        It can currently only work with a single conn_identifier, which means, that no special_connectors can be defined in this way.        
+        Args:
+            conn_identifier (str, optional): Atom type of the Atom used as connector label The connected atoms of the conn_identified atom will become the new connectors. Defaults to 'He'.
+            center_point (str, optional): Definition of which center to use in the BB. Defaults to 'coc'.
+        """
+
         self.mol.center_point = center_point
         self.mol.is_bb=True
         
@@ -193,10 +226,12 @@ class bb:
         return
     
     def align_pax_to_xyz(self,use_connxyz = False):
-        '''
-        use to align the principal axes of the building block with x,y,and z.
-        does not yet use weights, but assumes w=1 for all  atoms
-        '''
+        """ Aligns the coordinates to match the three principal axes of the intertial tensor to the cartesian coordinate system.
+        Does not yet use weights
+        
+        Args:
+            use_connxyz (bool, optional): If True, use only the coordinates of the connectors. Defaults to False.
+        """
         ### TODO has been tested for m-bdc and some others to work, test for others aswell! 
         self.center()
         if use_connxyz == True:
@@ -212,12 +247,20 @@ class bb:
         self.mol.xyz = rotations.apply_mat(rotmat,self.mol.xyz)
         return
 
-    @staticmethod
-    def sort_connectors_type(connectors_type):
+    def sort_connectors_type(self,):
+        connectors_type = self.mol.connectors_type
         counter = Counter(connectors_type)
         counter_keys = counter.keys()[::-1]
         counter_types = {e:i for i,e in enumerate(counter_keys)}
         cotype = [counter_types[c] for c in connectors_type]
         conn_type = np.sort(cotype)
         conn_argsort = np.argsort(cotype)
+        try:
+            self.mol.connectors_type = conn_type
+            self.mol.connectors = [self.mol.connectors[x] for x in conn_argsort]
+            self.mol.connector_atoms = [self.mol.connector_atoms[x] for x in conn_argsort]
+            self.mol.connector_xyz = [self.mol.connector_xyz[x] for x in conn_argsort]
+        except:
+            logger.warning('sort_conectors failed. Setup the data structure first.')
+            return None,None
         return conn_type, conn_argsort
