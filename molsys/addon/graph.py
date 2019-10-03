@@ -8,7 +8,7 @@
 
 """
 
-from graph_tool import Graph
+from graph_tool import Graph, GraphView
 from graph_tool.topology import *
 import copy
 import numpy as np
@@ -33,6 +33,7 @@ class graph(object):
         self.molg.vp.molid = self.molg.new_vertex_property("int")
         # defaults
         self.moldg = None
+        self.bbg   = None
         logger.debug("generated the graph addon")
         return
 
@@ -229,7 +230,10 @@ class graph(object):
         label_components(self.molg, vprop=self.molg.vp.molid)
         return
 
-    """decomposition
+    """
+    #############################################################################################
+           decomposition (or deconstruction)
+    #############################################################################################
 
     Since the molg graph above is really used for fragment finding with a special way to treat 
     hydrogens we use a seperate graph called moldg (mol decomposition graph) which contains all atoms
@@ -260,6 +264,10 @@ class graph(object):
             return
         # now get the BBs and the net and collect the output
         net = self.get_net()
+
+        # DEBUG DEBUG
+        self.get_bbs()
+
         return net
 
     def make_decomp_graph(self):
@@ -440,10 +448,59 @@ class graph(object):
         self.decomp_net.make_topo()
         return self.decomp_net
 
-
-
-
-    def get_bbs(self):
-        """this method takes a split moldg graph and generates the unique bbs
+    def get_bbs(self, get_all=False):
+        """this method generates the unique bbs from moldg and bbg
         """
+        assert self.bbg is not None
+        self.decomp_vbb = [] # vertex BB mol objects (only unique)
+        self.decomp_ebb = [] # edge/linker BB mol objects (only unique)
+        self.decomp_vbb_map = []
+        self.decomp_ebb_map = []
+        vbb_graphs = []
+        vbb_map = {}
+        nvbbs = 0
+        for v in self.bbg.vertices():
+            cur_bbsg = GraphView(self.moldg, directed=False, vfilt = self.moldg.vp.bb.a == int(v))
+            # now check if we have this bb already
+            known = False
+            for i in range(len(vbb_graphs)):
+                old_bbsg = vbb_graphs[i]
+                if old_bbsg.num_vertices() != cur_bbsg.num_vertices():
+                    continue
+                # check if isomorphic
+                # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
+                if isomorphism(cur_bbsg, old_bbsg):
+                    known = True
+                    break
+            if not known:
+                # add graph
+                vbb_graphs.append(Graph(cur_bbsg, prune=True))
+                vbb_map[nvbbs] = [self.bbg.vp.bb[v]]
+                nvbbs += 1
+            else:
+                # known already .. i equals nvbb
+                vbb_map[i] += [self.bbg.vp.bb[v]]
+        # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
+        # TBI: with flag get_all==True convert them all
+        cell = self._mol.get_cell()
+        for i in range(nvbbs):
+            bb   = vbb_map[i][0] # take the first
+            vbbg = vbb_graphs[i]
+            # now we need to convert bb into a mol object and store it in self.decomp_vbb
+            xyz = self._mol.get_xyz(self.decomp_map_bb2atoms[bb])
+            mol_bb = molsys.mol.from_array(xyz)
+            mol_bb.set_cell(cell)
+            mol_bb.set_elems([vbbg.vp.elem[v] for v in vbbg.vertices()])
+            ctab = [[int(e.source()), int(e.target())] for e in vbbg.edges()]
+            print ("DEBUG mol %d" % i)
+            print ctab
+            mol_bb.set_conn_from_tab(ctab)
+            mol_bb.center_com()
+            mol_bb.apply_pbc()
+            self.decomp_vbb.append(mol_bb)
+            # DEBUG
+            mol_bb.write("bb_%d.mfpx" % i)
+            # store the mab from the dicitonary into the nested list
+            self.decomp_vbb_map.append(vbb_map[i])
+
         return
