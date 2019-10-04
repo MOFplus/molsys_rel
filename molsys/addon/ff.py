@@ -354,7 +354,17 @@ class ric:
                                     if con4.count(c1):
                                         ring = 5
                                         break
-                            d = ic([a1,a2,a3,a4], ring = ring)
+                            # sort d first for coupling term purposes
+                            if str(self.aftypes[a2]) > str(self.aftypes[a3]):
+                                d = ic([a4,a3,a2,a1], ring = ring) 
+                            elif str(self.aftypes[a2]) == str(self.aftypes[a3]):
+                                if self.aftypes[a1] > self.aftypes[a4]:
+                                    d = ic([a4,a2,a3,a1], ring = ring)
+                                else:
+                                    d = ic([a1,a2,a3,a4], ring = ring)
+                            else:
+                                d = ic([a1,a2,a3,a4], ring = ring)
+                            #d = ic([a1,a2,a3,a4], ring = ring)
                             if lin:
                                 ### in case of a dihedral due to dihedral shifts,
                                 ### it has to be checked if we have this dihedral already
@@ -779,7 +789,7 @@ class ff(base):
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
             plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None, poltypes = [],
-            dummies = None, strbnd = False):
+            dummies = None, cross_terms = []):
         """
         Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -910,7 +920,7 @@ class ff(base):
                         self.aftypes[i] = aftype(at,ft)
         if consecutive==False:
             if refsysname:
-                self.fixup_refsysparams(strbnd=strbnd)
+                self.fixup_refsysparams(cross_terms=cross_terms)
             else:
                 self.check_consistency(generic = generic)
         self.timer.write_logger(logger.info)
@@ -963,7 +973,7 @@ class ff(base):
             logger.info("Parameter assignment successfull")
         return
 
-    def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"], strbnd = False):
+    def fixup_refsysparams(self, var_ics = ["bnd", "ang", "dih", "oop"], cross_terms = []):
         """
         Equivalent method to check consistency in the case that unknown parameters should
         be determined eg. fitted. The Method prepares the internal data structures for
@@ -1020,7 +1030,7 @@ class ff(base):
                                         self.par.variables[vn]=varpar(self.par,name = vn, range = defaults[ic][4])
                                     self.par.variables[vn].pos.append((ic, fullparname, idx))
                             # hack for strbnd
-                            if ic == "ang" and strbnd == True:
+                            if ic == "ang" and "strbnd" in cross_terms:
                                 fullparname2 = "strbnd->("+string.join(sparname,",")+")|"+self.refsysname
                                 count+=1
                                 vnames = map(lambda a: "$s%i_%i" % (count, a), range(6))
@@ -1028,15 +1038,27 @@ class ff(base):
                                 for idx,vn in enumerate(vnames):
                                     self.par.variables[vn] = varpar(self.par, name = vn)
                                     self.par.variables[vn].pos.append((ic,fullparname2,idx))
+                            # hack for bb13
+                            if ic == "dih" and "bb13" in cross_terms:
+                                fullparname2 = "bb13->("+string.join(sparname,",")+")|"+self.refsysname
+                                count+=1
+                                vnames = map(lambda a: "$bb%i_%i" % (count, a), range(3))
+                                par[fullparname2] = ("bb13", vnames)
+                                for idx,vn in enumerate(vnames):
+                                    self.par.variables[vn] = varpar(self.par, name = vn)
+                                    self.par.variables[vn].pos.append((ic,fullparname2,idx))
                         else:
                             par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
-                    if ic == "ang" and strbnd == True:
+                    if ic == "ang" and "strbnd" in cross_terms:
                         parind[i] = [fullparname, fullparname2]
+                    elif ic == "dih" and "bb13" in cross_terms:
+                        parind[i] = [fullparname, fullparname2] 
                     else:
                         parind[i] = [fullparname]
         self.set_def_sig(self.active_zone)
         self.set_def_vdw(self.active_zone)
         self.fix_strbnd()
+        self.fix_bb13()
         return
 
     def fix_strbnd(self):
@@ -1073,8 +1095,32 @@ class ff(base):
                 self.par.variables[s2].pos.append(("ang", p[1],4))
                 self.par.variables[a].pos.append(("ang", p[1],5))
         for i in dels: del(self.par.variables[i])
+        return
 
-
+    def fix_bb13(self):
+        """Method to perform the fuxup for bb13 potentials
+        """
+        pots = self.par.variables.varpots
+        dels = []
+        for p in pots:
+            pot, ref, aftypes = self.split_parname(p[1])
+            if pot == "bb13":
+                # distribute ref values
+                spot1 = self.build_parname("bnd", "mm3", self.refsysname, aftypes[:2])
+                spot2 = self.build_parname("bnd", "mm3", self.refsysname, aftypes[2:])
+                s1 = self.par["bnd"][spot1][1][1]
+                s2 = self.par["bnd"][spot2][1][1]
+                # delete variables
+                dels.append(self.par["dih"][p[1]][1][1])
+                dels.append(self.par["dih"][p[1]][1][2])
+                # rename variables
+                self.par["dih"][p[1]][1][1] = s1
+                self.par["dih"][p[1]][1][2] = s2
+                # redistribute pots to self.variables dictionary
+                self.par.variables[s1].pos.append(("dih", p[1],1))
+                self.par.variables[s2].pos.append(("dih", p[1],2))
+        for i in dels: del(self.par.variables[i])
+        return
 
 
     def set_def_vdw(self,ind):
