@@ -187,7 +187,7 @@ class ric:
         return
 
 
-    def set_rics(self, bnd, ang, oop, dih, sanity_test=True):
+    def set_rics(self, bnd, ang, oop, dih, sanity_test=False):
         """
         Method to set the rics from outside. Args has to be a properly sorted lists of 
         ic objects as if they are supplied by find_rics.
@@ -779,7 +779,7 @@ class ff(base):
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
             plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None, poltypes = [],
-            dummies = None):
+            dummies = None, strbnd = False):
         """
         Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -910,7 +910,7 @@ class ff(base):
                         self.aftypes[i] = aftype(at,ft)
         if consecutive==False:
             if refsysname:
-                self.fixup_refsysparams()
+                self.fixup_refsysparams(strbnd=strbnd)
             else:
                 self.check_consistency(generic = generic)
         self.timer.write_logger(logger.info)
@@ -1023,7 +1023,7 @@ class ff(base):
                             if ic == "ang" and strbnd == True:
                                 fullparname2 = "strbnd->("+string.join(sparname,",")+")|"+self.refsysname
                                 count+=1
-                                vnames = map(lambda a: "$a%i_%i" % (count, a), range(6))
+                                vnames = map(lambda a: "$s%i_%i" % (count, a), range(6))
                                 par[fullparname2] = ("strbnd", vnames)
                                 for idx,vn in enumerate(vnames):
                                     self.par.variables[vn] = varpar(self.par, name = vn)
