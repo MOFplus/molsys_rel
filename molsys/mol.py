@@ -1249,6 +1249,15 @@ class mol(mpiobject):
             self.bcond = 3
         return
 
+    def make_nonperiodic(self):
+        """makes the system non-periodic (forget all perdiodicity infomation)
+        """
+        self.bcond = 0
+        self.periodic = False
+        self.cell  = None
+        return
+
+
     def get_bcond(self):
         """
         returns the boundary conditions
