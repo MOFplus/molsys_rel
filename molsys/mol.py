@@ -10,6 +10,7 @@ import copy
 import os
 import sys
 import subprocess
+import inspect
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -142,7 +143,10 @@ class mol(mpiobject):
         newdict = newone.__dict__
         newdict.update(self.__dict__)
         for key, val in newdict.items():
-            newdict[copy.copy(key)] = copy.copy(val)
+            try:
+                newdict[copy.copy(key)] = copy.copy(val)
+            except Exception as e: # if not copiable
+                newdict[copy.copy(key)] = val
         return newone
 
     def __deepcopy__(self, memo):
@@ -159,7 +163,7 @@ class mol(mpiobject):
         for key, val in newdict.items():
             try:
                 newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
-            except Exception as e: # if not deepcopy-able
+            except Exception as e: # if not deep-copiable
                 newdict[copy.deepcopy(key, memo)] = val
         return newone
 
@@ -517,13 +521,13 @@ class mol(mpiobject):
             return loaded
         if addmod in addon.__all__: ### addon is enabled: try to set it
             addclass = getattr(addon, addmod, None)
-            if type(addclass) is not None: ### no error raised during addon/__init__.py import
-                if isinstance(addclass, (type, types.ClassType)):
+            if addclass is not None: ### no error raised during addon/__init__.py import
+                if inspect.isclass(addclass):
                     ### get the addon attribute, initialize it and set as self attribute
                     addinst = addclass(self, *args, **kwargs)
                     setattr(self, addmod, addinst)
                     loaded = True ### the addon is now available as self.addmod
-                elif isinstance(addclass, (type, types.ModuleType)):
+                elif inspect.ismodule(addclass):
                     ### to enable syntax: 'from molsys.addon.addmod import addmod'
                     # in this case, e.g.: addon.ff is the MODULE, not the CLASS, so that we need TWICE
                     # the 'getattr' to get molsys.addon.ff.ff
@@ -539,6 +543,7 @@ class mol(mpiobject):
             else: ### error raised during addon/__init__.py import
                 print(addon._errortrace[addmod])
                 logger.error("\"%s\" addon is not imported: check addon module" % addmod)
+                loaded = False
         else: ### addon in unknown or disabled in addon.__all__
             logger.error("\"%s\" addon is unknown/disabled: check addon.__all__ in addon module" % addmod)
             loaded = False
@@ -640,7 +645,7 @@ class mol(mpiobject):
         self.set_etab_from_tabs()
         return
 
-    def remove_conn_pbc(self):
+    def set_conn_nopbc(self):
         """
         Remove periodic connectivity if it crosses cell boundaries
         """
@@ -653,7 +658,7 @@ class mol(mpiobject):
             ]
             for i,c in enumerate(self.conn)
         ]
-        self.atoms_withconn_nopbc = [i for i,c in enumerate(self.conn_nopbc) if len(c) > 0]
+        #self.atoms_withconn_nopbc = [i for i,c in enumerate(self.conn_nopbc) if len(c) > 0]
         return
 
     def report_conn(self):
@@ -1838,7 +1843,7 @@ class mol(mpiobject):
             the nested list of separated moieties.
         """
         if sele is None: # trivial if molecules_flag=False...
-            sele = [range(self.natoms)]
+            sele = [list(range(self.natoms))]
         else:
             if not hasattr(sele[0], '__iter__'): # quick and dirt
                 sele = [sele]
@@ -1910,11 +1915,11 @@ class mol(mpiobject):
         N.B.: using numpy array since for readability
         """
         if sele is None:
-            sele = range(self.natoms)
+            sele = list(range(self.natoms))
         sele_original = sele[:]
         random.shuffle(sele)
         # selection to original dictionary
-        sele2sele_original = dict(zip(sele,sele_original))
+        sele2sele_original = dict(list(zip(sele, sele_original)))
         # coordinates #
         self.xyz[sele_original] = self.xyz[sele]
         # elements #
@@ -1966,7 +1971,7 @@ class mol(mpiobject):
             m = self.new_mol_by_index(sele)
             mg = molgraph(m)
         labels = label_components(mg.molg)[0].a.tolist()
-        unique_labels = Counter(labels).keys()
+        unique_labels = list(Counter(labels).keys())
         if sele is None:
             molidx = [[j for j,ej in enumerate(labels) if ej==i] for i in unique_labels]
         else:
@@ -2362,7 +2367,7 @@ class mol(mpiobject):
             - elem_number: list of atomic numbers
         """
         assert len(elems_number) == self.natoms
-        self.elems = [elements.number.keys()[i] for i in elems_number]
+        self.elems = [list(elements.number.keys())[i] for i in elems_number]
         return
 
     def get_atypes(self):
@@ -2706,9 +2711,9 @@ class mol(mpiobject):
         elif ctab is None or ptab is None:
             raise ValueError("ctab and ptab can't both be None")
         if self.use_pconn:
-            etab_T = zip(*ctab)
+            etab_T = list(zip(*ctab))
             etab_T.append(ptab)
-            self.etab = zip(*etab_T)
+            self.etab = list(zip(*etab_T))
         else:
             self.etab = ctab[:]
         if sort_flag is True: #it sorts ctab, ptab, and etab too
@@ -2750,8 +2755,8 @@ class mol(mpiobject):
                 etab_selfcount += 1
         etab_unique = set(etab_red)
         etab_unique = sorted(list(etab_unique)) # by convention
-        ictab, jctab, ptab = zip(*etab_unique)
-        ctab = zip(ictab, jctab)
+        ictab, jctab, ptab = list(zip(*etab_unique))
+        ctab = list(zip(ictab, jctab))
         self.ctab = list(ctab)
         self.ptab = list(ptab)
         self.etab = etab_unique # already a list
@@ -2765,7 +2770,7 @@ class mol(mpiobject):
         elif ctab is None or ptab is None:
             raise ValueError("ctab and ptab can't both be None")
         if self.use_pconn:
-            etab = list(zip(*(zip(*ctab)+[ptab]))) # python3 compl.: zip iterator gets exhausted
+            etab = list(zip(*(list(zip(*ctab))+[ptab]))) # python3 compl.: zip iterator gets exhausted
         else:
             etab = ctab
         self._etab = etab
@@ -2788,7 +2793,7 @@ class mol(mpiobject):
                     ptab[ii] = idx2revidx[ptab[ii]]
                 if i == j and ptab[ii] > 13:
                     ptab[ii] = idx2revidx[ptab[ii]]
-            tosort = zip(*(zip(*ctab)+[ptab]))
+            tosort = list(zip(*(list(zip(*ctab))+[ptab])))
         else:
             for ii,(i,j) in enumerate(ctab):
                 if i > j:

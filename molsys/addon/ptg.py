@@ -3,21 +3,13 @@
 
     pgp
 
-    implements an addon to access the features of the spglib within molsys
-    https://atztogo.github.io/spglib/
-
     shamelessly but gratefully "adapted" (if you like to say so) from:
         pymatgen.symmetry.analyzer,
         pymatgen.core.operations
     which are on turn based on a bunch of published or well-known algorithms.
-
-    you need a recent spglib (>= 1.9.0) because the python iVmport has changed at some point
-    it can be installed via pip (pip install spglib)
-
-    comment by JK: i've added spacegroups.py in util containing a (an incomplete) list of spacegroup
-    strings with the corresponding spacegroup numbers.
-    molsys.util.spacegroups (herein imported as spacegroup) call via:
-    spacegroup.get_spacegroup_number(sgname). returns None if not in dict.
+    
+    Copyright (c) Pymatgen Development Team.
+    Distributed under the terms of the MIT License.
 
 Created on Fri Jul  7 11:52:42 2019
 
