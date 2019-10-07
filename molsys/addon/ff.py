@@ -356,10 +356,10 @@ class ric:
                                         break
                             # sort d first for coupling term purposes
                             if str(self.aftypes[a2]) > str(self.aftypes[a3]):
-                                d = ic([a4,a3,a2,a1], ring = ring) 
+                                d = ic([a4,a3,a2,a1], ring = ring)
                             elif str(self.aftypes[a2]) == str(self.aftypes[a3]):
                                 if self.aftypes[a1] > self.aftypes[a4]:
-                                    d = ic([a4,a2,a3,a1], ring = ring)
+                                    d = ic([a4,a3,a2,a1], ring = ring)
                                 else:
                                     d = ic([a1,a2,a3,a4], ring = ring)
                             else:
