@@ -18,7 +18,7 @@ class bb:
         """        '''
         initialize data structure for mol object so it can handle building block files
         beware, there is a litte chaos in the writing of bb files. what is needed is:
-        - is_mol=True i.o. to write
+        - is_bb=True i.o. to write
         - mol.connectors as a list of 'connectors'
         - mol.connector_atoms as a list of lists of the atoms (inner list) belonging to the connector (outer list)
         - mol.connectors_type a list if type indices, nconn*[0] for no special connectors, otherwise something like [0,0,0,0,1,1]. needs to be ordered ascendingly:w
@@ -34,6 +34,7 @@ class bb:
         self.mol.connector_dummies=[]
         self.mol.connector_atoms = []
         self.mol.connectors_type = []
+        self.mol.is_bb = True
         return
 
     def __mildcopy__(self, memo):
