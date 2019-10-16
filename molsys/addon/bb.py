@@ -29,11 +29,12 @@ class bb:
 #        if mol.is_bb == False:
 #            raise IOError,("No bb info available!")
         self.mol = mol
-        self.mol.dummies_hidden=False
-        self.mol.connectors = []
-        self.mol.connector_dummies=[]
-        self.mol.connector_atoms = []
-        self.mol.connectors_type = []
+        self.connectors = []
+        self.connector_atoms = []
+        self.connectors_type = []
+        self.center_point = 'coc'
+        self.special_center_point = None
+        self.conn_list = []
         self.mol.is_bb = True
         return
 
@@ -54,51 +55,20 @@ class bb:
                 newdict[copy.deepcopy(key, memo)] = copy.deepcopy(val, memo)
         return newone
 
-
-
-    def setup(self,name='default',specific_conn=None, linker=False, zflip=False, nrot=1, label = None, no_rot=False):
-        """Method called by weaver to setup the data necessary for the first stage of an RTA run.
-        
-        Args:
-            name (str, optional): Name of the BB. Defaults to 'default'.
-            specific_conn (list of ints, optional): If given, treat the connectors as inequal. Defaults to None.
-            linker (bool, optional): defines whether BB should be treated as 'linker' or not, usually done for divalent BBs. Defaults to False.
-            zflip (bool, optional): Can only be enabled for linkers. If true, mirror the coordinates along xy. Defaults to False.
-            nrot (int, optional): if given, use nrot equally spaced rotations around the connector axis. Defaults to 1.
-            label (string, optional): Label. Defaults to None.
-            no_rot (bool, optional): Set to true to disable orientation detection and use the current coordinates. Defaults to False.
-        """
-        self.mol.specific_conn = specific_conn  # that should be obtained from the file itself ?!!?
-        self.mol.linker = linker
-        self.mol.name = name
-        self.mol.zflip  = zflip
-        self.mol.nrot   = nrot
-        self.mol.no_rot = no_rot
-        if not linker:
-            if self.mol.zflip: logger.warning("zflip only supported for linkers")
-            if self.mol.nrot>1: logger.debug("rotations only supported for linkers")
-        self.mol.label = label
-        #self.find_dummies()
-        self.center()
-        if linker: self.rotate_on_z()
-        self.extract_connector_xyz()
-#        self.hide_dummy_atoms()
-        return
-
     def center(self):
         """Centers the coordinates of the current mol to the point given as 'center_point'
         center_point has to be 'com', 'coc', or 'special'. In the latter case, also mol.special_center_point' has to be defined
         Raises:
             IOError: If center point is not given or has an illegal value, exit
         """
-        if self.mol.center_point == "com":
+        if self.center_point == "com":
             self.mol.set_real_mass()
             center = self.mol.get_com()
-        elif self.mol.center_point == "coc":
+        elif self.center_point == "coc":
             self.mol.set_unit_mass()
-            center = self.mol.get_com(idx=self.mol.connectors)
-        elif self.mol.center_point == "special":
-            center = self.mol.special_center_point
+            center = self.get_com(idx=self.mol.connectors)
+        elif self.center_point == "special":
+            center = self.special_center_point
         else:
             raise IOError("unknown center point option")
         self.mol.translate(-center)
@@ -112,32 +82,18 @@ class bb:
         self.mol.set_mass(mass, masstype)
         return coc
 
-    def hide_dummy_atoms(self):
-        ''' depreciated, has been used to remove dummies, requires them to be the last atoms
-            we now remove dummies after construction using remove_dummies() in mol.py'''
-        self.mol.dummies_hidden=True
-        self.mol.bb = copy.deepcopy(self.mol)
-        self.mol.natoms = self.mol.natoms - len(self.mol.connector_dummies)
-        self.mol.xyz = self.mol.xyz[0:self.mol.natoms,:]
-        self.mol.conn = self.mol.conn[0:self.mol.natoms]
-        self.mol.elems = self.mol.elems[0:self.mol.natoms]
-        self.mol.atypes =self.mol.atypes[0:self.mol.natoms]
-        return
-
     def extract_connector_xyz(self):
         """ Internal function, that extracts the BB vector set needed by weaver.
         """
         conn_xyz = []
-        self.mol.conn_elems = []
         for c in self.mol.connectors:
             conn_xyz.append(self.mol.xyz[c].tolist())
-            self.mol.conn_elems.append(np.array(self.mol.elems)[c].tolist())
         try:
             self.mol.connector_xyz = np.array(conn_xyz,"d")
         except ValueError:
             conn_xyz = [np.mean(cc,axis=0) for cc in conn_xyz]
             self.mol.connector_xyz = np.array(conn_xyz,"d")
-        self.mol.conn_dist = np.sqrt(np.sum(self.mol.connector_xyz*self.mol.connector_xyz,axis=1))
+        self.conn_dist = np.sqrt(np.sum(self.mol.connector_xyz*self.mol.connector_xyz,axis=1))
         return
 
 
