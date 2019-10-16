@@ -40,8 +40,11 @@ class topo:
                 for j,v in enumerate(self._mol.conn[i]):
                     if v > i:
                         edges.append([i,v])
-                        labels.append(list(self._mol.pconn[i][j]))
-            self._systrekey = systrekey.run_systrekey(edges, labels)
+                        labels.append(list(self._mol.pconn[i][j].astype("int")))
+            self._systrekey, mapping = systrekey.run_systrekey(edges, labels)
+            self._skey_mapping = [-1 for i in range(self._mol.get_natoms())]
+            for k in mapping:
+                self._skey_mapping[int(k)-1] = mapping[k]
         return self._systrekey
 
     @property

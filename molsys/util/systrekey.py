@@ -98,23 +98,33 @@ class systre_db:
 
 
 def run_systrekey(edges, labels):
+    import json
+    import copy
     """run javascript systrekey
     
+    revised version using json strings to pass data to javascript
+
     Arguments:
         edges {list of lists of 2 ints} - list of edges
-        labels {lost of lists of 3 ints} - list of edge labels
+        labels {list of lists of 3 ints} - list of edge labels
     """
     assert len(edges) == len(labels)
-    lqg_string = ""
+    lqg = []
     for e,l in zip(edges, labels):
-        lqg_string += "%d %d" % tuple(e)
-        lqg_string += " %d %d %d|" % tuple(l)
-    lqg_string = lqg_string[:-1]
-    # print lqg_string # DEBUG
+        el = []
+        el.append(e[0]+1)
+        el.append(e[1]+1)
+        el.append(l)
+        lqg.append(el)
+    json_lqg = json.dumps(lqg)
 
-    key = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", lqg_string, systre_path])
-    key = key[:-1] # remove newline
-    return key
+    print json_lqg
+
+    json_result = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", json_lqg, systre_path])
+    result = json.loads(json_result)
+    key = result["key"]
+    mapping = result["mapping"]
+    return key, mapping
 
 
 if __name__=="__main__":
