@@ -449,7 +449,7 @@ class graph(object):
         self.decomp_net.make_topo()
         return self.decomp_net
 
-    def get_bbs(self, get_all=False, write_mfpx=False):
+    def get_bbs(self, get_all=False, write_mfpx=True):
         """this method generates the unique bbs from moldg and bbg
         """
         assert self.bbg is not None
@@ -463,7 +463,8 @@ class graph(object):
         # VERTICES
         # start with the vertices ... check all
         vbb_graphs = []
-        vbb_map = {}
+        vbb_map   = {}
+        vbb_remap = {}
         nvbbs = 0
         for v in self.bbg.vertices():
             bb = self.bbg.vp.bb[v]
@@ -482,42 +483,24 @@ class graph(object):
             if not known:
                 # add graph
                 vbb_graphs.append(Graph(cur_bbsg, prune=True))
-                vbb_map[nvbbs] = [bb]
+                vbb_map[nvbbs]   = [bb]
+                vbb_remap[nvbbs] = [int(v)]
                 nvbbs += 1
             else:
                 # known already .. i equals nvbb
                 vbb_map[i].append(bb)
+                vbb_remap[i].append(int(v))
         # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
         # TBI: with flag get_all==True convert them all
-        cell = self._mol.get_cell()
         for i in range(nvbbs):
             bb   = vbb_map[i][0] # take the first
             vbbg = vbb_graphs[i]
             # now we need to convert bb into a mol object and store it in self.decomp_vbb
-            bb_atoms = self.decomp_map_bb2atoms[bb]
-            bb_cons   = self.decomp_map_bb2cons[bb]
-            xyz = self._mol.get_xyz(bb_atoms)
-            mol_bb = molsys.mol.from_array(xyz)
-            mol_bb.set_cell(cell)
-            mol_bb.set_elems([vbbg.vp.elem[v] for v in vbbg.vertices()])
-            ctab = [[int(e.source()), int(e.target())] for e in vbbg.edges()]
-            mol_bb.set_conn_from_tab(ctab)
-            # the positions could be split by pbc -> fix it and then remove periodicity
-            mol_bb.center_com(check_periodic=False)
-            mol_bb.apply_pbc()
-            mol_bb.make_nonperiodic()
-            mol_bb.addon("bb")
-            # compute connector indices of local BB
-            cons = [bb_atoms.index(j) for j in bb_cons]
-            # TBI: we need a different way to set up the datastructure of BBs better
-            mol_bb.center_point = "coc"           
-            mol_bb.connectors = cons
-            mol_bb.connector_atoms = [[j] for j in mol_bb.connectors]
-            mol_bb.connectors_type = [0 for j in range(len(mol_bb.connectors))]
+            mol_bb = self._convert_bb2mol(bb, vbbg)
             # now add to the final list
             self.decomp_vbb.append(mol_bb)
             # store the map from the dicitonary into the nested list
-            self.decomp_vbb_map.append(vbb_map[i])
+            self.decomp_vbb_map.append(vbb_remap[i])
             # DEBUG
             if write_mfpx:
                 mol_bb.write("bb_%d.mfpx" % i)
@@ -525,6 +508,7 @@ class graph(object):
         # now analyze the edges .. check all edges if their edge property bb is larger than -1 (-1 means no edge bb) 
         ebb_graphs = []
         ebb_map = {}
+        ebb_remap = {}
         nebbs = 0
         for e in self.bbg.edges():
             if self.bbg.ep.bb[e] > -1:
@@ -545,42 +529,58 @@ class graph(object):
                     # add graph
                     ebb_graphs.append(Graph(cur_bbsg, prune=True))
                     ebb_map[nebbs] = [bb]
+                    ebb_remap[nebbs] = [e]
                     nebbs += 1
                 else:
                     # known already .. i equals nvbb
                     ebb_map[i].append(bb)
+                    ebb_remap[i].append(e)
         # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
         # TBI: with flag get_all==True convert them all
         for i in range(nebbs):
             bb   = ebb_map[i][0] # take the first
             ebbg = ebb_graphs[i]
             # now we need to convert bb into a mol object and store it in self.decomp_ebb
-            bb_atoms = self.decomp_map_bb2atoms[bb]
-            bb_cons   = self.decomp_map_bb2cons[bb]
-            xyz = self._mol.get_xyz(bb_atoms)
-            mol_bb = molsys.mol.from_array(xyz)
-            mol_bb.set_cell(cell)
-            mol_bb.set_elems([ebbg.vp.elem[v] for v in ebbg.vertices()])
-            ctab = [[int(e.source()), int(e.target())] for e in ebbg.edges()]
-            mol_bb.set_conn_from_tab(ctab)
-            # the positions could be split by pbc -> fix it and then remove periodicity
-            mol_bb.center_com(check_periodic=False)
-            mol_bb.apply_pbc()
-            mol_bb.make_nonperiodic()
-            mol_bb.addon("bb")
-            # compute connector indices of local BB
-            cons = [bb_atoms.index(j) for j in bb_cons]
-            # TBI: we need a different way to set up the datastructure of BBs better
-            mol_bb.center_point = "coc"           
-            mol_bb.connectors = cons
-            mol_bb.connector_atoms = [[j] for j in mol_bb.connectors]
-            mol_bb.connectors_type = [0 for j in range(len(mol_bb.connectors))]
+            mol_bb = self._convert_bb2mol(bb, ebbg)
             # now add to the final list
             self.decomp_ebb.append(mol_bb)
             # store the map from the dicitonary into the nested list
-            self.decomp_ebb_map.append(ebb_map[i])
+            self.decomp_ebb_map.append(ebb_remap[i])
             # DEBUG
             if write_mfpx:
                 mol_bb.write("ebb_%d.mfpx" % i)
         self.decomp_bb_exist = True
         return (self.decomp_vbb, self.decomp_vbb_map, self.decomp_ebb, self.decomp_ebb_map)
+
+    def _convert_bb2mol(self, bb, bbg):
+        """helper function to convert a bb (index) and bbg (graph) to a mol object
+        
+        Args:
+            bb (int): index of building block to convert
+            bbg (graph): graph of the bb
+
+        Return:
+            mol object
+        """
+        bb_atoms = self.decomp_map_bb2atoms[bb]
+        bb_cons   = self.decomp_map_bb2cons[bb]
+        xyz = self._mol.get_xyz(bb_atoms)
+        mol_bb = molsys.mol.from_array(xyz)
+        cell = self._mol.get_cell()
+        mol_bb.set_cell(cell)
+        mol_bb.set_elems([bbg.vp.elem[v] for v in bbg.vertices()])
+        ctab = [[int(e.source()), int(e.target())] for e in bbg.edges()]
+        mol_bb.set_conn_from_tab(ctab)
+        # the positions could be split by pbc -> fix it and then remove periodicity
+        mol_bb.center_com(check_periodic=False)
+        mol_bb.apply_pbc()
+        mol_bb.make_nonperiodic()
+        mol_bb.addon("bb")
+        # compute connector indices of local BB
+        cons = [bb_atoms.index(j) for j in bb_cons]
+        # TBI: we need a different way to set up the datastructure of BBs better
+        mol_bb.center_point = "coc"           
+        mol_bb.connectors = cons
+        mol_bb.connector_atoms = [[j] for j in mol_bb.connectors]
+        mol_bb.connectors_type = [0 for j in range(len(mol_bb.connectors))]
+        return mol_bb
