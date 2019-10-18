@@ -110,7 +110,7 @@ def write(mol, f, fullcell = True):
     else:
         ftype = 'xyz'
     f.write('# type %s\n' % ftype)
-    if type(mol.cellparams) != type(None):
+    if mol.bcond>0:
         if fullcell:
 #            elif keyword == 'cellvect':
 #                mol.periodic = True

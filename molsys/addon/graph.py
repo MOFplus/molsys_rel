@@ -8,9 +8,11 @@
 
 """
 
-from graph_tool import Graph
+from graph_tool import Graph, GraphView
 from graph_tool.topology import *
 import copy
+import numpy as np
+import molsys
 
 import logging
 logger = logging.getLogger("molsys.graph")
@@ -23,12 +25,15 @@ class graph(object):
 
         :Parameter:
 
-             - mol : a mol type object (can be a derived type like bb or topo as well)
+             - mol : a mol type object
         """
         self._mol = mol
         self.molg = Graph(directed=False)
         self.molg.vp.type = self.molg.new_vertex_property("string")
         self.molg.vp.molid = self.molg.new_vertex_property("int")
+        # defaults
+        self.moldg = None
+        self.bbg   = None
         logger.debug("generated the graph addon")
         return
 
@@ -71,7 +76,7 @@ class graph(object):
                         #self.molg.add_edge( self.molg.vertex(self.vert2atom.index(ja)),self.molg.vertex(i))
         return
 
-    def plot_graph(self, fname, g = None, size=1000, fsize=16, vsize=8, ptype = "pdf",method='arf'):
+    def plot_graph(self, fname, g = None, label=None, edge_label=None, size=1000, fsize=16, vsize=8, ptype = "pdf",method='arf'):
         """
         plot the graph (needs more tuning options) [via **kwargs? RA]
 
@@ -86,27 +91,29 @@ class graph(object):
                        sfdp
                        random
         """
+        import graph_tool.draw as gtd
         if g:
             draw_g = g
         else:
             draw_g = self.molg
-        import graph_tool.draw
-        import graph_tool.draw as gt
+        if label:
+            vlabel = label
+        else:
+            vlabel = "type"
         g=draw_g
         if method=='arf':
-            pos = graph_tool.draw.arf_layout(draw_g, max_iter=0)
+            pos = gtd.arf_layout(draw_g, max_iter=0)
         elif method=='frucht':
-            pos = graph_tool.draw.fruchterman_reingold_layout(draw_g, n_iter=1000)
+            pos = gtd.fruchterman_reingold_layout(draw_g, n_iter=1000)
         elif method=='radtree':
-            pos = gt.radial_tree_layout(g, g.vertex(0))
+            pos = gtd.radial_tree_layout(draw_g, draw_g.vertex(0))
         elif method=='sfdp':
-            pos = gt.sfdp_layout(g)
-        elif method=='sfdp':
-            pos = gt.random_layout(g)
+            pos = gtd.sfdp_layout(draw_g)
+        elif method=='random':
+            pos = gtd.random_layout(draw_g)
         else:
             pos=None
-        from graph_tool.draw import graph_draw
-        graph_draw(draw_g,pos=pos, vertex_text=draw_g.vp.type, vertex_font_size=fsize, vertex_size=vsize, \
+        gtd.graph_draw(draw_g,pos=pos, vertex_text=draw_g.vp[vlabel], vertex_font_size=fsize, vertex_size=vsize, \
             output_size=(size, size), output=fname+"."+ptype, bg_color=[1,1,1,1])
         return
 
@@ -222,3 +229,358 @@ class graph(object):
         """
         label_components(self.molg, vprop=self.molg.vp.molid)
         return
+
+    """
+    #############################################################################################
+           decomposition (or deconstruction)
+    #############################################################################################
+
+    Since the molg graph above is really used for fragment finding with a special way to treat 
+    hydrogens we use a seperate graph called moldg (mol decomposition graph) which contains all atoms
+    and uses only lower case element symbols as vertex symbols. 
+    """
+
+    def decompose(self, mode="ringsize"):
+        """decompose the molecular graph into BBs and the underlying net
+
+        There are different strategies to split the graph into parts and also the returned information
+        can be tuned.
+        In general, a topo mol object of the underlying net and a set of BB mol objects with a mapping 
+        to vertices and edges will be returned.
+        
+        modes:
+            ringsize: use clusters of minimum ring size as used by Topos for decomposition
+
+        Args:
+            mode (str, optional): mode of splitting into BBs. Defaults to "ringsize".
+        """
+        # set up the graph
+        self.make_decomp_graph()
+        # split it
+        if mode == "ringsize":
+            self.split_ringsize()
+        else:
+            print("unknown decomosition mode")
+            return
+        # now get the BBs and the net and collect the output
+        net = self.get_net()
+        # generate the BBs as mol objects and theri distribution to the vertices and edges
+        #   NOTE: return values are also available as self.decomp_<name>
+        vbb, vbb_map, ebb, ebb_map = self.get_bbs()
+        # return complete info as a tuple
+        return (net, vbb, vbb_map, ebb, ebb_map)
+
+    def make_decomp_graph(self):
+        """make a mol graph for decomposition
+        """
+        self.moldg = Graph(directed=False)
+        self.moldg.vp.bb   = self.moldg.new_vertex_property("int")
+        self.moldg.vp.con  = self.moldg.new_vertex_property("string")
+        self.moldg.vp.filt = self.moldg.new_vertex_property("bool")
+        # generate vertices and edges
+        self.moldg.vp.elem = self.moldg.new_vertex_property("string")
+        elems = self._mol.get_elems()
+        conn  = self._mol.get_conn()
+        for i in range(self._mol.natoms):
+            self.moldg.add_vertex()
+            self.moldg.vp.elem[i] = elems[i]
+            for j in conn[i]:
+                if j<i:
+                    self.moldg.add_edge(self.moldg.vertex(i), self.moldg.vertex(j))
+        # add all further properties
+        self.moldg.ep.Nk   = self.moldg.new_edge_property("int")
+        self.moldg.ep.filt = self.moldg.new_edge_property("bool")
+        # init properties
+        for v in self.moldg.vertices():
+            self.moldg.vp.con[v] = ""
+        self.moldg.ep.Nk.a[:] = 0
+        for e in self.moldg.edges():
+            self.moldg.ep.filt[e] = True
+        # set up flags
+        self.decomp_split = False
+        self.decomp_bb_exist = False
+        return
+
+    def split_ringsize(self):
+        """
+        split by determining ringsizes follwoing the topos strategy
+        """
+        assert self.moldg is not None
+        assert self.decomp_split is False
+        # first step: remove all vertices of degree 1 (hydrogen)
+        k = kcore_decomposition(self.moldg).get_array()
+        k1 = np.not_equal(k, 1)
+        self.moldg.vp.filt.a = k1
+        self.moldg.set_vertex_filter(self.moldg.vp.filt)
+        # second step: determine minimal ring size to each edge
+        self.moldg.set_edge_filter(self.moldg.ep.filt)
+        for e in self.moldg.edges():
+            self.moldg.ep.filt[e] = False
+            dist = shortest_distance(self.moldg, source=e.source(), target= e.target())
+            self.moldg.ep.filt[e] = True
+            if dist < 2147483647:
+                self.moldg.ep.Nk[e] = dist+1
+            else:
+                self.moldg.ep.Nk[e] = 0
+        self.moldg.set_edge_filter(self.moldg.ep.filt)
+        # third step: determine where to cut
+        Nks = list(set(self.moldg.ep.Nk.get_array()))
+        Nks.sort()
+        Nks.remove(0)
+        # print Nks
+        cut_at_Nk = []
+        for i in range(len(Nks)-1):
+            if Nks[i+1]-Nks[i]>2:
+                #cut_at_Nk.append(Nks[i+1])
+                cut_at_Nk = Nks[i+1:]
+                break
+        # print cut_at_Nk
+        # fourth step: get all vertices back and set the cuts by filtering the edges
+        self.moldg.set_vertex_filter(None)
+        for e in self.moldg.edges():
+            if self.moldg.ep.Nk[e] in cut_at_Nk:
+                # this is a cut -> set edge filter to False
+                self.moldg.ep.filt[e] = False
+                # print "cut at bond %d %d" % (int(e.source()), int(e.target()))
+        self.decomp_split = True
+        # DEBUG DEBUG DEBUG
+        # self.plot_graph("topo", g=self.moldg, label="elem", method="sfdb")
+        return
+
+    def get_net(self, mode="coc"):
+        """this method takes a sliced moldg and creates a graph of the underlying net
+
+        TBI: currently no pconn is detected .. we rely on being able to construct it from the embedding
+             this needs to be tested for very small thigs like a 1x1x1 pcu based MOF
+
+        Args:
+            mode (str, otional): Defaults to "coc", mode how to compute the position of the BBs vertex position
+                                 coc - center of connectors
+        """
+        assert self.decomp_split is True
+        # label the BBs -> this generates the BBid valid for both vertices and edges
+        label_components(self.moldg, vprop=self.moldg.vp.bb)
+        self.moldg.set_edge_filter(None)
+        # prepare lists with mappings for the vertices to the BBs (which atom is in which vertex BB etc)
+        # Note:
+        #    the number of vertices nv is not equal to the number of BBs (nbb) since some BBs sit on edges
+        #    we thus need a mapping from BBs to atom indices and another mapping of vertices to BBs
+        self.decomp_nbb = self.moldg.vp.bb.a.max()+1
+        # now we make a temporary graph bbg for the BBs
+        self.bbg = Graph(directed=False)
+        for b in range(self.decomp_nbb):
+            self.bbg.add_vertex()  # vertices of thsi graph can be indexed by bbid (it contains also the 2c edges)
+        # now check all split edges, register the connected atoms and add edges to the bbg graph
+        for e in self.moldg.edges():
+            if self.moldg.ep.filt[e] == False:
+                i = e.source() 
+                j = e.target()
+                # also add the connector info as a string because we could have multiple
+                self.moldg.vp.con[i] += "%d " % j
+                self.moldg.vp.con[j] += "%d " % i
+                ibb = self.moldg.vp.bb[i]
+                jbb = self.moldg.vp.bb[j]
+                # print ("bond %d-%d for bbs %d %d" % (i, j, ibb, jbb))
+                # TBI if we have two bonds between BBs we get edges twice here ... we could check if the edge is already there
+                self.bbg.add_edge(self.bbg.vertex(ibb),self.bbg.vertex(jbb))
+        # add vertex and edge properties for bbs and init them (edges are -1 by default => no bb)
+        self.bbg.vp.bb = self.bbg.new_vertex_property("int")
+        self.bbg.ep.bb = self.bbg.new_edge_property("int")
+        self.bbg.vp.bb.a = np.arange(self.bbg.num_vertices())
+        self.bbg.ep.bb.a = -1
+        self.decomp_map_bb2atoms = []
+        self.decomp_map_bb2cons = []
+        for i in range(self.decomp_nbb):
+            self.decomp_map_bb2atoms.append([])
+            self.decomp_map_bb2cons.append([])
+        # iterate over all vertices of the moldg 
+        for v in self.moldg.vertices():
+            vbb = self.moldg.vp.bb[v]
+            self.decomp_map_bb2atoms[vbb].append(int(v))
+            if len(self.moldg.vp.con[v]) > 0:
+                # this is a connector
+                self.decomp_map_bb2cons[vbb].append(int(v))
+        # DEBUG
+        # self.plot_graph("bbg_before", g=self.bbg, label="bb")
+        # TBI at this point we could check if two edge (2c) bbs are connected to each other. in this case they need to be merged
+        #
+        # now reduce the graph to its basis without the edges (edge bbs go into the ep.bb)
+        remove_v = []
+        for v in self.bbg.vertices():
+            if v.out_degree() == 2:
+                remove_v.append(v)
+                i, j = v.all_neighbors()
+                new_edge = self.bbg.add_edge(self.bbg.vertex(i), self.bbg.vertex(j))
+                self.bbg.ep.bb[new_edge] = self.bbg.vp.bb[v]
+        self.bbg.remove_vertex(remove_v)
+        self.decomp_nv = self.bbg.num_vertices()
+        # DEBUG
+        # self.plot_graph("bbg_after", g=self.bbg, label="bb")
+        # now compute the vertex positions of the BBs as the scaled embedding depending on the mode
+        vpos = np.zeros([self.decomp_nv, 3], dtype="float64")
+        for v in self.bbg.vertices():
+            if mode == "coc":
+                # compute by centroid of connectors (note that this considers pbc correctly but we might have to wrap)
+                bbid = self.bbg.vp.bb[v]
+                vpos[int(v)] = self._mol.get_coc(idx = self.decomp_map_bb2cons[bbid])
+            else:
+                print("unknown mode in get_net")
+                raise
+        # now make a mol object
+        self.decomp_net = molsys.mol.from_array(vpos)
+        # since this is the unscaled embedding we can directly take the cell from the parent mol
+        self.decomp_net.set_cell(self._mol.get_cell())
+        # now generate a net_conn from the edges of the bbg graph
+        self.decomp_net_conn = []
+        for i in range(self.decomp_nv):
+            self.decomp_net_conn.append([])
+        for e in self.bbg.edges():
+            i = int(e.source())
+            j = int(e.target())
+            self.decomp_net_conn[i].append(j)
+            self.decomp_net_conn[j].append(i)
+        # IMPROVE: this is the element map stolen from lqg.py --> lqg should evetnually go into a topo addon .. make more smart
+        elems_map = {2:'x',3:'n',4:'s',5:'p',6:'o',8:'c'}
+        vert_elems = []
+        for i in range(self.decomp_nv):
+            vert_elems.append(elems_map[len(self.decomp_net_conn[i])])
+        self.decomp_net.set_elems(vert_elems)
+        self.decomp_net.set_conn(self.decomp_net_conn)
+        self.decomp_net.make_topo()
+        return self.decomp_net
+
+    def get_bbs(self, get_all=False, write_mfpx=True):
+        """this method generates the unique bbs from moldg and bbg
+        """
+        assert self.bbg is not None
+        if get_all == True:
+            print "PLEASE IMPLEMENT get_all option!!"
+            raise
+        self.decomp_vbb = [] # vertex BB mol objects (only unique)
+        self.decomp_ebb = [] # edge/linker BB mol objects (only unique)
+        self.decomp_vbb_map = [] # mapping of BBs to the vertices
+        self.decomp_ebb_map = [] # mapping of the BBS to the edges
+        # VERTICES
+        # start with the vertices ... check all
+        vbb_graphs = []
+        vbb_map   = {}
+        vbb_remap = {}
+        nvbbs = 0
+        for v in self.bbg.vertices():
+            bb = self.bbg.vp.bb[v]
+            cur_bbsg = GraphView(self.moldg, directed=False, vfilt = self.moldg.vp.bb.a == bb)
+            # now check if we have this bb already
+            known = False
+            for i in range(len(vbb_graphs)):
+                old_bbsg = vbb_graphs[i]
+                if old_bbsg.num_vertices() != cur_bbsg.num_vertices():
+                    continue
+                # check if isomorphic
+                # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
+                if isomorphism(cur_bbsg, old_bbsg):
+                    known = True
+                    break
+            if not known:
+                # add graph
+                vbb_graphs.append(Graph(cur_bbsg, prune=True))
+                vbb_map[nvbbs]   = [bb]
+                vbb_remap[nvbbs] = [int(v)]
+                nvbbs += 1
+            else:
+                # known already .. i equals nvbb
+                vbb_map[i].append(bb)
+                vbb_remap[i].append(int(v))
+        # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
+        # TBI: with flag get_all==True convert them all
+        for i in range(nvbbs):
+            bb   = vbb_map[i][0] # take the first
+            vbbg = vbb_graphs[i]
+            # now we need to convert bb into a mol object and store it in self.decomp_vbb
+            mol_bb = self._convert_bb2mol(bb, vbbg)
+            # now add to the final list
+            self.decomp_vbb.append(mol_bb)
+            # store the map from the dicitonary into the nested list
+            self.decomp_vbb_map.append(vbb_remap[i])
+            # DEBUG
+            if write_mfpx:
+                mol_bb.write("bb_%d.mfpx" % i)
+        # EDGES
+        # now analyze the edges .. check all edges if their edge property bb is larger than -1 (-1 means no edge bb) 
+        ebb_graphs = []
+        ebb_map = {}
+        ebb_remap = {}
+        nebbs = 0
+        for e in self.bbg.edges():
+            if self.bbg.ep.bb[e] > -1:
+                bb = self.bbg.ep.bb[e]
+                cur_bbsg = GraphView(self.moldg, directed=False, vfilt = self.moldg.vp.bb.a == bb)
+                # now check if we have this bb already
+                known = False
+                for i in range(len(ebb_graphs)):
+                    old_bbsg = ebb_graphs[i]
+                    if old_bbsg.num_vertices() != cur_bbsg.num_vertices():
+                        continue
+                    # check if isomorphic
+                    # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
+                    if isomorphism(cur_bbsg, old_bbsg):
+                        known = True
+                        break
+                if not known:
+                    # add graph
+                    ebb_graphs.append(Graph(cur_bbsg, prune=True))
+                    ebb_map[nebbs] = [bb]
+                    ebb_remap[nebbs] = [e]
+                    nebbs += 1
+                else:
+                    # known already .. i equals nvbb
+                    ebb_map[i].append(bb)
+                    ebb_remap[i].append(e)
+        # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
+        # TBI: with flag get_all==True convert them all
+        for i in range(nebbs):
+            bb   = ebb_map[i][0] # take the first
+            ebbg = ebb_graphs[i]
+            # now we need to convert bb into a mol object and store it in self.decomp_ebb
+            mol_bb = self._convert_bb2mol(bb, ebbg)
+            # now add to the final list
+            self.decomp_ebb.append(mol_bb)
+            # store the map from the dicitonary into the nested list
+            self.decomp_ebb_map.append(ebb_remap[i])
+            # DEBUG
+            if write_mfpx:
+                mol_bb.write("ebb_%d.mfpx" % i)
+        self.decomp_bb_exist = True
+        return (self.decomp_vbb, self.decomp_vbb_map, self.decomp_ebb, self.decomp_ebb_map)
+
+    def _convert_bb2mol(self, bb, bbg):
+        """helper function to convert a bb (index) and bbg (graph) to a mol object
+        
+        Args:
+            bb (int): index of building block to convert
+            bbg (graph): graph of the bb
+
+        Return:
+            mol object
+        """
+        bb_atoms = self.decomp_map_bb2atoms[bb]
+        bb_cons   = self.decomp_map_bb2cons[bb]
+        xyz = self._mol.get_xyz(bb_atoms)
+        mol_bb = molsys.mol.from_array(xyz)
+        cell = self._mol.get_cell()
+        mol_bb.set_cell(cell)
+        mol_bb.set_elems([bbg.vp.elem[v] for v in bbg.vertices()])
+        ctab = [[int(e.source()), int(e.target())] for e in bbg.edges()]
+        mol_bb.set_conn_from_tab(ctab)
+        # the positions could be split by pbc -> fix it and then remove periodicity
+        mol_bb.center_com(check_periodic=False)
+        mol_bb.apply_pbc()
+        mol_bb.make_nonperiodic()
+        mol_bb.addon("bb")
+        # compute connector indices of local BB
+        cons = [bb_atoms.index(j) for j in bb_cons]
+        # TBI: we need a different way to set up the datastructure of BBs better
+        mol_bb.center_point = "coc"           
+        mol_bb.connectors = cons
+        mol_bb.connector_atoms = [[j] for j in mol_bb.connectors]
+        mol_bb.connectors_type = [0 for j in range(len(mol_bb.connectors))]
+        return mol_bb
