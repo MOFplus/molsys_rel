@@ -127,6 +127,7 @@ class mol(mpiobject):
         self.is_bb=False
         self.is_topo = False # this flag replaces the old topo object derived from mol
         self.use_pconn = False # extra flag .. we could have toper that do not need pconn
+        self.masstype = None
         return
 
     # for future python3 compatibility
@@ -2843,6 +2844,9 @@ class mol(mpiobject):
             return self.amass, self.masstype
         else:
             return self.amass
+
+    def get_masstype(self):
+        return self.masstype
 
     def set_mass(self, mass, masstype='real'):
         """
