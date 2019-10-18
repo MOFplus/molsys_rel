@@ -72,7 +72,7 @@ class bb:
         """
         assert not (rotate_on_z and align_to_pax) 
         self.connector = connector
-        nc = len(connectors)
+        nc = len(connector)
         if connector_atoms is not None:
             assert len(connector_atoms)==nc
             self.connector_atoms = connector_atoms
@@ -95,7 +95,7 @@ class bb:
                         known_atypes.append(at)
                     self.connector_types.append(known_atypes.index(at))
             else:
-                self.connector_types = [0 for in range(nc)]
+                self.connector_types = [0 for i in range(nc)]
         assert center_type in ["com", "coc", "special"]
         self.center_type = center_type
         if self.center_type == "special":
@@ -107,7 +107,7 @@ class bb:
         else:
             mass, masstype = self.mol.get_mass(return_masstype=True)
             self.mol.set_unit_mass()            
-            center_xyz = self.mol.get_com(idx=self.connectors)
+            center_xyz = self.mol.get_com(idx=self.connector)
             self.mol.set_mass(mass, masstype)
         self.mol.translate(-center_xyz)
         if rotate_on_z:
