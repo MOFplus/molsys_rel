@@ -277,6 +277,7 @@ class graph(object):
         self.moldg.vp.bb   = self.moldg.new_vertex_property("int")
         self.moldg.vp.con  = self.moldg.new_vertex_property("string")
         self.moldg.vp.filt = self.moldg.new_vertex_property("bool")
+        self.moldg.vp.atype= self.moldg.new_vertex_property("string")
         # generate vertices and edges
         self.moldg.vp.elem = self.moldg.new_vertex_property("string")
         elems = self._mol.get_elems()
@@ -293,6 +294,15 @@ class graph(object):
         # init properties
         for v in self.moldg.vertices():
             self.moldg.vp.con[v] = ""
+            # determine the atype from the graph
+            atype = self.moldg.vp.elem[v]
+            atype += "%d_" % v.out_degree()
+            nel = [self.moldg.vp.elem[nv] for nv in v.all_neighbors()]
+            nels = list(set(nel))
+            nels.sort()
+            for e in nels:
+                atype += "%s%d" % (e, nel.count(e))
+            self.moldg.vp.atype[v] = atype
         self.moldg.ep.Nk.a[:] = 0
         for e in self.moldg.edges():
             self.moldg.ep.filt[e] = True
@@ -565,10 +575,13 @@ class graph(object):
         bb_atoms = self.decomp_map_bb2atoms[bb]
         bb_cons   = self.decomp_map_bb2cons[bb]
         xyz = self._mol.get_xyz(bb_atoms)
+        # generate a mol object just from positions (inherit cell)
         mol_bb = molsys.mol.from_array(xyz)
         cell = self._mol.get_cell()
         mol_bb.set_cell(cell)
         mol_bb.set_elems([bbg.vp.elem[v] for v in bbg.vertices()])
+        mol_bb.set_atypes([bbg.vp.atype[v] for v in bbg.vertices()])
+        mol_bb.set_real_mass()
         ctab = [[int(e.source()), int(e.target())] for e in bbg.edges()]
         mol_bb.set_conn_from_tab(ctab)
         # the positions could be split by pbc -> fix it and then remove periodicity
@@ -577,10 +590,10 @@ class graph(object):
         mol_bb.make_nonperiodic()
         mol_bb.addon("bb")
         # compute connector indices of local BB
-        cons = [bb_atoms.index(j) for j in bb_cons]
-        # TBI: we need a different way to set up the datastructure of BBs better
-        mol_bb.center_point = "coc"           
-        mol_bb.connectors = cons
-        mol_bb.connector_atoms = [[j] for j in mol_bb.connectors]
-        mol_bb.connectors_type = [0 for j in range(len(mol_bb.connectors))]
+        connector = [bb_atoms.index(j) for j in bb_cons]
+        # compute atypes of atoms bonded to the connectors
+        connector_atypes = [[self.moldg.vp.atype[self.moldg.vp.con[j]]] for j in bb_cons]
+        print connector
+        print connector_atypes
+        mol_bb.bb.setup(connector, connector_atypes=connector_atypes)
         return mol_bb
