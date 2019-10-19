@@ -26,7 +26,7 @@ class bb:
         self.connector = []            # list of connector atoms (can be dummies) used for orientation (TBI: COM of multiple atoms)
         self.connector_atoms = []       # list of lists: atoms that actually bond to the other BB
         self.connector_types = []       # list of integers: type of a connector (TBI: connectors_atype should contain the atype of the OTHER atom bonded to .. same layout as connector_atoms)
-        self.connector_atypes = []
+        self.connector_atypes = None
         self.center_type = None
         self.mol.is_bb = True
         return
@@ -114,6 +114,8 @@ class bb:
             self.rotate_on_z()
         if align_to_pax:
             self.align_pax_to_xyz(use_connxyz=pax_use_connonly)
+        # finally sort for rising type in order to allow proper wrting to mfpx
+        self.sort_connector_type()
         return
 
     def setup_with_bb_info(self,conn_identifier = 'He',center_point='coc'):
@@ -182,3 +184,15 @@ class bb:
         self.mol.set_xyz(rotations.apply_mat(rotmat,self.mol.get_xyz()))
         return
 
+    def sort_connector_type(self):
+        """This internal method sorts the connectors according to a rsing type
+
+        this is necessary for writing mfpx files, where the different types are seperated by a slash
+        """
+        order = np.argsort(self.connector_types)
+        self.connector      = [self.connector[i] for i in order]
+        self.connector_atoms = [self.connector_atoms[i] for i in order]
+        self.connector_types = [self.connector_types[i] for i in order]
+        if self.connector_atypes is not None:
+            self.connector_atypes = [self.connector_atypes[i] for i in order]
+        return
