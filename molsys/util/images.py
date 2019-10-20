@@ -13,7 +13,7 @@ for x in range(-1,2):
     for y in range(-1,2):
         for z in range(-1,2):
             images.append([x,y,z])
-images = np.array(images,"d")
+images = np.array(images,"i")
 
 imgidx, revimgidx = np.where((images == -images[:,np.newaxis]).all(axis=-1))
 
