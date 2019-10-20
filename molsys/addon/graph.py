@@ -379,7 +379,7 @@ class graph(object):
         # now we make a temporary graph bbg for the BBs
         self.bbg = Graph(directed=False)
         for b in range(self.decomp_nbb):
-            self.bbg.add_vertex()  # vertices of thsi graph can be indexed by bbid (it contains also the 2c edges)
+            self.bbg.add_vertex()  # vertices of this graph can be indexed by bbid (it contains also the 2c edges)
         # now check all split edges, register the connected atoms and add edges to the bbg graph
         for e in self.moldg.edges():
             if self.moldg.ep.filt[e] == False:
@@ -456,7 +456,9 @@ class graph(object):
             vert_elems.append(elems_map[len(self.decomp_net_conn[i])])
         self.decomp_net.set_elems(vert_elems)
         self.decomp_net.set_conn(self.decomp_net_conn)
+        self.decomp_net.write("DEBUG_notopo.mfpx")
         self.decomp_net.make_topo()
+        self.decomp_net.write("DEBUG_topo.mfpx")
         return self.decomp_net
 
     def get_bbs(self, get_all=False, write_mfpx=True):
