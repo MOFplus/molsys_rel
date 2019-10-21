@@ -13,6 +13,7 @@ TBI: we could think of a way to make a mol/topo object from the systrekey (or a 
 
 # from molsys.util.lqg import lqg
 from molsys.util import systrekey
+from molsys.util.images import idx2arr,arr2idx
 
 # make a systre key database 
 skdb = systrekey.systre_db()
@@ -24,7 +25,8 @@ class topo:
         self._mol = mol
         # we need pconn here in any case for many things so add it if it is not there, yet
         if not self._mol.use_pconn:
-            self._mol.add_pconn()
+            print "use old pconn generator"
+            self._mol.add_pconn_old()
         self._systrekey = None
         self._RCSRname   = None
         return
@@ -52,3 +54,24 @@ class topo:
         if self._RCSRname is None:
             self._RCSRname = skdb.get_name(self.systrekey)
         return self._RCSRname
+
+    def extend_images(self):
+        """helper method to generate a new mol object where the periodic bonds are extended
+        to the next image as defined by the pconn
+        """
+        nm = self._mol.clone()
+        nm.unmake_topo()
+        del_bonds = []
+        for i in range(self._mol.get_natoms()):
+            for ij,j in enumerate(self._mol.conn[i]):
+                if arr2idx[self._mol.pconn[i][ij]] != 13:
+                    # this is a periodic bond .. add image atom
+                    xyz_image_j = self._mol.xyz[j]+(self._mol.cell*(self._mol.pconn[i][ij][:,None])).sum(axis=0)
+                    new_atom = nm.add_atom("x", nm.get_elems()[j], xyz_image_j)
+                    if j>i:
+                        del_bonds.append((i,j))
+                    nm.add_bond(i, new_atom)
+        for b in del_bonds:
+            print "delete bond %s " % str(b)
+            nm.delete_bond(b[0], b[1])
+        return nm
