@@ -420,6 +420,10 @@ class graph(object):
             bb_xyz = wrap_xyz[self.decomp_map_bb2atoms[i]]
             bb_xyz = self._mol.apply_pbc(xyz=bb_xyz)
             wrap_xyz[self.decomp_map_bb2atoms[i]] = bb_xyz
+        self.wrap_mol = self._mol.clone()
+        self.wrap_mol.set_xyz(wrap_xyz)
+        #DEBUG
+        self.wrap_mol.write("DEBUG_wrap_mol.mfpx")
         # self.plot_graph("bbg_before", g=self.bbg, label="bb")
         # TBI at this point we could check if two edge (2c) bbs are connected to each other. in this case they need to be merged
         #
@@ -444,7 +448,8 @@ class graph(object):
             if mode == "coc":
                 # compute by centroid of connectors (note that this considers pbc correctly but we might have to wrap)
                 bbid = self.bbg.vp.bb[v]
-                vpos[int(v)] = self._mol.get_coc(idx = self.decomp_map_bb2cons[bbid])
+                # vpos[int(v)] = self._mol.get_coc(idx = self.decomp_map_bb2cons[bbid])
+                vpos[int(v)] = self.wrap_mol.get_coc(idx = self.decomp_map_bb2cons[bbid])
             else:
                 print("unknown mode in get_net")
                 raise
@@ -599,7 +604,8 @@ class graph(object):
         """
         bb_atoms = self.decomp_map_bb2atoms[bb]
         bb_cons   = self.decomp_map_bb2cons[bb]
-        xyz = self._mol.get_xyz(bb_atoms)
+        xyz = self.wrap_mol.get_xyz(bb_atoms)
+        #xyz = self._mol.get_xyz(bb_atoms)
         # generate a mol object just from positions (inherit cell)
         mol_bb = molsys.mol.from_array(xyz)
         cell = self._mol.get_cell()
