@@ -395,8 +395,13 @@ class graph(object):
                 # print ("bond %d-%d for bbs %d %d" % (i, j, ibb, jbb))
                 # TBI if we have two bonds between BBs we get edges twice here ... we could check if the edge is already there
                 ne = self.bbg.add_edge(self.bbg.vertex(ibb),self.bbg.vertex(jbb))
-                self.bbg.ep.satom[ne] = i
-                self.bbg.ep.tatom[ne] = j
+                # we define source(small bb) - > target(large bb)
+                if ibb<jbb:
+                    self.bbg.ep.satom[ne] = i
+                    self.bbg.ep.tatom[ne] = j
+                else:
+                    self.bbg.ep.satom[ne] = j
+                    self.bbg.ep.tatom[ne] = i
         # add vertex and edge properties for bbs and init them (edges are -1 by default => no bb)
         self.bbg.vp.bb = self.bbg.new_vertex_property("int")
         self.bbg.ep.bb = self.bbg.new_edge_property("int")
@@ -423,7 +428,7 @@ class graph(object):
         self.wrap_mol = self._mol.clone()
         self.wrap_mol.set_xyz(wrap_xyz)
         #DEBUG
-        self.wrap_mol.write("DEBUG_wrap_mol.mfpx")
+        #self.wrap_mol.write("DEBUG_wrap_mol.mfpx")
         # self.plot_graph("bbg_before", g=self.bbg, label="bb")
         # TBI at this point we could check if two edge (2c) bbs are connected to each other. in this case they need to be merged
         #
@@ -435,10 +440,30 @@ class graph(object):
                 i, j = v.all_neighbors()
                 new_edge = self.bbg.add_edge(self.bbg.vertex(i), self.bbg.vertex(j))
                 # we have to assign the satom/tatom for this new edge from the (to be destroyed) edges i-v-j
-                self.bbg.ep.satom[new_edge] = self.bbg.ep.satom[self.bbg.edge(i,v)]
-                self.bbg.ep.tatom[new_edge] = self.bbg.ep.satom[self.bbg.edge(j,v)]
+                # using the order i smaller than j (for the bb index)
+                iv = self.bbg.edge(i,v)
+                jv = self.bbg.edge(j,v)
+                if i<v:
+                    ina = self.bbg.ep.satom[iv]
+                else:
+                    ina = self.bbg.ep.tatom[iv]
+                if j<v:
+                    jna = self.bbg.ep.satom[jv]
+                else:
+                    jna = self.bbg.ep.tatom[jv]
+                if i<j:
+                    self.bbg.ep.satom[new_edge] = ina
+                    self.bbg.ep.tatom[new_edge] = jna
+                else:
+                    self.bbg.ep.tatom[new_edge] = ina
+                    self.bbg.ep.satom[new_edge] = jna
                 self.bbg.ep.bb[new_edge] = self.bbg.vp.bb[v]
+                #print ("REMOVE edge BB %d - connected to BBs %d %d - edge atoms %d %d" % (int(v), i, j, self.bbg.ep.satom[new_edge], self.bbg.ep.tatom[new_edge]))
         self.bbg.remove_vertex(remove_v)
+        #print ("DEBUG DEBUG vertex to BB mapping")
+        #for v in self.bbg.vertices():
+        #    print ("vertex %d : BB %d" % (v, self.bbg.vp.bb[v]))
+
         self.decomp_nv = self.bbg.num_vertices()
         # DEBUG
         # self.plot_graph("bbg_after", g=self.bbg, label="bb")
@@ -471,11 +496,16 @@ class graph(object):
             self.decomp_net_conn[j].append(i)
             ia = self.bbg.ep.satom[e] # atom indices of the original molg
             ja = self.bbg.ep.tatom[e] # that form this BB connection
+            # print ("bond between BBs atom: %3d %3d   BBs: %2d %2d" % (ia, ja, i, j))
             dist_ij = wrap_xyz[ja] - wrap_xyz[ia]
             fracdist_ij = np.dot(dist_ij, self._mol.inv_cell)
             pconn = np.around(fracdist_ij)
-            self.decomp_net_pconn[i].append(pconn)
-            self.decomp_net_pconn[j].append(-pconn)
+            if i<j:
+                self.decomp_net_pconn[i].append(-pconn)
+                self.decomp_net_pconn[j].append(pconn)
+            else:
+                self.decomp_net_pconn[i].append(pconn)
+                self.decomp_net_pconn[j].append(-pconn)
         # IMPROVE: this is the element map stolen from lqg.py --> lqg should evetnually go into a topo addon .. make more smart
         elems_map = {2:'x',3:'n',4:'s',5:'p',6:'o',8:'c'}
         vert_elems = []
