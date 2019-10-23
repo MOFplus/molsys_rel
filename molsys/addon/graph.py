@@ -274,12 +274,12 @@ class graph(object):
         """make a mol graph for decomposition
         """
         self.moldg = Graph(directed=False)
-        self.moldg.vp.bb   = self.moldg.new_vertex_property("int")
-        self.moldg.vp.con  = self.moldg.new_vertex_property("string")
-        self.moldg.vp.filt = self.moldg.new_vertex_property("bool")
-        self.moldg.vp.atype= self.moldg.new_vertex_property("string")
+        self.moldg.vp.bb   = self.moldg.new_vertex_property("int")     # bb index
+        self.moldg.vp.con  = self.moldg.new_vertex_property("string")  # connector atom (-1 no con, else atom to which is bonded)
+        self.moldg.vp.filt = self.moldg.new_vertex_property("bool")    # vertex filter (for endgroups aka hydrogen)
+        self.moldg.vp.atype= self.moldg.new_vertex_property("string")  # atomtype
         # generate vertices and edges
-        self.moldg.vp.elem = self.moldg.new_vertex_property("string")
+        self.moldg.vp.elem = self.moldg.new_vertex_property("string")  # element
         elems = self._mol.get_elems()
         conn  = self._mol.get_conn()
         for i in range(self._mol.natoms):
@@ -289,8 +289,8 @@ class graph(object):
                 if j<i:
                     self.moldg.add_edge(self.moldg.vertex(i), self.moldg.vertex(j))
         # add all further properties
-        self.moldg.ep.Nk   = self.moldg.new_edge_property("int")
-        self.moldg.ep.filt = self.moldg.new_edge_property("bool")
+        self.moldg.ep.Nk   = self.moldg.new_edge_property("int")      # smallest ringsize
+        self.moldg.ep.filt = self.moldg.new_edge_property("bool")     # filter for splitting into BBs
         # init properties
         for v in self.moldg.vertices():
             self.moldg.vp.con[v] = ""
