@@ -259,6 +259,10 @@ class graph(object):
         # split it
         if mode == "ringsize":
             self.split_ringsize()
+            self.make_bb_graph()
+            # now test if there have been 2c BBs side by side and remove these splits
+            if self.join_2c():
+                self.make_bb_graph()
         else:
             print("unknown decomosition mode")
             return
@@ -308,6 +312,7 @@ class graph(object):
             self.moldg.ep.filt[e] = True
         # set up flags
         self.decomp_split = False
+        self.decomp_bbg = False
         self.decomp_bb_exist = False
         return
 
@@ -357,18 +362,10 @@ class graph(object):
         # self.plot_graph("topo", g=self.moldg, label="elem", method="sfdb")
         return
 
-    def get_net(self, mode="coc"):
-        """this method takes a sliced moldg and creates a graph of the underlying net
-
-        TBI: currently no pconn is detected .. we rely on being able to construct it from the embedding
-             this needs to be tested for very small thigs like a 1x1x1 pcu based MOF
-
-        Args:
-            mode (str, otional): Defaults to "coc", mode how to compute the position of the BBs vertex position
-                                 coc - center of connectors
-        """
+    def make_bb_graph(self, plot=False):
         assert self.decomp_split is True
         # label the BBs -> this generates the BBid valid for both vertices and edges
+        self.moldg.set_edge_filter(self.moldg.ep.filt)
         label_components(self.moldg, vprop=self.moldg.vp.bb)
         self.moldg.set_edge_filter(None)
         # prepare lists with mappings for the vertices to the BBs (which atom is in which vertex BB etc)
@@ -383,11 +380,18 @@ class graph(object):
         for b in range(self.decomp_nbb):
             self.bbg.add_vertex()  # vertices of this graph can be indexed by bbid (it contains also the 2c edges)
         # now check all split edges, register the connected atoms and add edges to the bbg graph
+        # reinit the con vertex property og moldg in case we do this again
+        for v in self.moldg.vertices():
+            self.moldg.vp.con[v] = ""
         for e in self.moldg.edges():
             if self.moldg.ep.filt[e] == False:
                 i = e.source() 
                 j = e.target()
                 # also add the connector info as a string because we could have multiple
+                if len(self.moldg.vp.con[i]) > 0:
+                    print ("atom %d has already con %s ... connects to %d" % (i, self.moldg.vp.con[i], j)) 
+                if len(self.moldg.vp.con[j]) > 0:
+                    print ("atom %d has already con %s ... connects to %d" % (j, self.moldg.vp.con[j], i)) 
                 self.moldg.vp.con[i] += "%d " % j
                 self.moldg.vp.con[j] += "%d " % i
                 ibb = self.moldg.vp.bb[i]
@@ -419,19 +423,45 @@ class graph(object):
             if len(self.moldg.vp.con[v]) > 0:
                 # this is a connector
                 self.decomp_map_bb2cons[vbb].append(int(v))
-        # generate xyz coordinates of the original system where the BBs are properly wrapped into one image
-        wrap_xyz = self._mol.get_xyz().copy()
-        for i in range(self.decomp_nbb):
-            bb_xyz = wrap_xyz[self.decomp_map_bb2atoms[i]]
-            bb_xyz = self._mol.apply_pbc(xyz=bb_xyz)
-            wrap_xyz[self.decomp_map_bb2atoms[i]] = bb_xyz
-        self.wrap_mol = self._mol.clone()
-        self.wrap_mol.set_xyz(wrap_xyz)
-        #DEBUG
-        #self.wrap_mol.write("DEBUG_wrap_mol.mfpx")
-        # self.plot_graph("bbg_before", g=self.bbg, label="bb")
-        # TBI at this point we could check if two edge (2c) bbs are connected to each other. in this case they need to be merged
-        #
+        # set flag that we can proceed
+        self.decomp_bbg =True
+        if plot:
+            self.plot_graph("bbg", g=self.bbg, label="bb")
+        return
+
+    def join_2c(self):
+        """this method combines all 2c BBs into one, needs bbg but a call to make_bbg_graph has to be repeated
+
+        returns a flag which is True if a merge happend
+        """
+        assert self.decomp_bbg
+        # iterate over edges in the molgraph ... those which are edges of the bbg -> check if both ends are 2c and remove
+        bb2v = list(self.bbg.vp.bb.a)
+        merge = False
+        for e in self.moldg.edges():
+            if self.moldg.ep.filt[e] == False:
+                ibb = self.moldg.vp.bb[e.source()]
+                jbb = self.moldg.vp.bb[e.target()]
+                iv = bb2v.index(ibb)
+                jv = bb2v.index(jbb)
+                if (self.bbg.vertex(iv).out_degree() == 2) and (self.bbg.vertex(jv).out_degree() == 2):
+                    # print ("DEBUG: vertices %d and %d are both 2c: merging" % (ibb, jbb))
+                    self.moldg.ep.filt[e] = True
+                    merge = True
+        # now invalidate bbg 
+        self.decomp_bbg = False
+        return merge
+
+    def get_net(self, mode="coc", plot=False):
+        """this method takes a sliced moldg and creates a graph of the underlying net
+
+        TBI: currently no pconn is detected .. we rely on being able to construct it from the embedding
+             this needs to be tested for very small thigs like a 1x1x1 pcu based MOF
+
+        Args:
+            mode (str, otional): Defaults to "coc", mode how to compute the position of the BBs vertex position
+                                 coc - center of connectors
+        """        
         # now reduce the graph to its basis without the 2c edges (edge bbs go into the ep.bb)
         remove_v = []
         for v in self.bbg.vertices():
@@ -463,10 +493,19 @@ class graph(object):
         #print ("DEBUG DEBUG vertex to BB mapping")
         #for v in self.bbg.vertices():
         #    print ("vertex %d : BB %d" % (v, self.bbg.vp.bb[v]))
-
         self.decomp_nv = self.bbg.num_vertices()
-        # DEBUG
-        # self.plot_graph("bbg_after", g=self.bbg, label="bb")
+        if plot:
+            self.plot_graph("bbg_after", g=self.bbg, label="bb")
+        # generate xyz coordinates of the original system where the BBs are properly wrapped into one image
+        wrap_xyz = self._mol.get_xyz().copy()
+        for i in range(self.decomp_nbb):
+            bb_xyz = wrap_xyz[self.decomp_map_bb2atoms[i]]
+            bb_xyz = self._mol.apply_pbc(xyz=bb_xyz)
+            wrap_xyz[self.decomp_map_bb2atoms[i]] = bb_xyz
+        self.wrap_mol = self._mol.clone()
+        self.wrap_mol.set_xyz(wrap_xyz)
+        #DEBUG
+        #self.wrap_mol.write("DEBUG_wrap_mol.mfpx")
         # now compute the vertex positions of the BBs as the scaled embedding depending on the mode
         vpos = np.zeros([self.decomp_nv, 3], dtype="float64")
         for v in self.bbg.vertices():
