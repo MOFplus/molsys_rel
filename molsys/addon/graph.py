@@ -13,6 +13,7 @@ from graph_tool.topology import *
 import copy
 import numpy as np
 import molsys
+from molsys.util import elems
 
 import logging
 logger = logging.getLogger("molsys.graph")
@@ -240,7 +241,7 @@ class graph(object):
     and uses only lower case element symbols as vertex symbols. 
     """
 
-    def decompose(self, mode="ringsize"):
+    def decompose(self, mode="ringsize", join_organic=True):
         """decompose the molecular graph into BBs and the underlying net
 
         There are different strategies to split the graph into parts and also the returned information
@@ -260,6 +261,10 @@ class graph(object):
         if mode == "ringsize":
             self.split_ringsize()
             self.make_bb_graph()
+            # if we join organic BBs do this now and regenerate bbg afterwards
+            if join_organic:
+                if self.join_organic():
+                    self.make_bb_graph()
             # now test if there have been 2c BBs side by side and remove these splits
             if self.join_2c():
                 self.make_bb_graph()
@@ -452,6 +457,40 @@ class graph(object):
         self.decomp_bbg = False
         return merge
 
+    def join_organic(self):
+        """this method combines organic BBs into one (be it edges or vertices)
+
+        returns a flag which is True if a merge happened and make_bbg_graph needs to be rerun
+        """
+        assert self.decomp_bbg
+        # iterate over vertices -> flag all vertices as organic or inorganic
+        orgbbs = []
+        molelem = self._mol.get_elems()
+        for v in self.bbg.vertices():
+            vbb = self.bbg.vp.bb[v]
+            velem = [molelem[i] for i in self.decomp_map_bb2atoms[vbb]]
+            organic = True
+            for e in velem:
+                if e in elems.metals:
+                    organic = False
+            if organic:
+                orgbbs.append(vbb)
+        # iterate over edges in the molgraph ... those which bridge two organic bbs will be cleared
+        bb2v = list(self.bbg.vp.bb.a)
+        merge = False
+        for e in self.moldg.edges():
+            if self.moldg.ep.filt[e] == False:
+                ibb = self.moldg.vp.bb[e.source()]
+                jbb = self.moldg.vp.bb[e.target()]
+                if (ibb in orgbbs) and (jbb in orgbbs):
+                    # print ("DEBUG: BBs %d and %d are both organic: merging" % (ibb, jbb))
+                    self.moldg.ep.filt[e] = True
+                    merge = True
+        # now invalidate bbg 
+        self.decomp_bbg = False
+        return merge
+
+
     def get_net(self, mode="coc", plot=False):
         """this method takes a sliced moldg and creates a graph of the underlying net
 
@@ -544,11 +583,9 @@ class graph(object):
             else:
                 self.decomp_net_pconn[i].append(pconn)
                 self.decomp_net_pconn[j].append(-pconn)
-        # IMPROVE: this is the element map stolen from lqg.py --> lqg should evetnually go into a topo addon .. make more smart
-        elems_map = {2:'x',3:'n',4:'s',5:'p',6:'o',8:'c'}
         vert_elems = []
         for i in range(self.decomp_nv):
-            vert_elems.append(elems_map[len(self.decomp_net_conn[i])])
+            vert_elems.append(elems.topotypes[len(self.decomp_net_conn[i])])
         self.decomp_net.set_elems(vert_elems)
         self.decomp_net.set_conn(self.decomp_net_conn)
         # this is a bit hacky ... we want to use pconn but can not rely on check_need_pconn
