@@ -118,9 +118,8 @@ def run_systrekey(edges, labels):
         lqg.append(el)
     json_lqg = json.dumps(lqg)
 
-    print json_lqg
-
     json_result = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", json_lqg, systre_path])
+    
     result = json.loads(json_result)
     key = result["key"]
     mapping = result["mapping"]

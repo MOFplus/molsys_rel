@@ -489,10 +489,9 @@ class graph(object):
                     self.bbg.ep.satom[new_edge] = jna
                 self.bbg.ep.bb[new_edge] = self.bbg.vp.bb[v]
                 #print ("REMOVE edge BB %d - connected to BBs %d %d - edge atoms %d %d" % (int(v), i, j, self.bbg.ep.satom[new_edge], self.bbg.ep.tatom[new_edge]))
-        self.bbg.remove_vertex(remove_v)
-        #print ("DEBUG DEBUG vertex to BB mapping")
-        #for v in self.bbg.vertices():
-        #    print ("vertex %d : BB %d" % (v, self.bbg.vp.bb[v]))
+        # self.bbg.remove_vertex(remove_v)
+        for v in reversed(sorted(remove_v)):
+            self.bbg.remove_vertex(v)
         self.decomp_nv = self.bbg.num_vertices()
         if plot:
             self.plot_graph("bbg_after", g=self.bbg, label="bb")
