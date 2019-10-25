@@ -453,8 +453,9 @@ class graph(object):
                     # print ("DEBUG: vertices %d and %d are both 2c: merging" % (ibb, jbb))
                     self.moldg.ep.filt[e] = True
                     merge = True
-        # now invalidate bbg 
-        self.decomp_bbg = False
+        # now invalidate bbg
+        if merge: 
+            self.decomp_bbg = False
         return merge
 
     def join_organic(self):
@@ -486,8 +487,9 @@ class graph(object):
                     # print ("DEBUG: BBs %d and %d are both organic: merging" % (ibb, jbb))
                     self.moldg.ep.filt[e] = True
                     merge = True
-        # now invalidate bbg 
-        self.decomp_bbg = False
+        # now invalidate bbg
+        if merge: 
+            self.decomp_bbg = False
         return merge
 
 
