@@ -491,13 +491,19 @@ mass  ={'xx':0.000000,
         'uup':288.000000,
         'uuh':293.000000}
 
+# elements are made up .. make better suggestions for cn>8
 topotypes = {
+        2:'x',
         3:'n',
         4:'c',
         5:'p',
         6:'o',
         7:'i',
         8:'v',
+        9:'nd',
+        10:'tc',
+        11:'er',
+        12:'zr',
         }
 
 sigmas = {
@@ -559,7 +565,7 @@ metals = set([
     'fr', 'ra',
             'ac', 'th', 'pa', 'u',  'np', 'pu', 'am', 'cm', 'bk', 'cf', 'es', 'fm', 'md', 'no', 'lr'
 ])
-
+    
 maxbond = {
         "c" : 4,
         "h" : 1,

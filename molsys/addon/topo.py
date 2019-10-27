@@ -25,8 +25,7 @@ class topo:
         self._mol = mol
         # we need pconn here in any case for many things so add it if it is not there, yet
         if not self._mol.use_pconn:
-            print "use old pconn generator"
-            self._mol.add_pconn_old()
+            self._mol.add_pconn()
         self._systrekey = None
         self._RCSRname   = None
         return
