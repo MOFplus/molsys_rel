@@ -45,11 +45,13 @@ __all__ = [
     "ric", ### ff, base
     "acab", ### base
     "spg", ### base
+    "ptg", ### base
     "bb",
     "molecules",
     "groups",
     "zmat",
-    "wannier"
+    "wannier",
+    "topo"
 ]
 
 _importfunc = {k:None for k in __all__}

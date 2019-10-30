@@ -1,6 +1,7 @@
 import numpy
 from . import txyz
 import logging
+import string
 
 
 logger = logging.getLogger("molsys.io")
@@ -107,10 +108,12 @@ def write(mol, f, fullcell = True):
         if mol.use_pconn == False:
             # this is a topo object but without valid pconn. for writing we need to generate it
             mol.add_pconn()
+    elif mol.is_bb:
+        ftype = "bb"
     else:
         ftype = 'xyz'
     f.write('# type %s\n' % ftype)
-    if type(mol.cellparams) != type(None):
+    if mol.bcond>0:
         if fullcell:
 #            elif keyword == 'cellvect':
 #                mol.periodic = True
@@ -124,26 +127,31 @@ def write(mol, f, fullcell = True):
             f.write('# cell %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
                     tuple(mol.cellparams))
     if mol.is_bb:
-        if mol.center_point != 'special':
-            f.write('# bbcenter %s\n' % mol.center_point)
-        else:
-            f.write('# bbcenter %s %12.6f %12.6f %12.6f\n' %
-                    tuple([mol.center_point]+ mol.special_center_point.tolist()))
+        f.write('# bbcenter %s\n' % mol.bb.center_type)
         connstrings = ''
         ctype = 0
-        for i,d in enumerate(mol.connector_atoms):
-            if mol.connectors_type[i] != ctype:
+        for i,d in enumerate(mol.bb.connector_atoms):
+            if mol.bb.connector_types[i] != ctype:
                 ctype +=1
                 connstrings += '/ '
             for j in d:
                 connstrings = connstrings + str(j+1) +','
-            connstrings = connstrings[0:-1] + '*' + str(mol.connectors[i]+1)+' '
+            connstrings = connstrings[0:-1] + '*' + str(mol.bb.connector[i]+1)+' '
         f.write('# bbconn %s\n' % connstrings)
+        if mol.bb.connector_atypes is not None:
+            # also write connector atypes
+            temp_atypes = []
+            for at in mol.bb.connector_atypes:
+                if type(at) == type([]):
+                    temp_atypes.append(string.join(at, ","))
+                else:
+                    temp_atypes.append(at)
+            f.write('# bbatypes %s\n' % string.join(temp_atypes))
     if hasattr(mol, "orientation"):
         o = len(mol.orientation) * "%3d" % tuple(mol.orientation)
         f.write('# orient '+o+"\n")
     f.write('%i\n' % mol.natoms)
-    if ftype == 'xyz':
+    if ftype == 'xyz' or ftype == "bb":
         txyz.write_body(f,mol)
     else:
         txyz.write_body(f,mol,topo=True)

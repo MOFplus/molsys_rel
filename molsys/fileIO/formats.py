@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from . import xyz, txyz, mfpx, cif, plain, array, turbo, mol2, aginp, lammpstrj, freq, castep, pdb
+from . import xyz, txyz, mfpx, cif, plain, array, turbo, mol2, aginp, lammpstrj, freq, castep, pdb_
 
 read = {
         'xyz':xyz.read,
@@ -26,7 +26,7 @@ write = {
         'plain':plain.write,
         'turbo':turbo.write,
         'lammpstrj':lammpstrj.write,
-        'pdb':pdb.write,
+        'pdb':pdb_.write, # to avoid conflict w/ pdb = python debugger
 }
 
 #def read(mol, filename, fmt, **kwargs):

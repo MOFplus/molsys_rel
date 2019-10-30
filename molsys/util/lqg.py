@@ -5,10 +5,12 @@ from graph_tool import Graph
 from graph_tool.topology import *
 import numpy
 import pdb
-import molsys.topo as topo
+import molsys.mol as mol
 import copy
 from math import fmod
 from molsys.util import RCSR
+
+from molsys.util import systrekey
 
 class reader(object):
 
@@ -73,6 +75,7 @@ class lqg(object):
         return pgr
 
     def get_lqg_from_topo(self,topo):
+        assert topo.is_topo
         # be careful not working for nets where an vertex is connected to itself
         self.dim = 3
         self.nvertices = topo.get_natoms()
@@ -96,6 +99,12 @@ class lqg(object):
         self.nedges = len(edges)
         self.nvertices = nvertices
         return
+
+    def get_systrekey(self):
+        """method calls javascript systreKey (must be installed) and computes the systreKey
+        """
+        skey = systrekey.run_systrekey(self.edges, self.labels)
+        return skey
 
     def build_lqg(self):
         self.nbasevec = self.nedges - self.nvertices + 1
@@ -306,7 +315,8 @@ class lqg(object):
         return self.frac_xyz
 
     def to_mol(self):
-        t = topo()
+        elems_map = {2:'x',3:'n',4:'s',5:'p',6:'o'}
+        t = mol()
         t.natoms = self.nvertices
         t.set_cell(self.cell)
         t.set_xyz_from_frac(self.frac_xyz)
@@ -319,7 +329,10 @@ class lqg(object):
             t.pconn[e[0]].append(numpy.array(self.labels[i]))
             t.pconn[e[1]].append(-1*numpy.array(self.labels[i]))
         #t.wrap_in_box()
-        t.set_elems_by_coord_number()
+        #t.set_elems_by_coord_number()
+        t.elems = []
+        for i in range(self.nvertices):
+            t.elems.append(elems_map[len(t.conn[i])]) 
         return t
 
     def get_edge_with_idx(self, idx):

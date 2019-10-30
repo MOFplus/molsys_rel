@@ -43,7 +43,7 @@ def read(mol, f, cycle = 0):
     mol.elems = elems   
     mol.atypes = elems 
     mol.set_empty_conn()
-    mol.detect_conn(tresh=0.3)
+    mol.detect_conn(thresh=0.3)
     mol.set_nofrags()
     return
 

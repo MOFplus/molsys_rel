@@ -17,7 +17,7 @@ def read(mol, f):
         raise IOError("%s is not readable" % f)
     xyz,elems,eigval,eigvec = [],[],[],[]
     stage,nm_idx = 'Null', -1
-    for i,c in enumerate(f.xreadlines()):
+    for i,c in enumerate(f):
         if c == '': continue
         if c.count('Atoms') != 0:
             stage = 'Atoms';continue

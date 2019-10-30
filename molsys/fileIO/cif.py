@@ -82,9 +82,9 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
     cf = cf[cf.keys()[0]]
     
     try:
-        occ = [format_float(i) for i in cf.GetItemValue("_atom_site_occupancy")]
+        occ = [format_float(i) for i in cf["_atom_site_occupancy"]]
     except KeyError as e:
-        if e.message == "Itemname _atom_site_occupancy not in datablock":
+        if "No such item: _atom_site_occupancy" in str(e):
             disorder = None
         else:
             raise(e)
@@ -93,13 +93,11 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
             try:
                 logger.info("fractional occupancies in cif file")
                 mol.occupancy = occ
-                disorder_assembly_full = [i for i in cf.GetItemValue("_atom_site_disorder_assembly")]
-                disorder_group_full = [i for i in cf.GetItemValue("_atom_site_disorder_group")]
+                disorder_assembly_full = [i for i in cf["_atom_site_disorder_assembly"]]
+                disorder_group_full = [i for i in cf["_atom_site_disorder_group"]]
             except KeyError as e:
-                if e.message in [
-                    "Itemname _atom_site_disorder_assembly not in datablock",
-                    "Itemname _atom_site_disorder_group not in datablock"
-                ]:
+                if "No such item: _atom_site_disorder_assembly" in str(e) or\
+                        "No such item: _atom_site_disorder_group" in str(e):
                     disorder = None
                     logger.warning("fractional occupancies: disorder not readable!")
                 else:
@@ -128,54 +126,65 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
                 select += [i for i,e in enumerate(disorder_group_full) if i not in select_disorder]
                 if len(select) != sum(occ):
                     logger.warning(
-                        "%d number of selected atoms is different to %s total occupancy!" % \
-                        (len(select), sum(occ))
+                        "%d number of selected atoms is different to\
+                            %s total occupancy!" % (len(select), sum(occ))
                     )
         else:
             disorder = None
-
+    ### elems ##################################################################
+    #elems = [str(i) for i in cf['_atom_site_type_symbol']
     try:
-        elems = [str(i) for i in cf.GetItemValue('_atom_site_type_symbol')]
+        elems = [str(i) for i in cf['_atom_site_type_symbol']]
     except KeyError as e:
-        if e.message == "Itemname _atom_site_type_symbol not in datablock":
+        if "No such item: _atom_site_type_symbol" in str(e):
             logger.warning("atom labels as elements")
-            labels = [str(i) for i in cf.GetItemValue('_atom_site_label')]
+            labels = [str(i) for i in cf['_atom_site_label']]
             elems = [''.join(c for c in i if not c.isdigit()) for i in labels]
         else:
             raise(e)
-    elems = [i.lower() for i in elems]
-    x = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_x')]
-    y = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_y')]
-    z = [format_float(i) for i in cf.GetItemValue('_atom_site_fract_z')]
+    elems = [str(i).lower() for i in elems]
+    ### atypes #################################################################
+    atypes = [str(i) for i in cf['_atom_site_label']]
+    ### xyz ####################################################################
+    x = [format_float(i) for i in cf['_atom_site_fract_x']]
+    y = [format_float(i) for i in cf['_atom_site_fract_y']]
+    z = [format_float(i) for i in cf['_atom_site_fract_z']]
 
     if disorder is not None:
         if disorder:
             # select according to given disorder
             elems = [e for i,e in enumerate(elems) if i in select]
+            atypes = [e for i,e in enumerate(atypes) if i in select]
             x = [e for i,e in enumerate(x) if i in select]
             y = [e for i,e in enumerate(y) if i in select]
             z = [e for i,e in enumerate(z) if i in select]
         else:
             logger.warning("auto disorder detection failed!")
 
-    a = format_float(cf.GetItemValue('_cell_length_a'))
-    b = format_float(cf.GetItemValue('_cell_length_b'))
-    c = format_float(cf.GetItemValue('_cell_length_c'))
-    alpha = format_float(cf.GetItemValue('_cell_angle_alpha'))
-    beta = format_float(cf.GetItemValue('_cell_angle_beta'))
-    gamma = format_float(cf.GetItemValue('_cell_angle_gamma'))
+    ### cellparams #############################################################
+    a = format_float(cf['_cell_length_a'])
+    b = format_float(cf['_cell_length_b'])
+    c = format_float(cf['_cell_length_c'])
+    alpha = format_float(cf['_cell_angle_alpha'])
+    beta =  format_float(cf['_cell_angle_beta' ])
+    gamma = format_float(cf['_cell_angle_gamma'])
+
+    ### set ####################################################################
     mol.set_natoms(len(elems))
-    mol.set_cellparams([a,b,c,alpha,beta,gamma])
+    mol.set_cellparams([a, b, c, alpha, beta, gamma])
     mol.set_xyz_from_frac(numpy.array([x,y,z]).T)
     #mol.wrap_in_box()
     mol.set_elems(elems)
-    mol.set_atypes(['-1']*len(elems))
+    mol.set_atypes(atypes)
     mol.set_nofrags()
     mol.set_empty_conn()
     mol.cifdata = cf
+    ### span and connectivity ##################################################
+    ### TBI: connectivity read from the cif file directly
+    ### currently: detected by scratch 
     if make_P1: 
         mol.addon('spg')
-        mol.proper_cif = mol.spg.make_P1(conn_thresh=conn_thresh)
+        mol.proper_cif = mol.spg.make_P1(conn_thresh=conn_thresh, onduplicates="keep")
     if detect_conn:
         mol.detect_conn()
     return

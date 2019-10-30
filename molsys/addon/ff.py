@@ -13,7 +13,7 @@ Created on Thu Mar 23 11:25:43 2017
         contains class ff
 
 """
-
+import sys
 def string2bool(s):
     return s.lower() in ("True", "true", "yes")
 
@@ -44,13 +44,15 @@ def print(*args, **kwargs):
 
 
 import numpy as np
+np.seterr(invalid='raise')
+
 import uuid
 import molsys
 from molsys.util.timing import timer, Timer
 from molsys.util import elems
 from molsys.util.ff_descriptors import desc as ff_desc
 from molsys.util.aftypes import aftype, aftype_sort
-from molsys.util.ffparameter import potentials, varpars, varpar
+from molsys.util.ffparameter import potentials, varpars, varpar, api_cache
 from molsys.addon import base
 
 import itertools
@@ -101,7 +103,8 @@ class ic(list):
             return None
         else:
             return self.__dict__[name]
-            
+        
+
     def to_string(self, width=None, filt=None, inc=0):
         """
         Method to generate a string representation of the ic.
@@ -489,7 +492,13 @@ class ric:
         b2 = apex2-central2
         n1 = np.cross(b0,b1)
         n2 = np.cross(b1,b2)
-        arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
+        try:
+            arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
+        except FloatingPointError as e:
+            if e.message == 'invalid value encountered in double_scalars':
+                arg = 0.0
+            else:
+                raise(e)
         if abs(1.0-arg) < 10**-14:
             arg = 1.0
         elif abs(1.0+arg) < 10**-14:
@@ -680,6 +689,7 @@ class ff(base):
                     "cha": {},
                     "vdw": {},
                     "vdwpr": {},
+                    "chapr": {},
                     "bnd": {},
                     "ang": {},
                     "dih": {},
@@ -749,7 +759,7 @@ class ff(base):
     @timer("assign multi parameters")
     def assign_multi_params(self, FFs, refsysname=None, equivs={}, azone = [], special_atypes = {}, smallring = False, generic = None):
         """
-        Method to orchestrate the parameter assignment fo the curent system using multiple force fields
+        Method to orchestrate the parameter assignment for the current system using multiple force fields
         defined in FFs by getting the corresponding data from the webAPI.
 
         Args:
@@ -789,7 +799,7 @@ class ff(base):
     @timer("assign parameter")
     def assign_params(self, FF, verbose=0, refsysname=None, equivs = {}, azone = [], special_atypes = {}, 
             plot=False, consecutive=False, ricdetect=True, smallring = False, generic = None, poltypes = [],
-            dummies = None, cross_terms = []):
+            dummies = None, cache = None, cross_terms = []):
         """
         Method to orchestrate the parameter assignment for this system using a force field defined with
         FF getting data from the webAPI
@@ -821,14 +831,27 @@ class ff(base):
         with self.timer("connect to DB"):
             ### init api
             if self._mol.mpi_rank == 0:
-                from mofplus import FF_api
-                self.api = FF_api()
-                if len(special_atypes) == 0: special_atypes = self.api.list_special_atypes()
+                if cache is None:
+                    from mofplus import FF_api
+                    api = FF_api()
+                    self.cache = api_cache(api)
+                else:
+                    self.cache = cache
+                if len(special_atypes) == 0: special_atypes = self.cache.list_special_atypes()
             else:
-                self.api = None
+                self.cache = None
                 special_atypes = None
             if self._mol.mpi_size > 1:
                 special_atypes = self._mol.mpi_comm.bcast(special_atypes, root = 0)
+            #if self._mol.mpi_rank == 0:
+            #    from mofplus import FF_api
+            #    self.api = FF_api()
+            #    if len(special_atypes) == 0: special_atypes = self.api.list_special_atypes()
+            #else:
+            #    self.api = None
+            #    special_atypes = None
+            #if self._mol.mpi_size > 1:
+            #    special_atypes = self._mol.mpi_comm.bcast(special_atypes, root = 0)
         if ricdetect==True:
             with self.timer("find rics"):
                 self.ric.find_rics(specials = special_atypes, smallring = smallring)
@@ -854,8 +877,15 @@ class ff(base):
             for i, a in enumerate(self._mol.get_atypes()):
                 self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
             self.timer.stop()
+            # add molid info to ic["vdw"]
+            self.timer.start("make atypes")
+            self._mol.graph.get_components()
+            for i, at in enumerate(self.ric_type["vdw"]):
+                at.molid = self._mol.graph.molg.vp.molid[i]
+            self._mol.molid = self._mol.graph.molg.vp.molid.get_array()
+            self.timer.stop()
         # detect refsystems
-        self.find_refsystems(plot=plot)
+        self.find_refsystems_new(plot=plot)
         with self.timer("parameter assignement loop"):
             for ref in self.scan_ref:
                 counter = 0
@@ -1152,7 +1182,7 @@ class ff(base):
 
     def set_def_sig(self,ind):
         """
-        Method to set default parameters for gassuain width for the the charges
+        Method to set default parameters for gaussian width for the the charges
         :Parameters:
             - ind(int): atom index
         """
@@ -1187,7 +1217,7 @@ class ff(base):
 
     def varnames2par(self):
         """
-        Forces the paramters in the variables dictionary to be wriiten in the internal
+        Forces the paramters in the variables dictionary to be written in the internal
         data structures
         """
         if hasattr(self, 'do_not_varnames2par'): return
@@ -1232,6 +1262,7 @@ class ff(base):
         """
         # one could improve this via an additional dictionary like structure using the vdwpr 
         self.vdwdata = {}
+        self.chadata = {}
         self.types2numbers = {} #equivalent to self.dlp_types
         types = self.par["vdw"].keys()
         for i, t in enumerate(types):
@@ -1252,6 +1283,17 @@ class ff(base):
                         self.vdwdata[types[i]+":"+types[j]] = par_ij
                         self.vdwdata[types[j]+":"+types[i]] = par_ij
                         continue
+                if "chapr" in self.par and len(self.par["chapr"].keys()) > 0:
+                    poti,refi,ti = self.split_parname(types[i])
+                    potj,refj,tj = self.split_parname(types[j])
+                    assert poti == potj
+                    assert refi == refj
+                    parname = self.build_parname("chapr", poti, refi, [ti[0],tj[0]])
+                    if parname in self.par["chapr"].keys():
+                        par_ij = self.par["chapr"][parname]
+                        self.chadata[types[i]+":"+types[j]] = par_ij
+                        self.chadata[types[j]+":"+types[i]] = par_ij
+                        continue                
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]
@@ -1293,8 +1335,146 @@ class ff(base):
                 # all combinations are symmetric .. store pairs bith ways
                 self.vdwdata[types[i]+":"+types[j]] = par_ij
                 self.vdwdata[types[j]+":"+types[i]] = par_ij   
+
+                self.chadata[types[i]+":"+types[j]] = par_ij
+                self.chadata[types[j]+":"+types[i]] = par_ij  
         #import pdb; pdb.set_trace()
         self.pair_potentials_initalized = True
+        return
+
+
+    @timer("find reference systems")
+    def find_refsystems_new(self, plot=None,):
+        """
+        function to detect the reference systems:
+            - self.scan_ref      : list of ref names in the order to be searched
+            - self.ref_systems   : dictionary of mol objects
+            - self.ref_fraglist  : list of fragment indices belonging to this refsystem
+            - self.ref_params    : paramtere dictionaries per refsystem (n-body/type)
+        """
+        self.timer.start("get reference systems")
+        scan_ref  = []
+        scan_prio = []
+        if self._mol.mpi_rank == 0:
+            ref_dic = self.cache.list_FFrefs(self.par.FF)
+        else:
+            ref_dic = []
+        if self._mol.mpi_size > 1:
+            ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
+        for refname in ref_dic.keys():
+            prio, reffrags, active, upgrades, atfix = ref_dic[refname]
+            if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
+                scan_ref.append(refname)
+                scan_prio.append(prio)
+            # check for upgrades
+            elif upgrades and len(reffrags) > 0:
+                oreffrags = copy.deepcopy(reffrags)
+                for d,u in upgrades.items():
+                    reffrags = [i.replace(d,u) for i in reffrags]
+                    if all(f in self.fragments.get_fragnames() for f in reffrags):
+                        scan_ref.append(refname)
+                        scan_prio.append(prio)
+        # sort to be scanned referecnce systems by their prio
+        self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
+        self.scan_ref.reverse()
+        self.timer.stop()
+        # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
+        self.timer.start("make ref frag graphs")
+        self.ref_systems = {}
+        if self._mol.mpi_rank == 0:
+            ref_mol_strs  = self.cache.get_FFrefs_graph(self.scan_ref, )
+        else:
+            ref_mol_strs = {}
+        if self._mol.mpi_size > 1:
+            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_strs, root = 0)
+        for ref in self.scan_ref:
+#            if self._mol.mpi_rank == 0:
+#                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
+#            else:
+#                ref_mol_str = None
+#            if self._mol.mpi_size > 1:
+#                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
+            ref_mol = molsys.mol.from_string(ref_mol_strs[ref])
+            ref_mol.addon("fragments")
+            ref_mol.fragments.make_frag_graph()
+            if plot:
+                ref_mol.fragments.plot_frag_graph(ref, ptype="png", size=600, vsize=20, fsize=20)
+            # if active space is defined create atomistic graph of active zone
+            active = ref_dic[ref][2]
+            if active: ref_mol.graph.make_graph(active)
+            self.ref_systems[ref] = ref_mol
+        self.timer.stop()
+        # now search in the fraggraph for the reference systems
+        self.timer.start("scan for ref systems")
+        logger.info("Searching for reference systems:")
+        self.ref_fraglists = {}
+        self.ref_atomlists = {}
+        for ref in copy.copy(self.scan_ref):
+            # TODO: if a ref system has only one fragment we do not need to do a substructure search but
+            #       could pick it from self.fragemnts.fraglist
+            subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+            # in the case that an upgrade for a reference system is available, it has also to be searched
+            # for the upgraded reference systems
+            upgrades = ref_dic[ref][3]
+            if upgrades:
+                # if upgrades should be applied, also an active zone has to be present
+                assert ref_dic[ref][2] != None
+                for s,r in upgrades.items():
+                    self.ref_systems[ref].fragments.upgrade(s, r)
+                    subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+            logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
+            if len(subs) == 0:
+                # this ref system does not appear => discard
+                self.scan_ref.remove(ref)
+                del(self.ref_systems[ref])
+            else:
+                # join all fragments
+                subs_flat = list(set(itertools.chain.from_iterable(subs)))
+                self.ref_fraglists[ref] = subs_flat
+                # now we have to search for the active space
+                # first construct the atomistic graph for the sub in the real system if 
+                # an active zone is defined
+                if ref_dic[ref][2] != None and type(ref_dic[ref][2]) != str:
+                    idx = self.fragments.frags2atoms(subs_flat)
+                    self._mol.graph.filter_graph(idx)
+                    asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
+                    ### check for atfixes and change atype accordingly, the atfix number has to be referred to its index in the azone
+                    if ref_dic[ref][4] != None and type(ref_dic[ref][4]) != str:
+                        atfix = ref_dic[ref][4]
+                        for s in asubs:
+                            for idx, at in atfix.items():
+                                azone = ref_dic[ref][2]
+                                self.aftypes[s[azone.index(int(idx))]].atype = at
+                    self._mol.graph.molg.clear_filters()
+                    asubs_flat = itertools.chain.from_iterable(asubs)
+                    self.ref_atomlists[ref] = list(set(asubs_flat))
+                else:
+                    self.ref_atomlists[ref] = None
+        self.timer.stop()
+        # get the parameters
+        self.timer.start("get ref parmeter sets")
+        if self._mol.mpi_rank == 0:
+            self.ref_params = self.cache.get_ref_params(self.scan_ref, self.par.FF)
+        else:
+            self.ref_params = None
+        if self._mol.mpi_size > 1:
+            self.ref_params = self._mol.mpi_comm.bcast(self.ref_params, root=0)
+
+        #self.ref_params = {}
+        #for ref in self.scan_ref:
+            #logger.info("Getting params for %s" % ref)
+            #if self._mol.mpi_rank == 0:
+            #    ref_par = self.api.get_params_from_ref(self.par.FF, ref)
+            #else:
+            #    ref_par = None
+            #if self._mol.mpi_size > 1:
+            #    ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
+            #self.ref_params[ref] = ref_par
+
+
+            #print(("DEBUG DEBUG Ref system %s" % ref))
+            #print((self.ref_params[ref]))
+        self.timer.stop()
         return
 
 
@@ -1342,7 +1522,7 @@ class ff(base):
         else:
             ref_mol_strs = {}
         if self._mol.mpi_size > 1:
-            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_str, root = 0)
+            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_strs, root = 0)
         for ref in self.scan_ref:
 #            if self._mol.mpi_rank == 0:
 #                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
@@ -1590,7 +1770,7 @@ class ff(base):
         """
         # dummy dicts to assign a number to the type
         par_types = {}
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw","vdwpr"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw","vdwpr","chapr"]:
             ptyp = {}
             i = 1
             for ind in self.par[ic]:
@@ -1629,6 +1809,10 @@ class ff(base):
             filt = None
             if ic == "dih":
                 filt = ["ring"]
+            elif ic == "vdw":
+                filt = ["molid"]
+            else:
+                pass
             ric = self.ric_type[ic]
             parind = self.parind[ic]
             ptyp = par_types[ic]
@@ -1656,7 +1840,7 @@ class ff(base):
         for k,v in self.settings.items():
             f.write("%-15s %s\n" % (k, str(v)))
         f.write("\n")
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]:
+        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr","chapr"]:
             ptyp = par_types[ic]
             par = self.par[ic]
             f.write(ff_desc[ic])
@@ -1695,8 +1879,8 @@ class ff(base):
         """
         hash = None
         fric = open(fname+".ric", "r")
-        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr"]
-        ric_len  = [2    , 3    , 4    , 4    , 1    , 1      ,2     ]
+        ric_type = ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr", "chapr"]
+        ric_len  = [2    , 3    , 4    , 4    , 1    , 1      ,2     ,2       ]
         ric      = {}
         # read in ric first, store the type as an attribute in the first place
         stop = False
@@ -1734,6 +1918,11 @@ class ff(base):
         # time to init the data structures .. supply vdw and cha here
         self._init_data(cha=ric["cha"], vdw=ric["vdw"])
         self._init_pardata()
+        # check if molid has been read from ric file and set to molid in the parent mol object
+        # NOTE: the ic is a list with attributes that never return an error .. non exisiting attributes are returned as None
+        rt_vdw = self.ric_type["vdw"]
+        if rt_vdw[0].molid is not None:
+            self._mol.molid = np.array([x.molid for x in rt_vdw])
         # now open and read in the par file
         if fit:
             nkeys={}
@@ -1845,7 +2034,7 @@ class ff(base):
                         else:
                             t2ident[itype] = [ident]
                     # now all types are read in: set up the parind datastructure of the ric
-                    if curric != "vdwpr":
+                    if curric != "vdwpr" and curric != "chapr":
                         parind = self.parind[curric]
                         for i,r in enumerate(self.ric_type[curric]):
                             parind[i] = t2ident[r.type]
@@ -1879,13 +2068,13 @@ class ff(base):
         par_types = self.enumerate_types()
         # pack the RICs first
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
-            # pack rics
             ric = self.ric_type[ic]
             n = len(ric)
             if n > 0:
                 l = len(ric[0])+1
                 filt = None
-                if ic == "dih":
+                # increment for attributes
+                if ic == "dih" or ic == "vdw":
                     l += 1
                 parind = self.parind[ic]
                 ptyp = par_types[ic]
@@ -1901,9 +2090,16 @@ class ff(base):
                             line += [r.ring]
                         else:
                             line += [0]
+                    # add molid attribute if it is a vdw (per atom)
+                    if ic=="vdw":
+                        if r.molid is not None:
+                            line += [r.molid]
+                        else:
+                            # we need a -1 because molid=0 is possible
+                            line += [-1]
                     ric_data[i] = np.array(line)
                 data[ic] = ric_data
-            # pack params
+            # now pack PARams
             par = self.par[ic]
             npar = len(par)
             if npar > 0:
@@ -1932,7 +2128,8 @@ class ff(base):
                     ptype, values = par[i]
                     pars[j,:npars[j,0]] = np.array(values)
                 data[ic+"_par"] = (ptypes, names, npars, pars)
-            data["FF"] = self.par.FF
+        # keep FF name
+        data["FF"] = self.par.FF
         return data
 
     def unpack(self, data):
@@ -1947,14 +2144,19 @@ class ff(base):
                 rdata = data[r]
                 nric = rdata.shape[0]                
                 rlen  = rdata.shape[1]
-                if r == "dih":
-                    rlen -= 1 # in dih the ring attribute is stored as an additional column
+                if r == "dih" or r == "vdw":
+                    rlen -= 1 # in dih the ring attribute and for vdw the molid is stored as an additional column
                 for i in xrange(nric):
                     rtype = rdata[i,0]
                     aind  = rdata[i,1:rlen]
                     if r == "dih":
                         if rdata[i,-1] != 0:
                             icl = ic(aind, type=rtype, ring=rdata[i,-1])
+                        else:
+                            icl = ic(aind, type=rtype)
+                    elif r == "vdw":
+                        if rdata[i,-1] >= 0:
+                            icl = ic(aind, type=rtype, molid=rdata[i,-1])
                         else:
                             icl = ic(aind, type=rtype)
                     else:
@@ -1968,7 +2170,7 @@ class ff(base):
         self._init_pardata()
         # now do par part
         self.par.FF = data["FF"]
-        for r in ric_type:
+        for r in ric_type + ["vdwpr", "chapr"]:
             par = self.par[r]
             if r+"_par" in data:
                 ptypes, names, npars, pars = data[r+"_par"]
@@ -1993,6 +2195,13 @@ class ff(base):
                     parind[i] = t2ident[ri.type]
         return
 
+
+    def update_molid(self):
+        """helper function to update molid attribute in the vdw ics after things have changed in the parent mol's molid
+        """
+        for i, at in enumerate(self.ric_type["vdw"]):
+            at.molid = self._mol.molid[i]
+        return
 
 
 
@@ -2309,7 +2518,7 @@ chargetype     gaussian\n\n''')
                 elif formatcode[1] == "s":
                     pass
                 else:
-                    raise ValueError, "unknown formatcode %s" % formatcode
+                    raise ValueError("unknown formatcode %s" % formatcode)
             else:
                 for i in xrange(len(formatcode)):
                     if formatcode[i] == "i":

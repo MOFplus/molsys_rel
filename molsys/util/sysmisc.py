@@ -27,6 +27,7 @@ def _makedirs(folder):
         os.makedirs(folder)
     except OSError:
         pass
+    return folder # convenience return
 
 def _checkrundir(path):
     """Check if numbered basename directory in folder exists; create a new one.

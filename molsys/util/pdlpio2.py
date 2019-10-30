@@ -46,6 +46,7 @@ import numpy as np
 
 import types
 import os
+import string
 
 from molsys import mpiobject
 import molsys
@@ -74,7 +75,7 @@ class pdlpio2(mpiobject):
         super(pdlpio2, self).__init__(mpi_comm,out)
         self.verbose = 0
         # helper object for hdf5 variable length strings
-        self.str_dt = h5py.new_vlen(str)
+        self.str_dt = h5py.special_dtype(vlen=str)
         #
         self.fname = fname
         # check if this file exists or should be generated
@@ -366,13 +367,19 @@ class pdlpio2(mpiobject):
         if stage == "system":
             self.pprint("PDLP ERROR: Stage name system is not allowed!")
             raise IOError
+        self.open()
         OK = True
         if self.is_master:
             if stage in list(self.h5file.keys()):
                 OK = False
             else:
                 sgroup = self.h5file.create_group(stage)
-                sgroup.create_group("restart")
+                rgroup = sgroup.create_group("restart")
+                # generate restart arrays for xyz, cell and vel
+                na = self.ffe.get_natoms()
+                rgroup.require_dataset("xyz",shape=(na,3), dtype="float64")
+                rgroup.require_dataset("vel",shape=(na,3), dtype="float64")
+                rgroup.require_dataset("cell",shape=(3,3), dtype="float64")
         OK = self.mpi_comm.bcast(OK)
         return OK
 
@@ -407,7 +414,7 @@ class pdlpio2(mpiobject):
             raise IOError
         return
 
-    def prepare_stage(self, stage, traj_data, traj_nstep, data_nstep=1, prec="float64", tstep=0.001):
+    def prepare_stage(self, stage, traj_data, traj_nstep, data_nstep=1, thermo_values=[], prec="float32", tstep=0.001):
         """prepare a stage for trajectory writing
         
         Args:
@@ -415,6 +422,7 @@ class pdlpio2(mpiobject):
             traj_data (list of strings): name of the data to be written
             traj_nstep (int): frequency in steps to write
             data_nstep (int or list of ints), optional): Defaults to 1. freq to write each datatype
+            thermo_values (list): Defaults to [], list of strings of thermodynamic data ... each code needs to know what is meant here
             prec (str, optional): Defaults to "float64". precision to use in writing traj data
             tstep (float, optional): Defaults to 0.001. Timestep in ps
         """ 
@@ -425,7 +433,7 @@ class pdlpio2(mpiobject):
             data_nstep = len(traj_data)*[data_nstep]
         OK=True
         if self.is_master:
-            if stage not in list(self.h5file.keys()):
+            if stage not in list(self.h5file.keys()):      
                 OK = False
             else:
                 traj = self.h5file.require_group(stage+"/traj")
@@ -442,10 +450,46 @@ class pdlpio2(mpiobject):
                                     dtype=prec)
                     pdlp_data[...] = data
                     pdlp_data.attrs["nstep"] = dnstep
+                if len(thermo_values)>0:
+                    # write thermodynamic data .. size of array is length of list
+                    nthermo = len(thermo_values)
+                    pdlp_data = traj.require_dataset("thermo",
+                                    shape=(1, nthermo),
+                                    maxshape=(None, nthermo),
+                                    chunks=(1, nthermo),
+                                    dtype=prec,
+                                    )
+                    # TBI .. get thermo data in ffe on python level
+                    pdlp_data[...] = 0.0
+                    pdlp_data.attrs["labels"] = string.join(thermo_values, " ")
         OK = self.mpi_comm.bcast(OK)
         if not OK:
             self.pprint("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
             raise IOError
+        return
+
+    def add_bondtab(self, stage, nbondsmax):
+        """generates a bondtab/bondorder entry in the trajectory group of the current stage for ReaxFF
+        
+        Args:
+            stage (string): name of the current stage     
+            nbondsmax (int): size of the tables
+        """
+        if self.is_master:
+            st = self.h5file[stage]
+            traj = st["traj"]
+            bondtab = traj.require_dataset("bondtab",
+                            shape=(1,nbondsmax,2),
+                            maxshape=(None, nbondsmax,2),
+                            chunks=(1,nbondsmax,2),
+                            dtype = "int32")
+            bondord = traj.require_dataset("bondord",
+                            shape=(1,nbondsmax),
+                            maxshape=(None, nbondsmax),
+                            chunks=(1,nbondsmax),
+                            dtype = "float32")
+            bondtab[...] = 0
+            bondord[...] = 0.0
         return
 
         

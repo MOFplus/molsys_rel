@@ -2,6 +2,7 @@ import numpy
 import string
 import molsys.util.images as images
 from collections import Counter
+import copy
 import pprint
 import logging
 
@@ -50,6 +51,8 @@ def read(mol, f, topo = False):
     else:
         mol.elems, mol.xyz, mol.atypes, mol.conn,\
                 mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
+    mol.set_ctab_from_conn(pconn_flag=topo) 
+    mol.set_etab_from_tabs()
     ### this has to go at some point
     if 'con_info' in locals():
         if mol.center_point == "special":
@@ -274,25 +277,48 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
     cnct        = mol.conn
     natoms      = mol.natoms
     atypes      = mol.atypes
-    if not pbc:
-        cellcond = .5*numpy.array(mol.cellparams[:3])
-        cnct = [ [i for i in c if (abs(xyz[i]-xyz[e]) < cellcond).all()] for e,c in enumerate(cnct)]
+    if mol.cellparams is not None and not pbc:
+        mol.set_conn_nopbc()
+        cnct = mol.conn_nopbc
+    ### BUG but feature so removable ###
+    #    atoms_withconn = mol.atoms_withconn_nopbc[:]
+    #    offset = numpy.zeros(natoms, 'int')
+    #    for i in range(natoms):
+    #        if i not in atoms_withconn:
+    #            offset[i:] += 1
+    #    cnct = [
+    #        [
+    #            # subtract the j-th offset to atom j in i-th conn if j in atoms_withconn
+    #            j-offset[j] for j in cnct[i] if j in atoms_withconn
+    #        ]
+    #        # if atom i in atoms_withconn
+    #        for i in range(natoms) if i in atoms_withconn
+    #    ]
+    #    natoms = len(atoms_withconn)
+    #    xyz    = xyz[atoms_withconn]
+    #    elems  = numpy.take(elems, atoms_withconn).tolist()
+    #    atypes = numpy.take(atypes, atoms_withconn).tolist()
+    #    if frags:
+    #        fragtypes   = numpy.take(fragtypes, atoms_withconn).tolist()
+    #        fragnumbers = numpy.take(fragnumbers, atoms_withconn).tolist()
     if plain:
         if frags:
-            fragtypes = [None]*len(mol.atypes)
-            fragnumbers = [None]*len(mol.atypes)
+            fragtypes = [None]*len(atypes)
+            fragnumbers = [None]*len(atypes)
             oldatypes = list(zip(atypes, fragtypes, fragnumbers))
         else:
             oldatypes = atypes[:]
+        # unique atomtypes
         u_atypes = set(Counter(oldatypes).keys())
         u_atypes -= set([a for a in u_atypes if str(a).isdigit()])
         u_atypes = sorted(list(u_atypes))
+        # old2new atomtypes
         o2n_atypes = {e:i for i,e in enumerate(u_atypes)}
         n2o_atypes = {i:e for i,e in enumerate(u_atypes)}
         atypes = [a if str(a).isdigit() else o2n_atypes[a] for a in oldatypes]
         frags = False ### encoded in one column only
     xyzl = xyz.tolist()
-    for i in range(mol.natoms):
+    for i in range(natoms):
         line = ("%3d %-3s" + 3*"%12.6f" + "   %-24s") % \
             (i+1, elems[i], xyzl[i][0], xyzl[i][1], xyzl[i][2], atypes[i])
         if frags == True:
@@ -317,7 +343,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
                 line += (len(conn)*"%7d ") % tuple(conn)
         f.write("%s \n" % line)
     if plain:
-        if hasattr(u_atypes[0],"__iter__"):
+        if frags:
             f.write("### atype: (old_atype, fragment_type, fragment_number)\n")
             n2o_fmt = pprint.pformat(n2o_atypes, indent=4)
         else:
@@ -345,7 +371,14 @@ def write(mol, f, topo = False, frags = False, pbc=True, plain=False):
     ### write func ###
     cellparams = mol.cellparams
     if cellparams is not None:
-        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([mol.natoms]+list(cellparams)))
+        ### BUG but feature so removable ###
+        #if pbc:
+        #    natoms = mol.natoms
+        #else:
+        #    mol.remove_conn_pbc()
+        #    natoms = len(mol.atoms_withconn_nopbc)
+        natoms = mol.natoms
+        f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)
     write_body(f, mol, topo=topo, frags=frags, pbc=pbc, plain=plain)

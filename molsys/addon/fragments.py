@@ -20,7 +20,8 @@ class fragments:
         self._mol = mol
         self.setup = False
         self.check()
-        self.make_frag_conn()
+        if self.setup:
+            self.make_frag_conn()
         return
 
     def check(self):
@@ -35,6 +36,9 @@ class fragments:
         self.frag_conn_atoms = []  # atoms making the fragemnt connectivity (tuples of atom indices: first in frgmnt, second in other fragmnt)
         for i in range(self.nfrags):
             self.frag_atoms.append([])
+        if self.nfrags == 0:
+            self.setup = False
+            return
         self.setup = True
         for i in range(self._mol.natoms):
             ft = self._mol.fragtypes[i]
