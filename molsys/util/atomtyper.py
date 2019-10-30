@@ -90,7 +90,7 @@ class atomtyper:
                 self.atoms.append(atom(self.elements[i], bonded_atoms))
         else:
             for i in range(self.natoms):
-                self.atoms.append(atom(self.elements[i], map(self.elements.__getitem__, self.cnct[i])))
+                self.atoms.append(atom(self.elements[i], list(map(self.elements.__getitem__, self.cnct[i]))))
         return
 
     def __call__(self,rules = 2): # depending on element
