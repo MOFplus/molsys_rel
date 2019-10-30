@@ -119,7 +119,7 @@ class graph(object):
         return
 
     @staticmethod
-    def find_subgraph(graph, subg):
+    def find_subgraph(graph, subg, N=0):
         """
         use graph_tools subgraph_isomorphism tool to find substructures
 
@@ -127,12 +127,13 @@ class graph(object):
 
             - graph : parent graph to be searched
             - subg  : graph to be found
+            - N (int): number of subgraphs to find, N=0 is all (defaults to N=0)
 
         :Returns:
 
             a list of lists with the (sorted) vertex indices of the substructure
         """
-        maps = subgraph_isomorphism(subg, graph, vertex_label=(subg.vp.type, graph.vp.type))
+        maps = subgraph_isomorphism(subg, graph, vertex_label=(subg.vp.type, graph.vp.type), max_n=N)
         subs = []
         subs_check = []
         for m in maps:
@@ -159,6 +160,20 @@ class graph(object):
         """
         subs = self.find_subgraph(self.molg, subg.molg)
         return subs
+
+    def check_sub(self, subg):
+        """check if subg found in self.graph
+        
+        Args:
+            subg (mol.graph objects): subgraph to be tested
+        """
+        subs = self.find_subgraph(self.molg, subg.molg, N=1)
+        print subs
+        if subs != []:
+            return True
+        else:
+            return False
+        
 
     def find_fragment(self, frag,add_hydrogen=False):
         """
