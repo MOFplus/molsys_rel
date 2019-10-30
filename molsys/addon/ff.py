@@ -1607,7 +1607,7 @@ class ff(base):
 
     ################# central read/write to ric/par ##############################
 
-    def write(self, fname):
+    def write(self, fname, fpar = True):
         """
         write the rics including the referencing types to an ascii file
         called <fname>.ric and the parameters to <fname>.par
@@ -1642,7 +1642,7 @@ class ff(base):
         f.close()
         # write the par file
         #if self.refsysname:
-        if hasattr(self.par, 'variables'):
+        if hasattr(self.par, 'variables') and fpar == True:
             # this is a fixed up refsystem for fitting
             f = open(fname+".fpar", "w")
             vals = self.par.variables.vals
@@ -1673,7 +1673,7 @@ class ff(base):
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
             f.write("\n")
         
-        if hasattr(self.par, 'variables'):
+        if hasattr(self.par, 'variables') and fpar == True:
             self.par.variables(vals)
             if hasattr(self, 'active_zone'):
                 active_zone = np.array(self.active_zone)+1
