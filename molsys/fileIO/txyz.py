@@ -8,13 +8,12 @@ import logging
 
 logger = logging.getLogger("molsys.io")
 
-def read(mol, f, topo = False):
+def read(mol, f,):
     """
     Routine, which reads an txyz file
     :Parameters:
         -f    (obj) : txyz file object
         -mol  (obj) : instance of a molclass
-        -topo (bool): flag for reading topo information
     """
     ### read check ###
     try:
@@ -40,71 +39,12 @@ def read(mol, f, topo = False):
             if ((cellparams[0]==cellparams[1])and(cellparams[1]==cellparams[2])and\
                 (cellparams[0]==cellparams[2])):
                     boundarycond=1
-    elif len(lbuffer) > 1:
-        mol.is_bb=True
-        mol.center_point = lbuffer[1]
-        con_info = lbuffer[2:]
-        parse_connstring(mol,con_info, new = False)
-    if topo == False:
-        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
-                read_body(f,mol.natoms,frags=False)
-    else:
-        mol.elems, mol.xyz, mol.atypes, mol.conn,\
-                mol.pconn = read_body(f,mol.natoms,frags=False, topo = True)
-    mol.set_ctab_from_conn(pconn_flag=topo) 
+    mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
+            read_body(f,mol.natoms,frags=False)
+    mol.set_ctab_from_conn() 
     mol.set_etab_from_tabs()
     ### this has to go at some point
-    if 'con_info' in locals():
-        if mol.center_point == "special":
-            line = f.readline().split()
-            mol.special_center_point = numpy.array([float(i) for i in line[0:3]],"d")
-        try:
-            line = f.readline().split()
-            if line != [] and line[0][:5] == 'angle':
-                mol.angleterm = line
-        except:
-            pass
-    
     mol.set_nofrags()
-    return
-
-def parse_connstring(mol, con_info, new = True):
-    """
-    Routines which parses the con_info string of a txyz or an mfpx file
-    :Parameters:
-        - mol      (obj) : instance of a molclass
-        - con_info (str) : string holding the connectors info
-        - new      (bool): bool to switch between old and new type of con_info string
-    """
-    mol.connector_dummies     = []
-    mol.connector_atoms       = []
-    mol.connectors            = []
-    mol.connectors_type       = []
-    mol.connectors_group      = []
-    mol.connectors_complexity = []
-    contype_count = 0
-    for c in con_info:
-        if c == "/":
-            contype_count += 1
-        else:
-            if new:
-                ss = c.split('*') # ss[0] is the dummy neighbors, ss[1] is the connector atom
-                if len(ss) > 2:
-                    raise IOError('This is not a proper BB file, convert with script before!')
-                elif len(ss) < 2: # neighbor == connector
-                    ss *= 2
-                stt = ss[0].split(',')
-                mol.connectors.append(int(ss[1])-1)
-                mol.connectors_type.append(contype_count)
-                if mol.elems[int(ss[1])-1].lower() == 'x':
-                    mol.connector_dummies.append(int(ss[1])-1) # simplest case only with two atoms being the connecting atoms
-                    #self.natoms += 1
-                mol.connector_atoms.append((numpy.array([int(i) for i in stt]) -1).tolist())
-            else:
-                # in the old format only 1:1 connections exists: dummy_neighbors  are equal to connector atoms
-                mol.connectors.append(int(c)-1)
-                mol.connector_atoms = [[c] for c in mol.connectors]
-                mol.connectors_type.append(contype_count)
     return
 
 def parse_connstring_new(mol, con_info, **kwargs):
