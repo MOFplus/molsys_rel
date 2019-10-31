@@ -728,7 +728,7 @@ class ff(base):
                         full_parname_list = []
                         aft_list = self.get_parname_sort(r,ic)
                         parname  = tuple(aft_list)
-                        sparname = map(str,parname)
+                        sparname = list(map(str,parname))
                         full_parname_list = []
                         for p in loaded_pots[ic]:
                             full_parname = p+"->("+string.join(sparname,",")+")|"+ref
@@ -752,7 +752,6 @@ class ff(base):
             for i in badlist: 
                 del self.par[ic][i]
                 #logger.warning("")
-            #import pdb; pdb.set_trace()
 
 
 
@@ -926,7 +925,7 @@ class ff(base):
                                                     curr_equi_par[aidx] = par[1][1]
                                                     logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
                                         else:
-                                            sparname = map(str, parname)
+                                            sparname = list(map(str, parname))
                                             full_parname = par[0]+"->("+string.join(sparname,",")+")|"+ref
                                             full_parname_list.append(full_parname)
                                             if not full_parname in self.par[ic]:
@@ -980,7 +979,7 @@ class ff(base):
                         parname, par_list = self.pick_params(aft_list, ic, p, gen_params)
                         if par_list != None:
                             for par in par_list:
-                                sparname = map(str, parname)
+                                sparname = list(map(str, parname))
                                 full_parname = par[0]+"->("+string.join(sparname,",")+")|generic"
                                 full_parname_list.append(full_parname)
                                 if not full_parname in self.par[ic]:
@@ -1014,7 +1013,6 @@ class ff(base):
             - strbnd(bool, optional): switch for a forcing a fixup of strbnd terms, defauls to
             False
         """
-        #import pdb; pdb.set_trace()
         self.ric.compute_rics()
         self.par.attach_variables()
 #        self.variables = varpars()
@@ -1042,13 +1040,13 @@ class ff(base):
                         parname = self.get_parname(p)
                     else:
                         parname = self.get_parname_sort(p, ic)
-                    sparname = map(str, parname)
+                    sparname = list(map(str, parname))
                     fullparname = defaults[ic][0]+"->("+string.join(sparname,",")+")|"+self.refsysname
                     ### we have to set the variables here now
                     if not fullparname in par:
                         if ic in var_ics:
                             count+=1
-                            vnames = map(lambda a: "$%s%i_%i" % (defaults[ic][2],count,a) 
+                            vnames = list(map(lambda a: "$%s%i_%i" % (defaults[ic][2],count,a) )
                                 if type(defaults[ic][3][a]) == str else defaults[ic][3][a], range(defaults[ic][1]))
                             par[fullparname] = (defaults[ic][0], vnames)
                             for idx,vn in enumerate(vnames):
@@ -1063,7 +1061,7 @@ class ff(base):
                             if ic == "ang" and "strbnd" in cross_terms:
                                 fullparname2 = "strbnd->("+string.join(sparname,",")+")|"+self.refsysname
                                 count+=1
-                                vnames = map(lambda a: "$s%i_%i" % (count, a), range(6))
+                                vnames = list(map(lambda a: "$s%i_%i" % (count, a), range(6)))
                                 par[fullparname2] = ("strbnd", vnames)
                                 for idx,vn in enumerate(vnames):
                                     self.par.variables[vn] = varpar(self.par, name = vn)
@@ -1072,7 +1070,7 @@ class ff(base):
                             if ic == "dih" and "bb13" in cross_terms:
                                 fullparname2 = "bb13->("+string.join(sparname,",")+")|"+self.refsysname
                                 count+=1
-                                vnames = map(lambda a: "$bb%i_%i" % (count, a), range(3))
+                                vnames = list(map(lambda a: "$bb%i_%i" % (count, a), range(3)))
                                 par[fullparname2] = ("bb13", vnames)
                                 for idx,vn in enumerate(vnames):
                                     self.par.variables[vn] = varpar(self.par, name = vn)
@@ -1264,7 +1262,7 @@ class ff(base):
         self.vdwdata = {}
         self.chadata = {}
         self.types2numbers = {} #equivalent to self.dlp_types
-        types = self.par["vdw"].keys()
+        types = list(self.par["vdw"].keys())
         for i, t in enumerate(types):
             if t not in self.types2numbers.keys():
                 self.types2numbers[t]=str(i)
@@ -1293,7 +1291,7 @@ class ff(base):
                         par_ij = self.par["chapr"][parname]
                         self.chadata[types[i]+":"+types[j]] = par_ij
                         self.chadata[types[j]+":"+types[i]] = par_ij
-                        continue                
+                        continue
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]
@@ -1643,8 +1641,7 @@ class ff(base):
         """
         helper function to produce the name string using the self.aftypes
         """
-        l = map(lambda a: self.aftypes[a], alist)
-        return tuple(l)
+        return tuple(map(lambda a: self.aftypes[a], alist))
 
     def get_parname_equiv(self,alist, ic, refsys):
         """
@@ -1671,16 +1668,16 @@ class ff(base):
             for i in insides: 
                 if i not in equivs.keys(): return None
             if len(insides) > 1: return None
-            return map(lambda a: self.aftypes[a] if a not in equivs.keys() else equivs[a], alist)
+            return list(map(lambda a: self.aftypes[a] if a not in equivs.keys() else equivs[a], alist))
         except:
             if len(insides) > 0: return None
-            return map(lambda a: self.aftypes[a], alist)
+            return list(map(lambda a: self.aftypes[a], alist))
 
     def get_parname_sort(self, alist, ic):
         """
         helper function to produce the name string using the self.aftypes
         """
-        l = map(lambda a: self.aftypes[a], alist)
+        l = list(map(lambda a: self.aftypes[a], alist))
         return tuple(aftype_sort(l,ic))
 
     def split_parname(self,name):
@@ -1851,7 +1848,7 @@ class ff(base):
             for i in ind:
                 ipi = ptyp[i.split("->")[1]]
                 ptype, values = par[i]
-                formatstr = string.join(map(lambda a: "%15.8f" if type(a) != str else "%+15s", values))
+                formatstr = string.join(list(map(lambda a: "%15.8f" if type(a) != str else "%+15s", values)))
                 sval = formatstr % tuple(values)
                 #sval = (len(values)*"%15.8f ") % tuple(values)
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
@@ -1903,7 +1900,7 @@ class ff(base):
                     for i in range(nric):
                         sline = fric.readline().split()
                         rtype = int(sline[1])
-                        aind  = map(int, sline[2:curric_len+2])
+                        aind  = list(map(int, sline[2:curric_len+2]))
                         aind  = np.array(aind)-1
                         icl = ic(aind, type=rtype)
                         for attr in sline[curric_len+2:]:
@@ -1940,7 +1937,7 @@ class ff(base):
                 sline = line.split()
                 if len(sline)>0:
                     if sline[0] == "azone":
-                        self.active_zone = (np.array(map(int, sline[1:]))-1).tolist()
+                        self.active_zone = (np.array(list(map(int, sline[1:]))-1).tolist())
                         azone = True
                     elif sline[0] == "variables":
                         nvar = int(sline[1])
@@ -2024,7 +2021,7 @@ class ff(base):
                                     newparam.append(float(p))
                             param = newparam
                         else:
-                            param = map(float, param)
+                            param = list(map(float, param))
                         if ident in par:
                             logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
                             raise ValueError("Identifier %s appears twice" % ident)
@@ -2408,7 +2405,7 @@ chargetype     gaussian\n\n''')
                                         newparam.append(float(p))
                                 param = newparam
                             else:
-                                param = map(float, param)
+                                param = list(map(float, param))
                             #if ident in par: raise ValueError("Identifier %s appears twice" % ident)
                             if ident in par:
                                 logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
@@ -2476,7 +2473,7 @@ chargetype     gaussian\n\n''')
             pot, ref, atypes = self.split_parname(k)
             if pot not in potentials[ic].keys():continue
             if ref == refsys:
-                if datypes is not None: atypes = map(lambda a: datypes[a],atypes)
+                if datypes is not None: atypes = list(map(lambda a: datypes[a],atypes))
                 d["types"].append(string.join(atypes, "-"))
                 d["potential"].append(pot)
                 for i, p in enumerate(v[1]):
@@ -2509,12 +2506,12 @@ chargetype     gaussian\n\n''')
             elif formatcode[0] == "*":
                 if formatcode[1] == "i":
                     try:
-                        l = map(string.atoi,l)
+                        l = list(map(string.atoi,l))
                     except ValueError:
                         print ("Error converting %s to integer!!" % str(l))
                         raise ValueError
                 elif formatcode[1] == "f":
-                    l = map(string.atoi,l)
+                    l = list(map(string.atoi,l))
                 elif formatcode[1] == "s":
                     pass
                 else:
@@ -2608,7 +2605,7 @@ chargetype     gaussian\n\n''')
                     # as name of the refsys and as framentnames to make it
                     # easy to use already implemented helper methods
                     # for the actual assignment
-                    full_parname = pot+"->("+string.join(map(str,atomkey),",")+")|leg"
+                    full_parname = pot+"->("+string.join(list(map(str,atomkey)),",")+")|leg"
                     if ic == "bnd" and params[2] > 0.0: pot = "morse"
                     if ic == "dih" and params[3] > 0.0: pot = "cos4"
                     self.par[ic][full_parname] = (pot, numberify_list(sline[natoms+1:], formatcode))
