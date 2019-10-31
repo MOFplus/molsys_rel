@@ -26,6 +26,7 @@ class bb:
         self.connector = []            # list of connector atoms (can be dummies) used for orientation (TBI: COM of multiple atoms)
         self.connector_atoms = []       # list of lists: atoms that actually bond to the other BB
         self.connector_types = []       # list of integers: type of a connector (TBI: connectors_atype should contain the atype of the OTHER atom bonded to .. same layout as connector_atoms)
+        self.connector_dummies = []       # list of integers: index of connectors that are dummies
         self.connector_atypes = None
         self.center_type = None
         self.mol.is_bb = True
@@ -54,6 +55,7 @@ class bb:
                     connector_atypes=None,
                     center_type="coc",
                     center_xyz=None,
+                    name=None,
                     rotate_on_z=False,
                     align_to_pax=False,
                     pax_use_connonly=False):
@@ -69,6 +71,7 @@ class bb:
                                                  same layout as connector_atoms, if present then _types are generted. Defaults to None.
             center_type (string, optional): either "com" or "coc" or "special". if "special" center_xyz must be given. Defaults to "coc".
             center_xyz (numpy array, optional): coordinates of the center. Defaults to None.
+            name (string, optional) : The name of the BB
         """
         assert not (rotate_on_z and align_to_pax) 
         self.connector = connector
@@ -96,6 +99,12 @@ class bb:
                     self.connector_types.append(known_atypes.index(at))
             else:
                 self.connector_types = [0 for i in range(nc)]
+        # detect connector dummies by element 'x'
+        for i,cats in enumerate(connector_atoms):
+            for j,cat in enumerate(cats):
+                if self.mol.elems[cat-1].lower() == 'x':
+                    self.connector_dummies.append(cat-1)
+        
         assert center_type in ["com", "coc", "special"]
         self.center_type = center_type
         if self.center_type == "special":
@@ -110,6 +119,8 @@ class bb:
             center_xyz = self.mol.get_com(idx=self.connector)
             self.mol.set_mass(mass, masstype)
         self.mol.translate(-center_xyz)
+        if name is not None:
+            self.name = name
         if rotate_on_z:
             self.rotate_on_z()
         if align_to_pax:

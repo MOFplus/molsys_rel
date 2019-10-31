@@ -22,6 +22,7 @@ def read(mol, f):
     ftype = 'xyz'
     lbuffer = f.readline().split()
     stop = False
+    bbinfo = {}
     while not stop:
         if lbuffer[0] != '#':
             mol.natoms = int(lbuffer[0])
@@ -41,16 +42,20 @@ def read(mol, f):
                 mol.set_cell(cell)
             elif keyword == 'bbcenter':
                 mol.is_bb = True
-                mol.center_point = lbuffer[2]
-                if mol.center_point == 'special':
-                    mol.special_center_point = numpy.array([float(i) for i in lbuffer[3:6]])
+                bbinfo['center_type'] = lbuffer[2]
+                if lbuffer[2] == 'special':
+                    bbinfo['center_xyz'] = numpy.array([float(i) for i in lbuffer[3:6]])
             elif keyword == 'bbconn':
                 mol.is_bb = True
                 con_info = lbuffer[2:]
+            elif keyword == 'bbatypes':
+                mol.is_bb = True
+                bbinfo['connector_atypes'] = lbuffer[2:]
             elif keyword == 'orient':
                 orient = [int(i) for i in lbuffer[2:]]
                 mol.orientation = orient
             lbuffer = f.readline().split()
+    if mol.is_bb == True: ftype = 'bb'
     ### read body
     if ftype == 'xyz':
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
@@ -67,6 +72,15 @@ def read(mol, f):
         mol.use_pconn = True
         mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages, mol.oconn =\
             txyz.read_body(f,mol.natoms,frags=True, topo = True, cromo = True)
+    elif ftype == 'bb': # 
+        connector, connector_atoms, connector_types = parse_connstring(mol,con_info)
+        #bbinfo['connector'] = connector  ## that actually has to be an argument as the setup currently is coded.
+        bbinfo['connector_atoms'] = connector_atoms
+        bbinfo['connector_types'] = connector_types
+        mol.elems, mol.xyz, mol.atypes, mol.conn, mol.fragtypes, mol.fragnumbers =\
+            txyz.read_body(f,mol.natoms,frags=True, topo = False, cromo = False)
+        mol.addon('bb')
+        mol.bb.setup(connector,**bbinfo)
     else:
         ftype = 'xyz'
         logger.warning('Unknown mfpx file type specified. Using xyz as default')
@@ -83,8 +97,6 @@ def read(mol, f):
             mol.angleterm = line
     except:
         pass
-    if 'con_info' in locals():
-        txyz.parse_connstring(mol,con_info)
     return
 
 def write(mol, f, fullcell = True):
@@ -156,4 +168,30 @@ def write(mol, f, fullcell = True):
     else:
         txyz.write_body(f,mol,topo=True)
     return
+
+def parse_connstring(mol, con_info): 
+    """ 
+    Routines which parses the con_info string of a txyz or an mfpx file 
+    :Parameters: 
+        - mol      (obj) : instance of a molclass 
+        - con_info (str) : string holding the connectors info 
+    """ 
+    connector             = [] 
+    connector_atoms       = [] 
+    connector_types       = [] 
+    contype_count = 0 
+    for c in con_info: 
+        if c == "/": 
+            contype_count += 1 
+        else: 
+            ss = c.split('*') # ss[0] is the dummy neighbors, ss[1] is the connector atom 
+            if len(ss) > 2: 
+                raise IOError('This is not a proper BB file, convert with script before!') 
+            elif len(ss) < 2: # neighbor == connector 
+                ss *= 2 
+            stt = ss[0].split(',') 
+            connector.append(int(ss[1])-1) 
+            connector_types.append(contype_count) 
+            connector_atoms.append((numpy.array([int(i) for i in stt]) -1).tolist()) 
+    return connector, connector_atoms, connector_types
 
