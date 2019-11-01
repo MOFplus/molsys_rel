@@ -139,7 +139,16 @@ class fragments:
         using the graph addons util_graph method
         """
         self._mol.addon("graph")
-        self.frag_graph = self._mol.graph.util_graph(self.fraglist, self.frag_conn)
+        # create here a second list of vertex types, with the aryl substituted species
+        # for example a naph fragment is substituted by a ph
+        phenyl_like = ["naph"]
+        vtypes2 = []
+        for i,t in enumerate(self.fraglist):
+            if t in phenyl_like:
+                vtypes2.append("ph")
+            else:
+                vtypes2.append(t)
+        self.frag_graph = self._mol.graph.util_graph(self.fraglist, self.frag_conn, vtypes2=vtypes2)
         # DEBUG here just for debug reasons
         #self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
         return self.frag_graph
