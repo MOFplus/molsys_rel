@@ -100,11 +100,10 @@ class bb:
             else:
                 self.connector_types = [0 for i in range(nc)]
         # detect connector dummies by element 'x'
-        for i,cats in enumerate(connector_atoms):
+        for i,cats in enumerate(self.connector_atoms):
             for j,cat in enumerate(cats):
                 if self.mol.elems[cat-1].lower() == 'x':
                     self.connector_dummies.append(cat-1)
-        
         assert center_type in ["com", "coc", "special"]
         self.center_type = center_type
         if self.center_type == "special":
