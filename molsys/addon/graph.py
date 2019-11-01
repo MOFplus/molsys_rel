@@ -625,7 +625,7 @@ class graph(object):
         """
         assert self.bbg is not None
         if get_all == True:
-            print "PLEASE IMPLEMENT get_all option!!"
+            print ("PLEASE IMPLEMENT get_all option!!")
             raise
         self.decomp_vbb = [] # vertex BB mol objects (only unique)
         self.decomp_ebb = [] # edge/linker BB mol objects (only unique)

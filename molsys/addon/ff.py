@@ -731,7 +731,7 @@ class ff(base):
                         sparname = list(map(str,parname))
                         full_parname_list = []
                         for p in loaded_pots[ic]:
-                            full_parname = p+"->("+string.join(sparname,",")+")|"+ref
+                            full_parname = p+"->("+",".join(sparname)+")|"+ref
                             if full_parname in self.par[ic] and full_parname not in full_parname_list:
                                 full_parname_list.append(full_parname)
                         if full_parname_list != []:
@@ -926,7 +926,7 @@ class ff(base):
                                                     logger.info("  EQIV: atom %d will be converted from %s to %s" % (aidx, aft, par[1][1]))
                                         else:
                                             sparname = list(map(str, parname))
-                                            full_parname = par[0]+"->("+string.join(sparname,",")+")|"+ref
+                                            full_parname = par[0]+"->("+",".join(sparname)+")|"+ref
                                             full_parname_list.append(full_parname)
                                             if not full_parname in self.par[ic]:
                                                 logger.info("  added parameter to table: %s" % full_parname)
@@ -980,7 +980,7 @@ class ff(base):
                         if par_list != None:
                             for par in par_list:
                                 sparname = list(map(str, parname))
-                                full_parname = par[0]+"->("+string.join(sparname,",")+")|generic"
+                                full_parname = par[0]+"->("+",".join(sparname)+")|generic"
                                 full_parname_list.append(full_parname)
                                 if not full_parname in self.par[ic]:
                                     logger.info("  added parameter to table: %s" % full_parname)
@@ -1041,7 +1041,7 @@ class ff(base):
                     else:
                         parname = self.get_parname_sort(p, ic)
                     sparname = list(map(str, parname))
-                    fullparname = defaults[ic][0]+"->("+string.join(sparname,",")+")|"+self.refsysname
+                    fullparname = defaults[ic][0]+"->("+",".join(sparname)+")|"+self.refsysname
                     ### we have to set the variables here now
                     if not fullparname in par:
                         if ic in var_ics:
@@ -1059,7 +1059,7 @@ class ff(base):
                                     self.par.variables[vn].pos.append((ic, fullparname, idx))
                             # hack for strbnd
                             if ic == "ang" and "strbnd" in cross_terms:
-                                fullparname2 = "strbnd->("+string.join(sparname,",")+")|"+self.refsysname
+                                fullparname2 = "strbnd->("+",".join(sparname)+")|"+self.refsysname
                                 count+=1
                                 vnames = list(map(lambda a: "$s%i_%i" % (count, a), range(6)))
                                 par[fullparname2] = ("strbnd", vnames)
@@ -1068,7 +1068,7 @@ class ff(base):
                                     self.par.variables[vn].pos.append((ic,fullparname2,idx))
                             # hack for bb13
                             if ic == "dih" and "bb13" in cross_terms:
-                                fullparname2 = "bb13->("+string.join(sparname,",")+")|"+self.refsysname
+                                fullparname2 = "bb13->("+",".join(sparname)+")|"+self.refsysname
                                 count+=1
                                 vnames = list(map(lambda a: "$bb%i_%i" % (count, a), range(3)))
                                 par[fullparname2] = ("bb13", vnames)
@@ -1219,7 +1219,7 @@ class ff(base):
         data structures
         """
         if hasattr(self, 'do_not_varnames2par'): return
-        self.par.variables(self.par.variables.keys())
+        self.par.variables(list(self.par.variables.keys()))
         return
 
     def remove_pars(self,identifier=[]):
@@ -1706,8 +1706,8 @@ class ff(base):
         :Returns:
             - parname
         """
-        sorted = aftype_sort(aftypes, ic)
-        return pot + "->("+string.join(sorted, ",")+")|"+ref
+        sortedaft = aftype_sort(aftypes, ic)
+        return pot + "->("+",".join(sortedaft)+")|"+ref
         
 
     def pick_params(self,aft_list,ic,at_list, pardir):
@@ -1843,12 +1843,12 @@ class ff(base):
             f.write(ff_desc[ic])
             f.write("\n")
             f.write("%3s_type %d\n" % (ic, len(par)))
-            ind = par.keys()
+            ind = list(par.keys())
             ind.sort(key=lambda k: ptyp[k.split("->")[1]])
             for i in ind:
                 ipi = ptyp[i.split("->")[1]]
                 ptype, values = par[i]
-                formatstr = string.join(list(map(lambda a: "%15.8f" if type(a) != str else "%+15s", values)))
+                formatstr = " ".join(list(map(lambda a: "%15.8f" if type(a) != str else "%+15s", values)))
                 sval = formatstr % tuple(values)
                 #sval = (len(values)*"%15.8f ") % tuple(values)
                 f.write("%-5d %20s %s           # %s\n" % (ipi, ptype, sval, i))
@@ -2100,7 +2100,7 @@ class ff(base):
             par = self.par[ic]
             npar = len(par)
             if npar > 0:
-                ind = par.keys()
+                ind = list(par.keys())
                 ind.sort(key=lambda k: ptyp[k.split("->")[1]])
                 # params are stored in a tuple of 2 lists and two numpy arrays
                 #      list ptypes (string)  <- ptype
@@ -2143,7 +2143,7 @@ class ff(base):
                 rlen  = rdata.shape[1]
                 if r == "dih" or r == "vdw":
                     rlen -= 1 # in dih the ring attribute and for vdw the molid is stored as an additional column
-                for i in xrange(nric):
+                for i in range(nric):
                     rtype = rdata[i,0]
                     aind  = rdata[i,1:rlen]
                     if r == "dih":
@@ -2251,7 +2251,7 @@ chargetype     gaussian\n\n''')
             #import pdb; pdb.set_trace()
         #syntax of keyfile:
         # red name [atypes] [params] 
-        parkeys= self.par.keys() # cha ang dih oop vdw bnd
+        parkeys= list(self.par.keys()) # cha ang dih oop vdw bnd
         atypes_set = []        
         # bonds 
         for bond in par['bnd'].keys():
@@ -2474,7 +2474,7 @@ chargetype     gaussian\n\n''')
             if pot not in potentials[ic].keys():continue
             if ref == refsys:
                 if datypes is not None: atypes = list(map(lambda a: datypes[a],atypes))
-                d["types"].append(string.join(atypes, "-"))
+                d["types"].append("-".join(atypes))
                 d["potential"].append(pot)
                 for i, p in enumerate(v[1]):
                     ptype = potentials[ic][pot][i]
@@ -2517,7 +2517,7 @@ chargetype     gaussian\n\n''')
                 else:
                     raise ValueError("unknown formatcode %s" % formatcode)
             else:
-                for i in xrange(len(formatcode)):
+                for i in range(len(formatcode)):
                     if formatcode[i] == "i":
                         try:
                             l[i] = string.atoi(l[i])
@@ -2577,7 +2577,7 @@ chargetype     gaussian\n\n''')
             "angle5", "angle4", "restrain-distance","restrain-angle",
             "restrain-angle",]
         self._init_pardata()
-        ptnames = pterms.keys()
+        ptnames = list(pterms.keys())
         with open(fname, "r") as f:
             for line in f.readlines():
                 sline = string.split(line)
@@ -2605,7 +2605,7 @@ chargetype     gaussian\n\n''')
                     # as name of the refsys and as framentnames to make it
                     # easy to use already implemented helper methods
                     # for the actual assignment
-                    full_parname = pot+"->("+string.join(list(map(str,atomkey)),",")+")|leg"
+                    full_parname = pot+"->("+",".join(list(map(str,atomkey)))+")|leg"
                     if ic == "bnd" and params[2] > 0.0: pot = "morse"
                     if ic == "dih" and params[3] > 0.0: pot = "cos4"
                     self.par[ic][full_parname] = (pot, numberify_list(sline[natoms+1:], formatcode))

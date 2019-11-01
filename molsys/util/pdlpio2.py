@@ -461,7 +461,7 @@ class pdlpio2(mpiobject):
                                     )
                     # TBI .. get thermo data in ffe on python level
                     pdlp_data[...] = 0.0
-                    pdlp_data.attrs["labels"] = string.join(thermo_values, " ")
+                    pdlp_data.attrs["labels"] = " ".join(thermo_values)
         OK = self.mpi_comm.bcast(OK)
         if not OK:
             self.pprint("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)

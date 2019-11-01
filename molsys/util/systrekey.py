@@ -27,8 +27,6 @@ arc_read = False
 db_key2name = {}
 db_name2key = {}
 
-# shift_map  = {"-1" : "-", "0": "0", "1": "+"}
-# shift_rmap = {"-" : "-1", "0": "0", "+": "1"}
 
 class systre_db:
 
@@ -51,7 +49,7 @@ class systre_db:
                     elif sline[0] == "end":
                         # end of record .. store in directories only 3dim nets
                         if key[0] == "3":
-                            key = string.join(key)
+                            key = " ".join(key)
                             db_key2name[key] = name
                             db_name2key[name] = key
                     else:
@@ -129,7 +127,7 @@ def run_systrekey(edges, labels):
 if __name__=="__main__":
     edges = [[1,1], [1,1], [1,1]]
     labels = [[1,0,0], [0,1,0], [0,0,1]]
-    print run_systrekey(edges, labels)
+    print (run_systrekey(edges, labels))
 
 
 

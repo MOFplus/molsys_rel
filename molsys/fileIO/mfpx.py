@@ -155,10 +155,10 @@ def write(mol, f, fullcell = True):
             temp_atypes = []
             for at in mol.bb.connector_atypes:
                 if type(at) == type([]):
-                    temp_atypes.append(string.join(at, ","))
+                    temp_atypes.append(",".join(at))
                 else:
                     temp_atypes.append(at)
-            f.write('# bbatypes %s\n' % string.join(temp_atypes))
+            f.write('# bbatypes %s\n' % " ".join(temp_atypes))
     if hasattr(mol, "orientation"):
         o = len(mol.orientation) * "%3d" % tuple(mol.orientation)
         f.write('# orient '+o+"\n")

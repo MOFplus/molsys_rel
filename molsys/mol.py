@@ -245,7 +245,7 @@ class mol(mpiobject):
         # there is gibberish in the first line of the txyzstring, we need to remove it!
         txyzsl = txyzs.split("\n")
         txyzsl[0] = txyzsl[0].split()[0]
-        txyzs = string.join(txyzsl,'\n')
+        txyzs = '\n'.join(txyzsl)
         m = mol.from_string(txyzs,ftype='txyz')
         if smile.count('*') != 0:
             m.addon('bb')

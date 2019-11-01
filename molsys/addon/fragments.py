@@ -110,7 +110,7 @@ class fragments:
                     atom_pair = self.frag_conn_atoms[i][nj]
                     fbond = [self._mol.atypes[atom_pair[0]]+"_"+self.fraglist[i], self._mol.atypes[atom_pair[1]]+"_"+self.fraglist[j]]
                     fbond.sort()
-                    fbond = string.join(fbond, ":")
+                    fbond = ":".join(fbond)
                     if not fbond in self.frag_bond_types.keys():
                         self.frag_bond_types[fbond] = ""
                     # now check if this bond is allowed and if we need to change the fragtype in rev_fraglist
