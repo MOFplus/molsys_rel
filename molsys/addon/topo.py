@@ -41,7 +41,8 @@ class topo:
                 for j,v in enumerate(self._mol.conn[i]):
                     if v > i:
                         edges.append([i,v])
-                        labels.append(list(self._mol.pconn[i][j].astype("int")))
+                        # NOTE: in some cases pconn contains FLOAT numbers which is wrong!!! find out where thsi comes from!! and who did it?
+                        labels.append(self._mol.pconn[i][j].astype("int32").tolist())
             self._systrekey, mapping = systrekey.run_systrekey(edges, labels)
             self._skey_mapping = [-1 for i in range(self._mol.get_natoms())]
             for k in mapping:
@@ -71,6 +72,6 @@ class topo:
                         del_bonds.append((i,j))
                     nm.add_bond(i, new_atom)
         for b in del_bonds:
-            print "delete bond %s " % str(b)
+            print ("delete bond %s " % str(b))
             nm.delete_bond(b[0], b[1])
         return nm
