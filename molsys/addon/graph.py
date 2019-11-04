@@ -281,6 +281,8 @@ class graph(object):
         """
         # set up the graph
         self.make_decomp_graph()
+        # first test for interp
+        self.detect_interp()
         # split it
         if mode == "ringsize":
             self.split_ringsize()
@@ -344,6 +346,33 @@ class graph(object):
         self.decomp_bbg = False
         self.decomp_bb_exist = False
         return
+
+    def detect_interp(self):
+        """This method helps to identify interpenetration and remaining solvent
+
+        use bb vertex property to do the component analysis of the unsplit moldg
+        ==> if we have more than one compnent then there are three options:
+         - the system is interpenetrated
+         - the system contains unconnected solvent
+         - something went wrong with the connectivity detection
+        """
+        comp, hist = label_components(self.moldg)
+        if len(hist) == 1:
+            return False
+        else:
+            # we have more than one component, let's see if these are all the same subgraphs
+            print ("Detected %d components in the system!" % len(hist))
+            print (hist)
+            if len(hist)*hist[0] == self.moldg.num_vertices():
+                # mask out all but the first interp net
+                # TBI: check if the others are really subgraphs and how much they are shifted
+                for i, v in enumerate(self.moldg.vertices()):
+                    if comp[i] == 0:
+                        self.moldg.vp.filt[i] = True
+                    else:
+                        self.moldg.vp.filt[i] = False
+                return True 
+
 
     def split_ringsize(self):
         """
