@@ -57,7 +57,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'molsys'
-copyright = u'2017, Roberto Amabile, Johannes P. Duerholt, Julian Keupp, Rochus Schmid'
+copyright = u'2019, Roberto Amabile, Johannes P. Duerholt, Julian Keupp, Rochus Schmid'
 author = u'Roberto Amabile, Johannes P. Duerholt, Julian Keupp, Rochus Schmid'
 
 # The version info for the project you're documenting, acts as replacement for
