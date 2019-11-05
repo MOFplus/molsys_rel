@@ -13,7 +13,7 @@ import string
 import molsys.mol as mol
 import numpy
 
-print 'USAGE: provide mfpx nx ny nz dx dy dz'
+print('USAGE: provide mfpx nx ny nz dx dy dz')
 # TBI: print '-rel results in the use of fractional displacements'
 name = sys.argv [1].rsplit('.',1)[0]
 fi = sys.argv[1]
@@ -21,7 +21,7 @@ fi_type = fi.split('.')[-1]
 fo = name+'_box.mfpx' #.split('.')[0]+'_'+sys.argv[2]+'.mfpx'
 fo_type = fi_type
 
-if len(sys.argv) <=2 : print 'please provide a translation'
+if len(sys.argv) <=2 : print('please provide a translation')
 
 nx = int(sys.argv[2])
 ny = int(sys.argv[3])

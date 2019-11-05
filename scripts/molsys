@@ -18,12 +18,12 @@ except IndexError:
 try:
     fname = sys.argv[1]
     m = molsys.mol.from_file(fname)
-    print("%s loaded as mol instance \"m\"" % fname)
+    print(("%s loaded as mol instance \"m\"" % fname))
     if sum(scell) > 3:
         m.make_supercell(scell)
-        print("\"m\" made as %s supercell" % strcell)
+        print(("\"m\" made as %s supercell" % strcell))
     if addon is not None:
         m.addon(addon)
-        print("\"m.%s\" addon loaded" % addon)
+        print(("\"m.%s\" addon loaded" % addon))
 except IndexError:
     print("molsys, sys, and os imported (no mol instance initialized)")

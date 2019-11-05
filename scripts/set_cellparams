@@ -20,7 +20,7 @@ m.read(fi, ftype = fi_type)
 
 cellstring = sys.argv[2]
 csp = [i for i in cellstring.split() if i != '']
-print cellstring, csp
+print(cellstring, csp)
 cell = [float(i) for i in csp]
 
 if len(cell) == 1:
@@ -30,7 +30,7 @@ if len(cell) == 1:
     cp[0] *= fact; cp[1] *= fact; cp[2] *= fact # scale the lengths of the vectors
     m.set_cellparams(cp)
 elif len(cell) == 3: ## only abc are provided
-    print 'setting cell abc to:', cell
+    print('setting cell abc to:', cell)
     m.set_cellparams(cell+[90.0,90.0,90.0],cell_only=False) 
 elif len(cell) == 6: # abc alpha beta gamma are provided
     m.set_cellparams(cell,cell_only=False)

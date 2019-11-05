@@ -18,7 +18,7 @@ import os
 import string
 
 if len(sys.argv) < 2:
-    print """
+    print("""
       assign_FF <mfpx-file> <FF name>
              
       mfpx-file : file to be read
@@ -28,7 +28,7 @@ if len(sys.argv) < 2:
       Reads your mfpx file as a mol object and assigns parameters
       from MOF+ using the given force field name.
       It writes the params as ric/par fiels with the same root filename
-      as the mfpx file."""
+      as the mfpx file.""")
     exit()
     
       
@@ -37,7 +37,7 @@ fname = sys.argv[1]
 froot = string.join(fname.split(".")[:-1])
 
 if len(sys.argv) < 3:
-    print "Please specify a FF name"
+    print("Please specify a FF name")
     exit()
 ff = sys.argv[2]
 if len(sys.argv) == 4:
