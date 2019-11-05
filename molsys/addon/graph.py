@@ -371,6 +371,10 @@ class graph(object):
                         self.moldg.vp.filt[i] = True
                     else:
                         self.moldg.vp.filt[i] = False
+                # make a copy of molg that contains only the first subgraph
+                self.moldg.set_vertex_filter(self.moldg.vp.filt)
+                self.moldg = Graph(directed=False, g=self.moldg, prune=True)
+                print ("the first subsystem has been cut out")
                 return True 
 
 
