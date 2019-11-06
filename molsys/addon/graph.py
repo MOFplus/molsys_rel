@@ -282,6 +282,7 @@ class graph(object):
         # set up the graph
         self.make_decomp_graph()
         # first test for interp
+        self.interp = 1 # if interp > 1 then we have N interp nets which are in moldg_full, mappings in self.interp_map
         self.detect_interp()
         # split it
         if mode == "ringsize":
@@ -361,8 +362,6 @@ class graph(object):
             return False
         else:
             # we have more than one component, let's see if these are all the same subgraphs
-            print ("Detected %d components in the system!" % len(hist))
-            print (hist)
             if len(hist)*hist[0] == self.moldg.num_vertices():
                 # mask out all but the first interp net
                 # TBI: check if the others are really subgraphs and how much they are shifted
@@ -372,10 +371,40 @@ class graph(object):
                     else:
                         self.moldg.vp.filt[i] = False
                 # make a copy of molg that contains only the first subgraph
+                self.moldg_full = self.moldg
                 self.moldg.set_vertex_filter(self.moldg.vp.filt)
                 self.moldg = Graph(directed=False, g=self.moldg, prune=True)
-                print ("the first subsystem has been cut out")
-                return True 
+                # unset filter
+                self.moldg_full.set_vertex_filter(None)
+                # now check the substructure mapping
+                maps = subgraph_isomorphism(self.moldg, self.moldg_full, vertex_label=(self.moldg.vp.elem, self.moldg_full.vp.elem))
+                subs = []
+                subs_check = []
+                for m in maps:
+                    sl = list(m)
+                    sl_check = copy.deepcopy(sl)
+                    sl_check.sort()
+                    if sl_check not in subs_check: 
+                        subs.append(sl)
+                        subs_check.append(sl_check)
+                assert len(hist) == len(subs), "Something in itnerp checking went wrong: hist is %s" % str(hist)
+                self.interp = len(subs)
+                self.interp_map = subs
+                # elems = self._mol.get_elems()
+                # xyz   = self._mol.get_xyz()
+                # for i in range(1,self.interp):
+                #     print ("analysing %d. net" % (i+1))
+                #     for i,j in zip(self.interp_map[0],self.interp_map[i]):
+                #         r = xyz[i]-xyz[j]
+                #         d = np.sqrt((r*r).sum())
+                #         print ("Atom pair %3d %3d: %3s %3s  dist: %12.6f" % (i, j, elems[i], elems[j], d))
+                return False
+            else:
+                print ("""We are in big trouble .. 
+                there are components in your system which are not interpenetrated nets but other stuff
+                like sovent molecules. Please check your onput structure!!
+                Decomposition is going to fail miserably""")
+                return True  
 
 
     def split_ringsize(self):
@@ -450,10 +479,10 @@ class graph(object):
                 i = e.source() 
                 j = e.target()
                 # also add the connector info as a string because we could have multiple
-                if len(self.moldg.vp.con[i]) > 0:
-                    print ("atom %d has already con %s ... connects to %d" % (i, self.moldg.vp.con[i], j)) 
-                if len(self.moldg.vp.con[j]) > 0:
-                    print ("atom %d has already con %s ... connects to %d" % (j, self.moldg.vp.con[j], i)) 
+                # if len(self.moldg.vp.con[i]) > 0:
+                    # print ("atom %d has already con %s ... connects to %d" % (i, self.moldg.vp.con[i], j)) 
+                # if len(self.moldg.vp.con[j]) > 0:
+                    # print ("atom %d has already con %s ... connects to %d" % (j, self.moldg.vp.con[j], i)) 
                 self.moldg.vp.con[i] += "%d " % j
                 self.moldg.vp.con[j] += "%d " % i
                 ibb = self.moldg.vp.bb[i]
