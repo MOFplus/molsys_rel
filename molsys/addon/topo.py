@@ -52,7 +52,10 @@ class topo:
     @property
     def RCSRname(self):
         if self._RCSRname is None:
-            self._RCSRname = skdb.get_name(self.systrekey)
+            try:
+                self._RCSRname = skdb.get_name(self.systrekey)
+            except KeyError:
+                self._RCSRname = "unknown"
         return self._RCSRname
 
     def extend_images(self):

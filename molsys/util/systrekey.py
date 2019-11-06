@@ -116,8 +116,17 @@ def run_systrekey(edges, labels):
         lqg.append(el)
     json_lqg = json.dumps(lqg)
 
-    json_result = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", json_lqg, systre_path])
-    
+    try:
+        json_result = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", json_lqg, systre_path], stderr=subprocess.STDOUT).decode()
+    except subprocess.CalledProcessError as err:
+        raw_err = err.stdout.decode().split("\n")
+        for el in raw_err:
+            if el[:6] == "Error:":
+                err = el
+                break
+        print ("systrekey says -> %s" % err)
+        return err, []
+
     result = json.loads(json_result)
     key = result["key"]
     mapping = result["mapping"]
