@@ -20,15 +20,15 @@ class reader(object):
     def load_keys_from_file(self,fname):
         self.keys = {}
         f = open(fname, 'r')
-        for line in f.xreadlines():
+        for line in f.readlines():
             sline = line.split()
             if len(sline)>0:
                 if sline[0] == 'key':
-                    dim = int(sline[1])
-                    key = string.join(sline[2:])
+                    #dim = int(sline[1])
+                    key = " ".join(sline[1:])
                 if sline[0] == 'id':
                     name = sline[1]
-                    self.keys[name] = [dim,key]
+                    self.keys[name] = key
         return
 
     def dump_keys_to_pickle(self,pname):
@@ -47,9 +47,8 @@ class lqg(object):
         self.dim = dim
         return
 
-
     def read_systre_key(self, skey):
-        """generate data strucutres from systrekey
+        """generate data structures from systrekey
         
         Args:
             skey (string): systrekey 
@@ -76,6 +75,7 @@ class lqg(object):
         print (self.nvertices)
         print (self.edges)
         return
+
 
     def write_systre_pgr(self, id = "mfpb"):
         pgr = "PERIODIC_GRAPH\nID %s\nEDGES\n" % id
