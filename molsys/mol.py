@@ -395,8 +395,9 @@ class mol(mpiobject):
         m = cls()
         m.natoms = l.nvertices
         m.set_cell(l.cell)
-        m.set_xyz_from_frac(n.frac_xyz)
-        m.set_atypes(n.nvertices*['1'])
+        print (l.cell)
+        m.set_xyz_from_frac(l.frac_xyz)
+        m.set_atypes(l.nvertices*['1'])
         m.set_empty_conn()
         m.set_empty_pconn()
         m.make_topo()
