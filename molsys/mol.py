@@ -379,6 +379,31 @@ class mol(mpiobject):
         arr = np.array(nestl)
         return cls.fromArray(arr, **kwargs)
 
+    @classmethod
+    def from_systrekey(cls, skey, **kwargs):
+        """generate a mol/topo object from a systrekey as the barycentric embedding
+
+        it is necessary to have graph_tool installed in order to run lqg
+        
+        Args:
+            skey (string): the systrekey
+        """
+        from .util.lqg import lqg
+        l = lqg()
+        l.read_systre_key(skey)
+        l()
+        m = cls()
+        m.natoms = l.nvertices
+        m.set_cell(l.cell)
+        m.set_xyz_from_frac(n.frac_xyz)
+        m.set_atypes(n.nvertices*['1'])
+        m.set_empty_conn()
+        m.set_empty_pconn()
+        m.make_topo()
+        m.addon("topo")
+        return m
+
+
     def to_phonopy(self, hessian = None):
         """
             Method to create a phonopy object for lattice dynamic calculations.

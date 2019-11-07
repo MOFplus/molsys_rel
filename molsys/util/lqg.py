@@ -8,7 +8,7 @@ import pdb
 import molsys.mol as mol
 import copy
 from math import fmod
-from molsys.util import RCSR
+# from molsys.util import RCSR  # never used
 
 from molsys.util import systrekey
 
