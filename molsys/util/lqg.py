@@ -72,8 +72,6 @@ class lqg(object):
             label = list(map(int, skey[i*dfac+2:i*dfac+dfac]))
             self.edges.append(edge)
             self.labels.append(label)
-        print (self.nvertices)
-        print (self.edges)
         return
 
 
@@ -244,6 +242,8 @@ class lqg(object):
 
     def get_fracs(self):
         self.fracs = numpy.dot(numpy.linalg.inv(self.B),self.alpha)
+        # compute the scale to make the shortest edge length 1.0
+        self.scale = 1.0/numpy.min((numpy.sqrt((self.fracs*self.fracs).sum(axis=1))))
         return self.fracs
 
     def get_lattice_basis(self):
@@ -424,6 +424,11 @@ class lqg(object):
         self.get_cell()
         self.get_fracs()
         self.place_vertices()
+        # use the sclae computed in get_fracs() to scale
+        print (self.scale) 
+        self.cell *= self.scale
+        print (self.cell)
+        return
 
 
 class Systre(object):
