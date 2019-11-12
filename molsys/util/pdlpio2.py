@@ -114,6 +114,7 @@ class pdlpio2(mpiobject):
             # if ffe is None we are in analysis mode (means the file must exist)
             assert self.fexists, "PDLP ERROR: For analysis the file must exist!"
             self.mode = "analysis"
+            self.restart_stage = "default" # use default stage to start up (should be always there, right?)
         # now open the file
         self.open()
         #
@@ -152,7 +153,7 @@ class pdlpio2(mpiobject):
             return
         self.h5file_isopen = True
         if self.is_master:
-            self.h5file = h5py.File(self.fname)
+            self.h5file = h5py.File(self.fname, "r+")
         else:
             self.h5file = None
         return
@@ -383,6 +384,11 @@ class pdlpio2(mpiobject):
         OK = self.mpi_comm.bcast(OK)
         return OK
 
+    def get_stages(self):
+        stagelist = list(self.h5file.keys())
+        stagelist.remove("system")
+        return stagelist
+
     def write_restart(self, stage=None, velocities=False):
         """write restart info to file
 
@@ -519,6 +525,6 @@ class pdlpio2(mpiobject):
         if data_written : self.h5file.flush()
         self.counter += 1
         return
-        
-            
+    
+
         
