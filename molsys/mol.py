@@ -897,6 +897,7 @@ class mol(mpiobject):
             colorize=False (bool): distinguish the duplicates by different colors
 
         """
+        assert self.periodic
         self.supercell = tuple(supercell)
         ntot = np.prod(self.supercell)
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
