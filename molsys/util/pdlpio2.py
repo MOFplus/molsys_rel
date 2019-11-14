@@ -153,7 +153,7 @@ class pdlpio2(mpiobject):
             return
         self.h5file_isopen = True
         if self.is_master:
-            self.h5file = h5py.File(self.fname, "r+")
+            self.h5file = h5py.File(self.fname, "a")
         else:
             self.h5file = None
         return
