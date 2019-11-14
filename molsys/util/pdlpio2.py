@@ -394,20 +394,23 @@ class pdlpio2(mpiobject):
         if stage is None:
             stage = self.stage
         OK = True
+        # we need to do this in parallel on nodes (lammps gather is a parallel step)
+        xyz = self.ffe.get_xyz()
+        if velocities:
+            vel = self.ffe.get_vel()
         if self.is_master:
             if stage not in list(self.h5file.keys()):
                 OK = False
             else:
                 restart = self.h5file[stage+"/restart"]
-                xyz = self.ffe.get_xyz()
                 cell = self.ffe.get_cell()
                 rest_xyz = restart.require_dataset("xyz",shape=xyz.shape, dtype=xyz.dtype)
                 rest_xyz[...] = xyz
                 rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
                 rest_cell[...] = cell
                 if velocities:
-                    vel = self.ffe.get_vel()
                     rest_vel = restart.require_dataset("vel", shape=vel.shape, dtype=vel.dtype)
+                    rest_vel[...] = vel
         OK = self.mpi_comm.bcast(OK)
         if not OK:
             self.pprint("PDLP ERROR: writing restart to stage %s failed. Stage does not exist" % stage)
@@ -426,46 +429,48 @@ class pdlpio2(mpiobject):
             prec (str, optional): Defaults to "float64". precision to use in writing traj data
             tstep (float, optional): Defaults to 0.001. Timestep in ps
         """ 
+        # RS function rewritten for parallel runs (in lammps soem of the data_funcs need to be exectued by all nodes)
         self.open()       
         if type(data_nstep)== type([]):
             assert len(data_nstep)==len(traj_data)
         else:
             data_nstep = len(traj_data)*[data_nstep]
-        OK=True
+        OK = True
         if self.is_master:
-            if stage not in list(self.h5file.keys()):      
+            if stage not in list(self.h5file.keys()):
                 OK = False
-            else:
-                traj = self.h5file.require_group(stage+"/traj")
-                traj.attrs["nstep"] = traj_nstep
-                traj.attrs["tstep"] = tstep
-                for dname,dnstep in zip(traj_data, data_nstep):
-                    assert dname in list(self.ffe.data_funcs.keys())
-                    data = self.ffe.data_funcs[dname]()
-                    dshape = list(data.shape)
-                    pdlp_data = traj.require_dataset(dname, 
-                                    shape=tuple([1]+dshape),
-                                    maxshape=tuple([None]+dshape),
-                                    chunks=tuple([1]+dshape),
-                                    dtype=prec)
-                    pdlp_data[...] = data
-                    pdlp_data.attrs["nstep"] = dnstep
-                if len(thermo_values)>0:
-                    # write thermodynamic data .. size of array is length of list
-                    nthermo = len(thermo_values)
-                    pdlp_data = traj.require_dataset("thermo",
-                                    shape=(1, nthermo),
-                                    maxshape=(None, nthermo),
-                                    chunks=(1, nthermo),
-                                    dtype=prec,
-                                    )
-                    # TBI .. get thermo data in ffe on python level
-                    pdlp_data[...] = 0.0
-                    pdlp_data.attrs["labels"] = " ".join(thermo_values)
         OK = self.mpi_comm.bcast(OK)
         if not OK:
-            self.pprint("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
-            raise IOError
+            raise IOError("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
+        if self.is_master:
+            traj = self.h5file.require_group(stage+"/traj")
+            traj.attrs["nstep"] = traj_nstep
+            traj.attrs["tstep"] = tstep
+        for dname,dnstep in zip(traj_data, data_nstep):
+            assert dname in list(self.ffe.data_funcs.keys())
+            data = self.ffe.data_funcs[dname]()
+            dshape = list(data.shape)
+            if self.is_master:
+                pdlp_data = traj.require_dataset(dname, 
+                                shape=tuple([1]+dshape),
+                                maxshape=tuple([None]+dshape),
+                                chunks=tuple([1]+dshape),
+                                dtype=prec)
+                pdlp_data[...] = data
+                pdlp_data.attrs["nstep"] = dnstep
+        if len(thermo_values)>0:
+            # write thermodynamic data .. size of array is length of list
+            nthermo = len(thermo_values)
+            if self.is_master:
+                pdlp_data = traj.require_dataset("thermo",
+                                shape=(1, nthermo),
+                                maxshape=(None, nthermo),
+                                chunks=(1, nthermo),
+                                dtype=prec)
+                # TBI .. get thermo data in ffe on python level
+                pdlp_data[...] = 0.0
+                pdlp_data.attrs["labels"] = " ".join(thermo_values)
+        self.mpi_comm.barrier()
         return
 
     def add_bondtab(self, stage, nbondsmax):
