@@ -54,7 +54,7 @@ import molsys
 
 class pdlpio2(mpiobject):
 
-    def __init__(self, fname, ffe=None, restart=None, mpi_comm=None, out=None):
+    def __init__(self, fname, ffe=None, restart=None, filemode="a", mpi_comm=None, out=None):
         """generates a pdlp file object
 
         This object knows three states: conencted to a ffe (force field engine) (with a mol object),
@@ -74,6 +74,7 @@ class pdlpio2(mpiobject):
         """ 
         super(pdlpio2, self).__init__(mpi_comm,out)
         self.verbose = 0
+        self.filemode = filemode
         # helper object for hdf5 variable length strings
         self.str_dt = h5py.special_dtype(vlen=str)
         #
@@ -153,7 +154,7 @@ class pdlpio2(mpiobject):
             return
         self.h5file_isopen = True
         if self.is_master:
-            self.h5file = h5py.File(self.fname, "a")
+            self.h5file = h5py.File(self.fname, self.filemode)
         else:
             self.h5file = None
         return
