@@ -8,7 +8,7 @@ import pdb
 import molsys.mol as mol
 import copy
 from math import fmod
-from molsys.util import RCSR
+# from molsys.util import RCSR  # never used
 
 from molsys.util import systrekey
 
@@ -20,15 +20,15 @@ class reader(object):
     def load_keys_from_file(self,fname):
         self.keys = {}
         f = open(fname, 'r')
-        for line in f.xreadlines():
+        for line in f.readlines():
             sline = line.split()
             if len(sline)>0:
                 if sline[0] == 'key':
-                    dim = int(sline[1])
-                    key = string.join(sline[2:])
+                    #dim = int(sline[1])
+                    key = " ".join(sline[1:])
                 if sline[0] == 'id':
                     name = sline[1]
-                    self.keys[name] = [dim,key]
+                    self.keys[name] = key
         return
 
     def dump_keys_to_pickle(self,pname):
@@ -47,24 +47,33 @@ class lqg(object):
         self.dim = dim
         return
 
-
-    def read_systre_key(self, skey, dim=3):
-        self.dim = dim
-        dfac = 2+self.dim
+    def read_systre_key(self, skey):
+        """generate data structures from systrekey
+        
+        Args:
+            skey (string): systrekey 
+        """
+        # split skey into a list
         skey = skey.split()
-        self.nedges = len(skey)/dfac
+        self.dim = int(skey[0])
+        skey = skey[1:]
+        # now skey contains only edges with (i j lx ly lz) i,j vertices, lxyz labels
+        assert len(skey)%(self.dim+2) == 0
+        dfac = self.dim+2
+        self.nedges = int(len(skey)/dfac)
         self.nvertices = 1
         self.edges = []
         self.labels = []
         for i in range(self.nedges):
-            edge = map(int, skey[i*dfac:i*dfac+2])
+            edge = list(map(int, skey[i*dfac:i*dfac+2]))
             for j in edge:
                 if j > self.nvertices: self.nvertices = j
             edge = list(numpy.array(edge)-1)
-            label = map(int, skey[i*dfac+2:i*dfac+dfac])
+            label = list(map(int, skey[i*dfac+2:i*dfac+dfac]))
             self.edges.append(edge)
             self.labels.append(label)
         return
+
 
     def write_systre_pgr(self, id = "mfpb"):
         pgr = "PERIODIC_GRAPH\nID %s\nEDGES\n" % id
@@ -233,6 +242,8 @@ class lqg(object):
 
     def get_fracs(self):
         self.fracs = numpy.dot(numpy.linalg.inv(self.B),self.alpha)
+        # compute the scale to make the shortest edge length 1.0
+        self.scale = 1.0/numpy.min((numpy.sqrt((self.fracs*self.fracs).sum(axis=1))))
         return self.fracs
 
     def get_lattice_basis(self):
@@ -413,6 +424,11 @@ class lqg(object):
         self.get_cell()
         self.get_fracs()
         self.place_vertices()
+        # use the sclae computed in get_fracs() to scale
+        print (self.scale) 
+        self.cell *= self.scale
+        print (self.cell)
+        return
 
 
 class Systre(object):

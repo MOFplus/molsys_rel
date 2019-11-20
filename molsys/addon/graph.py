@@ -281,28 +281,38 @@ class graph(object):
         """
         # set up the graph
         self.make_decomp_graph()
+        print ("graph made")
         # first test for interp
         self.interp = 1 # if interp > 1 then we have N interp nets which are in moldg_full, mappings in self.interp_map
         self.detect_interp()
+        print ("interp detected")
         # split it
         if mode == "ringsize":
             self.split_ringsize()
+            print ("split by ringsize")
             self.make_bb_graph()
+            print ("bb graph made")
             # if we join organic BBs do this now and regenerate bbg afterwards
             if join_organic:
                 if self.join_organic():
+                    print ("joined organic")
                     self.make_bb_graph()
+                    print ("bb graph remade")
             # now test if there have been 2c BBs side by side and remove these splits
             if self.join_2c():
+                print ("joined 2c")
                 self.make_bb_graph()
+                print ("bb graph remade")
         else:
             print("unknown decomosition mode")
             return
         # now get the BBs and the net and collect the output
         net = self.get_net()
+        print ("net constructed")
         # generate the BBs as mol objects and theri distribution to the vertices and edges
         #   NOTE: return values are also available as self.decomp_<name>
         vbb, vbb_map, ebb, ebb_map = self.get_bbs()
+        print ("bbs extracted")
         # return complete info as a tuple
         return (net, vbb, vbb_map, ebb, ebb_map)
 
@@ -377,19 +387,19 @@ class graph(object):
                 # unset filter
                 self.moldg_full.set_vertex_filter(None)
                 # now check the substructure mapping
-                maps = subgraph_isomorphism(self.moldg, self.moldg_full, vertex_label=(self.moldg.vp.elem, self.moldg_full.vp.elem))
-                subs = []
-                subs_check = []
-                for m in maps:
-                    sl = list(m)
-                    sl_check = copy.deepcopy(sl)
-                    sl_check.sort()
-                    if sl_check not in subs_check: 
-                        subs.append(sl)
-                        subs_check.append(sl_check)
-                assert len(hist) == len(subs), "Something in itnerp checking went wrong: hist is %s" % str(hist)
-                self.interp = len(subs)
-                self.interp_map = subs
+                #maps = subgraph_isomorphism(self.moldg, self.moldg_full, vertex_label=(self.moldg.vp.elem, self.moldg_full.vp.elem))
+                #subs = []
+                #subs_check = []
+                #for m in maps:
+                #    sl = list(m)
+                #    sl_check = copy.deepcopy(sl)
+                #    sl_check.sort()
+                #    if sl_check not in subs_check: 
+                #        subs.append(sl)
+                #        subs_check.append(sl_check)
+                #assert len(hist) == len(subs), "Something in itnerp checking went wrong: hist is %s" % str(hist)
+                #self.interp = len(subs)
+                #self.interp_map = subs
                 # elems = self._mol.get_elems()
                 # xyz   = self._mol.get_xyz()
                 # for i in range(1,self.interp):
