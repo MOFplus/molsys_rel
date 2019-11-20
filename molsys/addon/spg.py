@@ -462,7 +462,7 @@ class spg:
         new_mol = molsys.mol()
         new_mol.set_natoms(len(new_spgcell[2]))
         new_mol.set_cell(new_spgcell[0])
-        new_mol.set_xyz(new_mol.get_real_from_frac(new_spgcell[1]))
+        new_mol.set_xyz(new_mol.get_xyz_from_frac(new_spgcell[1]))
         new_mol.set_elems_number(new_spgcell[2])
         # now add the connectivity
         new_mol.detect_conn()
