@@ -1046,8 +1046,8 @@ class ff(base):
                     if not fullparname in par:
                         if ic in var_ics:
                             count+=1
-                            vnames = list(map(lambda a: "$%s%i_%i" % (defaults[ic][2],count,a) )
-                                if type(defaults[ic][3][a]) == str else defaults[ic][3][a], range(defaults[ic][1]))
+                            vnames = list(map(lambda a: "$%s%i_%i" % (defaults[ic][2],count,a) 
+                                if type(defaults[ic][3][a]) == str else defaults[ic][3][a], range(defaults[ic][1])))
                             par[fullparname] = (defaults[ic][0], vnames)
                             for idx,vn in enumerate(vnames):
                                 if type(vn) == str:
