@@ -1937,7 +1937,7 @@ class ff(base):
                 sline = line.split()
                 if len(sline)>0:
                     if sline[0] == "azone":
-                        self.active_zone = (np.array(list(map(int, sline[1:]))-1).tolist())
+                        self.active_zone = np.array([int(x) for x in sline[1:]])
                         azone = True
                     elif sline[0] == "variables":
                         nvar = int(sline[1])
