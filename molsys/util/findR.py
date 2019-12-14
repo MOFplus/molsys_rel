@@ -5,22 +5,26 @@
            find reactions in a ReaxFF trajectory
 
            this code is inspired by chemtrayzer but focuses on heterogeneous gas phase reactions
+           2019 RUB Rochus Schmid
 
 
 
 """
 
 import numpy as np
+import pickle
 
 import molsys
 from molsys.util import pdlpio2
 
 from molsys.util.timing import timer, Timer
+from molsys.util.print_progress import print_progress
 from molsys import mpiobject
 
 from graph_tool import Graph, GraphView
 import graph_tool.topology as gtt
 import graph_tool.util as gtu
+import graph_tool.draw as gtd
 
 class frame:
     """container to store info on a frame
@@ -28,20 +32,61 @@ class frame:
     the main attributes are:
     - fid: frame id 
     - molg:    the molecular graph (edges below threshold are filtered but the bond order is in the edge property bord)
-    - species: dictionary with lists of atom indices, the key of the dict is the molecule id (mid vertex property of molg)
-    - speciesg: view of molg for a specific species 
+    - specs:   dictionary with species (indexed my their name mid -> valid only in that frame!)
     """
 
-    def __init__(self, fid, molg, species, speciesg):
+    def __init__(self, fid, molg, specs):
         self.fid = fid
         self.molg = molg
-        self.species = species
-        self.speciesg = speciesg
+        self.specs = specs
         return
 
     @property
     def nspecies(self):
-        return len(self.species.keys())
+        return len(self.specs.keys())
+
+    def plot(self):
+        print ("plotting species of frame %d" % self.fid)
+        for s in self.specs.keys():
+            gfname = "frame_%d_species_%d.png" % (self.fid, s)
+            g = self.specs[s].graph
+            pos = gtd.arf_layout(g, max_iter=0)
+            gtd.graph_draw(g, pos=pos, vertex_text=g.vp.aid, vertex_font_size=12, vertex_size=8, \
+            output_size=(200, 200), output=gfname, bg_color=[1,1,1,1])
+        return
+
+
+
+
+class species:
+    """container class to keep species info (per frame!)
+    """
+
+    def __init__(self, fid, mid, molg):
+        """init species
+        
+        Args:
+            fid (int): frame number
+            mid (int): molecule id ("name" of species from label components)
+            molg (graph): molg of the frame
+        """
+        self.fid = fid
+        self.mid = mid
+        # find all vertices in molg that belong to this species mid
+        vs = gtu.find_vertex(molg, molg.vp.mid, mid)
+        self.aids = [int(v) for v in vs] # atomids -> TBI do we need to sort? seems like they are sroted as they come
+        # now make a view of molg for this species         
+        molg.vp.filt.a[:] = False
+        for v in vs:
+            molg.vp.filt[v] = True
+        self.graph = GraphView(molg, vfilt=molg.vp.filt)
+        return
+
+    @property
+    def natoms(self):
+        return len(self.aids)
+
+
 
 
 
@@ -75,17 +120,17 @@ class findR(mpiobject):
         return
 
     @timer("process_frame")
-    def process_frame(self, i):
+    def process_frame(self, fid):
         """process a single frame
 
         Args:
-            i (int): number of frame to process
+            fid (int): number of frame to process
             
         Returns:
             frame: frame object
         """
-        bondord = np.array(self.f_bondord[i])
-        bondtab = np.array(self.f_bondtab[i])
+        bondord = np.array(self.f_bondord[fid])
+        bondtab = np.array(self.f_bondtab[fid])
         molg = Graph(directed=False)
         molg.add_vertex(n=self.natoms)
         molg.vp.aid  = molg.new_vertex_property("int")
@@ -109,22 +154,19 @@ class findR(mpiobject):
         mid, hist = gtt.label_components(molg, vprop=molg.vp.mid)
         nspecies_all = len(hist)
         nspecies = []
+        # TBI: currently unmonitored species are filtered only on size .. there could be a per element filtering etc.
         for i in range(nspecies_all):
             if hist[i] >= self.min_atom:
                 nspecies.append(i)
-        species  = {}
-        speciesg = {}
-        for s in nspecies:
-            vs = gtu.find_vertex(molg, molg.vp.mid, s)
-            species[s] = [int(v) for v in vs]        
-            molg.vp.filt.a[:] = False
-            for v in vs:
-                molg.vp.filt[v] = True
-            speciesg[s] = GraphView(molg, vfilt=molg.vp.filt)     
-        f = frame(i, molg, species, speciesg)
+        specs = {}
+        for mid in nspecies:
+            specs[mid] = species(fid, mid, molg)
+        # TBI shall we reset the vertex filter of molg again?      
+        f = frame(fid, molg, specs)
         return f
     
-    def do_frames(self, start=0, stop=None, stride=1):
+    @timer("do_frames")
+    def do_frames(self, start=0, stop=None, stride=1, progress=True):
         """generate all frames (molg, species) representations
         
         Args:
@@ -134,9 +176,29 @@ class findR(mpiobject):
         """ 
         if not stop:
             stop = self.nframes
+        if progress:
+            self.pprint ("Processing frames from %d to %d (stride=%d)" % (start, stop, stride))
         for i in range(start, stop, stride):
+            if progress:
+                ci = (i-start)/stride
+                print_progress(ci, (stop-start)/stride, prefix="Processing frames:", suffix=" done!")
             f = self.process_frame(i)
-            self.frames.append(f)
+            self.frames[i] = f
+            # f.plot()
+        return
+
+    @timer("store_frames")
+    def store_frames(self, fname):
+        f = open(fname, "wb")
+        pickle.dump(self.frames, f)
+        f.close()
+        return
+
+    @timer("load_frames")
+    def load_frames(self, fname):
+        f = open(fname, "rb")
+        self.frames = pickle.load(f)
+        f.close()
         return
 
     def report(self):
