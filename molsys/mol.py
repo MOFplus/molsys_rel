@@ -389,7 +389,6 @@ class mol(mpiobject):
             skey (string): the systrekey
         """
         from .util.lqg import lqg
-        elems_map = {3:'n',4:'s',5:'p',6:'o'}
         l = lqg()
         l.read_systre_key(skey)
         l()
@@ -407,11 +406,10 @@ class mol(mpiobject):
         # TODO: set types properly
         m.set_atypes(l.nvertices*['1'])
         for i in range(m.natoms):
-            e = elems_map[len(m.conn[i])]
+            e = elements.topotypes[len(m.conn[i])]
             m.elems.append(e)
         m.is_topo = True
-        #m.make_topo()
-        #m.addon("topo")
+        m.use_pconn = True
         return m
 
 
@@ -899,6 +897,7 @@ class mol(mpiobject):
             colorize=False (bool): distinguish the duplicates by different colors
 
         """
+        assert self.periodic
         self.supercell = tuple(supercell)
         ntot = np.prod(self.supercell)
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
