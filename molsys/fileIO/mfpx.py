@@ -1,6 +1,7 @@
 import numpy
 from . import txyz
 import logging
+from molsys.util.misc import argsorted
 
 
 logger = logging.getLogger("molsys.io")
@@ -124,22 +125,41 @@ def write(mol, f, fullcell = True):
             f.write('# cell %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
                     tuple(mol.cellparams))
     if mol.is_bb:
+        ### BLOCK DEFINITION ###################################################
+        ### bbcenter write ###
         if mol.center_point != 'special':
             f.write('# bbcenter %s\n' % mol.center_point)
         else:
             f.write('# bbcenter %s %12.6f %12.6f %12.6f\n' %
                     tuple([mol.center_point]+ mol.special_center_point.tolist()))
+        ### bbconn write ###
+        # sort by connectors' types
+        _argsorted_type = argsorted(mol.connectors_type)
+        connectors_type = [mol.connectors_type[_] for _ in _argsorted_type]
+        connector_atoms = [sorted(mol.connector_atoms[_]) for _ in _argsorted_type]
+        connectors      = [mol.connectors[_] for _ in _argsorted_type]
+        # sort by connector atoms after connectors' types
+        _sort_priority = [_*mol.natoms for _ in connectors_type]
+        connector_atoms_priority = [
+            [__+_sort_priority[_k] for __ in _] for _k,_ in enumerate(connector_atoms)
+        ] # preparatory for nested sorting
+        _argsorted_catoms = argsorted(connector_atoms_priority)
+        connector_atoms = [connector_atoms[_] for _ in _argsorted_catoms]
+        connectors      = [connectors[_]      for _ in _argsorted_catoms]
+        # make bbcon line
         connstrings = ''
         ctype = 0
-        for i,d in enumerate(mol.connector_atoms):
-            if mol.connectors_type[i] != ctype:
+        for i,d in enumerate(connector_atoms):
+            if connectors_type[i] != ctype:
                 ctype +=1
-                connstrings += '/ '
+                connstrings += '/ ' # ctypes sep
             for j in d:
-                connstrings = connstrings + str(j+1) +','
-            connstrings = connstrings[0:-1] + '*' + str(mol.connectors[i]+1)+' '
+                connstrings = connstrings + str(j+1) +',' # connector_atoms sep
+            connstrings = connstrings[0:-1] + '*' + str(connectors[i]+1)+' '
+        # write bbcon line
         f.write('# bbconn %s\n' % connstrings)
     if hasattr(mol, "orientation"):
+        ### ORIENTATION DEFINITION #############################################
         o = len(mol.orientation) * "%3d" % tuple(mol.orientation)
         f.write('# orient '+o+"\n")
     f.write('%i\n' % mol.natoms)

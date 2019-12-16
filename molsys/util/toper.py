@@ -4,13 +4,13 @@ from __future__ import print_function
 import os
 import sys
 import molsys
-from graph_tool import Graph
+from graph_tool import Graph, GraphView
 from graph_tool.topology import *
 import numpy as np
 import copy
 from mofplus import user_api
 from string import ascii_lowercase
-from collections import Counter
+from collections import Counter, defaultdict
 
 from molsys.util.color import make_mol, vcolor2elem
 from molsys.util.sysmisc import _makedirs, _checkrundir
@@ -32,7 +32,286 @@ class conngraph:
         - mol: molsys.mol or molsys.topo object
         """
         self.mol = mol
+        if self.mol.periodic and not self.mol.use_pconn:
+            self.mol.add_pconn()
         self.make_graph()
+
+    def __contains__(self, other):
+        return subgraph_isomorphism(
+            other.molg, self.molg,
+            vertex_label=(other.molg.vp.elem, self.molg.vp.elem),
+            subgraph=True, max_n=1
+        )
+
+    def split(self, other=None, duplicates=True, **kwargs):
+        """
+        :Argument:
+        - other(conngraph=None): other conngraph (as subgraph) used as graph
+            separator. If other is None: a standard component split is performed
+
+        :Return:
+        - cgs(list of conngraphs): splitted conngraphs
+        """
+        ### split graph ###
+        gws = self.split_graph(other=other, **kwargs)
+        ### remove duplicates ###
+        # N.B.: graphs must be pruned according to graph view
+        if not duplicates:
+            ugws = []
+            for gw in gws:
+                p_gw = Graph(gw, prune=True)
+                found = False
+                for ugw in ugws:
+                    p_ugw = Graph(ugw, prune=True)
+                    iso = subgraph_isomorphism(p_gw, p_ugw,
+                        vertex_label=(p_gw.vp.elem, p_ugw.vp.elem), subgraph=False, max_n=1)
+                    if iso:
+                        found = True
+                        break
+                if not found:
+                    ugws.append(gw)
+            gws = ugws
+        ### extract molecules ###
+        ms = []
+        for gw in gws:
+            m = self.extract_mol_by_subgraph(gw)
+            ms.append(m)
+        ### split to new conngraphs ###
+        cgs = []
+        for m in ms:
+            cg = self.__class__(m)
+            cgs.append(cg)
+        return cgs
+
+    def split_graph(self, other=None, **kwargs):
+        """
+        :Caveat:
+        - only regioisomerism detected
+        """
+        vfilt = self.molg.new_vertex_property('bool')
+        vfilt.a = True
+        if other is None:
+            umolg = self.molg
+        else:
+            vfilt, vubs = self.label_subgraphs(other)
+            umolg = GraphView(self.molg, vfilt=vfilt)
+        # filtered graph is splitted into components
+        components, histograms = label_components(umolg)
+        # -1 as separator and 0 as first component (only when other is not None)
+        components.a = components.a + vfilt.a -1
+        gws = []
+        for c in np.unique(components.a):
+            if c == -1: # if filtered (only when other is not None)
+                continue
+            gw = GraphView(umolg, vfilt=components.a == c)
+            gws.append(gw)
+        return gws
+
+    def label_subgraphs(self, cg=None, **kwargs):
+        """
+        Label graph with subgraph/s
+        N.B.: if cg is iterable, then order of index is order of priority
+        Example:
+            if paddlewheel comes before the carboxylate, then
+            paddlewheels and carboxylates out of the paddlewheels are found.
+            if carboxylate comes before the paddlewheel, then
+            carboxylates (also in paddlewheels) are found and not paddlewheels.
+
+        :Return:
+            vfilt (vprop): 1 where (collective) match, 0 else
+            vsubs (vprop): index where match for ordered subgraph, -1 else
+        """
+        if cg is None:
+            cg = self
+        vsubs = self.molg.new_vertex_property('int64_t')
+        vsubs.a = -1 # default: no match found, not visited by subgraphs
+        vfilt = self.molg.new_vertex_property('bool')
+        vfilt.a = 1 # to prevent further visiting of the subgraph isomorphism
+        # multiple case #
+        if hasattr(cg, "__iter__"):
+            for i,icg in enumerate(cg):
+                ivfilt, ivsubs = self.label_subgraphs(icg)
+                vsubs.a[ivfilt.a==0] = i + ivsubs.a[ivfilt.a==0] # found
+            vfilt.a[vsubs.a!=-1] = 0
+            return vfilt, vsubs
+        # single case #
+        cs = 0
+        while True: # infinite while until no subgraph is isomorphic
+            # cg.molg serves as separator as in str.split
+            umolg = GraphView(self.molg, vfilt=vfilt)
+            subs = subgraph_isomorphism(cg.molg, umolg,
+                vertex_label=(cg.molg.vp.elem, self.molg.vp.elem), subgraph=True, max_n=1)
+            if subs:
+                # a match is found and filtered
+                sub = subs[0]
+                vfilt.a[sub.a] = 0
+                vsubs.a[sub.a] = cs
+                cs += 1
+            else:
+                # last match it filtered
+                break
+        return vfilt, vsubs
+
+    def label_subgraph_neighbours(self, vsubs):
+        nsubs = self.molg.new_vertex_property('int64_t')
+        nsubs.a = -2 # -2 -> not connector; -1 -> connector of unknown subgraph
+        for v in self.molg.vertices():
+            vsub = vsubs[v]
+            ns = v.all_neighbours()
+            for n in ns:
+                nsub = vsubs[n]
+                if nsub != vsub: # then v is a connector!
+                    nsubs[v] = nsub
+        return nsubs
+
+    def label_subgraph_edges(self, vsubs):
+        efilt = self.molg.new_edge_property("bool")
+        efilt.a = 1
+        esubs = self.molg.new_edge_property("vector<int64_t>")
+        ekinds = set([])
+        for e in self.molg.edges():
+            vsource = vsubs[e.source()]
+            vtarget = vsubs[e.target()]
+            if vsource > vtarget:
+                vtarget, vsource = vsource, vtarget
+            ekind = (vsource, vtarget)
+            if vsource != vtarget:
+                ekinds |= set((ekind,))
+                efilt[e] = 0
+            esubs[e] = ekind
+        return efilt, esubs
+
+    def label_subgraph_components(self, efilt=None):
+        molgw = GraphView(self.molg, efilt=efilt)
+        components, histogram = label_components(molgw)
+        return components, histogram
+
+    def label_subgraph_elementsequences(self, nsubs, components):
+        vfilt = self.molg.new_vertex_property("bool")
+        vfilt.a = 1
+        elems = [self.molg.vp.elem[v] for v in self.molg.vertices()]
+        elems = np.array(elems)
+        elemseqs = defaultdict(list)
+        for i,c in enumerate(nsubs.a):
+            if c == -2: #else: it is a connector
+                continue
+            # apply only on subgraph
+            comp = components.a[i]
+            vfilt.a[components.a == comp] = 1
+            vfilt.a[components.a != comp] = 0
+            molgw = GraphView(self.molg, vfilt=vfilt)
+            # distances from connector to the subgraph
+            dists = shortest_distance(molgw, i)
+            dists.a[dists.a==0] = -1 # filtered out
+            dists.a[i] = 0 # source
+            cond = dists.a > -1 # where considered
+            idists = dists.a[cond]
+            ielems = elems[cond]
+            # element sequence
+            distelems = zip(idists, ielems)
+            counter = Counter(distelems)
+            udistelems = sorted(counter)
+            udistseq = [ui[0] for ui in udistelems]
+            distcounter = Counter(udistseq)
+            # string sequence
+            lfmt = ["" for di in distcounter]
+            for ue in udistelems:
+                lfmt[ue[0]] += "%s%s" % (ue[1], counter[ue])
+            elemseq = "_".join(lfmt)
+            elemseqs[elemseq].append(i)
+        elemseqs = dict(elemseqs)
+        return elemseqs
+
+    def label_subgraph_connectors(self, vsubs, **kwargs):
+        # label inter-subgraph edges
+        efilt, _ = self.label_subgraph_edges(vsubs)
+        # cut inter-subgraph edges
+        components, _ = self.label_subgraph_components(efilt)
+        # neighbour subgraphs
+        nsubs = self.label_subgraph_neighbours(vsubs)
+        # make string sequence of elements per each connector
+        elemseqs = self.label_subgraph_elementsequences(nsubs, components)
+        return nsubs, components, elemseqs
+
+    def label_subgraph_blocks(self, components, elemseqs):
+        ### TO-DO: Distinguish by connectors (regiochemistry, topological)
+        ### TO-DO: Distinguish by coordinates (stereochemistry, geometric)
+        molg = self.molg.copy() # to change molg.vp.elem
+        for eseq in elemseqs:
+            idxs = elemseqs[eseq]
+            for i in idxs:
+                molg.vp.elem[i] = eseq
+        cvfilt = self.molg.new_vertex_property("bool")
+        cvfilt.a = 1
+        svfilt = self.molg.new_vertex_property("int64_t")
+        svfilt.a = -1
+        sblocks = []
+        for uc in np.unique(components.a):
+            cvfilt.a[components.a == uc] = 1
+            cvfilt.a[components.a != uc] = 0
+            molgw = GraphView(molg, vfilt=cvfilt)
+            match = [] # first block not found by construction, so add to kind of blocks
+            for ksbb in sblocks:
+                p_ksbb = Graph(ksbb, prune=True)
+                p_molgw = Graph(molgw, prune=True)
+                match = subgraph_isomorphism(p_ksbb, p_molgw,
+                    vertex_label=(p_ksbb.vp.elem, p_molgw.vp.elem), subgraph=False, max_n=1)
+                if match:
+                    break
+            if not match:
+                svfilt.a[components.a == uc] = len(sblocks) # starts from zero
+                sblocks.append(molgw.copy()) # copy is needed otherwise view is the same
+        return sblocks, svfilt
+
+    def extract_mol_by_subgraph(self, cg, **kwargs):
+        """
+        Extract mol object out of connectivity graph
+
+        :Parameters:
+        cg(conngraph): connectivity graph or graph view
+
+        :Return:
+        m(mol): molecular object
+        """
+        idxs = [int(v) for v in cg.vertices()]
+        m = self.mol.new_mol_by_index(idxs)
+        return m
+
+    def make_block_by_subgraph(self, subgraph, elemseqs):
+        bb = self.extract_mol_by_subgraph(subgraph)
+        bb.add_pconn()
+        bb.addon("bb")
+        bb.is_bb = True
+        # connector type
+        elems = [subgraph.vp.elem[v] for v in subgraph.vertices()]
+        bbc = []
+        bbca = []
+        bbct = []
+        for i,e in enumerate(elems):
+            if e not in elemseqs:
+                continue
+            bbc.append(i)
+            bbca.append([i])
+            bbct.append(e)
+        ct, ca = bb.bb.sort_connectors_type(bbct)
+        bb.connectors_type = ct
+        bb.connectors = [bbc[i] for i in ca]
+        bb.connector_atoms = [bbca[i] for i in ca]
+        bb.center_point = 'coc'
+        bb = bb.unwrap_box()
+        return bb
+
+    def extract_blocks(self, cgs, folder="bbs", **kwargs):
+        _, vsubs = self.label_subgraphs(cgs)
+        nsubs, components, elemseqs = self.label_subgraph_connectors(vsubs)
+        subblocks, subvfilt = self.label_subgraph_blocks(components, elemseqs)
+        bbs = []
+        _makedirs(folder)
+        for i, subb in enumerate(subblocks):
+            bb = self.make_block_by_subgraph(subb, elemseqs)
+            bb.write(("%%s/%%%dd.mfpx" % len(str(len(subblocks)))) % (folder, i))
+            bbs.append(bb)
+        return bbs
 
     def make_graph(self, forbidden = []):
         """ Create a Graph object from a molsys.mol object. """
@@ -263,22 +542,16 @@ class conngraph:
                     traceback.print_exc()
                     sys.exit(1)
         else:
-            #return isomorphism(molg1, molg2, **kwargs) ### not enough for vertex label? [RA]
+            # is there at least one (=any) isomorphism? True/False
+            #   isom is a list of zero or one element, and its boolean
+            #   value is True whether it is not empty
             isom = subgraph_isomorphism(molg1, molg2,
                 vertex_label=(molg1.vp.elem, molg2.vp.elem),
                 subgraph=False, max_n=1, **kwargs)
-            return bool(isom) # is there any isomorphism? True/False
-            # THIS does not work: WHY? investigate #
-            # it is needed w/ different element per vertex (e.g. bipartite case)
-            #return isomorphism(molg1, molg2,
-            #    vertex_inv1=molg1.vp.elem, vertex_inv2=molg2.vp.elem)
-            # WHY NOT THE FOLLOWING? ASK or CHECK SOURCE
-            """
-            isom = subgraph_isomorphism(molg1, molg2,
-                vertex_label=(molg1.vp.elem, molg2.vp.elem),
-                subgraph=False, max_n=1, **kwargs)
-            return bool(isom) # is there any isomorphism? True/False
-            """
+            # N.B.: the following method
+            #   `isomorphism(molg1, molg2, **kwargs)`
+            # is NOT enough for taking vertex/edge labelling into account
+            return bool(isom)
 
     def print_isomorphism(self, iso, vertex=None, edge=None):
         """Print isomorphism as map of indices"""
@@ -676,7 +949,11 @@ class molgraph(conngraph):
         tm.set_xyz(np.array(xyz))
         tm.set_elems(elems)
         tm.set_atypes(tm.natoms*['0'])
-        tm.set_cell(self.mol.get_cell())
+        cell = self.mol.cell
+        if cell is not None:
+            tm.set_cell(cell)
+        else:
+            tm.set_wrapping_cell()
         tm.ctab = tm.get_conn_as_tab(pconn_flag=False)
         tm.add_pconn()
         tm.set_ctab_from_conn(pconn_flag=True)
@@ -707,22 +984,17 @@ class topograph(conngraph):
         return
     
     def remove_2conns_from_mol(self):
-        """ Removes all vertices with 2 connecting edges from self.mol """
-        # delete atoms
+        """
+        Removes all vertices with 2 connecting edges from self.mol
+        """
+        # make mid-edge atom lists
         delete_list = []
         for i in range(self.mol.natoms):
             if len(self.mol.conn[i]) == 2:
                 delete_list.append(i)
-        for i in reversed(sorted(delete_list)):
-            # retain connectivity information
-            connected = []
-            for j in self.mol.conn[i]:
-                connected.append(j)
-            self.mol.conn[connected[0]].append(connected[1])
-            self.mol.conn[connected[1]].append(connected[0])
-            # now delete the atom
-            self.mol.delete_atom(i)
-        # recompute pconn
+        # delete atoms
+        self.mol.delete_atoms(delete_list, keep_conn=True)
+        ## recompute pconn (since delete_atoms is experimental)
         self.mol.add_pconn()
         self.mol.set_ctab_from_conn(pconn_flag=True)
         self.mol.set_etab_from_tabs()
@@ -1513,6 +1785,17 @@ class topotyper(object):
             bbatoms_mg = self.mg.clusters[ubb]
             if bb.elems != [self.mg.mol.elems[i] for i in bbatoms_mg]: # this is the assumption
                 bb = self.mg.mol.new_mol_by_index(bbatoms_mg)
+                # next line is needed since atoms are sorted according to
+                #   previous order, not according the given bbatoms_mg order
+                bbatoms_mg.sort()
+                ### DEBUG ### try to remove the previous line and see what happens
+                #for kk,k in enumerate(bbatoms_mg):
+                #    print(
+                #    "%s == %s? %s" % (
+                #        bb.elems[kk], self.mg.mol.elems[k], bb.elems[kk] == self.mg.mol.elems[k]
+                #        )
+                #)
+                ### END DEBUG ###
                 self.bbs[ubb] = bb # NOT SURE
             connectors = [] # to be converted later
             connector_atoms = []
@@ -1579,13 +1862,7 @@ class topotyper(object):
             _makedirs(foldername)
         for n, i in enumerate(self.unique_bbs):
             m = self.bbs[i[0]]
-            # set cell for a moment to center block in the cell
-            # otherwise atom distances are lost if block is at the boundary of the cell
-            m.set_cell(self.mg.mol.cell)
-            m.center_com()
-            #m.shift_by_com()
-            # reset empty cell
-            m.set_empty_cell()
+            m = m.unwrap_box()
             m.write(foldername+"/"+self.cluster_names[n]+self.organicity[i[0]]+".mfpx", "mfpx")
         return foldername
         

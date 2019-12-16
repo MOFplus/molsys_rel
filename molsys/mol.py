@@ -1443,12 +1443,18 @@ class mol(mpiobject):
             idx (list) : list of indices to be extracted as a new mol object
         """
         ### NEW ### pconn-aware method
+        logging.info("extracting %s out of %s atoms" % (len(idx), self.natoms))
+        sorted_idx = sorted(idx)
+        if sorted_idx != idx:
+            logging.debug(
+                "provided selected atoms' indices are unsorted: keep it in mind"
+            )
         m = mol()
         m = copy.deepcopy(self)
         bads = [i for i in range(self.natoms) if i not in idx]
         m.delete_atoms(bads)
         return m
-        ### DEPRECATED ###
+        ### DEPRECATED ### NOT pconn-aware method
         #assert not self.use_pconn, "This method can not be used with pconn!"
         #m.set_natoms(len(idx))
         #d = {}
@@ -1665,17 +1671,23 @@ class mol(mpiobject):
 
     def delete_atoms(self, bads, keep_conn=False):
         '''
-        deletes an atom and its connections and fixes broken indices of all other atoms
-        if keep_conn == True: connectivity is kept when atoms are in the middle of two others '''
-        if not hasattr(bads, '__iter__'):
+        deletes an atom and its connections and fixes broken indices of all
+            other atoms
+        if keep_conn == True:
+            connectivity is kept when atoms are in the middle of two others
+        N.B. EXPERIMENTAL for use_pconn: you'd like to recompute pconn
+        '''
+        if not hasattr(bads, '__iter__'): # only one atom is provided
             self.delete_atoms([bads], keep_conn=keep_conn)
             return
+        logging.info("deleting %s out of %s atoms" % (len(bads), self.natoms))
         bads.sort()
         goods = [i for i in range(self.natoms) if i not in bads]
         offset = np.zeros(self.natoms, 'int')
         for i in range(self.natoms):
             if i in bads:
                 offset[i:] += 1
+        self.xyz    = self.xyz[goods]
         self.elems  = np.take(self.elems, goods).tolist()
         self.atypes = np.take(self.atypes, goods).tolist()
         if len(self.amass) > 0:
@@ -1683,59 +1695,71 @@ class mol(mpiobject):
         if len(self.fragtypes) > 0:
             self.fragtypes = np.take(self.fragtypes, goods).tolist()
             self.fragnumbers  = np.take(self.fragnumbers, goods).tolist()
-        if keep_conn:
-            #works ONLY for edges: ERROR for terminal atoms and TRASH for the rest
-            if self.use_pconn: #must go before setting self.conn
-                self.pconn = [
-                    [
-                        # get image jp in i-th pconn if j-th atom of i-th conn not in bads
-                        jp if self.conn[i][j] not in bads else
+            self.nfrags = len(Counter(self.fragnumbers))
+        if self.conn is not None:
+            conn = self.conn[:]
+            pconn = self.pconn[:]
+            pimages = self.pimages[:]
+            if keep_conn:
+                #works ONLY for edges: ERROR for terminal atoms and TRASH for the rest
+                if self.use_pconn: #must go before setting self.conn
+                    pconn = [
                         [
-                        # else (j-th atom of i-th con in bads) get image kp
-                        # in the pconn of j-th atom in ith conn
-                        #    and get the first (TBI: all) among atoms associated to each kp different than i
-                            kp for k,kp in enumerate(self.pconn[self.conn[i][j]])
-                                if self.conn[self.conn[i][j]][k] != i
-                        ][0] #works only for edges
-                        for j,jp in enumerate(self.pconn[i])
+                            # get image jp in i-th pconn if j-th atom of i-th conn not in bads
+                            jp if conn[i][j] not in bads else
+                            [
+                            # else (j-th atom of i-th con in bads) get image kp
+                            # in the pconn of j-th atom in ith conn
+                            #    and get the first (TBI: all) among atoms associated to each kp different than i
+                                kp for k,kp in enumerate(pconn[conn[i][j]])
+                                    if conn[conn[i][j]][k] != i
+                            ][0] #works only for edges
+                            for j,jp in enumerate(pconn[i])
+                        ]
+                        # if i-th atom not in bads
+                        for i in range(self.natoms) if i not in bads
                     ]
-                    # if i-th atom not in bads
-                    for i in range(self.natoms) if i not in bads
-                ]
-            self.conn = [
-                [
-                    # subtract the j-th offset to atom j in i-th conn if j not in bads
-                    j-offset[j] if j not in bads else
-                    # else (j in bads) subtract the k-th offset to atom k in j-th conn
-                    #    and get the first (TBI: all) among atoms different than i
+                    pimages = [[arr2idx[j] for j in pi] for pi in pconn]
+                conn = [
                     [
-                        k-offset[k] for k in self.conn[j] if k != i
-                    ][0] #works only for edges
-                    for j in self.conn[i]
-                ]
-                # if atom i not in bads
-                for i in range(self.natoms) if i not in bads
-            ]
-        else:
-            if self.use_pconn: #must go before setting self.conn
-                self.pconn = [
-                    [
-                        # get image jp in i-th pconn if j-th atom of i-th conn not in bads
-                        jp for j,jp in enumerate(self.pconn[i]) if self.conn[i][j] not in bads
+                        # subtract the j-th offset to atom j in i-th conn if j not in bads
+                        j-offset[j] if j not in bads else
+                        # else (j in bads) subtract the k-th offset to atom k in j-th conn
+                        #    and get the first (TBI: all) among atoms different than i
+                        [
+                            k-offset[k] for k in conn[j] if k != i
+                        ][0] #works only for edges
+                        for j in conn[i]
                     ]
                     # if atom i not in bads
                     for i in range(self.natoms) if i not in bads
                 ]
-            self.conn = [
-                [
-                    # subtract the j-th offset to atom j in i-th conn if j not in bads
-                    j-offset[j] for j in self.conn[i] if j not in bads
+            else:
+                if self.use_pconn:
+                    # pconn must go before setting conn
+                    pconn = [
+                        [
+                            # get image jp in i-th pconn if j-th atom of i-th conn not in bads
+                            jp for j,jp in enumerate(pconn[i]) if conn[i][j] not in bads
+                        ]
+                        # if atom i not in bads
+                        for i in range(self.natoms) if i not in bads
+                    ]
+                    pimages = [[arr2idx[j] for j in pi] for pi in pconn]
+                conn = [
+                    [
+                        # subtract the j-th offset to atom j in i-th conn if j not in bads
+                        j-offset[j] for j in conn[i] if j not in bads
+                    ]
+                    # if atom i not in bads
+                    for i in range(self.natoms) if i not in bads
                 ]
-                # if atom i not in bads
-                for i in range(self.natoms) if i not in bads
-            ]
-        self.natoms = len(self.elems)
-        self.xyz    = self.xyz[goods]
+        self.natoms = len(goods)
+        self.conn = conn
+        self.pconn = pconn
+        self.pimages = pimages
+        if self.conn is not None:
+            self.set_etab_from_conns()
         return
 
     def delete_atom(self,bad, keep_conn=False):
@@ -2709,21 +2733,29 @@ class mol(mpiobject):
 
     def set_etab_from_conns(self, conn=None, pimages=None):
         """set etab from connectivity tables"""
-        ### if no pconn: etab is ctab, then return ###
-        if not self.use_pconn:
-            self.etab = self.ctab
-            return
         if conn is None and pimages is None:
             conn = self.conn
             pimages = self.pimages
         elif conn is None or pimages is None:
             raise ValueError("conn and pimages can't both be None")
+        ### if no pconn: etab is ctab, then return ###
+        if not self.use_pconn:
+            self.set_ctab_from_conn()
+            self.etab = self.ctab
+            return
         ### if conn length is 0: etab is ctab, then return ###
         if len(conn) == 0:
-            self.etab = self.ctab
+            self.etab = self.ctab[:]
             return
         # all the possible edges (redudant)
         etab_red = sum([[(ii,j,pimages[ii][jj]) for jj,j in enumerate(i)] for ii,i in enumerate(conn)],[])
+        # if no bond is found
+        if len(etab_red) == 0:
+            self.ctab = []
+            self.ptab = []
+            self.etab = []
+            return
+        # if any bond is found
         # edit by convention:
         #    1)i < j
         #    2)k <= 13 if i == j
