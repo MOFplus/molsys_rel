@@ -1340,6 +1340,7 @@ class mol(mpiobject):
 
     def set_empty_cell(self):
         ''' set empty cell and related attributes'''
+        self.bcond = 0
         self.periodic = False
         self.cell = None
         self.cellparams = None
@@ -2312,15 +2313,21 @@ class mol(mpiobject):
         """
         if hasattr(self,'masstype') == False:
             self.set_real_mass()
+        if self.amass is None:
+            amass = np.zeros(self.natoms)
+        if len(self.amass) == 0:
+            amass = np.zeros(self.natoms)
+        else:
+            amass = self.amass
         if xyz is not None:
-            amass = np.array(self.amass)[idx]
+            amass = np.array(amass)[idx]
         elif idx is None:
             if self.periodic and check_periodic: return None
             xyz = self.get_xyz()
-            amass = np.array(self.amass)
+            amass = np.array(amass)
         else:
             xyz = self.get_xyz()[idx]
-            amass = np.array(self.amass)[idx]
+            amass = np.array(amass)[idx]
         if pbc: xyz = self.apply_pbc(xyz, 0)
         if np.sum(amass) > 0.0:
             center = np.sum(xyz*amass[:,np.newaxis], axis =0)/np.sum(amass)

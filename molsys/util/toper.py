@@ -1819,16 +1819,18 @@ class topotyper(object):
             connectors_signtype = list(Counter(connectors_sign).keys())
             sign2type = dict([(e,i) for i,e in enumerate(connectors_signtype)])
             connectors_type = [sign2type[e] for e in connectors_sign]
+            # center in box
+            bb.set_cell(self.mg.mol.cell)
+            bb.periodic = True
+            bb.center_com(check_periodic=False)
+            bb.wrap_in_box()
+            bb.bcond = 0
             bb.addon("bb")
             bb.is_bb = True
             bb.connectors = connectors
             bb.connector_atoms = connector_atoms
             bb.connectors_type = connectors_type
             bb.center_point = 'coc'
-            bb.set_cell(self.mg.mol.cell)
-            bb.periodic = True
-            bb.center_com(check_periodic=False)
-            bb.wrap_in_box()
     
     def write_bbs(self, foldername="bbs", index_run=False, org_flag="_ORG", ino_flag="_INO"):
         """
