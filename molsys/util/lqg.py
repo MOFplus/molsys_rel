@@ -425,9 +425,9 @@ class lqg(object):
         self.get_fracs()
         self.place_vertices()
         # use the sclae computed in get_fracs() to scale
-        print (self.scale) 
-        self.cell *= self.scale
-        print (self.cell)
+        # print (self.scale) 
+        # self.cell *= self.scale
+        # print (self.cell)
         return
 
 
