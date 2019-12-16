@@ -17,7 +17,7 @@ m.ff.do_not_varnames2par=True
 m.read(name +".mfpx")
 m.ff.read(name,fit=True)
 
-os.system('cp %s.fpar %s.par.bak' % (name,name))
+os.system('cp %s.fpar %s.fpar.bak' % (name,name))
 os.system('cp %s.ric %s.ric.bak' % (name,name))
 
 #m.ff.varnames2par()
