@@ -9,6 +9,7 @@ basic mpiobject
 from __future__ import print_function
 
 import sys
+import _io
 
     
 # load a global comm and general info on MPI for logger and other things
@@ -62,7 +63,7 @@ class mpiobject(object):
             self.mpi_size = 1
         if out is None:
             self.out = sys.stdout
-        elif type(out) == file:
+        elif type(out) == _io.TextIOWrapper:
             assert out.mode == 'w'
             self.out = out
         else:
