@@ -41,7 +41,7 @@ class DataReference:
         """
         if exists_warning:
             if os.path.isfile(fname) and self.access[0] != "w":
-                raise  IOError, "File %s exists, explicit exists_warning=False for DataReference instance" % (self.name,)
+                raise  IOError("File %s exists, explicit exists_warning=False for DataReference instance" % (self.name,))
         if h5file is None:
             h5file = self.h5file
         if path is not None:

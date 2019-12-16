@@ -42,6 +42,7 @@
 """
 
 import h5py
+from h5py import File, special_dtype
 import numpy as np
 
 import types
@@ -54,7 +55,7 @@ import molsys
 
 class pdlpio2(mpiobject):
 
-    def __init__(self, fname, ffe=None, restart=None, mpi_comm=None, out=None):
+    def __init__(self, fname, ffe=None, restart=None, filemode="a", mpi_comm=None, out=None):
         """generates a pdlp file object
 
         This object knows three states: conencted to a ffe (force field engine) (with a mol object),
@@ -74,8 +75,9 @@ class pdlpio2(mpiobject):
         """ 
         super(pdlpio2, self).__init__(mpi_comm,out)
         self.verbose = 0
+        self.filemode = filemode
         # helper object for hdf5 variable length strings
-        self.str_dt = h5py.special_dtype(vlen=str)
+        self.str_dt = special_dtype(vlen=str)
         #
         self.fname = fname
         # check if this file exists or should be generated
@@ -114,6 +116,7 @@ class pdlpio2(mpiobject):
             # if ffe is None we are in analysis mode (means the file must exist)
             assert self.fexists, "PDLP ERROR: For analysis the file must exist!"
             self.mode = "analysis"
+            self.restart_stage = "default" # use default stage to start up (should be always there, right?)
         # now open the file
         self.open()
         #
@@ -142,9 +145,9 @@ class pdlpio2(mpiobject):
             self.write_restart()
         return
         
-    def __del__(self):
-        self.close()
-        return
+    # def __del__(self):
+    #     self.close()
+    #     return
 
     def open(self):
         """ method to make sure that h5file is open """
@@ -152,7 +155,7 @@ class pdlpio2(mpiobject):
             return
         self.h5file_isopen = True
         if self.is_master:
-            self.h5file = h5py.File(self.fname)
+            self.h5file = File(self.fname, self.filemode)
         else:
             self.h5file = None
         return
@@ -383,6 +386,11 @@ class pdlpio2(mpiobject):
         OK = self.mpi_comm.bcast(OK)
         return OK
 
+    def get_stages(self):
+        stagelist = list(self.h5file.keys())
+        stagelist.remove("system")
+        return stagelist
+
     def write_restart(self, stage=None, velocities=False):
         """write restart info to file
 
@@ -394,20 +402,23 @@ class pdlpio2(mpiobject):
         if stage is None:
             stage = self.stage
         OK = True
+        # we need to do this in parallel on nodes (lammps gather is a parallel step)
+        xyz = self.ffe.get_xyz()
+        if velocities:
+            vel = self.ffe.get_vel()
         if self.is_master:
             if stage not in list(self.h5file.keys()):
                 OK = False
             else:
                 restart = self.h5file[stage+"/restart"]
-                xyz = self.ffe.get_xyz()
                 cell = self.ffe.get_cell()
                 rest_xyz = restart.require_dataset("xyz",shape=xyz.shape, dtype=xyz.dtype)
                 rest_xyz[...] = xyz
                 rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
                 rest_cell[...] = cell
                 if velocities:
-                    vel = self.ffe.get_vel()
                     rest_vel = restart.require_dataset("vel", shape=vel.shape, dtype=vel.dtype)
+                    rest_vel[...] = vel
         OK = self.mpi_comm.bcast(OK)
         if not OK:
             self.pprint("PDLP ERROR: writing restart to stage %s failed. Stage does not exist" % stage)
@@ -426,46 +437,48 @@ class pdlpio2(mpiobject):
             prec (str, optional): Defaults to "float64". precision to use in writing traj data
             tstep (float, optional): Defaults to 0.001. Timestep in ps
         """ 
+        # RS function rewritten for parallel runs (in lammps soem of the data_funcs need to be exectued by all nodes)
         self.open()       
         if type(data_nstep)== type([]):
             assert len(data_nstep)==len(traj_data)
         else:
             data_nstep = len(traj_data)*[data_nstep]
-        OK=True
+        OK = True
         if self.is_master:
-            if stage not in list(self.h5file.keys()):      
+            if stage not in list(self.h5file.keys()):
                 OK = False
-            else:
-                traj = self.h5file.require_group(stage+"/traj")
-                traj.attrs["nstep"] = traj_nstep
-                traj.attrs["tstep"] = tstep
-                for dname,dnstep in zip(traj_data, data_nstep):
-                    assert dname in list(self.ffe.data_funcs.keys())
-                    data = self.ffe.data_funcs[dname]()
-                    dshape = list(data.shape)
-                    pdlp_data = traj.require_dataset(dname, 
-                                    shape=tuple([1]+dshape),
-                                    maxshape=tuple([None]+dshape),
-                                    chunks=tuple([1]+dshape),
-                                    dtype=prec)
-                    pdlp_data[...] = data
-                    pdlp_data.attrs["nstep"] = dnstep
-                if len(thermo_values)>0:
-                    # write thermodynamic data .. size of array is length of list
-                    nthermo = len(thermo_values)
-                    pdlp_data = traj.require_dataset("thermo",
-                                    shape=(1, nthermo),
-                                    maxshape=(None, nthermo),
-                                    chunks=(1, nthermo),
-                                    dtype=prec,
-                                    )
-                    # TBI .. get thermo data in ffe on python level
-                    pdlp_data[...] = 0.0
-                    pdlp_data.attrs["labels"] = string.join(thermo_values, " ")
         OK = self.mpi_comm.bcast(OK)
         if not OK:
-            self.pprint("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
-            raise IOError
+            raise IOError("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
+        if self.is_master:
+            traj = self.h5file.require_group(stage+"/traj")
+            traj.attrs["nstep"] = traj_nstep
+            traj.attrs["tstep"] = tstep
+        for dname,dnstep in zip(traj_data, data_nstep):
+            assert dname in list(self.ffe.data_funcs.keys())
+            data = self.ffe.data_funcs[dname]()
+            dshape = list(data.shape)
+            if self.is_master:
+                pdlp_data = traj.require_dataset(dname, 
+                                shape=tuple([1]+dshape),
+                                maxshape=tuple([None]+dshape),
+                                chunks=tuple([1]+dshape),
+                                dtype=prec)
+                pdlp_data[...] = data
+                pdlp_data.attrs["nstep"] = dnstep
+        if len(thermo_values)>0:
+            # write thermodynamic data .. size of array is length of list
+            nthermo = len(thermo_values)
+            if self.is_master:
+                pdlp_data = traj.require_dataset("thermo",
+                                shape=(1, nthermo),
+                                maxshape=(None, nthermo),
+                                chunks=(1, nthermo),
+                                dtype=prec)
+                # TBI .. get thermo data in ffe on python level
+                pdlp_data[...] = 0.0
+                pdlp_data.attrs["labels"] = " ".join(thermo_values)
+        self.mpi_comm.barrier()
         return
 
     def add_bondtab(self, stage, nbondsmax):
@@ -519,6 +532,6 @@ class pdlpio2(mpiobject):
         if data_written : self.h5file.flush()
         self.counter += 1
         return
-        
-            
+    
+
         

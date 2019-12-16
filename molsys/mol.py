@@ -127,6 +127,7 @@ class mol(mpiobject):
         self.is_bb=False
         self.is_topo = False # this flag replaces the old topo object derived from mol
         self.use_pconn = False # extra flag .. we could have toper that do not need pconn
+        self.masstype = None
         return
 
     # for future python3 compatibility
@@ -244,7 +245,7 @@ class mol(mpiobject):
         # there is gibberish in the first line of the txyzstring, we need to remove it!
         txyzsl = txyzs.split("\n")
         txyzsl[0] = txyzsl[0].split()[0]
-        txyzs = string.join(txyzsl,'\n')
+        txyzs = '\n'.join(txyzsl)
         m = mol.from_string(txyzs,ftype='txyz')
         if smile.count('*') != 0:
             m.addon('bb')
@@ -377,6 +378,40 @@ class mol(mpiobject):
             assert len(nl) == 3, "Wrong nested list lenght (must be 3): %s" % (arr.shape,)
         arr = np.array(nestl)
         return cls.fromArray(arr, **kwargs)
+
+    @classmethod
+    def from_systrekey(cls, skey, **kwargs):
+        """generate a mol/topo object from a systrekey as the barycentric embedding
+
+        it is necessary to have graph_tool installed in order to run lqg
+        
+        Args:
+            skey (string): the systrekey
+        """
+        from .util.lqg import lqg
+        l = lqg()
+        l.read_systre_key(skey)
+        l()
+        m = cls()
+        m.natoms = l.nvertices
+        m.set_cell(l.cell)
+        m.set_xyz_from_frac(l.frac_xyz)
+        m.set_empty_conn()
+        m.set_empty_pconn()
+        for i,e in enumerate(l.edges):
+            m.conn[e[0]].append(e[1])
+            m.conn[e[1]].append(e[0])
+            m.pconn[e[0]].append(np.array(l.labels[i]))
+            m.pconn[e[1]].append(-1*np.array(l.labels[i]))
+        # TODO: set types properly
+        m.set_atypes(l.nvertices*['1'])
+        for i in range(m.natoms):
+            e = elements.topotypes[len(m.conn[i])]
+            m.elems.append(e)
+        m.is_topo = True
+        m.use_pconn = True
+        return m
+
 
     def to_phonopy(self, hessian = None):
         """
@@ -862,6 +897,7 @@ class mol(mpiobject):
             colorize=False (bool): distinguish the duplicates by different colors
 
         """
+        assert self.periodic
         self.supercell = tuple(supercell)
         ntot = np.prod(self.supercell)
         xyz =   [copy.deepcopy(self.xyz) for i in range(ntot)]
@@ -1253,6 +1289,15 @@ class mol(mpiobject):
         else:
             self.bcond = 3
         return
+
+    def make_nonperiodic(self):
+        """makes the system non-periodic (forget all perdiodicity infomation)
+        """
+        self.bcond = 0
+        self.periodic = False
+        self.cell  = None
+        return
+
 
     def get_bcond(self):
         """
@@ -2866,6 +2911,9 @@ class mol(mpiobject):
             return self.amass, self.masstype
         else:
             return self.amass
+
+    def get_masstype(self):
+        return self.masstype
 
     def set_mass(self, mass, masstype='real'):
         """
