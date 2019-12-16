@@ -53,6 +53,7 @@ try:
 except ImportError:
     Model = None
     quicksum = None
+    quickprod = None
 else:
     Model = pyscipopt.Model
     quicksum = pyscipopt.quicksum

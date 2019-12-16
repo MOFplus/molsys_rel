@@ -278,27 +278,29 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
     natoms      = mol.natoms
     atypes      = mol.atypes
     if mol.cellparams is not None and not pbc:
-        cnct = mol.conn_nopbc[:]
-        atoms_withconn = mol.atoms_withconn_nopbc[:]
-        offset = numpy.zeros(natoms, 'int')
-        for i in range(natoms):
-            if i not in atoms_withconn:
-                offset[i:] += 1
-        cnct = [
-            [
-                # subtract the j-th offset to atom j in i-th conn if j in atoms_withconn
-                j-offset[j] for j in cnct[i] if j in atoms_withconn
-            ]
-            # if atom i in atoms_withconn
-            for i in range(natoms) if i in atoms_withconn
-        ]
-        natoms = len(atoms_withconn)
-        xyz    = xyz[atoms_withconn]
-        elems  = numpy.take(elems, atoms_withconn).tolist()
-        atypes = numpy.take(atypes, atoms_withconn).tolist()
-        if frags:
-            fragtypes   = numpy.take(fragtypes, atoms_withconn).tolist()
-            fragnumbers = numpy.take(fragnumbers, atoms_withconn).tolist()
+        mol.set_conn_nopbc()
+        cnct = mol.conn_nopbc
+    ### BUG but feature so removable ###
+    #    atoms_withconn = mol.atoms_withconn_nopbc[:]
+    #    offset = numpy.zeros(natoms, 'int')
+    #    for i in range(natoms):
+    #        if i not in atoms_withconn:
+    #            offset[i:] += 1
+    #    cnct = [
+    #        [
+    #            # subtract the j-th offset to atom j in i-th conn if j in atoms_withconn
+    #            j-offset[j] for j in cnct[i] if j in atoms_withconn
+    #        ]
+    #        # if atom i in atoms_withconn
+    #        for i in range(natoms) if i in atoms_withconn
+    #    ]
+    #    natoms = len(atoms_withconn)
+    #    xyz    = xyz[atoms_withconn]
+    #    elems  = numpy.take(elems, atoms_withconn).tolist()
+    #    atypes = numpy.take(atypes, atoms_withconn).tolist()
+    #    if frags:
+    #        fragtypes   = numpy.take(fragtypes, atoms_withconn).tolist()
+    #        fragnumbers = numpy.take(fragnumbers, atoms_withconn).tolist()
     if plain:
         if frags:
             fragtypes = [None]*len(atypes)
@@ -306,9 +308,11 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
             oldatypes = list(zip(atypes, fragtypes, fragnumbers))
         else:
             oldatypes = atypes[:]
+        # unique atomtypes
         u_atypes = set(Counter(oldatypes).keys())
         u_atypes -= set([a for a in u_atypes if str(a).isdigit()])
         u_atypes = sorted(list(u_atypes))
+        # old2new atomtypes
         o2n_atypes = {e:i for i,e in enumerate(u_atypes)}
         n2o_atypes = {i:e for i,e in enumerate(u_atypes)}
         atypes = [a if str(a).isdigit() else o2n_atypes[a] for a in oldatypes]
@@ -339,7 +343,7 @@ def write_body(f, mol, frags=True, topo=False, pbc=True, plain=False):
                 line += (len(conn)*"%7d ") % tuple(conn)
         f.write("%s \n" % line)
     if plain:
-        if hasattr(u_atypes[0],"__iter__"):
+        if frags:
             f.write("### atype: (old_atype, fragment_type, fragment_number)\n")
             n2o_fmt = pprint.pformat(n2o_atypes, indent=4)
         else:
@@ -367,11 +371,13 @@ def write(mol, f, topo = False, frags = False, pbc=True, plain=False):
     ### write func ###
     cellparams = mol.cellparams
     if cellparams is not None:
-        if pbc:
-            natoms = mol.natoms
-        else:
-            mol.remove_conn_pbc()
-            natoms = len(mol.atoms_withconn_nopbc)
+        ### BUG but feature so removable ###
+        #if pbc:
+        #    natoms = mol.natoms
+        #else:
+        #    mol.remove_conn_pbc()
+        #    natoms = len(mol.atoms_withconn_nopbc)
+        natoms = mol.natoms
         f.write("%5d %10.4f %10.4f %10.4f %10.4f %10.4f %10.4f\n" % tuple([natoms]+list(cellparams)))
     else:
         f.write("%5d \n" % mol.natoms)

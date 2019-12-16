@@ -51,7 +51,7 @@ class mgroup:
             self.molnames = [self.parent_mol.name]
             self.moltypes = self.nmols*[0]
             # generate mols (list of lists)
-            for i in xrange(self.nmols):
+            for i in range(self.nmols):
                 self.mols.append([])  # nmols*[[]] does not work -> side effect
             for i, m in enumerate(self.whichmol):
                 self.mols[m].append(i)
@@ -67,7 +67,7 @@ class mgroup:
         '''
         # the default moleculename is taken from the parent molfile
         self.molnames = [self.parent_mol.name]
-        atoms = range(self.parent_mol.natoms)
+        atoms = list(range(self.parent_mol.natoms))
         self.whichmol = self.parent_mol.natoms * [0]
         nmol = 0
         while len(atoms) > 0:
@@ -128,10 +128,10 @@ class mgroup:
         orig_natoms = len(self.whichmol)
         self.molnames.append(name)
         mtype = len(self.molnames)-1
-        for i in xrange(n):
+        for i in range(n):
             # add n molecules
             self.moltypes.append(mtype)
-            self.mols.append(range(orig_natoms+i*natoms,orig_natoms+(i+1)*natoms))
+            self.mols.append(list(range(orig_natoms+i*natoms,orig_natoms+(i+1)*natoms)))
             self.whichmol += natoms*[self.nmols+i]
         self.nmols = len(self.mols)
         assert len(self.whichmol) == self.parent_mol.natoms
