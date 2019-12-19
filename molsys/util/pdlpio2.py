@@ -283,9 +283,10 @@ class pdlpio2(mpiobject):
         # read the data from file on the master
         if self.is_master:
             system = self.h5file["system"]
-            elems  = list(system["elems"])
-            atypes = list(system["atypes"])
-            fragtypes = list(system["fragtypes"])
+            # for python3: now all strings coming from hdf5 are byte class types .. need to convert to strings
+            elems  = list(np.array(system["elems"]).astype("str"))
+            atypes = list(np.array(system["atypes"]).astype("str"))
+            fragtypes = list(np.array(system["fragtypes"]).astype("str"))
             fragnumbers = list(system["fragnumbers"])
             if "cnc_table" in list(system.keys()):
                 cnc_table = list(system["cnc_table"])
