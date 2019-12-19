@@ -1767,7 +1767,13 @@ class ff(base):
         """
         # dummy dicts to assign a number to the type
         par_types = {}
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw","vdwpr","chapr"]:
+        keywords = [i for i in self.par.keys()]
+        # check which keywords are avaialbale in the ff object
+        #keywords_avail = []
+        #for i in keywords:
+        #    if i in 
+         
+        for ic in keywords:
             ptyp = {}
             i = 1
             for ind in self.par[ic]:
@@ -1837,7 +1843,8 @@ class ff(base):
         for k,v in self.settings.items():
             f.write("%-15s %s\n" % (k, str(v)))
         f.write("\n")
-        for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw", "vdwpr","chapr"]:
+        keywords = [i for i in self.par.keys()]
+        for ic in keywords:
             ptyp = par_types[ic]
             par = self.par[ic]
             f.write(ff_desc[ic])
