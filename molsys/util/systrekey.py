@@ -27,6 +27,9 @@ arc_read = False
 db_key2name = {}
 db_name2key = {}
 
+# check presence of node in order to run javascript code
+node_avail = (subprocess.call(args=["which", "node"], stdout=subprocess.DEVNULL) == 0)
+
 
 class systre_db:
 
@@ -50,50 +53,40 @@ class systre_db:
                         # end of record .. store in directories only 3dim nets
                         if key[0] == "3":
                             key = " ".join(key)
+                            if key in db_key2name:
+                                print ("WARNING the following systrekey is already registered for %s" % db_key2name[key])
+                                print (key)
                             db_key2name[key] = name
                             db_name2key[name] = key
                     else:
                         pass
             f.close()
         else:
-            print("""
+            return
+        arc_read=True
+        return
+
+    def report_missing_arc(self):
+        print("""
             WARNING: the file RCSR.arc is not available.
             Please download the current arc file from RCSR.net/systre into
             the molsys/util directory and softlink it to RCSR.arc
             """)
-        arc_read=True
         return
 
     def get_key(self, name):
-        return db_name2key[name]
+        if arc_read:
+            return db_name2key[name]
+        else:
+            self.report_missing_arc()
+            return "None"
 
     def get_name(self, key):
-        return db_key2name[key]
-
-    # def compress_key(self, skey):
-    #     """compress a systrekey
-        
-    #     Args:           
-    #         self (string or list): original systre key
-    #     """
-    #     if type(skey) == type(""):
-    #         lsk = skey.split()
-    #     else:
-    #         lsk = skey
-    #     lsk.reverse()
-    #     dim = lsk.pop() # dimension
-    #     assert dim == "3"
-    #     csk = ""
-    #     while len(lsk)>0:
-    #         i = lsk.pop()
-    #         j = lsk.pop()
-    #         csk += "%s:%s:" % (i,j)
-    #         for i in range(3):
-    #             csk += shift_map[lsk.pop()]
-    #         if len(lsk)>0:
-    #             csk+= ":"
-    #     return csk
-
+        if arc_read:
+            return db_key2name[key]
+        else:
+            self.report_missing_arc()
+            return "None"
 
 def run_systrekey(edges, labels):
     import json
@@ -106,12 +99,19 @@ def run_systrekey(edges, labels):
         edges {list of lists of 2 ints} - list of edges
         labels {list of lists of 3 ints} - list of edge labels
     """
+    if not node_avail:
+        # return nothing to avoid an error
+        print("""
+        WARNING: systrekey was called but node is not installed to run javascript
+        """
+        )
+        return "None", []
     assert len(edges) == len(labels)
     lqg = []
     for e,l in zip(edges, labels):
         el = []
-        el.append(e[0]+1)
-        el.append(e[1]+1)
+        el.append(int(e[0])+1)
+        el.append(int(e[1])+1)
         el.append(l)
         lqg.append(el)
     json_lqg = json.dumps(lqg)
