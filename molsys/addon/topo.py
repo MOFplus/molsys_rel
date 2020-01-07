@@ -14,9 +14,10 @@ TBI: we could think of a way to make a mol/topo object from the systrekey (or a 
 # from molsys.util.lqg import lqg
 from molsys.util import systrekey
 from molsys.util.images import idx2arr,arr2idx
+from molsys.util import elems
 
 # make a systre key database 
-skdb = systrekey.systre_db()
+skdb = systrekey.RCSR_db
 
 class topo:
 
@@ -87,6 +88,13 @@ class topo:
         self._skey_mapping = mapping
         self._spgr = spgr
         self._RCSRname = RCSRname 
+        return
+
+    def fix_topo_elems(self):
+        """call this method to set the elements in a topo file properly (from coord number)
+        """
+        new_elems = [elems.pse[len(c)] for c in self._mol.conn]
+        self._mol.set_elems(new_elems)
         return
 
     def extend_images(self):
