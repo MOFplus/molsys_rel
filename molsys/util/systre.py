@@ -32,7 +32,10 @@ def run_systre(key, debug=False):
     key = " ".join(lsk) # cononicalize key string for later comparison
     nedges = int((len(lsk)-1)/5)
     # now generate a cgd input for systre
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".cgd", delete=True) as fcgd:
+    delete = True
+    if debug:
+        delete = False
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".cgd", delete=delete) as fcgd:
         fcgd.write("PERIODIC_GRAPH\nEDGES\n")
         for i in range(nedges):
             edge = lsk[i*5+1:i*5+6]
@@ -55,7 +58,7 @@ def run_systre(key, debug=False):
     stop = False
     while not stop:
         if len(line)>0:
-            if line[1] == "nodes":
+            if (line[1] == "nodes" or line[1] == "node"):
                 stop = True
                 break
         l += 1
@@ -218,12 +221,15 @@ def convert_all():
     """
     from molsys.util import systrekey
     import os
+    nnets = len(systrekey.db_name2key.keys())
+    i = 0
     for n in systrekey.db_name2key.keys():
         if not os.path.isfile(n+".mfpx"):
-            print ("generating embedding for net %s " % n)
+            print ("generating embedding for net %s (%d of %d)" % (n, i, nnets))
             m = run_systre(systrekey.db_name2key[n])
             m.write(n+".mfpx")
             print ("done!")
+        i += 1
     return
 
 
@@ -233,12 +239,14 @@ if __name__=="__main__":
     import sys
     from molsys.util import systrekey
     name = sys.argv[1]
-    # thsi si the key of tbo ... just for testing
-    # key = """3 1 2 0 0 0 1 3 0 0 0 1 4 0 0 0 1 5 0 0 0 2 6 0 0 0 2 7 0 0 0 3 8 0 0 0 3 9 0 0 0 4 8 0 1 0 
-    #            4 9 1 0 0 5 6 -1 1 1 5 7 0 0 1 6 10 0 0 0 6 11 0 0 0 7 12 0 0 0 7 13 0 0 0 8 10 -1 0 
-    #            1 8 11 0 0 0 9 12 0 0 0 9 13 -1 0 1 10 14 0 0 0 11 14 -1 0 0 12 14 -1 0 0 13 14 -1 1 0"""
-    assert name in systrekey.db_name2key
-    key = systrekey.db_name2key[name]
+    if len(sys.argv) >2:
+        arc = sys.argv[2]
+        db = systrekey.systre_db(arc)
+        db_name2key = db.name2key
+    else:
+        db_name2key = systrekey.db_name2key
+    assert name in db_name2key
+    key = db_name2key[name]
     m = run_systre(key, debug=True)
     m.write(name+".mfpx")
 
