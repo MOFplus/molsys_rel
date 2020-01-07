@@ -2390,7 +2390,7 @@ class mol(mpiobject):
             if not el.count(e): el.append(e)
         return el
 
-    def set_elems(self,elems):
+    def set_elems(self, elems):
         ''' set the elements
         :Parameters:
             - elems: list of elements to be set'''
