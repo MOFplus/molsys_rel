@@ -2,7 +2,6 @@
 from collections import OrderedDict
 
 number = {
-        'x12':0,
         'x': 0,
         'h':1,
         'he':2,
@@ -123,7 +122,8 @@ number = {
         'uus':117,
         'uuo':118}
 
-number = OrderedDict(sorted(number.items(), key=lambda t: t[1]))
+number = OrderedDict(sorted(number.items(), key=lambda t: t[1])) # order dict to get number from element
+pse = list(number.keys()) # list of elements  
 
 cov_radii={'xx':0.300000,
         'xxx':0.600000,
@@ -506,9 +506,13 @@ topotypes = {
         12:'zr',
         13:'fr',
         14:'u',
+        15:'w',
         16:'re',
+        17:'fe',
         18:'os',
+        20:'y',
         24:'po',
+        36:'kr'
         }
 
 sigmas = {
