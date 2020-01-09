@@ -57,7 +57,7 @@ def run_systre(key, debug=False):
     line = systre_result[l].split()
     stop = False
     while not stop:
-        if len(line)>0:
+        if len(line)>1:
             if (line[1] == "nodes" or line[1] == "node"):
                 stop = True
                 break
@@ -87,6 +87,21 @@ def run_systre(key, debug=False):
     # equiv is not necessarily continuous from 0 to nunique
     symlabels = list(set(equiv))
     rev_equiv = [symlabels.index(e) for e in equiv]
+    # now read Coordination sequence
+    coord_seq = []
+    if has_equiv:
+        # read till Coordination ... if not we are there already
+        stop = False
+        while not stop:
+            if len(line)>0:
+                if line[0] == "Coordination":
+                    stop = True
+            l += 1
+            line = systre_result[l].split()
+    while len(line)>0:
+        coord_seq.append(" ".join(line[2:]))
+        l += 1
+        line = systre_result[l].split()
     # next get space group
     stop = False
     while not stop:
@@ -213,6 +228,7 @@ def run_systre(key, debug=False):
         sym_mapping.append(str(rev_equiv[v]))
     m.set_atypes(sym_mapping)
     m.topo._spgr = spgroup
+    m.topo._coord_seq = coord_seq
     return m
 
 

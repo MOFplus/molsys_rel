@@ -38,6 +38,7 @@ def read(mol, f):
     topoinfo["systrekey"] = "None"
     topoinfo["RCSRname"]  = "None"
     topoinfo["spgr"]      = "None" 
+    topoinfo["coord_seq"] = "None"
     while not stop:
         if lbuffer[0] != '#':
             mol.natoms = int(lbuffer[0])
@@ -83,6 +84,8 @@ def read(mol, f):
                     topoinfo["RCSRname"] = lbuffer[2]
                 elif topokeyw == "spgr":
                     topoinfo["spgr"] = lbuffer[2]
+                elif topokeyw == "coord_seq":
+                    topoinfo["coord_seq"] = " ".join(lbuffer[2:])
                 else:
                     logger.warning("unknown topo keyword %s" % keyword)
             lbuffer = f.readline().split()
@@ -104,10 +107,15 @@ def read(mol, f):
                 read_body(f,mol.natoms, topo = True, topo_new=True)
             # if we read a new topo file we add the topo addon right away and fill it with the info from topoinfo
             mol.addon("topo")
+            if topoinfo["coord_seq"] == "None":
+                cs = None
+            else:
+                cs = topoinfo["coord_seq"].split("|")
             mol.topo.set_topoinfo(skey=topoinfo["systrekey"],\
                                   mapping=mol.fragnumbers,\
                                   spgr=topoinfo["spgr"],\
-                                  RCSRname=topoinfo["RCSRname"])
+                                  RCSRname=topoinfo["RCSRname"],\
+                                  coord_seq=cs)
         else:
             mol.elems, mol.xyz, mol.atypes, mol.conn, mol.pconn, mol.pimages =\
                 read_body(f,mol.natoms, topo = True)
@@ -174,10 +182,13 @@ def write(mol, f, fullcell = True, topoformat = "new"):
         else:
             topoinfo["format"] = "old"
         if "topo" in mol.loaded_addons:
-            for k in ["systrekey", "RCSRname", "spgr"]:
+            for k in ["systrekey", "RCSRname", "spgr", "coord_seq"]:
                 v = getattr(mol.topo, k)
                 if v is not "None":
-                    topoinfo[k] = v
+                    if type(v) == type([]):
+                        topoinfo[k] = "|".join(v)
+                    else:
+                        topoinfo[k] = v
     elif mol.is_bb:
         ftype = "bb"
     else:
