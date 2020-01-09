@@ -28,8 +28,8 @@ class systre_db:
         self.arc_file = arc_file
         self.key2name = {}
         self.name2key = {}
-        self.read_arc()
         self.arc_read = False
+        self.read_arc()
         return
 
     def read_arc(self):
