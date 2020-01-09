@@ -208,7 +208,7 @@ def run_systre(key, debug=False):
     # conn/pconn done
     el = []
     for i in range(m.get_natoms()):
-        e = elems.topotypes[len(m.conn[i])]
+        e = elems.pse[len(m.conn[i])]
         el.append(e)
     m.set_elems(el)
     m.is_topo = True
