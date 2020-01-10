@@ -132,7 +132,7 @@ def run_systre(key, debug=False):
     stop = False
     while not stop:
         if len(line) == 2:
-            if line == ["Relaxed", "positions:"]:
+            if line == ["Relaxed", "positions:"] or line == ["Barycentric", "positions:"]:
                 stop = True
         l += 1
         line = systre_result[l].split()
