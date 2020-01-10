@@ -1,8 +1,5 @@
 """a simple wrapper to run the javascript systrekey from python
 
-    TBI: i guess it would be much better to use json to communicate with javascript
-         -> need to figure out how to do this.
-
     added a class for systrekey handling
 
     author: R. Schmid
@@ -12,6 +9,26 @@ import os
 import subprocess
 import string
 import molsys
+
+"""
+INSTALLATION Instructions:
+
+For this to work you need to have the javascript systrekey code from Olaf Delgado-Friedrichs installed.
+
+You need to have a working node.js environment working (do not use the distro version .. they are often too old) from https://nodejs.org
+
+then clone the systreKey repo from here https://github.com/odf/systreKey to the same directory where your molsys repo is located (e.g. ~/sandbox)
+because systre_path is determined from the root path of molsys.
+For the installation follow the instructions from the systreKey repos README 
+
+    git clone https://github.com/odf/systreKey.git
+    cd systreKey
+    npm install
+    npm run build
+
+Do not forget to run "npm run build" every time you pulled updates from Olaf's repo.
+
+"""
 
 
 # get my path 
