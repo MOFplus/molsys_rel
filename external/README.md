@@ -3,13 +3,13 @@
 ## Systre (Olaf Delgado-Friedrichs)
 
 Systre is a Java code written by Olaf Delagado Friedrichs. It is available as part of gavrog available here as source:
-```
+
 https://github.com/odf/gavrog
-```
+
 The precompiled jar file of systre is available here:
-```
+
 https://github.com/odf/gavrog/releases
-```
+
 To run systre.py in molsys.utils you need to download the current Systre jar-file (Systre-19.6.0.jar) into this directory. Install jython by your favorite package manager and set the environment variable CLASSPATH to point to this file. If molsys is located in ```~/sandbox/molsys``` put the 
 jar file into /external and set CLASSPATH like this:
 ```

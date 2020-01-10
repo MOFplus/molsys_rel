@@ -10,12 +10,17 @@ REMARKS:
 
 
 """
+import os
 import numpy as np
 import subprocess
 import tempfile
 import molsys
 from molsys.util import unit_cell
 from molsys.util import elems
+
+# get my path 
+molsys_path = os.path.dirname(molsys.__file__)
+systreCmd_path = os.path.dirname(molsys_path) + "/external"
 
 
 def run_systre(key, debug=False):
@@ -43,7 +48,7 @@ def run_systre(key, debug=False):
         fcgd.write("END\n")
         fcgd.flush()
         try:
-            systre_result = subprocess.check_output(args=["jython", "-u", "/home/rochus/code/systreCmd.py", "-u", fcgd.name], stderr=subprocess.STDOUT)
+            systre_result = subprocess.check_output(args=["jython", "-u", systreCmd_path+"/systreCmd.py", "-u", fcgd.name], stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as err:
             raw_err = err.stdout.decode().split("\n")
             print (raw_err)
