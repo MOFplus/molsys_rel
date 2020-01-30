@@ -86,8 +86,35 @@ class species:
     def natoms(self):
         return len(self.aids)
 
+class fcompare:
+    """This class compares two frames at different levels of reolution whether species are different
+       All info collected during the compairson is kept in this class in order to be exploited later
+    """
+
+    def __init__(self, f1, f2):
+        """generate comparer
+        
+        Args:
+            f1 (frame object): first frame object
+            f2 (frame object): second frame object (to be compared with f1)
+        """
+        self.f1 = f1
+        self.f2 = f2
+        return
 
 
+    def check_species(self):
+        """this method is just to implement all levels of comparison
+
+           it does not return anything and just reports ... meant for debugging
+        """
+        print("##################################################")
+        print("FRAMES        %5d         %5d" % (self.f1.fid, self.f2.fid))
+        print("level 0:      %5d         %5d species" % (self.f1.nspecies, self.f2.nspecies))
+
+
+
+        return
 
 
 class findR(mpiobject):
@@ -116,7 +143,16 @@ class findR(mpiobject):
         self.frames = self.nframes*[None]
         self.timer = Timer(name="findR")
         self.bondord_cutoff = 0.5  # below this bond roder a bond is registered but swithced off
-        self.min_atom = 4          # below this number of atoms a species is considered as gasphase
+        self.min_atom = 10         # below this number of atoms a species is considered as gasphase
+        # for the search
+        self.smode = "forward" # must be either forward, back or fine
+        self.scurrent = 0
+        self.snext    = 0
+        self.sstep ={
+            "forward" : 100,
+            "back"    : 10,
+            "fine"    : 1,
+        }
         return
 
     @timer("process_frame")
@@ -129,6 +165,8 @@ class findR(mpiobject):
         Returns:
             frame: frame object
         """
+        if self.frames[fid] is not None:
+            return self.frames[fid]
         bondord = np.array(self.f_bondord[fid])
         bondtab = np.array(self.f_bondtab[fid])
         molg = Graph(directed=False)
@@ -163,10 +201,12 @@ class findR(mpiobject):
             specs[mid] = species(fid, mid, molg)
         # TBI shall we reset the vertex filter of molg again?      
         f = frame(fid, molg, specs)
+        # store the frame
+        self.frames[fid] = f
         return f
     
     @timer("do_frames")
-    def do_frames(self, start=0, stop=None, stride=1, progress=True):
+    def do_frames(self, start=0, stop=None, stride=1, progress=True, plot=False):
         """generate all frames (molg, species) representations
         
         Args:
@@ -183,9 +223,32 @@ class findR(mpiobject):
                 ci = (i-start)/stride
                 print_progress(ci, (stop-start)/stride, prefix="Processing frames:", suffix=" done!")
             f = self.process_frame(i)
-            self.frames[i] = f
-            # f.plot()
+            if plot:
+                f.plot()
         return
+
+    @timer("search_frames")
+    def search_frames(self):
+        """search the frames for reactions 
+
+        This is the core routine of findR
+        """
+        self.smode = "forward"
+        self.scurrent = 0
+        self.process_frame(self.scurrent)
+        self.snext = self.scurrent+self.sstep[self.smode]
+        # start mainloop (just search on until we are at the end of the file)
+        while self.snext < self.nframes:
+            self.process_frame(self.snext)
+            # do comparison and report
+            comparer = fcompare(self.frames[self.scurrent], self.frames[self.snext])
+            comparer.check_species()
+            self.scurrent = self.snext
+            self.snext = self.scurrent+self.sstep[self.smode]
+        # end of mainloop
+        return
+
+
 
     @timer("store_frames")
     def store_frames(self, fname):
