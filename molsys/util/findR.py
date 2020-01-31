@@ -32,7 +32,7 @@ class frame:
     the main attributes are:
     - fid: frame id 
     - molg:    the molecular graph (edges below threshold are filtered but the bond order is in the edge property bord)
-    - specs:   dictionary with species (indexed my their name mid -> valid only in that frame!)
+    - specs:   dictionary with species (indexed by their name mid -> valid only in that frame!)
     """
 
     def __init__(self, fid, molg, specs):
@@ -111,9 +111,28 @@ class fcompare:
         print("##################################################")
         print("FRAMES        %5d         %5d" % (self.f1.fid, self.f2.fid))
         print("level 0:      %5d         %5d species" % (self.f1.nspecies, self.f2.nspecies))
-
-
-
+        # map species ... anything that remains has changed
+        sk1l = list(self.f2.specs.keys())
+        sk2l = list(self.f2.specs.keys())
+        aid_match = [] 
+        for sk1 in self.f1.specs:
+            s1 = self.f1.specs[sk1]
+            # find a corresponding species in sk2
+            for sk2 in sk2l:
+                s2 = self.f2.specs[sk2]
+                if s1.aids == s2.aids:
+                    # s1 and s2 match -> add to match and to remove
+                    aid_match.append((sk1, sk2))
+                    sk1l.remove(sk1)
+                    sk2l.remove(sk2)
+                    break
+        print("level 1: (atom ID match)")
+        for m in aid_match:
+            print("          species %5d == species %5d" % m)
+        for s in sk1l:
+            print("          species %5d in frame %d unmatched" % (s, self.f1.fid))
+        for s in sk2l:
+            print("          species %5d in frame %d unmatched" % (s, self.f2.fid))
         return
 
 
@@ -149,7 +168,7 @@ class findR(mpiobject):
         self.scurrent = 0
         self.snext    = 0
         self.sstep ={
-            "forward" : 100,
+            "forward" : 200,
             "back"    : 10,
             "fine"    : 1,
         }
@@ -180,12 +199,15 @@ class findR(mpiobject):
         for j in range(self.maxbond):
             e = bondtab[j]-1
             o = bondord[j]
-            if e[0] >= 0:
+            # WARNING: this is not safe ... we assume that veriex numbers are =>0 and <natoms tp be valid ... this is likely but not entirely safe
+            #                     TBI: adda table with number of bonds in the pdlp write out and use that for the loop
+            if (e[0] >= 0 and e[0]<self.natoms and e[1] >= 0 and e[1] < self.natoms):
                 newb = molg.add_edge(e[0], e[1])
                 isbond = o > self.bondord_cutoff
                 molg.ep.bord[newb] = o
                 molg.ep.filt[newb] = isbond 
             else:
+                # invalid vertices in e -> stop (this is NOT safe!! see comment above)
                 break
         # apply edge filter
         molg.set_edge_filter(molg.ep.filt)
