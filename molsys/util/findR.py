@@ -13,6 +13,7 @@
 
 import numpy as np
 import pickle
+import copy
 
 import molsys
 from molsys.util import pdlpio2
@@ -35,34 +36,54 @@ class frame:
     - specs:   dictionary with species (indexed by their name mid -> valid only in that frame!)
     """
 
-    def __init__(self, fid, molg, specs):
+    def __init__(self, fid, molg, specs=None):
         self.fid = fid
         self.molg = molg
-        self.specs = specs
+        if specs:
+            self.specs = specs
+        else:
+            self.specs = {}
         return
+
+    def add_species(self, mid):
+        # make all frame species (observed) witha local graph representation
+        self.specs[mid] = species(self.fid, mid, self.molg, make_graph=True)
+        return
+
+    def make_species(self, mid):
+        # return a species object (without a local graph)
+        return species(self.fid, mid, self.molg, make_graph=True) # for DEBUG .. remove make_graph
 
     @property
     def nspecies(self):
         return len(self.specs.keys())
 
-    def plot(self):
-        print ("plotting species of frame %d" % self.fid)
-        for s in self.specs.keys():
-            gfname = "frame_%d_species_%d.png" % (self.fid, s)
-            g = self.specs[s].graph
-            pos = gtd.arf_layout(g, max_iter=0)
-            gtd.graph_draw(g, pos=pos, vertex_text=g.vp.aid, vertex_font_size=12, vertex_size=8, \
-            output_size=(200, 200), output=gfname, bg_color=[1,1,1,1])
+    def plot(self, selection=False):
+        if selection:
+            print ("plotting species %s of frame %d" % (str(selection), self.fid))
+            for s in selection:
+                gfname = "frame_%d_species_%d.png" % (self.fid, s)
+                g = self.specs[s].graph
+                pos = gtd.arf_layout(g, max_iter=0)
+                gtd.graph_draw(g, pos=pos, vertex_text=g.vp.aid, vertex_font_size=12, vertex_size=8, \
+                                           edge_text=g.ep.bord, edge_font_size=10,\
+                output_size=(800, 800), output=gfname, bg_color=[1,1,1,1])
+        else:            
+            print ("plotting all species of frame %d" % self.fid)
+            for s in self.specs.keys():
+                gfname = "frame_%d_species_%d.png" % (self.fid, s)
+                g = self.specs[s].graph
+                pos = gtd.arf_layout(g, max_iter=0)
+                gtd.graph_draw(g, pos=pos, vertex_text=g.vp.aid, vertex_font_size=12, vertex_size=8, \
+                output_size=(200, 200), output=gfname, bg_color=[1,1,1,1])
         return
-
-
 
 
 class species:
     """container class to keep species info (per frame!)
     """
 
-    def __init__(self, fid, mid, molg):
+    def __init__(self, fid, mid, molg, make_graph=False):
         """init species
         
         Args:
@@ -74,12 +95,14 @@ class species:
         self.mid = mid
         # find all vertices in molg that belong to this species mid
         vs = gtu.find_vertex(molg, molg.vp.mid, mid)
-        self.aids = [int(v) for v in vs] # atomids -> TBI do we need to sort? seems like they are sroted as they come
-        # now make a view of molg for this species         
-        molg.vp.filt.a[:] = False
-        for v in vs:
-            molg.vp.filt[v] = True
-        self.graph = GraphView(molg, vfilt=molg.vp.filt)
+        self.aids = set([int(v) for v in vs]) # atomids -> TBI do we need to sort? seems like they are sroted as they come
+        self.graph = None
+        if make_graph:
+            # now make a view of molg for this species         
+            molg.vp.filt.a[:] = False
+            for v in vs:
+                molg.vp.filt[v] = True
+            self.graph = GraphView(molg, vfilt=molg.vp.filt)
         return
 
     @property
@@ -100,41 +123,136 @@ class fcompare:
         """
         self.f1 = f1
         self.f2 = f2
+        # defaults
+        self.compare_level = 0 # 0: no comparison, 1: atom id level, 2: connectivity level
+        self.umatch_f1 = list(self.f1.specs.keys())
+        self.umatch_f2 = list(self.f2.specs.keys())
+        self.aids_match = []
+        self.bond_match = []
         return
 
-
-    def check_species(self):
+    def report(self, all = False):
         """this method is just to implement all levels of comparison
 
            it does not return anything and just reports ... meant for debugging
         """
         print("##################################################")
         print("FRAMES        %5d         %5d" % (self.f1.fid, self.f2.fid))
-        print("level 0:      %5d         %5d species" % (self.f1.nspecies, self.f2.nspecies))
-        # map species ... anything that remains has changed
-        sk1l = list(self.f2.specs.keys())
-        sk2l = list(self.f2.specs.keys())
-        aid_match = [] 
-        for sk1 in self.f1.specs:
-            s1 = self.f1.specs[sk1]
-            # find a corresponding species in sk2
-            for sk2 in sk2l:
-                s2 = self.f2.specs[sk2]
-                if s1.aids == s2.aids:
-                    # s1 and s2 match -> add to match and to remove
-                    aid_match.append((sk1, sk2))
-                    sk1l.remove(sk1)
-                    sk2l.remove(sk2)
-                    break
-        print("level 1: (atom ID match)")
-        for m in aid_match:
-            print("          species %5d == species %5d" % m)
-        for s in sk1l:
-            print("          species %5d in frame %d unmatched" % (s, self.f1.fid))
-        for s in sk2l:
-            print("          species %5d in frame %d unmatched" % (s, self.f2.fid))
+        mf = self.check_aids()
+        if all:
+            for m in self.aids_match:
+                print("          species %5d == species %5d" % m)
+                print(" natoms:          %5d            %5d" % (self.f1.specs[m[0]].natoms, self.f2.specs[m[1]].natoms))
+        if mf > 0:
+            self.analyse_aids()
+            for r in self.reacs:
+                print ("educts  : %s" % str(list(r[0].keys())))
+                print ("products: %s" % str(list(r[1].keys())))
         return
 
+    def check_aids(self):
+        """check on level 1 for atom id matches
+
+        this method implements a rather complex logic:
+        which species form the educts and products to define a complete reaction event
+        """
+        if self.compare_level < 1:
+            # we need to compare
+            for sk1 in self.f1.specs:
+                s1 = self.f1.specs[sk1]
+                # find a corresponding species in frame 2
+                for sk2 in self.umatch_f2:
+                    s2 = self.f2.specs[sk2]
+                    if s1.aids == s2.aids:      # NOTE: this works because the vertices are always properly sorted
+                        # s1 and s2 match -> add to match and to remove
+                        self.aids_match.append((sk1, sk2))
+                        self.umatch_f1.remove(sk1)
+                        self.umatch_f2.remove(sk2)
+                        break
+            # now matches are found -> set compare level
+            self.compare_level = 1
+        match_flag = 0 # all is equal on level 1
+        if len(self.umatch_f1) > 0 or len(self.umatch_f2) > 0:
+            match_flag = 1 # unmatched species!!
+        return match_flag
+
+    def analyse_aids(self):
+        if self.compare_level == 0:
+            self.check_aids()
+        if len(self.umatch_f1)==0 and len(self.umatch_f2)==0:
+            # there is nothing to do
+            return
+        # we have soem unmatched species -> there is one (or more) reaction(s) between these frames
+        self.reacs = []
+        # find groups of species that define a reaction
+        #    all atom ids in the union of the educts sets must be also in the products set
+        for sk1 in self.umatch_f1:
+            # first search for atoms in the unmatched f2 species
+            s1 = self.f1.specs[sk1]
+            educts = {sk1: s1} # dictionary of species key/species for this reaction
+            educt_aids = s1.aids.copy() # set of atomids
+            products = {}
+            product_aids = set()
+            for sk2 in self.umatch_f2:
+                s2 = self.f2.specs[sk2]
+                common_aids = s1.aids & s2.aids
+                if len(common_aids)>0:
+                    products[sk2] = s2
+                    product_aids |= s2.aids
+            # do the following until educt_aids and product_aids match
+            while not (educt_aids == product_aids):
+                # which atoms are in products that are not in the educt species? --> add them
+                for a in product_aids - educt_aids:
+                    # to which species in frame 1 does this atom belong to?
+                    esk = self.f1.molg.vp.mid[a]
+                    # is this already in educts?
+                    if esk not in educts:
+                        # we need to make a new species object and add it
+                        educts[esk] = self.f1.make_species(esk)
+                        educt_aids |= educts[esk].aids
+                # which atoms are in the educts that are not in the product species? add them
+                for a in educt_aids - product_aids:
+                    # to which species in frame 2 does this atom belong to?
+                    psk = self.f2.molg.vp.mid[a]
+                    # is this already in educts?
+                    if psk not in products:
+                        # we need to make a new species object and add it
+                        products[psk] = self.f2.make_species(psk)
+                        product_aids |= products[psk].aids
+            # now add the final results to the reacs list
+            self.reacs.append((educts, products))
+        return
+
+    def find_react_bond(self, r):
+        """find a reactive bond in a bimolecular reaction 
+        
+        Args:
+            r (int): index in self.reac to analyse
+        """
+        educts, products = self.reacs[r]
+        # get all involved atoms
+        aids = set()
+        for s in educts:
+            aids |= educts[s].aids
+        g1 = self.f1.molg
+        g2 = self.f2.molg
+        reactive_bond = []
+        for a in aids:
+            bonds1 = []
+            v1 = g1.vertex(a)
+            for e in v1.out_edges(): 
+                bonds1.append(int(e.target()))
+            bonds2 = []
+            v2 = g2.vertex(a)
+            for e in v2.out_edges():
+                bonds2.append(int(e.target()))
+            s = set(bonds1) ^ set(bonds2)
+            for b in s:
+                if b > a:
+                    reactive_bond.append((a,b))
+        return reactive_bond
+
+               
 
 class findR(mpiobject):
 
@@ -169,7 +287,7 @@ class findR(mpiobject):
         self.snext    = 0
         self.sstep ={
             "forward" : 200,
-            "back"    : 10,
+            "back"    : -10,
             "fine"    : 1,
         }
         return
@@ -218,14 +336,16 @@ class findR(mpiobject):
         for i in range(nspecies_all):
             if hist[i] >= self.min_atom:
                 nspecies.append(i)
-        specs = {}
-        for mid in nspecies:
-            specs[mid] = species(fid, mid, molg)
         # TBI shall we reset the vertex filter of molg again?      
-        f = frame(fid, molg, specs)
+        f = frame(fid, molg)
+        for mid in nspecies:
+            f.add_species(mid)
         # store the frame
         self.frames[fid] = f
         return f
+
+    def get_comparer(self, f1, f2):
+        return fcompare(self.frames[f1], self.frames[f2])
     
     @timer("do_frames")
     def do_frames(self, start=0, stop=None, stride=1, progress=True, plot=False):
@@ -260,13 +380,51 @@ class findR(mpiobject):
         self.process_frame(self.scurrent)
         self.snext = self.scurrent+self.sstep[self.smode]
         # start mainloop (just search on until we are at the end of the file)
-        while self.snext < self.nframes:
+        while self.snext < self.nframes and self.snext > 0:
             self.process_frame(self.snext)
             # do comparison and report
-            comparer = fcompare(self.frames[self.scurrent], self.frames[self.snext])
-            comparer.check_species()
+            comparer = self.get_comparer(self.scurrent, self.snext)
+            flag = comparer.check_aids()
+            print ("&&FLAG %d" % flag)
+            #DEBUG DEBUG
+            # comparer.report(all=True)
+            #DEBUG DEBUG
+            if flag>0:
+                # a difference was found between current and next
+                if self.smode == "forward":
+                    forw_next = self.snext
+                    forw_curr = self.scurrent
+                    self.smode = "back"
+                elif self.smode == "back":
+                    back_next = self.snext
+                    back_curr = self.scurrent
+                    self.smode = "fine"
+                elif self.smode == "fine":
+                    comparer.analyse_aids()
+                    print ("##### REACTION EVENT FOUND!!!!")
+                    comparer.report()
+                    #
+                    # TBI -> search critical bond
+                    assert len(comparer.reacs)==1
+                    print (comparer.find_react_bond(0))
+                    # TBI -> go back and forth to locate safe educt and product
+                    # TBI -> store in database
+                    #
+                    # we need to make sure that the educts of the reaction event (current frame)
+                    #               are really idential to where we started the forward interval
+                    comparer2 = self.get_comparer(forw_curr, self.scurrent)
+                    flag = comparer2.check_aids()
+                    if flag>0:
+                        # there is still an event missing so we need to backtrack again
+                        self.snext = back_next
+                        self.smode = "back"
+                    else:
+                        print ("##### Continue searching")
+                        self.smode = "forward"
+                        self.snext = forw_next
             self.scurrent = self.snext
             self.snext = self.scurrent+self.sstep[self.smode]
+            print ("&& current %5d  next %5d  step %5d  mode %s" % (self.scurrent, self.snext, self.sstep[self.smode], self.smode))
         # end of mainloop
         return
 
