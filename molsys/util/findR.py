@@ -27,6 +27,8 @@ import graph_tool.topology as gtt
 import graph_tool.util as gtu
 import graph_tool.draw as gtd
 
+#####################  FRAME CLASS ########################################################################################
+
 class frame:
     """container to store info on a frame
 
@@ -78,6 +80,7 @@ class frame:
                 output_size=(200, 200), output=gfname, bg_color=[1,1,1,1])
         return
 
+#####################  SPECIES CLASS ########################################################################################
 
 class species:
     """container class to keep species info (per frame!)
@@ -108,6 +111,8 @@ class species:
     @property
     def natoms(self):
         return len(self.aids)
+
+#####################  FRAME COMPARE CLASS ########################################################################################
 
 class fcompare:
     """This class compares two frames at different levels of reolution whether species are different
@@ -236,7 +241,7 @@ class fcompare:
             aids |= educts[s].aids
         g1 = self.f1.molg
         g2 = self.f2.molg
-        reactive_bond = []
+        self.reactive_bonds = []
         for a in aids:
             bonds1 = []
             v1 = g1.vertex(a)
@@ -249,10 +254,10 @@ class fcompare:
             s = set(bonds1) ^ set(bonds2)
             for b in s:
                 if b > a:
-                    reactive_bond.append((a,b))
-        return reactive_bond
+                    self.reactive_bonds.append((a,b))
+        return self.reactive_bonds
 
-               
+#####################  CENTRAL FINDR CLASS ########################################################################################
 
 class findR(mpiobject):
 
@@ -406,8 +411,23 @@ class findR(mpiobject):
                     #
                     # TBI -> search critical bond
                     assert len(comparer.reacs)==1
-                    print (comparer.find_react_bond(0))
+                    rb = comparer.find_react_bond(0)
+                    print (rb)
                     # TBI -> go back and forth to locate safe educt and product
+                    mg1 = self.frames[self.scurrent].molg
+                    mg2 = self.frames[self.snext].molg
+                    mg1.set_edge_filter(None)
+                    for e in mg1.edges():
+                        print ("%5d - %5d : %10.4f" % (int(e.source()), int(e.target()), mg1.ep.bord[e]))
+                    mg2.set_edge_filter(None)
+                    for e in mg2.edges():
+                        print ("%5d - %5d : %10.4f" % (int(e.source()), int(e.target()), mg2.ep.bord[e]))
+
+
+                    for b in rb:
+                        be = mg1.edge(b[0], b[1])
+                        print (be)
+                        print ("bond order of %s is %10.4" % (str(b), mg1.ep.bord[be]))
                     # TBI -> store in database
                     #
                     # we need to make sure that the educts of the reaction event (current frame)
