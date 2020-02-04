@@ -297,7 +297,6 @@ def read_body(f, natoms, frags = True, topo = False, cromo = False, topo_new=Fal
     pconn       = []
     pimages     = []
     oconn      = []
-    print (topo_new)
     if topo: frags=False
     for i in range(natoms):
         lbuffer = f.readline().split()
