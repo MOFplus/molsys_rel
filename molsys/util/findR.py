@@ -14,6 +14,7 @@
 import numpy as np
 import pickle
 import copy
+import os
 
 import molsys
 from molsys.util import pdlpio2
@@ -21,6 +22,7 @@ from molsys.util import pdlpio2
 from molsys.util.timing import timer, Timer
 from molsys.util.print_progress import print_progress
 from molsys import mpiobject
+from molsys.util import rotations
 
 from graph_tool import Graph, GraphView
 import graph_tool.topology as gtt
@@ -96,21 +98,59 @@ class species:
         """
         self.fid = fid
         self.mid = mid
+        self.molg = molg # parent molgraph
         # find all vertices in molg that belong to this species mid
         vs = gtu.find_vertex(molg, molg.vp.mid, mid)
         self.aids = set([int(v) for v in vs]) # atomids -> TBI do we need to sort? seems like they are sroted as they come
         self.graph = None
         if make_graph:
             # now make a view of molg for this species         
-            molg.vp.filt.a[:] = False
-            for v in vs:
-                molg.vp.filt[v] = True
-            self.graph = GraphView(molg, vfilt=molg.vp.filt)
+            self.make_graph()
+        return
+
+    def make_graph(self):
+        vfilt = self.molg.new_vertex_property("bool")
+        vfilt.a[:] = False
+        for v in self.aids:
+            vfilt[v] = True
+        self.graph = GraphView(self.molg, vfilt=vfilt)
         return
 
     @property
     def natoms(self):
         return len(self.aids)
+
+    def make_mol(self, xyz, pmol):
+        """generate a mol object form the species
+
+        we get the current coordinates as xyz and the parent mol object pmol from the pdlp file
+        
+        Args:
+            xyz (numpy): coordinates of the atoms
+            mol (molsys object): parent mol object from pdlp file 
+        """
+        aids = list(self.aids) # in order to map backwards
+        aids.sort() # not sure if that is really needed
+        self.mol = molsys.mol.from_array(xyz)
+        self.mol.set_cell(pmol.get_cell())
+        self.mol.set_elems([pmol.elems[i] for i in aids])
+        self.mol.set_real_mass()
+        self.mol.center_com(check_periodic=False)
+        self.mol.apply_pbc()
+        self.mol.make_nonperiodic()
+        # rotate into principal axes
+        xyz = self.mol.get_xyz()
+        self.mol.set_xyz(rotations.align_pax(xyz, masses = self.mol.get_mass()))
+        # add connectivity
+        if self.graph is None:
+            self.make_graph()
+        ctab = []
+        for e in self.graph.edges():
+            i = aids.index(int(e.source()))
+            j = aids.index(int(e.target()))
+            ctab.append([i, j])
+        self.mol.set_ctab(ctab, conn_flag=True)
+        return self.mol
 
 #####################  FRAME COMPARE CLASS ########################################################################################
 
@@ -134,6 +174,11 @@ class fcompare:
         self.umatch_f2 = list(self.f2.specs.keys())
         self.aids_match = []
         self.bond_match = []
+        self.aids_analyzed = False
+        self.reacs = []
+        self.broken_bonds = []
+        self.formed_bonds = []
+        self.nreacs = 0 # nomber of independent reactions for this pair of frames .. should always be 1 (??)
         return
 
     def report(self, all = False):
@@ -188,7 +233,6 @@ class fcompare:
             # there is nothing to do
             return
         # we have soem unmatched species -> there is one (or more) reaction(s) between these frames
-        self.reacs = []
         # find groups of species that define a reaction
         #    all atom ids in the union of the educts sets must be also in the products set
         for sk1 in self.umatch_f1:
@@ -226,36 +270,47 @@ class fcompare:
                         product_aids |= products[psk].aids
             # now add the final results to the reacs list
             self.reacs.append((educts, products))
+        self.nreacs = len(self.reacs)
+        self.aids_analyzed = True
         return
 
-    def find_react_bond(self, r):
+    def find_react_bond(self):
         """find a reactive bond in a bimolecular reaction 
         
         Args:
             r (int): index in self.reac to analyse
         """
-        educts, products = self.reacs[r]
-        # get all involved atoms
-        aids = set()
-        for s in educts:
-            aids |= educts[s].aids
+        assert self.aids_analyzed
         g1 = self.f1.molg
         g2 = self.f2.molg
-        self.reactive_bonds = []
-        for a in aids:
-            bonds1 = []
-            v1 = g1.vertex(a)
-            for e in v1.out_edges(): 
-                bonds1.append(int(e.target()))
-            bonds2 = []
-            v2 = g2.vertex(a)
-            for e in v2.out_edges():
-                bonds2.append(int(e.target()))
-            s = set(bonds1) ^ set(bonds2)
-            for b in s:
-                if b > a:
-                    self.reactive_bonds.append((a,b))
-        return self.reactive_bonds
+        for r in range(self.nreacs):
+            broken_bonds = []
+            formed_bonds = []
+            educts, products = self.reacs[r]
+            # get all involved atoms
+            aids = set()
+            for s in educts:
+                aids |= educts[s].aids
+            for a in aids:
+                bonds1 = []
+                v1 = g1.vertex(a)
+                for e in v1.out_edges(): 
+                    bonds1.append(int(e.target()))
+                bonds2 = []
+                v2 = g2.vertex(a)
+                for e in v2.out_edges():
+                    bonds2.append(int(e.target()))
+                bs = set(bonds1) - set(bonds2)
+                fs = set(bonds2) - set(bonds1)
+                for b in bs:
+                    if b > a:
+                        broken_bonds.append((a,b))
+                for b in fs:
+                    if b > a:
+                        formed_bonds.append((a,b))
+            self.broken_bonds.append(broken_bonds)
+            self.formed_bonds.append(formed_bonds)
+        return
 
 #####################  CENTRAL FINDR CLASS ########################################################################################
 
@@ -268,6 +323,7 @@ class findR(mpiobject):
         self.mol = self.pdlp.get_mol_from_system()
         assert stage in self.pdlp.get_stages(), "Stage %s not in stages in file"
         self.traj = self.pdlp.h5file["/%s/traj" % stage]
+        self.rest = self.pdlp.h5file["/%s/restart" % stage]
         data = list(self.traj.keys())
         # make sure that xyz and bondord/bondterm is available
         assert "xyz" in data
@@ -276,6 +332,7 @@ class findR(mpiobject):
         self.f_xyz = self.traj["xyz"]
         self.f_bondord = self.traj["bondord"]
         self.f_bondtab = self.traj["bondtab"]
+        self.cell = np.array(self.rest["cell"])
         # get some basic info from the mol object
         self.natoms = self.mol.get_natoms()
         self.elems  = self.mol.get_elems()
@@ -375,7 +432,7 @@ class findR(mpiobject):
         return
 
     @timer("search_frames")
-    def search_frames(self):
+    def search_frames(self, progress=True):
         """search the frames for reactions 
 
         This is the core routine of findR
@@ -386,11 +443,12 @@ class findR(mpiobject):
         self.snext = self.scurrent+self.sstep[self.smode]
         # start mainloop (just search on until we are at the end of the file)
         while self.snext < self.nframes and self.snext > 0:
+            print_progress(self.snext/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
             self.process_frame(self.snext)
             # do comparison and report
             comparer = self.get_comparer(self.scurrent, self.snext)
             flag = comparer.check_aids()
-            print ("&&FLAG %d" % flag)
+            # print ("&&FLAG %d" % flag)
             #DEBUG DEBUG
             # comparer.report(all=True)
             #DEBUG DEBUG
@@ -406,30 +464,18 @@ class findR(mpiobject):
                     self.smode = "fine"
                 elif self.smode == "fine":
                     comparer.analyse_aids()
-                    print ("##### REACTION EVENT FOUND!!!!")
-                    comparer.report()
-                    #
-                    # TBI -> search critical bond
-                    assert len(comparer.reacs)==1
-                    rb = comparer.find_react_bond(0)
-                    print (rb)
+                    # search critical bond
+                    comparer.find_react_bond()   
                     # TBI -> go back and forth to locate safe educt and product
-                    mg1 = self.frames[self.scurrent].molg
-                    mg2 = self.frames[self.snext].molg
-                    mg1.set_edge_filter(None)
-                    for e in mg1.edges():
-                        print ("%5d - %5d : %10.4f" % (int(e.source()), int(e.target()), mg1.ep.bord[e]))
-                    mg2.set_edge_filter(None)
-                    for e in mg2.edges():
-                        print ("%5d - %5d : %10.4f" % (int(e.source()), int(e.target()), mg2.ep.bord[e]))
-
-
-                    for b in rb:
-                        be = mg1.edge(b[0], b[1])
-                        print (be)
-                        print ("bond order of %s is %10.4" % (str(b), mg1.ep.bord[be]))
+                    # mg1 = self.frames[self.scurrent].molg
+                    # mg2 = self.frames[self.snext].molg
+                    # mg1.set_edge_filter(None)
+                    # mg2.set_edge_filter(None)
+                    # for b in fb:
+                    #     be = mg2.edge(b[0], b[1])
+                    #     print ("bond order of %s is %10.4f" % (str(b), mg2.ep.bord[be]))
                     # TBI -> store in database
-                    #
+                    self.store_event(comparer)
                     # we need to make sure that the educts of the reaction event (current frame)
                     #               are really idential to where we started the forward interval
                     comparer2 = self.get_comparer(forw_curr, self.scurrent)
@@ -439,14 +485,48 @@ class findR(mpiobject):
                         self.snext = back_next
                         self.smode = "back"
                     else:
-                        print ("##### Continue searching")
+                        # print ("##### Continue searching")
                         self.smode = "forward"
                         self.snext = forw_next
             self.scurrent = self.snext
             self.snext = self.scurrent+self.sstep[self.smode]
-            print ("&& current %5d  next %5d  step %5d  mode %s" % (self.scurrent, self.snext, self.sstep[self.smode], self.smode))
+            # print ("&& current %5d  next %5d  step %5d  mode %s" % (self.scurrent, self.snext, self.sstep[self.smode], self.smode))
         # end of mainloop
         return
+
+    @timer("store_event")
+    def store_event(self, comparer):
+        """store species and further info in database
+
+        DEBUG: currently only printing results and writing mol objects
+        
+        Args:
+            comparer (comparer): current comparer between to frames (f1 is educts)
+        """
+        for r in range(comparer.nreacs):
+            educts, products = comparer.reacs[r]
+            broken_bonds     = comparer.broken_bonds[r]
+            formed_bonds     = comparer.formed_bonds[r]
+            f1               = comparer.f1
+            f2               = comparer.f2
+            #
+            xyz_f1 = np.array(self.f_xyz[f1.fid])
+            xyz_f2 = np.array(self.f_xyz[f2.fid])
+            # DEBUG DEBUG .. the follwoing is intermediate code
+            dirname = "revent_%05d_%05d" % (f1.fid, f2.fid)
+            print ("generating %s" % dirname)
+            if not os.path.exists(dirname):
+                os.mkdir(dirname)
+            os.chdir(dirname)
+            # we need to define which is TS and what to use for ED and PR
+            # for the time being we simple write out educts
+            for e in educts:
+                aids = list(educts[e].aids)
+                m = educts[e].make_mol(xyz_f1[aids], self.mol)
+                m.write("species_%d.mfpx" % e)
+            os.chdir("..")
+            return
+
 
 
 
