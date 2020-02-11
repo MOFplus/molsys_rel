@@ -576,13 +576,13 @@ class findR(mpiobject):
                     TS_rfid = 1
             # now store data depending on relative frame id (rfid) of the TS
             if TS_rfid == 0:
-                ED = self.process_frame(TS.fid-1)
                 TS = f1
                 PR = f2
+                ED = self.process_frame(TS.fid-1)
                 # get corresponding species numbers
                 TS_spec = educts
                 PR_spec = products
-                loccomp = comparer(ED, TS)
+                loccomp = fcompare(ED, TS)
                 if loccomp.check_aids() == 0:
                     # no change in atom ids .. we can use TS species for ED as well
                     ED_spec = educts
@@ -594,7 +594,7 @@ class findR(mpiobject):
                 PR = self.process_frame(TS.fid+1)
                 ED_spec = educts
                 TS_spec = products
-                loccomp = comparer(TS, PR)
+                loccomp = fcompare(TS, PR)
                 if loccomp.check_aids() == 0:
                     # no change in atom ids .. we can use TS species for PR as well
                     PR_spec = products
@@ -618,19 +618,19 @@ class findR(mpiobject):
                 m = ED_spec[s].make_mol(xyz_ed[aids], self.mol)
                 ED_mol.append(m)
                 # DBEUG DEBUG
-                m.write("ED_species_%d.mfpx" % e)
+                m.write("ED_species_%d.mfpx" % s)
             PR_mol = []
             for s in PR_spec:
                 aids = list(PR_spec[s].aids)
                 m = PR_spec[s].make_mol(xyz_pr[aids], self.mol)
                 PR_mol.append(m)
                 # DBEUG DEBUG
-                m.write("PR_species_%d.mfpx" % e)
-            for s in ED_spec:
-                aids = list(ED_spec[s].aids)
-                m = ED_spec[s].make_mol(xyz_ed[aids], self.mol)
-                # DBEUG DEBUG
-                m.write("species_%d.mfpx" % e)
+                m.write("PR_species_%d.mfpx" % s)
+            # for s in ED_spec:
+            #     aids = list(ED_spec[s].aids)
+            #     m = ED_spec[s].make_mol(xyz_ed[aids], self.mol)
+            #     # DBEUG DEBUG
+            #     m.write("species_%d.mfpx" % e)
             os.chdir("..")
             return
 
