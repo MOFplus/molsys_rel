@@ -212,6 +212,7 @@ class molecules(base):
                 tolerance 2.0
                 output final.xyz
                 filetype xyz
+                seed -1
 
                 structure self.xyz
                     filetype xyz
