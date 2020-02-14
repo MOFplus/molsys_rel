@@ -94,6 +94,45 @@ class frame:
         border = self.molg.ep.bord[e]
         return border
 
+    def make_mol(self, species, xyz, pmol):
+        """generate a mol object from a list of species
+
+        we get the current coordinates as xyz and the parent mol object pmol from the pdlp file
+        
+        Args:
+            xyz (numpy): coordinates of the atoms in the frame
+            pmol (molsys object): parent mol object from pdlp file 
+        """
+        aids = []
+        for mid in species:
+            if mid not in self.specs:
+                self.add_species(mid)
+            s = self.specs[mid]
+            aids += list(s.aids)
+        aids.sort() # not sure if that is really needed
+        self.mol = molsys.mol.from_array(xyz[aids])
+        self.mol.set_cell(pmol.get_cell())
+        self.mol.set_elems([pmol.elems[i] for i in aids])
+        self.mol.set_real_mass()
+        self.mol.center_com(check_periodic=False)
+        self.mol.apply_pbc()
+        self.mol.make_nonperiodic()
+        # rotate into principal axes
+        xyz = self.mol.get_xyz()
+        self.mol.set_xyz(rotations.align_pax(xyz, masses = self.mol.get_mass()))
+        # add connectivity
+        conn = []
+        for i in aids:
+            v = self.molg.vertex(i)
+            conn_i = []
+            for j in v.all_neighbors():
+                assert int(j) in aids
+                conn_i.append(aids.index(int(j)))
+            conn.append(conn_i)
+        self.mol.set_conn(conn)
+        return self.mol
+
+
 #####################  SPECIES CLASS ########################################################################################
 
 class species:
@@ -139,7 +178,7 @@ class species:
         
         Args:
             xyz (numpy): coordinates of the atoms
-            mol (molsys object): parent mol object from pdlp file 
+            pmol (molsys object): parent mol object from pdlp file 
         """
         aids = list(self.aids) # in order to map backwards
         aids.sort() # not sure if that is really needed
@@ -492,7 +531,7 @@ class findR(mpiobject):
         self.snext = self.scurrent+self.sstep[self.smode]
         # start mainloop (just search on until we are at the end of the file)
         while self.snext < self.nframes and self.snext > 0:
-            # print_progress(self.snext/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
+            print_progress(self.snext/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
             self.process_frame(self.snext)
             # do comparison and report
             comparer = self.get_comparer(self.scurrent, self.snext)
@@ -607,7 +646,7 @@ class findR(mpiobject):
             xyz_pr = np.array(self.f_xyz[PR.fid])
             # DEBUG DEBUG .. the follwoing is intermediate code
             dirname = "revent_%05d" % (TS.fid)
-            print ("generating %s" % dirname)
+            print ("  generating %s" % dirname)
             if not os.path.exists(dirname):
                 os.mkdir(dirname)
             os.chdir(dirname)
@@ -626,11 +665,10 @@ class findR(mpiobject):
                 PR_mol.append(m)
                 # DBEUG DEBUG
                 m.write("PR_species_%d.mfpx" % s)
-            # for s in ED_spec:
-            #     aids = list(ED_spec[s].aids)
-            #     m = ED_spec[s].make_mol(xyz_ed[aids], self.mol)
-            #     # DBEUG DEBUG
-            #     m.write("species_%d.mfpx" % e)
+            # only one TS (all species) .. use make_mol of frame
+            m = TS.make_mol(TS_spec, xyz_ts, self.mol)
+            # DBEUG DEBUG
+            m.write("TS.mfpx")
             os.chdir("..")
             return
 
