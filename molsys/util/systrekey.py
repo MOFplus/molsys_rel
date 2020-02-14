@@ -1,8 +1,5 @@
 """a simple wrapper to run the javascript systrekey from python
 
-    TBI: i guess it would be much better to use json to communicate with javascript
-         -> need to figure out how to do this.
-
     added a class for systrekey handling
 
     author: R. Schmid
@@ -13,32 +10,49 @@ import subprocess
 import string
 import molsys
 
+"""
+INSTALLATION Instructions:
+
+For this to work you need to have the javascript systrekey code from Olaf Delgado-Friedrichs installed.
+
+You need to have a working node.js environment working (do not use the distro version .. they are often too old) from https://nodejs.org
+
+then clone the systreKey repo from here https://github.com/odf/systreKey to the same directory where your molsys repo is located (e.g. ~/sandbox)
+because systre_path is determined from the root path of molsys.
+For the installation follow the instructions from the systreKey repos README 
+
+    git clone https://github.com/odf/systreKey.git
+    cd systreKey
+    npm install
+    npm run build
+
+Do not forget to run "npm run build" every time you pulled updates from Olaf's repo.
+
+"""
+
 
 # get my path 
 molsys_path = os.path.dirname(molsys.__file__)
 systre_path = os.path.dirname(os.path.dirname(molsys_path)) + "/systreKey"
 
-# path to the curent arc file -- should be called RCSR.arc by default (softlink to current version)
-arc_file = os.path.dirname(__file__)+"/RCSR.arc"
-
-# we read the arc file once when the first instance is made 
-arc_read = False
-
-db_key2name = {}
-db_name2key = {}
+# check presence of node in order to run javascript code
+node_avail = (subprocess.call(args=["which", "node"], stdout=subprocess.DEVNULL) == 0)
 
 
 class systre_db:
 
-    def __init__(self):
-        if not arc_read:
-            self.read_arc()
+    def __init__(self, arc_file):
+        self.arc_file = arc_file
+        self.key2name = {}
+        self.name2key = {}
+        self.arc_read = False
+        self.read_arc()
         return
 
     def read_arc(self):
         global db_key2name, db_name2key, arc_read
-        if os.path.isfile(arc_file):
-            f = open(arc_file, 'r')
+        if os.path.isfile(self.arc_file):
+            f = open(self.arc_file, 'r')
             for line in f:
                 sline = line.split()
                 if len(sline)>0:
@@ -50,49 +64,40 @@ class systre_db:
                         # end of record .. store in directories only 3dim nets
                         if key[0] == "3":
                             key = " ".join(key)
-                            db_key2name[key] = name
-                            db_name2key[name] = key
+                            if key in self.key2name:
+                                print ("WARNING the following systrekey is already registered for %s" % self.key2name[key])
+                                print (key)
+                            self.key2name[key] = name
+                            self.name2key[name] = key
                     else:
                         pass
             f.close()
+            self.arc_read = True
         else:
             print("""
-            WARNING: the file RCSR.arc is not available.
-            Please download the current arc file from RCSR.net/systre into
-            the molsys/util directory and softlink it to RCSR.arc
-            """)
-        arc_read=True
+            WARNING: the file %s
+            is not available. Please link it into the molsys/util directory.
+            """ % self.arc_file)
         return
 
     def get_key(self, name):
-        return db_name2key[name]
+        if self.arc_read:
+            return self.name2key[name]
+        else:
+            return "None"
 
     def get_name(self, key):
-        return db_key2name[key]
+        if self.arc_read:
+            return self.key2name[key]
+        else:
+            return "None"
 
-    # def compress_key(self, skey):
-    #     """compress a systrekey
-        
-    #     Args:           
-    #         self (string or list): original systre key
-    #     """
-    #     if type(skey) == type(""):
-    #         lsk = skey.split()
-    #     else:
-    #         lsk = skey
-    #     lsk.reverse()
-    #     dim = lsk.pop() # dimension
-    #     assert dim == "3"
-    #     csk = ""
-    #     while len(lsk)>0:
-    #         i = lsk.pop()
-    #         j = lsk.pop()
-    #         csk += "%s:%s:" % (i,j)
-    #         for i in range(3):
-    #             csk += shift_map[lsk.pop()]
-    #         if len(lsk)>0:
-    #             csk+= ":"
-    #     return csk
+# path to the curent arc file -- should be called RCSR.arc by default (softlink to current version)
+RCSR_arc_file = os.path.dirname(__file__)+"/RCSR.arc"
+RCSR_db = systre_db(RCSR_arc_file)
+
+db_key2name = RCSR_db.key2name
+db_name2key = RCSR_db.name2key
 
 
 def run_systrekey(edges, labels):
@@ -106,12 +111,19 @@ def run_systrekey(edges, labels):
         edges {list of lists of 2 ints} - list of edges
         labels {list of lists of 3 ints} - list of edge labels
     """
+    if not node_avail:
+        # return nothing to avoid an error
+        print("""
+        WARNING: systrekey was called but node is not installed to run javascript
+        """
+        )
+        return "None", []
     assert len(edges) == len(labels)
     lqg = []
     for e,l in zip(edges, labels):
         el = []
-        el.append(e[0]+1)
-        el.append(e[1]+1)
+        el.append(int(e[0])+1)
+        el.append(int(e[1])+1)
         el.append(l)
         lqg.append(el)
     json_lqg = json.dumps(lqg)

@@ -1688,7 +1688,7 @@ class topotyper(object):
         >>> import molsys
         >>> from molsys.util import toper
         >>> m = molsys.mol.from_file("jast-1") # as example
-        >>> tt = topo.topotyper(m) # may need time
+        >>> tt = toper.topotyper(m) # may need time
         >>> tt.compute_bbs()
         >>> tt.write_bbs()
         """

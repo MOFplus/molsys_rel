@@ -331,7 +331,14 @@ class mol(mpiobject):
         fracs = []
         elems = []
         for j, site in enumerate(structure.sites):
-            elems.append(site.specie.symbol.lower())
+            ### elems.append(site.species.symbol.lower())  
+            # JK: This line is gone with the tested version (2020.1.10). It is because Periodic sites can now be occupied 
+            # not only by a single atom, but by more atoms. This is why there is now lists of things instead of a single atom
+            # I replaced this as follows, where I still keep the single atom definition:
+            # If ever needed, this has to be replaced by a loop, and it has to be taken care of where the position of those 
+            # multiple atoms is w.r.t. to the position of the periodic site.
+            ###
+            elems.append(site.species.elements[0].name.lower())
             fracs.append([site.frac_coords[0],site.frac_coords[1], site.frac_coords[2]])
         fracs = np.array(fracs)
         m.natoms=len(elems)
@@ -2421,7 +2428,7 @@ class mol(mpiobject):
             if not el.count(e): el.append(e)
         return el
 
-    def set_elems(self,elems):
+    def set_elems(self, elems):
         ''' set the elements
         :Parameters:
             - elems: list of elements to be set'''

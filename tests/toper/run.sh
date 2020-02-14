@@ -7,7 +7,7 @@ cd $SCRIPT_FOLDER
     do
         cd $i
         ./clean.sh
-        pytest -vs
+        pytest3 -vs --disable-warnings
         cd ..
     done
 cd $OWD

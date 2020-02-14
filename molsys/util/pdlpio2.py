@@ -271,18 +271,22 @@ class pdlpio2(mpiobject):
         assert OK, "PDLP ERROR: The system in the pdlp file is not equivalent to your actual system. Aborting!"
         return
 
-    def get_mol_from_system(self):
+    def get_mol_from_system(self, vel=False):
         """ read mol info from system group and generate a mol object 
 
         in parallel this is done on the master only and the data is broadcasted to the other nodes
+        
+        Args:
+            - vel (bool, otional): Defaults to False. If True: return velocity array in addtion to mol object
         """
         self.open()
         # read the data from file on the master
         if self.is_master:
             system = self.h5file["system"]
-            elems  = list(system["elems"])
-            atypes = list(system["atypes"])
-            fragtypes = list(system["fragtypes"])
+            # for python3: now all strings coming from hdf5 are byte class types .. need to convert to strings
+            elems  = list(np.array(system["elems"]).astype("str"))
+            atypes = list(np.array(system["atypes"]).astype("str"))
+            fragtypes = list(np.array(system["fragtypes"]).astype("str"))
             fragnumbers = list(system["fragnumbers"])
             if "cnc_table" in list(system.keys()):
                 cnc_table = list(system["cnc_table"])
@@ -316,15 +320,22 @@ class pdlpio2(mpiobject):
             restart = rstage["restart"]
             xyz = np.array(restart["xyz"])
             cell = np.array(restart["cell"])
+            if vel:
+                velocities = np.array(restart["vel"])
         if self.mpi_size>1:
             if self.is_master:
                 self.mpi_comm.Bcast(xyz)
                 self.mpi_comm.Bcast(cell)
+                if vel:
+                    self.mpi_comm.Bcast(velocities)
             else:
                 xyz = np.empty([na, 3], dtype="float64")
                 cell = np.empty([3, 3], dtype="float64")
                 self.mpi_comm.Bcast(xyz)
                 self.mpi_comm.Bcast(cell)
+                if vel:
+                    velocities = np.empty([na, 3], dtype="float64")
+                    self.mpi_comm.Bcast(velocities)
         mol.set_xyz(xyz)
         mol.set_cell(cell)
         # new check if addon data is present in the system group
@@ -356,7 +367,10 @@ class pdlpio2(mpiobject):
             # yes there was ff data .. set up mol addon ff
             mol.addon("ff")
             mol.ff.unpack(ff_data)
-        return mol
+        if vel:
+            return (mol, velocities)
+        else:
+            return mol
 
     def add_stage(self, stage):
         """add a new stage 

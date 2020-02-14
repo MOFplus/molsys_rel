@@ -51,7 +51,8 @@ __all__ = [
     "groups",
     "zmat",
     "wannier",
-    "topo"
+    "topo",
+    "obabel"
 ]
 
 _importfunc = {k:None for k in __all__}
