@@ -82,6 +82,57 @@ class frame:
                 output_size=(200, 200), output=gfname, bg_color=[1,1,1,1])
         return
 
+    def get_border(self, b):
+        """get the bond order for a bond b
+        
+        currently no test is made if the edge exists ... you need to check
+
+        Args:
+            b (tuple of indices): atom indices of bond
+        """
+        e = self.molg.edge(b[0], b[1])
+        border = self.molg.ep.bord[e]
+        return border
+
+    def make_mol(self, species, xyz, pmol):
+        """generate a mol object from a list of species
+
+        we get the current coordinates as xyz and the parent mol object pmol from the pdlp file
+        
+        Args:
+            xyz (numpy): coordinates of the atoms in the frame
+            pmol (molsys object): parent mol object from pdlp file 
+        """
+        aids = []
+        for mid in species:
+            if mid not in self.specs:
+                self.add_species(mid)
+            s = self.specs[mid]
+            aids += list(s.aids)
+        aids.sort() # not sure if that is really needed
+        self.mol = molsys.mol.from_array(xyz[aids])
+        self.mol.set_cell(pmol.get_cell())
+        self.mol.set_elems([pmol.elems[i] for i in aids])
+        self.mol.set_real_mass()
+        self.mol.center_com(check_periodic=False)
+        self.mol.apply_pbc()
+        self.mol.make_nonperiodic()
+        # rotate into principal axes
+        xyz = self.mol.get_xyz()
+        self.mol.set_xyz(rotations.align_pax(xyz, masses = self.mol.get_mass()))
+        # add connectivity
+        conn = []
+        for i in aids:
+            v = self.molg.vertex(i)
+            conn_i = []
+            for j in v.all_neighbors():
+                assert int(j) in aids
+                conn_i.append(aids.index(int(j)))
+            conn.append(conn_i)
+        self.mol.set_conn(conn)
+        return self.mol
+
+
 #####################  SPECIES CLASS ########################################################################################
 
 class species:
@@ -127,7 +178,7 @@ class species:
         
         Args:
             xyz (numpy): coordinates of the atoms
-            mol (molsys object): parent mol object from pdlp file 
+            pmol (molsys object): parent mol object from pdlp file 
         """
         aids = list(self.aids) # in order to map backwards
         aids.sort() # not sure if that is really needed
@@ -312,6 +363,43 @@ class fcompare:
             self.formed_bonds.append(formed_bonds)
         return
 
+    def check_bonds(self):
+        """check on level 2 for identical bonds
+
+        we use the existing pairs of species in self.aids_match to identify species that have identical aids
+        => now we test if they have the same bonding pattern
+        """
+        assert self.compare_level > 0
+        self.missmatch = []
+        for p in self.aids_match:
+            # get the species of the pair
+            s1 = self.f1.specs[p[0]]
+            s2 = self.f2.specs[p[1]]
+            # TBI: this might not be enough 
+            #      do we need elements as vertex properties to be considered?
+            #      what about a tautomerism when the initial and fianl state are symmetric?
+            f = gtt.isomorphism(s1.graph, s2.graph)
+            # print ("%d %d %d %d %s" % (self.f1.fid, self.f2.fid, p[0], p[1], f))
+            if True:
+                self.bond_match.append(p)
+            else:
+                self.missmatch.append(p)
+        self.compare_level = 2
+        if len(self.missmatch) > 0:
+            # unmatched species on level 2
+            return 2
+        else:
+            return 0 # all equal
+
+    def check(self):
+        """check identity of species on all levels (1 and 2) 
+        """
+        mf = self.check_aids()
+        if mf > 0:
+            return mf
+        # aids are equal -> chek bonds
+        return self.check_bonds()
+
 #####################  CENTRAL FINDR CLASS ########################################################################################
 
 class findR(mpiobject):
@@ -447,11 +535,7 @@ class findR(mpiobject):
             self.process_frame(self.snext)
             # do comparison and report
             comparer = self.get_comparer(self.scurrent, self.snext)
-            flag = comparer.check_aids()
-            # print ("&&FLAG %d" % flag)
-            #DEBUG DEBUG
-            # comparer.report(all=True)
-            #DEBUG DEBUG
+            flag = comparer.check()
             if flag>0:
                 # a difference was found between current and next
                 if self.smode == "forward":
@@ -463,23 +547,20 @@ class findR(mpiobject):
                     back_curr = self.scurrent
                     self.smode = "fine"
                 elif self.smode == "fine":
-                    comparer.analyse_aids()
-                    # search critical bond
-                    comparer.find_react_bond()   
-                    # TBI -> go back and forth to locate safe educt and product
-                    # mg1 = self.frames[self.scurrent].molg
-                    # mg2 = self.frames[self.snext].molg
-                    # mg1.set_edge_filter(None)
-                    # mg2.set_edge_filter(None)
-                    # for b in fb:
-                    #     be = mg2.edge(b[0], b[1])
-                    #     print ("bond order of %s is %10.4f" % (str(b), mg2.ep.bord[be]))
-                    # TBI -> store in database
-                    self.store_event(comparer)
+                    if flag == 1:
+                        # bimolecular reaction
+                        comparer.analyse_aids()
+                        # search critical bond
+                        comparer.find_react_bond()   
+                        # TBI -> go back and forth to locate safe educt and product
+                        self.store_bim_event(comparer)
+                    elif flag == 2:
+                        # TBI unimolecular reaction
+                        print ("UNIMOL REACTION EVENT!!")
                     # we need to make sure that the educts of the reaction event (current frame)
                     #               are really idential to where we started the forward interval
                     comparer2 = self.get_comparer(forw_curr, self.scurrent)
-                    flag = comparer2.check_aids()
+                    flag = comparer2.check()
                     if flag>0:
                         # there is still an event missing so we need to backtrack again
                         self.snext = back_next
@@ -494,8 +575,8 @@ class findR(mpiobject):
         # end of mainloop
         return
 
-    @timer("store_event")
-    def store_event(self, comparer):
+    @timer("store_bim_event")
+    def store_bim_event(self, comparer):
         """store species and further info in database
 
         DEBUG: currently only printing results and writing mol objects
@@ -509,21 +590,85 @@ class findR(mpiobject):
             formed_bonds     = comparer.formed_bonds[r]
             f1               = comparer.f1
             f2               = comparer.f2
-            #
-            xyz_f1 = np.array(self.f_xyz[f1.fid])
-            xyz_f2 = np.array(self.f_xyz[f2.fid])
+            # choose which frame we use as TS
+            # everything is referenced to f1 which is 0 (f2 is +1)
+            # find avereage bond order of reactive bonds at f1/f2
+            f1_averborder = 0.0
+            if len(broken_bonds) >0:
+                for b in broken_bonds:
+                    f1_averborder += f1.molg.ep.bord[f1.molg.edge(b[0], b[1])]
+                f1_averborder/len(broken_bonds)
+            f2_averborder = 0.0
+            if len(formed_bonds) >0:
+                for b in formed_bonds:
+                    f2_averborder += f2.molg.ep.bord[f2.molg.edge(b[0], b[1])]
+                f2_averborder/len(formed_bonds)
+            if f1_averborder == 0.0:
+               TS_rfid = 1
+            elif f2_averborder == 0.0:
+                TS_rfid = 0
+            else:
+                if abs(f1_averborder-0.5) < abs(f2_averborder-0.5):
+                    # f1 closer to TS
+                    TS_rfid = 0
+                else:
+                    TS_rfid = 1
+            # now store data depending on relative frame id (rfid) of the TS
+            if TS_rfid == 0:
+                TS = f1
+                PR = f2
+                ED = self.process_frame(TS.fid-1)
+                # get corresponding species numbers
+                TS_spec = educts
+                PR_spec = products
+                loccomp = fcompare(ED, TS)
+                if loccomp.check_aids() == 0:
+                    # no change in atom ids .. we can use TS species for ED as well
+                    ED_spec = educts
+                else:
+                    print ("Houston we have a problem!!! species changed between ED and TS")
+            else:
+                ED = f1
+                TS = f2
+                PR = self.process_frame(TS.fid+1)
+                ED_spec = educts
+                TS_spec = products
+                loccomp = fcompare(TS, PR)
+                if loccomp.check_aids() == 0:
+                    # no change in atom ids .. we can use TS species for PR as well
+                    PR_spec = products
+                else:
+                    print ("Houston we have a problem!!! species changed between TS and PR")
+            # now we should have all data
+            # generate mol objectes with coordinates
+            xyz_ed = np.array(self.f_xyz[ED.fid])
+            xyz_ts = np.array(self.f_xyz[TS.fid])
+            xyz_pr = np.array(self.f_xyz[PR.fid])
             # DEBUG DEBUG .. the follwoing is intermediate code
-            dirname = "revent_%05d_%05d" % (f1.fid, f2.fid)
-            print ("generating %s" % dirname)
+            dirname = "revent_%05d" % (TS.fid)
+            print ("  generating %s" % dirname)
             if not os.path.exists(dirname):
                 os.mkdir(dirname)
             os.chdir(dirname)
-            # we need to define which is TS and what to use for ED and PR
-            # for the time being we simple write out educts
-            for e in educts:
-                aids = list(educts[e].aids)
-                m = educts[e].make_mol(xyz_f1[aids], self.mol)
-                m.write("species_%d.mfpx" % e)
+            # DEBUG DEBUG .. end
+            ED_mol = []
+            for s in ED_spec:
+                aids = list(ED_spec[s].aids)
+                m = ED_spec[s].make_mol(xyz_ed[aids], self.mol)
+                ED_mol.append(m)
+                # DBEUG DEBUG
+                m.write("ED_species_%d.mfpx" % s)
+            PR_mol = []
+            for s in PR_spec:
+                aids = list(PR_spec[s].aids)
+                m = PR_spec[s].make_mol(xyz_pr[aids], self.mol)
+                PR_mol.append(m)
+                # DBEUG DEBUG
+                m.write("PR_species_%d.mfpx" % s)
+            # only one TS (all species) .. use make_mol of frame
+            m = TS.make_mol(TS_spec, xyz_ts, self.mol)
+            # DBEUG DEBUG
+            m.write("TS.mfpx")
             os.chdir("..")
             return
 

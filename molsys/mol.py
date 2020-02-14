@@ -228,12 +228,12 @@ class mol(mpiobject):
         ''' generates mol object from smiles string, requires openbabel to be installed
         '''
         try:
-            import pybel
+            from openbabel import pybel
         except ImportError as e:
             print(e)
             import traceback
             traceback.print_exc()
-            raise ImportError('install openbabel and python-openbabel via apt')
+            raise ImportError('install openbabel 3.0 from github')
         #if bbconn != []:
         #    nconns = len(bbconn)
         #    dummies = ['He','Ne','Ar','Kr','Xe','Rn']
