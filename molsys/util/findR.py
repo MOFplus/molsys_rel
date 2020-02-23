@@ -23,6 +23,7 @@ from molsys.util.timing import timer, Timer
 from molsys.util.print_progress import print_progress
 from molsys import mpiobject
 from molsys.util import rotations
+from molsys.util import RDB
 
 from graph_tool import Graph, GraphView
 import graph_tool.topology as gtt
@@ -56,7 +57,7 @@ class frame:
 
     def make_species(self, mid):
         # return a species object (without a local graph)
-        return species(self.fid, mid, self.molg, make_graph=True) # for DEBUG .. remove make_graph
+        return species(self.fid, mid, self.molg, make_graph=False, tracked=False)
 
     @property
     def nspecies(self):
@@ -130,7 +131,7 @@ class frame:
                 conn_i.append(aids.index(int(j)))
             conn.append(conn_i)
         self.mol.set_conn(conn)
-        return self.mol
+        return self.mol, aids
 
 
 #####################  SPECIES CLASS ########################################################################################
@@ -139,7 +140,7 @@ class species:
     """container class to keep species info (per frame!)
     """
 
-    def __init__(self, fid, mid, molg, make_graph=False):
+    def __init__(self, fid, mid, molg, make_graph=False, tracked = True):
         """init species
         
         Args:
@@ -157,6 +158,7 @@ class species:
         if make_graph:
             # now make a view of molg for this species         
             self.make_graph()
+        self.tracked = tracked
         return
 
     def make_graph(self):
@@ -307,7 +309,7 @@ class fcompare:
                     esk = self.f1.molg.vp.mid[a]
                     # is this already in educts?
                     if esk not in educts:
-                        # we need to make a new species object and add it
+                        # we need to make a new species object and add it (as non-tracked)
                         educts[esk] = self.f1.make_species(esk)
                         educt_aids |= educts[esk].aids
                 # which atoms are in the educts that are not in the product species? add them
@@ -316,7 +318,7 @@ class fcompare:
                     psk = self.f2.molg.vp.mid[a]
                     # is this already in educts?
                     if psk not in products:
-                        # we need to make a new species object and add it
+                        # we need to make a new species object and add it (as non-tracked)
                         products[psk] = self.f2.make_species(psk)
                         product_aids |= products[psk].aids
             # now add the final results to the reacs list
@@ -404,7 +406,7 @@ class fcompare:
 
 class findR(mpiobject):
 
-    def __init__(self, pdlpfilename,  stage, mpi_comm = None, out = None):
+    def __init__(self, pdlpfilename,  stage, rdb_path, mpi_comm = None, out = None):
         super(findR,self).__init__(mpi_comm, out)
         # To be tested: open read only on all nodes in parallel .. does it work?
         self.pdlp = pdlpio2.pdlpio2(pdlpfilename, filemode="r")
@@ -440,6 +442,10 @@ class findR(mpiobject):
             "back"    : -10,
             "fine"    : 1,
         }
+        # now open the RDB    TBI: how to deal with a paralle run?
+        self.rdb = RDB.RDB(rdb_path)
+        # TBI  get temp and timestep from pdlp file
+        self.rdb.set_md_run(pdlpfilename, stage, nframes=self.nframes, temp=2000.0, timestep=10.0)
         return
 
     @timer("process_frame")
@@ -644,36 +650,71 @@ class findR(mpiobject):
             xyz_ed = np.array(self.f_xyz[ED.fid])
             xyz_ts = np.array(self.f_xyz[TS.fid])
             xyz_pr = np.array(self.f_xyz[PR.fid])
-            # DEBUG DEBUG .. the follwoing is intermediate code
-            dirname = "revent_%05d" % (TS.fid)
-            print ("  generating %s" % dirname)
-            if not os.path.exists(dirname):
-                os.mkdir(dirname)
-            os.chdir(dirname)
-            # DEBUG DEBUG .. end
             ED_mol = []
-            for s in ED_spec:
+            ED_spec_tracked = []
+            # ED/PR_spec are dicitionaries of species .. we need a sorted list of integers
+            ED_spec_id = list(ED_spec.keys())
+            ED_spec_id.sort()
+            for s in ED_spec_id:
                 aids = list(ED_spec[s].aids)
                 m = ED_spec[s].make_mol(xyz_ed[aids], self.mol)
                 ED_mol.append(m)
-                # DBEUG DEBUG
-                m.write("ED_species_%d.mfpx" % s)
+                if ED_spec[s].tracked:
+                    ED_spec_tracked.append(s)
             PR_mol = []
-            for s in PR_spec:
+            PR_spec_tracked = []
+            PR_spec_id = list(PR_spec.keys())
+            PR_spec_id.sort()
+            for s in PR_spec_id:
                 aids = list(PR_spec[s].aids)
                 m = PR_spec[s].make_mol(xyz_pr[aids], self.mol)
                 PR_mol.append(m)
-                # DBEUG DEBUG
-                m.write("PR_species_%d.mfpx" % s)
+                if PR_spec[s].tracked:
+                    PR_spec_tracked.append(s)
             # only one TS (all species) .. use make_mol of frame
-            m = TS.make_mol(TS_spec, xyz_ts, self.mol)
-            # DBEUG DEBUG
-            m.write("TS.mfpx")
-            os.chdir("..")
+            TS_spec_id = list(TS_spec.keys())
+            TS_spec_id.sort()
+            TS_mol, TS_aids = TS.make_mol(TS_spec, xyz_ts, self.mol)
+            # map the broken/formed bonds to atom ids of the TS subsystem
+            rbonds_global = formed_bonds+broken_bonds
+            rbonds = []
+            for b in rbonds_global:
+                rbonds.append(TS_aids.index(b[0]))
+                rbonds.append(TS_aids.index(b[1]))
+            # now let us register the reaction event in the database
+            revID = self.rdb.register_revent(
+                TS.fid,
+                ED_spec_id,
+                TS_spec_id,
+                PR_spec_id,
+                len(ED_spec_tracked),
+                len(PR_spec_tracked),
+                rbonds
+            )
+            # add the md species (mol objects etc) to this entry
+            for i,s in enumerate(ED_spec_id):
+                self.rdb.add_md_species(
+                    revID,
+                    ED_mol[i],
+                    s,
+                    -1,           # ED
+                    tracked= s in ED_spec_tracked
+                )
+            for i,s in enumerate(PR_spec_id):
+                self.rdb.add_md_species(
+                    revID,
+                    PR_mol[i],
+                    s,
+                    1,            # PR
+                    tracked= s in PR_spec_tracked
+                )
+            self.rdb.add_md_species(
+                revID,
+                TS_mol,
+                TS_spec_id[0],    # species of TS are stored in revent, here only first
+                0
+            )
             return
-
-
-
 
     @timer("store_frames")
     def store_frames(self, fname):
