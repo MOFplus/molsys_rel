@@ -1,0 +1,11 @@
+
+clone openbabel 3.0 from github
+
+within openbabel:
+
+mkdir build
+cd build
+cmake -DPYTHON_BINDINGS=ON -DRUN_SWIG=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 ..
+
+add to .bahsrc:
+export PYTHONPATH=/usr/local/openbabel/lib/python3.5/site-packages:$PYTHONPATH
