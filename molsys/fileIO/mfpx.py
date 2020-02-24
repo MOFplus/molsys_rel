@@ -1,7 +1,7 @@
 import numpy
 # from . import txyz  # read_body and write_body live now here in mfpx.py
 import logging
-import string
+from molsys.util.misc import argsorted
 import molsys.util.images as images
 
 """
@@ -11,7 +11,6 @@ for the handling of metadata of topologies/embedding the system of keywords is l
 Note: the code still reads old mfpx file of type top correctly but it writes only the new format.
 
 """
-
 
 logger = logging.getLogger("molsys.io")
 
@@ -189,6 +188,8 @@ def write(mol, f, fullcell = True, topoformat = "new"):
                         topoinfo[k] = "|".join(v)
                     else:
                         topoinfo[k] = v
+        else:
+            topoinfo["format"] = "old"
     elif mol.is_bb:
         ftype = "bb"
     else:
@@ -208,16 +209,38 @@ def write(mol, f, fullcell = True, topoformat = "new"):
             f.write('# cell %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n' %\
                     tuple(mol.cellparams))
     if mol.is_bb:
-        f.write('# bbcenter %s\n' % mol.bb.center_type)
+        ### BLOCK DEFINITION ###################################################
+        ### bbcenter write ###
+        if mol.center_point != 'special':
+            f.write('# bbcenter %s\n' % mol.center_point)
+        else:
+            f.write('# bbcenter %s %12.6f %12.6f %12.6f\n' %
+                    tuple([mol.center_point]+ mol.special_center_point.tolist()))
+        ### bbconn write ###
+        # sort by connectors' types
+        _argsorted_type = argsorted(mol.connectors_type)
+        connectors_type = [mol.connectors_type[_] for _ in _argsorted_type]
+        connector_atoms = [sorted(mol.connector_atoms[_]) for _ in _argsorted_type]
+        connectors      = [mol.connectors[_] for _ in _argsorted_type]
+        # sort by connector atoms after connectors' types
+        _sort_priority = [_*mol.natoms for _ in connectors_type]
+        connector_atoms_priority = [
+            [__+_sort_priority[_k] for __ in _] for _k,_ in enumerate(connector_atoms)
+        ] # preparatory for nested sorting
+        _argsorted_catoms = argsorted(connector_atoms_priority)
+        connector_atoms = [connector_atoms[_] for _ in _argsorted_catoms]
+        connectors      = [connectors[_]      for _ in _argsorted_catoms]
+        # make bbcon line
         connstrings = ''
         ctype = 0
         for i,d in enumerate(mol.bb.connector_atoms):
             if mol.bb.connector_types[i] != ctype:
                 ctype +=1
-                connstrings += '/ '
+                connstrings += '/ ' # ctypes sep
             for j in d:
-                connstrings = connstrings + str(j+1) +','
-            connstrings = connstrings[0:-1] + '*' + str(mol.bb.connector[i]+1)+' '
+                connstrings = connstrings + str(j+1) +',' # connector_atoms sep
+            connstrings = connstrings[0:-1] + '*' + str(connectors[i]+1)+' '
+        # write bbconn line
         f.write('# bbconn %s\n' % connstrings)
         if mol.bb.connector_atypes is not None:
             # also write connector atypes
@@ -234,6 +257,7 @@ def write(mol, f, fullcell = True, topoformat = "new"):
         for k in tks:
             f.write("# topo_%s %s\n" % (k, topoinfo[k]))
     if hasattr(mol, "orientation"):
+        ### ORIENTATION DEFINITION #############################################
         o = len(mol.orientation) * "%3d" % tuple(mol.orientation)
         f.write('# orient '+o+"\n")
     f.write('%i\n' % mol.natoms)

@@ -22,7 +22,7 @@ class bb:
             mol (molsys.mol): mol instance where this addon is added to
         """
         self.mol = mol
-        assert self.mol.bcond == 0, "BBs must be non-periodic. mol object has bcond=%d" % self.mol.bcond
+        #assert self.mol.bcond == 0, "BBs must be non-periodic. mol object has bcond=%d" % self.mol.bcond ### [RA] what about rods?
         self.connector = []            # list of connector atoms (can be dummies) used for orientation (TBI: COM of multiple atoms)
         self.connector_atoms = []       # list of lists: atoms that actually bond to the other BB
         self.connector_types = []       # list of integers: type of a connector (TBI: connectors_atype should contain the atype of the OTHER atom bonded to .. same layout as connector_atoms)

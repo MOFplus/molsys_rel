@@ -20,10 +20,19 @@ class obabel:
         # generate the pybel object 
         molstring = mol.to_string(ftype="txyz", plain=True)
         self.pybmol = pybel.readstring("txyz", molstring)
+        # defaults
+        self._smiles = None
+        self._cansmiles = None
         return
 
-    def get_SMILES(self):
-        return self.pybmol.write("smi")
+    @property
+    def smiles(self):
+        if self._smiles == None:
+            self._smiles = self.pybmol.write("smi")
+        return self._smiles
 
-    def get_CANSMILES(self):
-        return self.pybmol.write("can")
+    @property
+    def cansmiles(self):
+        if self._cansmiles == None:
+            self._cansmiles = self.pybmol.write("can")
+        return self._cansmiles

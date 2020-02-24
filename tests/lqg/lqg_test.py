@@ -66,10 +66,10 @@ class lqg_test(unittest.TestCase):
         netname = self.netname
         self.h5file = h5py.File('lqg.hdf5', 'r+')
         self.g = lqg.lqg()
-        self.g.get_lqg_from_lists(self.h5file[netname]['lqg']['edges'].value,
-                self.h5file[netname]['lqg']['labels'].value,
-                self.h5file[netname]['lqg']['nvertices'].value,
-                self.h5file[netname]['lqg']['dim'].value,
+        self.g.get_lqg_from_lists(self.h5file[netname]['lqg']['edges'][()],
+                self.h5file[netname]['lqg']['labels'][()],
+                self.h5file[netname]['lqg']['nvertices'][()],
+                self.h5file[netname]['lqg']['dim'][()],
                 )
         self.g.build_lqg()
         return
@@ -77,61 +77,61 @@ class lqg_test(unittest.TestCase):
     def test_cycle_basis(self):
         netname = self.netname
         cb = self.g.get_cyclic_basis()
-        assert_allclose(cb, self.h5file[netname]['ref']['cycle_basis'].value,
+        assert_allclose(cb, self.h5file[netname]['ref']['cycle_basis'][()],
                 atol = 10**-12)
 
     def test_cocycle_basis(self):
         netname = self.netname
         cob = self.g.get_cocycle_basis()
-        assert_allclose(cob, self.h5file[netname]['ref']['cocycle_basis'].value,
+        assert_allclose(cob, self.h5file[netname]['ref']['cocycle_basis'][()],
                 atol = 10**-12)
 
     def test_alpha(self):
         netname = self.netname
-        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'].value
-        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'].value
+        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'][()]
+        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'][()]
         alpha = self.g.get_alpha()
-        assert_allclose(alpha, self.h5file[netname]['ref']['alpha'].value,
+        assert_allclose(alpha, self.h5file[netname]['ref']['alpha'][()],
                 atol = 10**-12)
 
     def test_lattice_basis(self):
         netname = self.netname
-        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'].value
-        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'].value
-        self.g.alpha =  self.h5file[netname]['ref']['alpha'].value
+        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'][()]
+        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'][()]
+        self.g.alpha =  self.h5file[netname]['ref']['alpha'][()]
         lb = self.g.get_lattice_basis()
-        assert_allclose(lb, self.h5file[netname]['ref']['lattice_basis'].value,
+        assert_allclose(lb, self.h5file[netname]['ref']['lattice_basis'][()],
                 atol = 10**-12)
 
     def test_kernel(self):
         netname = self.netname
-        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'].value
-        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'].value
-        self.g.alpha =  self.h5file[netname]['ref']['alpha'].value
-        self.g.lattice_basis =  self.h5file[netname]['ref']['lattice_basis'].value
+        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'][()]
+        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'][()]
+        self.g.alpha =  self.h5file[netname]['ref']['alpha'][()]
+        self.g.lattice_basis =  self.h5file[netname]['ref']['lattice_basis'][()]
         k = self.g.get_kernel()
-        assert_allclose(k, self.h5file[netname]['ref']['kernel'].value,
+        assert_allclose(k, self.h5file[netname]['ref']['kernel'][()],
                 atol = 10**-12)
 
     def test_cell(self):
         netname = self.netname
-        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'].value
-        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'].value
-        self.g.alpha =  self.h5file[netname]['ref']['alpha'].value
-        self.g.lattice_basis =  self.h5file[netname]['ref']['lattice_basis'].value
-        self.g.kernel =  self.h5file[netname]['ref']['kernel'].value
+        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'][()]
+        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'][()]
+        self.g.alpha =  self.h5file[netname]['ref']['alpha'][()]
+        self.g.lattice_basis =  self.h5file[netname]['ref']['lattice_basis'][()]
+        self.g.kernel =  self.h5file[netname]['ref']['kernel'][()]
         cell = self.g.get_cell()
-        assert_allclose(cell, self.h5file[netname]['ref']['cell'].value,
+        assert_allclose(cell, self.h5file[netname]['ref']['cell'][()],
                 atol = 10**-12)
 
     def test_arcs(self):
         netname = self.netname
-        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'].value
-        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'].value
-        self.g.alpha =  self.h5file[netname]['ref']['alpha'].value
+        self.g.cyclic_basis =  self.h5file[netname]['ref']['cycle_basis'][()]
+        self.g.cocycle_basis =  self.h5file[netname]['ref']['cocycle_basis'][()]
+        self.g.alpha =  self.h5file[netname]['ref']['alpha'][()]
         self.g.get_B_matrix()
         arcs = self.g.get_fracs()
-        assert_allclose(arcs, self.h5file[netname]['ref']['arcs'].value,
+        assert_allclose(arcs, self.h5file[netname]['ref']['arcs'][()],
                 atol = 10**-12)
 
 def main(netname):

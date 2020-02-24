@@ -75,9 +75,9 @@ class systre_db:
             self.arc_read = True
         else:
             print("""
-            WARNING: the file %s is not available.
-            Please link it into the molsys/util directory
-            """)
+            WARNING: the file %s
+            is not available. Please link it into the molsys/util directory.
+            """ % self.arc_file)
         return
 
     def get_key(self, name):

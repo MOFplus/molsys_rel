@@ -61,11 +61,15 @@ def test_read(fmt):
 
 @pytest.mark.parametrize("addon", molsys.addon.__all__)
 def test_load_addon(addon):
+    if addon == "topo":
+        pytest.xfail("known fail: topo is deprecated")
     from molsys.addon.ff import ff # TODO: improve testing
     m.addon(addon)
 
 @pytest.mark.parametrize("addon", molsys.addon.__all__)
 def test_load_wrong_addon(addon):
     m.addon("")
+    if addon == "topo":
+        pytest.xfail("known fail: topo is deprecated")
     m.addon("_"+addon+"_")
 
