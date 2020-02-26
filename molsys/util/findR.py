@@ -434,9 +434,6 @@ class findR(mpiobject):
         self.bondord_cutoff = 0.5  # below this bond roder a bond is registered but swithced off
         self.min_atom = 10         # below this number of atoms a species is considered as gasphase
         # for the search
-        self.smode = "forward" # must be either forward, back or fine
-        self.scurrent = 0
-        self.snext    = 0
         self.sstep ={
             "forward" : 200,
             "back"    : -10,
@@ -526,59 +523,111 @@ class findR(mpiobject):
         return
 
     @timer("search_frames")
-    def search_frames(self, progress=True):
+    def search_frames(self, verbose=False):
         """search the frames for reactions 
 
         This is the core routine of findR
         """
-        self.smode = "forward"
-        self.scurrent = 0
-        self.process_frame(self.scurrent)
-        self.snext = self.scurrent+self.sstep[self.smode]
+        mode = "forward"     # search mode
+        currentf = 0          # current frame
+        last_event = currentf # last reaction event => product frame of a reaction (initial frame is also an event)
+        open_events = []      # list of reaction events located in a forward segment (located by backtracking)
+        self.process_frame(currentf)
+        self.store_initial_event()
+        nextf = currentf+self.sstep[mode]
         # start mainloop (just search on until we are at the end of the file)
-        while self.snext < self.nframes and self.snext > 0:
-            print_progress(self.snext/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
-            self.process_frame(self.snext)
+        while nextf < self.nframes and nextf > 0:
+            if not verbose:
+                print_progress(nextf/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
+            self.process_frame(nextf)
             # do comparison and report
-            comparer = self.get_comparer(self.scurrent, self.snext)
+            comparer = self.get_comparer(currentf, nextf)
             flag = comparer.check()
             if flag>0:
                 # a difference was found between current and next
-                if self.smode == "forward":
-                    forw_next = self.snext
-                    forw_curr = self.scurrent
-                    self.smode = "back"
-                elif self.smode == "back":
-                    back_next = self.snext
-                    back_curr = self.scurrent
-                    self.smode = "fine"
-                elif self.smode == "fine":
+                if mode == "forward":
+                    farthestf = nextf
+                    mode = "back"
+                elif mode == "back":
+                    back_curr = nextf
+                    mode = "fine"
+                elif mode == "fine":
                     if flag == 1:
                         # bimolecular reaction
                         comparer.analyse_aids()
                         # search critical bond
                         comparer.find_react_bond()   
-                        # TBI -> go back and forth to locate safe educt and product
-                        self.store_bim_event(comparer)
+                        # now store the bimolecular event
+                        TS_fid = self.store_bim_event(comparer)
+                        if verbose:
+                            print ("###########  Event at %d stored in DB #############" % TS_fid)
                     elif flag == 2:
                         # TBI unimolecular reaction
                         print ("UNIMOL REACTION EVENT!!")
-                    # we need to make sure that the educts of the reaction event (current frame)
-                    #               are really idential to where we started the forward interval
-                    comparer2 = self.get_comparer(forw_curr, self.scurrent)
+                        raise
+                    # we need to make sure that the educts of the reaction event (TS_fid-1)
+                    #               are really idential to where we started the forward interval (last reaction event)
+                    comparer2 = self.get_comparer(last_event, TS_fid-1)
                     flag = comparer2.check()
                     if flag>0:
-                        # there is still an event missing so we need to backtrack again
-                        self.snext = back_next
-                        self.smode = "back"
+                        # there is still an event missing so we need to backtrack again and keep the current event in the open_events
+                        open_events.append(TS_fid)   # open events are stored in inverse chronological order ... the latest is first
+                        nextf = back_curr
+                        mode = "back"
                     else:
-                        # print ("##### Continue searching")
-                        self.smode = "forward"
-                        self.snext = forw_next
-            self.scurrent = self.snext
-            self.snext = self.scurrent+self.sstep[self.smode]
-            # print ("&& current %5d  next %5d  step %5d  mode %s" % (self.scurrent, self.snext, self.sstep[self.smode], self.smode))
+                        # These frames are equal which means the last product frame and the current educt frame are identical
+                        # => we can continue and connect the tracked species by and edge in the reaction graph
+                        mode = "forward"
+                        self.connect_events(comparer2)
+                        last_event = TS_fid+1
+                        while len(open_events) > 0:
+                            TS_fid = open_events.pop()                             # take the next evnt to be connected from the registered events
+                            comparer2 = self.get_comparer(last_event, TS_fid-1)    # and compare to previous in the chain
+                            flag = comparer2.check()
+                            assert flag == 0, "THis should never happen ... connecting chain of events and found an unexpected deviation between frames %d and %d" % (last_event, TS_fid-1) 
+                            self.connect_events(comparer2)
+                            last_event = TS_fid+1
+                        # now we are done with the connecting of events -> last_event is set and we can continue
+                        nextf = farthestf
+                        if verbose:
+                            print ("#########################################################")
+                            print ("all events stored and connected .. moving forward again"   )
+            currentf = nextf
+            nextf = currentf+self.sstep[mode]
+            if verbose:
+                print ("&& current %5d  next %5d  mode %s" % (currentf, nextf, mode))
         # end of mainloop
+        return
+
+    def store_initial_event(self):
+        """for consistency we need an event for frame 0 just registering the initial tracked species as products
+
+        Note: we do not store any ED or TS species. 
+        """
+        f = self.frames[0]
+        spec = list(f.specs.keys()) # get all tracked species
+        # store reaction event
+        revID = self.rdb.register_revent(
+            -1,          # frame ID of TS is -1 (because 0 is the PR!)
+            [],          # no ED
+            [],          # no TS
+            spec,        # spec IDs of "products"
+            0,           # no educts
+            len(spec),   # tracked species (all)
+            []           # no rbonds
+        )
+        # make mol objects and store
+        xyz = np.array(self.f_xyz[0])
+        for s_id in spec:
+            s = f.specs[s_id]
+            m = s.make_mol(xyz[list(s.aids)], self.mol)
+            self.rdb.add_md_species(
+                revID,
+                m,
+                s_id,
+                1,            # PR
+                tracked=True
+            )
         return
 
     @timer("store_bim_event")
@@ -588,7 +637,7 @@ class findR(mpiobject):
         DEBUG: currently only printing results and writing mol objects
         
         Args:
-            comparer (comparer): current comparer between to frames (f1 is educts)
+            comparer (fcompare object): current comparer between to frames (f1 is educts)
         """
         for r in range(comparer.nreacs):
             educts, products = comparer.reacs[r]
@@ -714,7 +763,19 @@ class findR(mpiobject):
                 TS_spec_id[0],    # species of TS are stored in revent, here only first
                 0
             )
-            return
+            return TS.fid  # return the TS frame ID determined in this process
+
+    def connect_events(self, comparer):
+        """connecting a reaction event 
+        
+        Args:
+            comparer (fcompare object): comparer between last_event (products) and TS_fid-1 (educts of next event)
+        """
+        for match in comparer.bond_match:
+            self.rdb.set_react(comparer.f1.fid, comparer.f2.fid, match[0], match[1])
+        return
+
+    ########################## in case of restart ###########################################################
 
     @timer("store_frames")
     def store_frames(self, fname):
