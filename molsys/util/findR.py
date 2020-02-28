@@ -775,6 +775,26 @@ class findR(mpiobject):
             self.rdb.set_react(comparer.f1.fid, comparer.f2.fid, match[0], match[1])
         return
 
+    ##########################  DEBUG stuff #################################################################
+
+    def deb_check_every(self, every):
+        """run over the frames and check for changes between every n frame
+        
+        Args:
+            every (int): stride to check frames
+        """
+        self.process_frame(0)
+        for i in range(every, self.nframes, every):
+            self.process_frame(i)
+            comp = self.get_comparer(i-every, i)
+            flag = comp.check()
+            taetae = ""
+            if flag > 0:
+                taetae = "!!!!!!!!"
+            print("flag between %4d and %4d : %1d  %s" % (i-every, i, flag, taetae))
+        return
+
+
     ########################## in case of restart ###########################################################
 
     @timer("store_frames")
