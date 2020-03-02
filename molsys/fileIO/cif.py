@@ -126,8 +126,8 @@ def read(mol, f, make_P1=True, detect_conn=True, conn_thresh=0.1, disorder=None)
                 select += [i for i,e in enumerate(disorder_group_full) if i not in select_disorder]
                 if len(select) != sum(occ):
                     logger.warning(
-                        "%d number of selected atoms is different to\
-                            %s total occupancy!" % (len(select), sum(occ))
+                        "number of selected atoms not equal to total occupancy: %s != %s" % \
+                        (len(select), sum(occ))
                     )
         else:
             disorder = None
