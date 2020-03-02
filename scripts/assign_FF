@@ -34,7 +34,7 @@ if len(sys.argv) < 2:
       
 fname = sys.argv[1]
 
-froot = string.join(fname.split(".")[:-1])
+froot = fname.rsplit('.',1)[0]
 
 if len(sys.argv) < 3:
     print("Please specify a FF name")
@@ -54,7 +54,7 @@ import molsys
 m = molsys.mol()
 m.read(fname)
 m.addon("ff")
-m.ff.assign_params(ff, plot=plot, refsysname=refsys)
+m.ff.assign_params(ff, plot=False, refsysname=refsys)
 m.ff.write(froot)
 
 
