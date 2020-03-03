@@ -38,6 +38,7 @@ def read(mol, f):
     topoinfo["RCSRname"]  = "None"
     topoinfo["spgr"]      = "None" 
     topoinfo["coord_seq"] = "None"
+    topoinfo["transitivity"] = "None"
     while not stop:
         if lbuffer[0] != '#':
             mol.natoms = int(lbuffer[0])
@@ -85,6 +86,8 @@ def read(mol, f):
                     topoinfo["spgr"] = lbuffer[2]
                 elif topokeyw == "coord_seq":
                     topoinfo["coord_seq"] = " ".join(lbuffer[2:])
+                elif topokeyw == "transitivity":
+                    topoinfo["transitivity"] = " ".join(lbuffer[2:])
                 else:
                     logger.warning("unknown topo keyword %s" % keyword)
             lbuffer = f.readline().split()
@@ -113,6 +116,7 @@ def read(mol, f):
             mol.topo.set_topoinfo(skey=topoinfo["systrekey"],\
                                   mapping=mol.fragnumbers,\
                                   spgr=topoinfo["spgr"],\
+                                  transitivity=topoinfo["transitivity"],\
                                   RCSRname=topoinfo["RCSRname"],\
                                   coord_seq=cs)
         else:
@@ -181,7 +185,7 @@ def write(mol, f, fullcell = True, topoformat = "new"):
         else:
             topoinfo["format"] = "old"
         if "topo" in mol.loaded_addons:
-            for k in ["systrekey", "RCSRname", "spgr", "coord_seq"]:
+            for k in ["systrekey", "RCSRname", "spgr", "coord_seq",'transitivity']:
                 v = getattr(mol.topo, k)
                 if v is not "None":
                     if type(v) == type([]):

@@ -23,7 +23,7 @@ molsys_path = os.path.dirname(molsys.__file__)
 systreCmd_path = os.path.dirname(molsys_path) + "/external"
 
 
-def run_systre(key, debug=False):
+def run_systre(key, debug=False,run_symm_for_q=False):
     """run systreCmd via jython
 
     probably this could all be run using jython directly, but i will try to keep these things seperate
@@ -49,6 +49,15 @@ def run_systre(key, debug=False):
         fcgd.flush()
         try:
             systre_result = subprocess.check_output(args=["jython", "-u", systreCmd_path+"/systreCmd.py", "-u", fcgd.name], stderr=subprocess.STDOUT)
+            if run_symm_for_q:
+                systre_result_symm = subprocess.check_output(args=["jython", systreCmd_path+"/systreCmd.py", fcgd.name], stderr=subprocess.STDOUT)
+                q = systre_result_symm.decode().split('Edges:\n')[-1].split('Edge centers:')[0].count('\n')
+            else:
+                q = -1
+            if debug is True and run_symm_for_q is True:
+                print('systre output without -u:')
+                print(systre_result_symm.decode())
+                print('end systre output without -u:')
         except subprocess.CalledProcessError as err:
             raw_err = err.stdout.decode().split("\n")
             print (raw_err)
@@ -232,6 +241,9 @@ def run_systre(key, debug=False):
     for v in key_mapping:
         sym_mapping.append(str(rev_equiv[v]))
     m.set_atypes(sym_mapping)
+    # set transitivity values ## 1 is set above already!
+    p,r,s =  len(list(set(rev_equiv))), -1,-1 # r and s can not be determined by systre --> 3ds?
+    m.topo._transitivity =  '%s %s %s %s' % (p,q,r,s)
     m.topo._spgr = spgroup
     m.topo._coord_seq = coord_seq
     return m
@@ -247,7 +259,7 @@ def convert_all():
     for n in systrekey.db_name2key.keys():
         if not os.path.isfile(n+".mfpx"):
             print ("generating embedding for net %s (%d of %d)" % (n, i, nnets))
-            m = run_systre(systrekey.db_name2key[n])
+            m = run_systre(systrekey.db_name2key[n],run_symm_for_q=True)
             m.write(n+".mfpx")
             print ("done!")
         i += 1
