@@ -36,6 +36,8 @@ class RDB:
             db_path (string): path to the sqlite database and the storage folder
             mode (str, optional): mode for opening database: a is append (must exist) n is new (must not exist). Defaults to "a".
         """
+        db_path = os.path.abspath(db_path)
+        print (db_path)
         # check access mode
         if mode == "a":
             assert os.path.isdir(db_path)
@@ -127,7 +129,7 @@ class RDB:
                     # generate an upload field .. by default the folder is in /storage/<fieldname>
                     fieldname = d[1]
                     fieldtype = typekeys[d[0]]
-                    kwargs["uploadfolder"] = "./%s/storage/%s" % (self.db_path, fieldname)
+                    kwargs["uploadfolder"] = "%s/storage/%s" % (self.db_path, fieldname)
                 else:
                     fieldname = d[1]
                     fieldtype = typekeys[d[0]]
@@ -230,6 +232,15 @@ class RDB:
         )
         self.db.commit()
         return specID
+
+    # TBI .. this is really stupid because we have to get revent for each species .. for DEBUG ok
+    #        but merge these methods and make it more clever
+    def get_revent_species(self,frame):
+        # get requested revent of current md
+        revent = self.db((self.db.revent.mdID == self.current_md) & (self.db.revent.frame == frame)).select().first()
+        assert revent is not None, "No reaction event for frame %d" % frame
+        return (revent.ed, revent.ts[0], revent.pr)
+
 
     def get_md_species(self, frame, spec, foff):
         # get requested revent of current md

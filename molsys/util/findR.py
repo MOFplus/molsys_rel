@@ -30,6 +30,17 @@ import graph_tool.topology as gtt
 import graph_tool.util as gtu
 import graph_tool.draw as gtd
 
+"""
+##################### NOTES /TO BE IMPLEMENTED
+
+add xyz coord reference to frame object for mol object generation
+-> not completely implemented
+
+add pmol also to species
+move molg generation to the frame and species objects
+
+"""
+
 #####################  FRAME CLASS ########################################################################################
 
 class frame:
@@ -38,12 +49,17 @@ class frame:
     the main attributes are:
     - fid: frame id 
     - molg:    the molecular graph (edges below threshold are filtered but the bond order is in the edge property bord)
+    - xyz:     numpy array (N,3) with the xyz coords of all atoms in this frame
+    - pmol:    parent mol object ( as a reference)
     - specs:   dictionary with species (indexed by their name mid -> valid only in that frame!)
+
     """
 
-    def __init__(self, fid, molg, specs=None):
+    def __init__(self, fid, molg, xyz, pmol, specs=None):
         self.fid = fid
         self.molg = molg
+        self.xyz = xyz
+        self.pmol = pmol
         if specs:
             self.specs = specs
         else:
@@ -51,7 +67,7 @@ class frame:
         return
 
     def add_species(self, mid):
-        # make all frame species (observed) witha local graph representation
+        # make all frame species (observed) with a local graph representation
         self.specs[mid] = species(self.fid, mid, self.molg, make_graph=True)
         return
 
@@ -96,9 +112,11 @@ class frame:
         return border
 
     def make_mol(self, species, xyz, pmol):
-        """generate a mol object from a list of species
+        """generate a single mol object from a list of species for a TS
 
         we get the current coordinates as xyz and the parent mol object pmol from the pdlp file
+
+        TBI: use frame obejcts pmol and xyz to do it -> refactor calling code
         
         Args:
             xyz (numpy): coordinates of the atoms in the frame
@@ -133,6 +151,42 @@ class frame:
         self.mol.set_conn(conn)
         return self.mol, aids
 
+    def make_species_mol(self):
+        """get a list of mol objects for all species in the frame
+
+        NOTE: we use here the global xyz and pmol -> should be delegated to the species object which needs refactoring
+        - we should attacg 
+        """
+        mols = {}
+        for s in self.specs:
+            sp = self.specs[s]
+            sxyz = self.xyz[list(sp.aids)]
+            mols[s] = self.specs[s].make_mol(sxyz, self.pmol)
+        return mols
+
+    ### some DEBUG methods ###
+
+    def write_species(self):
+        foldername = "frame_%d_species" % self.fid
+        os.mkdir(foldername)
+        os.chdir(foldername)
+        mols = self.make_species_mol()
+        for s in mols:
+            m = mols[s]
+            m.write("spec_%d.mfpx" % s)
+        os.chdir("..")
+
+    def get_main_species_formula(self):
+        """get the sumformula of the main specis 0
+        """
+        aids = list(self.specs[0].aids)
+        elems = [self.pmol.elems[i] for i in aids]
+        cont  = list(set(elems))
+        cont.sort()
+        sumform = ""
+        for e in cont:
+            sumform += "%s%d " % (e, elems.count(e))
+        return sumform
 
 #####################  SPECIES CLASS ########################################################################################
 
@@ -439,6 +493,7 @@ class findR(mpiobject):
             "back"    : -10,
             "fine"    : 1,
         }
+        self.skip_recross = 0 # number of frames to check if a reaction event was reverted
         # now open the RDB    TBI: how to deal with a paralle run?
         self.rdb = RDB.RDB(rdb_path)
         # TBI  get temp and timestep from pdlp file
@@ -489,8 +544,10 @@ class findR(mpiobject):
         for i in range(nspecies_all):
             if hist[i] >= self.min_atom:
                 nspecies.append(i)
-        # TBI shall we reset the vertex filter of molg again?      
-        f = frame(fid, molg)
+        # TBI shall we reset the vertex filter of molg again?
+        # add xyz and parent mol
+        xyz = np.array(self.f_xyz[fid])      
+        f = frame(fid, molg, xyz, self.mol)
         for mid in nspecies:
             f.add_species(mid)
         # store the frame
@@ -498,6 +555,10 @@ class findR(mpiobject):
         return f
 
     def get_comparer(self, f1, f2):
+        if not self.frames[f1]:
+            self.process_frame(f1)
+        if not self.frames[f2]:
+            self.process_frame(f2)
         return fcompare(self.frames[f1], self.frames[f2])
     
     @timer("do_frames")
@@ -547,39 +608,73 @@ class findR(mpiobject):
                 # a difference was found between current and next
                 if mode == "forward":
                     farthestf = nextf
+                    segment_start = currentf
                     mode = "back"
                 elif mode == "back":
-                    back_curr = nextf
+                    back_curr = currentf
+                    back_next = nextf
                     mode = "fine"
                 elif mode == "fine":
-                    if flag == 1:
-                        # bimolecular reaction
-                        comparer.analyse_aids()
-                        # search critical bond
-                        comparer.find_react_bond()   
-                        # now store the bimolecular event
-                        TS_fid = self.store_bim_event(comparer)
+                    # if skip_recross is set check if current and next+skip_recross are identical
+                    #               => if this is true then do not store this event
+                    recross = False
+                    if self.skip_recross > 0:
+                        comparer_recross = self.get_comparer(currentf, nextf+self.skip_recross)
+                        flag_recross = comparer_recross.check()
+                        if flag_recross == 0:
+                            recross = True
+                    if not recross:
+                        if flag == 1:
+                            # bimolecular reaction
+                            comparer.analyse_aids()
+                            # search critical bond
+                            comparer.find_react_bond()   
+                            # now store the bimolecular event
+                            TS_fid = self.store_bim_event(comparer)
+                            if verbose:
+                                print ("###########  Event at %d stored in DB #############" % TS_fid)
+                        elif flag == 2:
+                            # TBI unimolecular reaction
+                            print ("UNIMOL REACTION EVENT!!")
+                            raise
+                    else:
                         if verbose:
-                            print ("###########  Event at %d stored in DB #############" % TS_fid)
-                    elif flag == 2:
-                        # TBI unimolecular reaction
-                        print ("UNIMOL REACTION EVENT!!")
-                        raise
+                            print ("###########  Reaction event with recrossing at %d not stored in DB" % nextf)
+                            # since the actual TS was not identified we simply assume it is the current frame
+                            TS_fid = currentf
+                    # first we need to make sure that there is no other reaction in the subsegment
+                    #   test if the product (TS_fid+1) is equal to the end of the subsegment (back_curr)
+                    #   if this is not the case then we have to go forward in fine mode further on
+                    comparer2 = self.get_comparer(TS_fid+1, back_curr)
+                    flag = comparer2.check()
+                    if flag > 0:
+                        if verbose:
+                            print ("The product frame %d and the end of the subsegment at %d are not equal" % (TS_fid+1, back_curr))
+                            print ("should continue forward in fine mode ... ")
+                            # 
                     # we need to make sure that the educts of the reaction event (TS_fid-1)
                     #               are really idential to where we started the forward interval (last reaction event)
                     comparer2 = self.get_comparer(last_event, TS_fid-1)
                     flag = comparer2.check()
                     if flag>0:
+                        if verbose:
+                            print ("The educt frame %d and the products of the last event %d are not equal" % (TS_fid-1, last_event))
+                            self.frames[last_event].write_species()
+                            self.frames[TS_fid-1].write_species()
+                            print (flag)
+                            print ("continue backtracking")
                         # there is still an event missing so we need to backtrack again and keep the current event in the open_events
-                        open_events.append(TS_fid)   # open events are stored in inverse chronological order ... the latest is first
-                        nextf = back_curr
+                        if not recross:
+                            open_events.append(TS_fid)   # open events are stored in inverse chronological order ... the latest is first
+                        nextf = back_next
                         mode = "back"
                     else:
                         # These frames are equal which means the last product frame and the current educt frame are identical
                         # => we can continue and connect the tracked species by and edge in the reaction graph
                         mode = "forward"
-                        self.connect_events(comparer2)
-                        last_event = TS_fid+1
+                        if not recross:
+                            self.connect_events(comparer2)
+                            last_event = TS_fid+1
                         while len(open_events) > 0:
                             TS_fid = open_events.pop()                             # take the next evnt to be connected from the registered events
                             comparer2 = self.get_comparer(last_event, TS_fid-1)    # and compare to previous in the chain
@@ -589,13 +684,23 @@ class findR(mpiobject):
                             last_event = TS_fid+1
                         # now we are done with the connecting of events -> last_event is set and we can continue
                         nextf = farthestf
+                        # in the rare case that a recross is at a segment boundary we need to make sure that the
+                        # second part of the recross in the higher segment is ignored
+                        if TS_fid+self.skip_recross > nextf:
+                            print ("yo man ... move on")
+                            nextf = TS_fid+self.skip_recross+1
                         if verbose:
                             print ("#########################################################")
                             print ("all events stored and connected .. moving forward again"   )
             currentf = nextf
             nextf = currentf+self.sstep[mode]
+            if mode == "back":
+                if nextf < segment_start:
+                    print ("backtracking went wrong -> abort")
+                    raise 
             if verbose:
-                print ("&& current %5d  next %5d  mode %s" % (currentf, nextf, mode))
+                sumform = self.frames[currentf].get_main_species_formula()
+                print ("&& current %5d  next %5d  mode %s   (current frame sumformula %s" % (currentf, nextf, mode, sumform))
         # end of mainloop
         return
 
