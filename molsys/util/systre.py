@@ -265,6 +265,25 @@ def convert_all():
         i += 1
     return
 
+def skey_string_to_list(skey):
+    """ Converts a systre string key, something like 
+    '3 1 2 0 0 0 1 2 1 0 0 1 3 0 0 0 1 3 0 1 0 2 4 0 0 0 2 4 1 0 0 3 4 0 0 1 3 4 0 1 1'
+    to a list. Crops of the dimensionality
+    """
+    slist = []
+    skey=skey.split(' ')[1:]
+    for i,s in enumerate(skey):
+        if i % 5 == 0:
+            slist.append([])
+        if i % 5 == 0:
+            slist[-1].append([int(s)])
+        elif i % 5 == 1:
+            slist[-1][0].append(int(s))
+        elif i % 5 == 2:
+            slist[-1].append([int(s)])
+        else:
+            slist[-1][-1].append(int(s))
+    return slist
 
 
 # for debugging call this with a RCSR name
