@@ -85,6 +85,7 @@ class RDB:
             "s:name"          # level of theory
         ]
         dbstruc["opt_species"] = [
+            "r:md_species",   # ref to md_species
             "r:lot",          # ref to lot
             "d:energy",       # energy (in kcal/mol)
             "u:xyz",          # upload xyz file
@@ -178,19 +179,12 @@ class RDB:
         self.current_md = mdID
         return mdID
 
-    def set_lot(self, lot):
-        """set a new level of theory
-        inserted only if it does not exist already
-        Args:
-            lot (string): name of the level of theory
-        """
-        self.db.lot.update_or_insert(name=lot)
-        self.db.commit()
-        return
-
     def get_lot(self, lot):
         row = self.db(self.db.lot.name==lot).select().first()
-        return row.id
+        id = row.id
+        if row is None:
+            id = self.db.lot.insert(name=lot)
+        return id
 
     def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False, postpone_commit=False):
         reventID = self.db.revent.insert(
@@ -296,6 +290,27 @@ class RDB:
         self.db.commit()
         return
 
+    def add_opt_species(self, mol, lot, energy, mdspecID):
+        """add an optimized structure to the DB
+        
+        Args:
+            mol (mol object): structure to be stored
+            lot (string or int): name or id of the level of theory
+            energy (float): energy of the system (unit is defiend by lot)
+            mdspecID (int): reference id of the md_species entry
+        """
+        if type(lot) != type(1):
+            lot = self.get_lot(lot)
+        xyzf = io.BytesIO(bytes(mol.to_string(ftype="xyz"), "utf-8"))
+        optID = self.db.opt_species.insert(
+            md_speciesID = mdspecID,
+            lotID        = lot,
+            energy       = energy,
+            xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz")
+        )
+        self.db.commit()
+        return
+        
 
 
 if __name__ == "__main__":
