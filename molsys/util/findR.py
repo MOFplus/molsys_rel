@@ -684,7 +684,8 @@ class findR(mpiobject):
         # start mainloop (just search on until we are at the end of the file)
         # init some variables
         segment_events = []
-        first_event = None # this variable stores a reaction event at the beginning of a segment being a recrossing
+        first_event = None # this variable stores the maximum fid of a reaction event at the beginning of a segment being a recrossing
+        last_event  = None # this stores the last revent object of a segment (None in the first segment) 
         while nextf < self.nframes and nextf > 0:
             if not verbose:
                 print_progress(nextf/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
@@ -750,15 +751,17 @@ class findR(mpiobject):
                             event_TSfids = [r.TS_fid for r in segment_events]
                             if verbose:
                                 print ("events in segment: %s" % str(event_TSfids))
-                            # find recrossings
+                            ### handle recrossings ################################################
                             if self.skip_recross > 0:
+                                # find recrossings if skip_recross is larger than 1 -> add event indices in list recross and remove
                                 recross = []
-                                start_recross = 0
+                                start_recross = 0  # if the first event is part of a recrossing over the segment boundary then set this to 1
                                 # is there a possible early event?
                                 if first_event is not None:
                                     # we should have a reaction event before the frame given in first event
                                     if event_TSfids[0] <= first_event:
-                                        print ("DEBUG DEBUG found an early event for recrossing at %d" % event_TSfids[0])
+                                        if verbose:
+                                            print ("  found an early event for recrossing at %d" % event_TSfids[0])
                                         first_event = None
                                         recross = [0]
                                         start_recross = 1
@@ -778,6 +781,9 @@ class findR(mpiobject):
                                                 recross += [i, i+1]
                                                 if verbose:
                                                     print ("recrossing found")
+                                            else:
+                                                if verbose:
+                                                    print ("no recrossing")
                                 # check if the last event is close enough to the segment bound 
                                 e = event_TSfids[-1]
                                 if segment_end-e <= self.skip_recross:
@@ -786,15 +792,31 @@ class findR(mpiobject):
                                     if flag == 0:
                                         # this is a recrossing over the segment bound
                                         if verbose:
-                                            print ("recrossing from %d to %d" % (e-1, e+self.skip_recross+1))
+                                            print ("recrossing over segment boundary from %d to %d" % (e-1, e+self.skip_recross+1))
                                         recross += [len(event_TSfids)-1]
                                         first_event = e+self.skip_recross
                                 if verbose:
                                     if len(recross) > 0:
                                         print ("The following event indices are marked to be removed because of recrossing")
                                         print (str(recross))
-                            # TBI: add to DB
-                            # TBI: connect events
+                                # now recrossing events are complete and we can remove them
+                                if len(recross) > 0:
+                                    segment_events = [segment_events[e] for e in range(len(segment_events)) if e not in recross]
+                                    event_TSfids = [r.TS_fid for r in segment_events]
+                                    if verbose:
+                                        print ("remaining segments to be stored: %s" % str(event_TSfids))
+                            ###### end of handle recrossings ####################################
+                            # store events in DB now
+                            for revt in segment_events:
+                                if revt.unimol:
+                                    raise "unimol reactions not implemented yet"
+                                else:
+                                    self.store_bim_event(revt)
+                            # connect events (start with connecting last_event with the first in the segment)
+                            if len(segment_events) > 0:
+                                for revt in segment_events:
+                                    self.connect_events(last_event, revt)
+                                    last_event = revt
                             # now move forward again stating from segment_end
                             mode = "forward"
                             nextf = segment_end
@@ -816,7 +838,7 @@ class findR(mpiobject):
                     raise 
             if verbose:
                 sumform = self.frames[currentf].get_main_species_formula()
-                print ("&& current %5d  next %5d  mode %8s   (current frame sumformula %s" % (currentf, nextf, mode, sumform))
+                print ("&& current %10d  next %10d  mode %8s   (current frame sumformula %s" % (currentf, nextf, mode, sumform))
         # end of mainloop
         return
 
@@ -852,95 +874,101 @@ class findR(mpiobject):
         return
 
     @timer("store_bim_event")
-    def store_bim_event(self, comparer):
+    def store_bim_event(self, revt):
         """store species and further info in database
 
-        DEBUG: currently only printing results and writing mol objects
-        
         Args:
-            comparer (fcompare object): current comparer between to frames (f1 is educts)
+            revt (revent object): reaction event object
         """
-        # FIXME
-        if 1 == 0:
-            # now we should have all data
-            # generate mol objectes with coordinates
-            xyz_ed = np.array(self.f_xyz[ED.fid])
-            xyz_ts = np.array(self.f_xyz[TS.fid])
-            xyz_pr = np.array(self.f_xyz[PR.fid])
-            ED_mol = []
-            ED_spec_tracked = []
-            # ED/PR_spec are dicitionaries of species .. we need a sorted list of integers
-            ED_spec_id = list(ED_spec.keys())
-            ED_spec_id.sort()
-            for s in ED_spec_id:
-                aids = list(ED_spec[s].aids)
-                m = ED_spec[s].make_mol(xyz_ed[aids], self.mol)
-                ED_mol.append(m)
-                if ED_spec[s].tracked:
-                    ED_spec_tracked.append(s)
-            PR_mol = []
-            PR_spec_tracked = []
-            PR_spec_id = list(PR_spec.keys())
-            PR_spec_id.sort()
-            for s in PR_spec_id:
-                aids = list(PR_spec[s].aids)
-                m = PR_spec[s].make_mol(xyz_pr[aids], self.mol)
-                PR_mol.append(m)
-                if PR_spec[s].tracked:
-                    PR_spec_tracked.append(s)
-            # only one TS (all species) .. use make_mol of frame
-            TS_spec_id = list(TS_spec.keys())
-            TS_spec_id.sort()
-            TS_mol, TS_aids = TS.make_mol(TS_spec, xyz_ts, self.mol)
-            # map the broken/formed bonds to atom ids of the TS subsystem
-            rbonds_global = formed_bonds+broken_bonds
-            rbonds = []
-            for b in rbonds_global:
-                rbonds.append(TS_aids.index(b[0]))
-                rbonds.append(TS_aids.index(b[1]))
-            # now let us register the reaction event in the database
-            revID = self.rdb.register_revent(
-                TS.fid,
-                ED_spec_id,
-                TS_spec_id,
-                PR_spec_id,
-                len(ED_spec_tracked),
-                len(PR_spec_tracked),
-                rbonds
-            )
-            # add the md species (mol objects etc) to this entry
-            for i,s in enumerate(ED_spec_id):
-                self.rdb.add_md_species(
-                    revID,
-                    ED_mol[i],
-                    s,
-                    -1,           # ED
-                    tracked= s in ED_spec_tracked
-                )
-            for i,s in enumerate(PR_spec_id):
-                self.rdb.add_md_species(
-                    revID,
-                    PR_mol[i],
-                    s,
-                    1,            # PR
-                    tracked= s in PR_spec_tracked
-                )
+        # now we should have all data
+        # generate mol objectes with coordinates
+        xyz_ed = np.array(self.f_xyz[revt.ED.fid])
+        xyz_ts = np.array(self.f_xyz[revt.TS.fid])
+        xyz_pr = np.array(self.f_xyz[revt.PR.fid])
+        ED_mol = []
+        ED_spec_tracked = []
+        # ED/PR_spec are dicitionaries of species .. we need a sorted list of integers
+        ED_spec_id = list(revt.ED_spec.keys())
+        ED_spec_id.sort()
+        for s in ED_spec_id:
+            aids = list(revt.ED_spec[s].aids)
+            m = revt.ED_spec[s].make_mol(xyz_ed[aids], self.mol)
+            ED_mol.append(m)
+            if revt.ED_spec[s].tracked:
+                ED_spec_tracked.append(s)
+        PR_mol = []
+        PR_spec_tracked = []
+        PR_spec_id = list(revt.PR_spec.keys())
+        PR_spec_id.sort()
+        for s in PR_spec_id:
+            aids = list(revt.PR_spec[s].aids)
+            m = revt.PR_spec[s].make_mol(xyz_pr[aids], self.mol)
+            PR_mol.append(m)
+            if revt.PR_spec[s].tracked:
+                PR_spec_tracked.append(s)
+        # only one TS (all species) .. use make_mol of frame
+        TS_spec_id = list(revt.TS_spec.keys())
+        TS_spec_id.sort()
+        TS_mol, TS_aids = revt.TS.make_mol(revt.TS_spec, xyz_ts, self.mol)
+        # map the broken/formed bonds to atom ids of the TS subsystem
+        rbonds_global = revt.formed_bonds+revt.broken_bonds
+        rbonds = []
+        for b in rbonds_global:
+            rbonds.append(TS_aids.index(b[0]))
+            rbonds.append(TS_aids.index(b[1]))
+        # now let us register the reaction event in the database
+        revID = self.rdb.register_revent(
+            revt.TS.fid,
+            ED_spec_id,
+            TS_spec_id,
+            PR_spec_id,
+            len(ED_spec_tracked),
+            len(PR_spec_tracked),
+            rbonds
+        )
+        # add the md species (mol objects etc) to this entry
+        for i,s in enumerate(ED_spec_id):
             self.rdb.add_md_species(
                 revID,
-                TS_mol,
-                TS_spec_id[0],    # species of TS are stored in revent, here only first
-                0
+                ED_mol[i],
+                s,
+                -1,           # ED
+                tracked= s in ED_spec_tracked
             )
-            return TS.fid  # return the TS frame ID determined in this process
+        for i,s in enumerate(PR_spec_id):
+            self.rdb.add_md_species(
+                revID,
+                PR_mol[i],
+                s,
+                1,            # PR
+                tracked= s in PR_spec_tracked
+            )
+        self.rdb.add_md_species(
+            revID,
+            TS_mol,
+            TS_spec_id[0],    # species of TS are stored in revent, here only first
+            0
+        )
+        return
 
-    def connect_events(self, comparer):
-        """connecting a reaction event 
+    @timer("connect_events")
+    def connect_events(self, revt1, revt2):
+        """connecting two reaction events 
         
         Args:
-            comparer (fcompare object): comparer between last_event (products) and TS_fid-1 (educts of next event)
+            revt1 (revent object): first reaction event (can be None to indicate initial frame)
+            revt2 (revent obejct): second reaction event
         """
+        if revt1 is None:
+            fid1 = 0
+        else:
+            fid1 = revt1.TS_fid+1
+        fid2 = revt2.TS_fid-1
+        comparer = self.get_comparer(fid1, fid2)
+        flag = comparer.check()
+        assert flag == 0, "ED of revt2 not equal PR revt1 .. this should never happen"
         for match in comparer.bond_match:
-            self.rdb.set_react(comparer.f1.fid, comparer.f2.fid, match[0], match[1])
+            self.rdb.set_react(fid1, fid2, match[0], match[1])
         return
 
     ##########################  DEBUG stuff #################################################################
