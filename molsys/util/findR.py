@@ -456,6 +456,91 @@ class fcompare:
         # aids are equal -> chek bonds
         return self.check_bonds()
 
+#####################  REACTIVE EVENT CLASS ########################################################################################
+# this class is instantiated with a comparer (between two frames)
+# and stores a reactive event 
+# it knows the TS_fid and if the event is bi- or unimolecular
+
+class revent:
+
+    def __init__(self, comparer, fR, unimol= False):
+        """generate a reaction event object
+        
+        Args:
+            comparer (fcompare object): comparer that gave a reactive event
+            fR (parent findR object): to access process_frame
+            unimol (bool, optional): is unimolecular. Defaults to False.
+        """
+        self.unimol = unimol
+        self.fR = fR
+        self.comparer = comparer
+        if unimol:
+            print ("Not implemented .. abort")
+            raise
+        else:
+            # currently we allow only for single reaction events per frame 
+            # this would change if there is more than one tracked species ....
+            assert comparer.nreacs == 1
+            r = 0 # pick first reaction (the only one)
+            educts, products = comparer.reacs[r]
+            self.broken_bonds     = comparer.broken_bonds[r]
+            self.formed_bonds     = comparer.formed_bonds[r]
+            f1               = comparer.f1
+            f2               = comparer.f2
+            # choose which frame we use as TS
+            # everything is referenced to f1 which is 0 (f2 is +1)
+            # find avereage bond order of reactive bonds at f1/f2
+            f1_averborder = 0.0
+            if len(self.broken_bonds) >0:
+                for b in self.broken_bonds:
+                    f1_averborder += f1.molg.ep.bord[f1.molg.edge(b[0], b[1])]
+                f1_averborder/len(self.broken_bonds)
+            f2_averborder = 0.0
+            if len(self.formed_bonds) >0:
+                for b in self.formed_bonds:
+                    f2_averborder += f2.molg.ep.bord[f2.molg.edge(b[0], b[1])]
+                f2_averborder/len(self.formed_bonds)
+            if f1_averborder == 0.0:
+               TS_rfid = 1
+            elif f2_averborder == 0.0:
+                TS_rfid = 0
+            else:
+                if abs(f1_averborder-0.5) < abs(f2_averborder-0.5):
+                    # f1 closer to TS
+                    TS_rfid = 0
+                else:
+                    TS_rfid = 1
+            # now store data depending on relative frame id (rfid) of the TS
+            if TS_rfid == 0:
+                self.TS = f1
+                self.PR = f2
+                self.ED = self.fR.process_frame(self.TS.fid-1)
+                # get corresponding species numbers
+                self.TS_spec = educts
+                self.PR_spec = products
+                loccomp = fcompare(self.ED, self.TS)
+                if loccomp.check_aids() == 0:
+                    # no change in atom ids .. we can use TS species for ED as well
+                    self.ED_spec = educts
+                else:
+                    print ("Houston we have a problem!!! species changed between ED and TS")
+            else:
+                self.ED = f1
+                self.TS = f2
+                self.PR = self.fR.process_frame(self.TS.fid+1)
+                self.ED_spec = educts
+                self.TS_spec = products
+                loccomp = fcompare(self.TS, self.PR)
+                if loccomp.check_aids() == 0:
+                    # no change in atom ids .. we can use TS species for PR as well
+                    self.PR_spec = products
+                else:
+                    print ("Houston we have a problem!!! species changed between TS and PR")
+            # get TS_fid for ease
+            self.TS_fid = self.TS.fid
+        return
+
+
 #####################  CENTRAL FINDR CLASS ########################################################################################
 
 class findR(mpiobject):
@@ -493,7 +578,7 @@ class findR(mpiobject):
             "back"    : -10,
             "fine"    : 1,
         }
-        self.skip_recross = 0 # number of frames to check if a reaction event was reverted
+        self.skip_recross = 2 # number of frames to check if a reaction event was reverted
         # now open the RDB    TBI: how to deal with a paralle run?
         self.rdb = RDB.RDB(rdb_path)
         # TBI  get temp and timestep from pdlp file
@@ -597,6 +682,9 @@ class findR(mpiobject):
         self.store_initial_event()
         nextf = currentf+self.sstep[mode]
         # start mainloop (just search on until we are at the end of the file)
+        # init some variables
+        segment_events = []
+        first_event = None # this variable stores a reaction event at the beginning of a segment being a recrossing
         while nextf < self.nframes and nextf > 0:
             if not verbose:
                 print_progress(nextf/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
@@ -607,100 +695,128 @@ class findR(mpiobject):
             if flag>0:
                 # a difference was found between current and next
                 if mode == "forward":
-                    farthestf = nextf
+                    segment_end = nextf
                     segment_start = currentf
                     mode = "back"
                 elif mode == "back":
-                    back_curr = currentf
-                    back_next = nextf
+                    subseg_end = currentf  # NOTE for the subsegment we go backwards and the role of nextf
+                    subseg_start = nextf   #      and currentf changes
                     mode = "fine"
                 elif mode == "fine":
-                    # if skip_recross is set check if current and next+skip_recross are identical
-                    #               => if this is true then do not store this event
-                    recross = False
-                    if self.skip_recross > 0:
-                        comparer_recross = self.get_comparer(currentf, nextf+self.skip_recross)
-                        flag_recross = comparer_recross.check()
-                        if flag_recross == 0:
-                            recross = True
-                    if not recross:
-                        if flag == 1:
-                            # bimolecular reaction
-                            comparer.analyse_aids()
-                            # search critical bond
-                            comparer.find_react_bond()   
-                            # now store the bimolecular event
-                            TS_fid = self.store_bim_event(comparer)
-                            if verbose:
-                                print ("###########  Event at %d stored in DB #############" % TS_fid)
-                        elif flag == 2:
-                            # TBI unimolecular reaction
-                            print ("UNIMOL REACTION EVENT!!")
-                            raise
-                    else:
+                    if flag == 1:
+                        # we found a bimolecular reaction
+                        comparer.analyse_aids()
+                        # search critical bond
+                        comparer.find_react_bond()   
+                        # now we are ready to make a reaction event and store it
+                        revt = revent(comparer, self)
+                        TS_fid = revt.TS_fid
                         if verbose:
-                            print ("###########  Reaction event with recrossing at %d not stored in DB" % nextf)
-                            # since the actual TS was not identified we simply assume it is the current frame
-                            TS_fid = currentf
+                            print ("###########  Event at %d  #############" % TS_fid)
+                    elif flag == 2:
+                        # TBI unimolecular reaction
+                        print ("UNIMOL REACTION EVENT!!")
+                        raise
+                    # now add the event to the list
+                    segment_events.append(revt)
                     # first we need to make sure that there is no other reaction in the subsegment
-                    #   test if the product (TS_fid+1) is equal to the end of the subsegment (back_curr)
+                    #   test if the product (TS_fid+1) is equal to the end of the subsegment (subseg_end)
                     #   if this is not the case then we have to go forward in fine mode further on
-                    comparer2 = self.get_comparer(TS_fid+1, back_curr)
-                    flag = comparer2.check()
+                    comparer_subseg = self.get_comparer(TS_fid+1, subseg_end)
+                    flag = comparer_subseg.check()
                     if flag > 0:
                         if verbose:
-                            print ("The product frame %d and the end of the subsegment at %d are not equal" % (TS_fid+1, back_curr))
+                            print ("The product frame %d and the end of the subsegment at %d are not equal" % (TS_fid+1, subseg_end))
                             print ("should continue forward in fine mode ... ")
-                            # 
-                    # we need to make sure that the educts of the reaction event (TS_fid-1)
-                    #               are really idential to where we started the forward interval (last reaction event)
-                    comparer2 = self.get_comparer(last_event, TS_fid-1)
-                    flag = comparer2.check()
-                    if flag>0:
-                        if verbose:
-                            print ("The educt frame %d and the products of the last event %d are not equal" % (TS_fid-1, last_event))
-                            self.frames[last_event].write_species()
-                            self.frames[TS_fid-1].write_species()
-                            print (flag)
-                            print ("continue backtracking")
-                        # there is still an event missing so we need to backtrack again and keep the current event in the open_events
-                        if not recross:
-                            open_events.append(TS_fid)   # open events are stored in inverse chronological order ... the latest is first
-                        nextf = back_next
-                        mode = "back"
+                        # need not to do anything (mode stay fine)
                     else:
-                        # These frames are equal which means the last product frame and the current educt frame are identical
-                        # => we can continue and connect the tracked species by and edge in the reaction graph
-                        mode = "forward"
-                        if not recross:
-                            self.connect_events(comparer2)
-                            last_event = TS_fid+1
-                        while len(open_events) > 0:
-                            TS_fid = open_events.pop()                             # take the next evnt to be connected from the registered events
-                            comparer2 = self.get_comparer(last_event, TS_fid-1)    # and compare to previous in the chain
-                            flag = comparer2.check()
-                            assert flag == 0, "THis should never happen ... connecting chain of events and found an unexpected deviation between frames %d and %d" % (last_event, TS_fid-1) 
-                            self.connect_events(comparer2)
-                            last_event = TS_fid+1
-                        # now we are done with the connecting of events -> last_event is set and we can continue
-                        nextf = farthestf
-                        # in the rare case that a recross is at a segment boundary we need to make sure that the
-                        # second part of the recross in the higher segment is ignored
-                        if TS_fid+self.skip_recross > nextf:
-                            print ("yo man ... move on")
-                            nextf = TS_fid+self.skip_recross+1
-                        if verbose:
-                            print ("#########################################################")
-                            print ("all events stored and connected .. moving forward again"   )
+                        # next we need to make sure that the start of the subseg species
+                        #   are really idential to where we started the segment (segment_start)
+                        comparer_segment = self.get_comparer(segment_start, subseg_start)
+                        flag = comparer_segment.check()
+                        if flag > 0:
+                            if verbose:
+                                print ("The subseg start %d and the segment start %d are not equal" % (subseg_start, segment_start))
+                                print ("continue in back mode")
+                            nextf = subseg_start
+                            mode = "back"
+                        else:
+                            # At this point we can be sure that all events in the segment are now in the list
+                            # now we should get rid of recrossings, add to the DB and connect
+                            # first sort our events (because of backtracking they might not be sorted)
+                            event_TSfids = [r.TS_fid for r in segment_events]
+                            event_index = np.argsort(event_TSfids)
+                            segment_events[:] = [segment_events[i] for i in event_index]
+                            event_TSfids = [r.TS_fid for r in segment_events]
+                            if verbose:
+                                print ("events in segment: %s" % str(event_TSfids))
+                            # find recrossings
+                            if self.skip_recross > 0:
+                                recross = []
+                                start_recross = 0
+                                # is there a possible early event?
+                                if first_event is not None:
+                                    # we should have a reaction event before the frame given in first event
+                                    if event_TSfids[0] <= first_event:
+                                        print ("DEBUG DEBUG found an early event for recrossing at %d" % event_TSfids[0])
+                                        first_event = None
+                                        recross = [0]
+                                        start_recross = 1
+                                # check the events for any recross
+                                if (len(event_TSfids)+start_recross) > 1: 
+                                    for i in range(start_recross, len(event_TSfids)-1):
+                                        e1 = event_TSfids[i]
+                                        e2 = event_TSfids[i+1]
+                                        if (e2-e1) <= self.skip_recross:
+                                            # two events are in recrossing distance 
+                                            if verbose:
+                                                print ("possible recross between %d and %d" % (e1, e2))
+                                            compare_recross = self.get_comparer(e1-1, e2+1) # compare ED of event1 and PR of event2
+                                            flag = compare_recross.check()
+                                            if flag == 0:
+                                                # this is a recrossing
+                                                recross += [i, i+1]
+                                                if verbose:
+                                                    print ("recrossing found")
+                                # check if the last event is close enough to the segment bound 
+                                e = event_TSfids[-1]
+                                if segment_end-e <= self.skip_recross:
+                                    compare_recross = self.get_comparer(e-1, e+self.skip_recross+1)
+                                    flag = compare_recross.check()
+                                    if flag == 0:
+                                        # this is a recrossing over the segment bound
+                                        if verbose:
+                                            print ("recrossing from %d to %d" % (e-1, e+self.skip_recross+1))
+                                        recross += [len(event_TSfids)-1]
+                                        first_event = e+self.skip_recross
+                                if verbose:
+                                    if len(recross) > 0:
+                                        print ("The following event indices are marked to be removed because of recrossing")
+                                        print (str(recross))
+                            # TBI: add to DB
+                            # TBI: connect events
+                            # now move forward again stating from segment_end
+                            mode = "forward"
+                            nextf = segment_end
+                            # clear segment_events
+                            segment_events = []
+                            if verbose:
+                                print ("#########################################################")
+                                print ("all events in segment stored and connected .. moving forward again"   )
             currentf = nextf
             nextf = currentf+self.sstep[mode]
+            # capture problems -- this should not happen
             if mode == "back":
                 if nextf < segment_start:
                     print ("backtracking went wrong -> abort")
+                    raise
+            if mode == "fine":
+                if nextf > subseg_end:
+                    print ("dinetracking went wrong -> abort")
                     raise 
             if verbose:
                 sumform = self.frames[currentf].get_main_species_formula()
-                print ("&& current %5d  next %5d  mode %s   (current frame sumformula %s" % (currentf, nextf, mode, sumform))
+                print ("&& current %5d  next %5d  mode %8s   (current frame sumformula %s" % (currentf, nextf, mode, sumform))
         # end of mainloop
         return
 
@@ -744,61 +860,8 @@ class findR(mpiobject):
         Args:
             comparer (fcompare object): current comparer between to frames (f1 is educts)
         """
-        for r in range(comparer.nreacs):
-            educts, products = comparer.reacs[r]
-            broken_bonds     = comparer.broken_bonds[r]
-            formed_bonds     = comparer.formed_bonds[r]
-            f1               = comparer.f1
-            f2               = comparer.f2
-            # choose which frame we use as TS
-            # everything is referenced to f1 which is 0 (f2 is +1)
-            # find avereage bond order of reactive bonds at f1/f2
-            f1_averborder = 0.0
-            if len(broken_bonds) >0:
-                for b in broken_bonds:
-                    f1_averborder += f1.molg.ep.bord[f1.molg.edge(b[0], b[1])]
-                f1_averborder/len(broken_bonds)
-            f2_averborder = 0.0
-            if len(formed_bonds) >0:
-                for b in formed_bonds:
-                    f2_averborder += f2.molg.ep.bord[f2.molg.edge(b[0], b[1])]
-                f2_averborder/len(formed_bonds)
-            if f1_averborder == 0.0:
-               TS_rfid = 1
-            elif f2_averborder == 0.0:
-                TS_rfid = 0
-            else:
-                if abs(f1_averborder-0.5) < abs(f2_averborder-0.5):
-                    # f1 closer to TS
-                    TS_rfid = 0
-                else:
-                    TS_rfid = 1
-            # now store data depending on relative frame id (rfid) of the TS
-            if TS_rfid == 0:
-                TS = f1
-                PR = f2
-                ED = self.process_frame(TS.fid-1)
-                # get corresponding species numbers
-                TS_spec = educts
-                PR_spec = products
-                loccomp = fcompare(ED, TS)
-                if loccomp.check_aids() == 0:
-                    # no change in atom ids .. we can use TS species for ED as well
-                    ED_spec = educts
-                else:
-                    print ("Houston we have a problem!!! species changed between ED and TS")
-            else:
-                ED = f1
-                TS = f2
-                PR = self.process_frame(TS.fid+1)
-                ED_spec = educts
-                TS_spec = products
-                loccomp = fcompare(TS, PR)
-                if loccomp.check_aids() == 0:
-                    # no change in atom ids .. we can use TS species for PR as well
-                    PR_spec = products
-                else:
-                    print ("Houston we have a problem!!! species changed between TS and PR")
+        # FIXME
+        if 1 == 0:
             # now we should have all data
             # generate mol objectes with coordinates
             xyz_ed = np.array(self.f_xyz[ED.fid])
