@@ -89,6 +89,7 @@ def read(mol, f):
                 elif topokeyw == "transitivity":
                     topoinfo["transitivity"] = " ".join(lbuffer[2:])
                 else:
+                    topoinfo[topokeyw.split(' ',1)[0]] = " ".join(lbuffer[2:])
                     logger.warning("unknown topo keyword %s" % keyword)
             lbuffer = f.readline().split()
     if mol.is_bb == True: ftype = 'bb'
@@ -113,6 +114,7 @@ def read(mol, f):
                 cs = None
             else:
                 cs = topoinfo["coord_seq"].split("|")
+            mol.topo.topoinfo = topoinfo
             mol.topo.set_topoinfo(skey=topoinfo["systrekey"],\
                                   mapping=mol.fragnumbers,\
                                   spgr=topoinfo["spgr"],\
