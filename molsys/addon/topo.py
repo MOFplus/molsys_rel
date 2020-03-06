@@ -120,7 +120,7 @@ class topo:
                 if arr2idx[self._mol.pconn[i][ij]] != 13:
                     # this is a periodic bond .. add image atom
                     xyz_image_j = self._mol.xyz[j]+(self._mol.cell*(self._mol.pconn[i][ij][:,None])).sum(axis=0)
-                    new_atom = nm.add_atom("x", nm.get_elems()[j], xyz_image_j)
+                    new_atom = nm.add_atom(nm.get_elems()[j],nm.atypes[j], xyz_image_j)
                     if j>i:
                         del_bonds.append((i,j))
                     nm.add_bond(i, new_atom)
