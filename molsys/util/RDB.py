@@ -36,6 +36,8 @@ class RDB:
             db_path (string): path to the sqlite database and the storage folder
             mode (str, optional): mode for opening database: a is append (must exist) n is new (must not exist). Defaults to "a".
         """
+        db_path = os.path.abspath(db_path)
+        print (db_path)
         # check access mode
         if mode == "a":
             assert os.path.isdir(db_path)
@@ -127,7 +129,7 @@ class RDB:
                     # generate an upload field .. by default the folder is in /storage/<fieldname>
                     fieldname = d[1]
                     fieldtype = typekeys[d[0]]
-                    kwargs["uploadfolder"] = "./%s/storage/%s" % (self.db_path, fieldname)
+                    kwargs["uploadfolder"] = "%s/storage/%s" % (self.db_path, fieldname)
                 else:
                     fieldname = d[1]
                     fieldtype = typekeys[d[0]]
@@ -206,6 +208,10 @@ class RDB:
             self.db.commit()
         return reventID
 
+    def get_revent(self, frame):
+        event = self.db(self.db.revent.frame == frame).select().first()
+        return event
+
     def add_md_species(self, reventID, mol, spec, foff, tracked=True, energy=0.0):
         # generate smiles
         mol.addon("obabel")
@@ -227,10 +233,18 @@ class RDB:
         self.db.commit()
         return specID
 
+    # TBI .. this is really stupid because we have to get revent for each species .. for DEBUG ok
+    #        but merge these methods and make it more clever
+    def get_revent_species(self,frame):
+        # get requested revent of current md
+        revent = self.db((self.db.revent.mdID == self.current_md) & (self.db.revent.frame == frame)).select().first()
+        assert revent is not None, "No reaction event for frame %d" % frame
+        return (revent.ed, revent.ts[0], revent.pr)
+
+
     def get_md_species(self, frame, spec, foff):
         # get requested revent of current md
         revent = self.db((self.db.revent.mdID == self.current_md) & (self.db.revent.frame == frame)).select().first()
-        print (revent)
         assert revent is not None, "No reaction event for frame %d" % frame
         # now get the species
         mdspec = self.db(
@@ -248,6 +262,41 @@ class RDB:
         mfpxf.close()
         mol = molsys.mol.from_string(mfpxs)
         return mol, fname
+
+    def set_react(self, from_fid, to_fid, from_spec, to_spec):
+        """connect reaction events -> make an edge in the reaction graph
+        
+        Args:
+            from_fid (int): frame id of intial Product frame
+            to_fid (int): frame id of final Educt frame
+            from_spec (int): spec id of initial species (products)
+            to_spec (int): spec id of final species  (educts)
+        """
+        from_ev = self.get_revent(from_fid-1)
+        to_ev   = self.get_revent(to_fid+1)
+        from_smd = self.db(
+            (self.db.md_species.reventID == from_ev.id) &
+            (self.db.md_species.foffset == 1) &
+            (self.db.md_species.spec == from_spec)
+        ).select().first()
+        assert from_smd is not None, "no species %d in frame %d to connect" % (from_fid, from_spec)
+        to_smd = self.db(
+            (self.db.md_species.reventID == to_ev.id) &
+            (self.db.md_species.foffset == -1) &
+            (self.db.md_species.spec == to_spec)
+        ).select().first()
+        assert to_smd is not None, "no species %d in frame %d to connect" % (to_fid, to_spec)
+        # now we can add a new edge into the reaction graph
+        reactID = self.db.react.insert(
+            from_rev  = from_ev.id,
+            to_rev    = to_ev.id,
+            from_spec = from_smd.id,
+            to_spec   = to_smd.id 
+        )
+        self.db.commit()
+        return
+
+
 
 if __name__ == "__main__":
     rdb = RDB("./test", mode="n")

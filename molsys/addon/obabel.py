@@ -11,10 +11,13 @@
 from openbabel import openbabel as ob
 from openbabel import pybel
 
+ob_log_handler = pybel.ob.OBMessageHandler()
 
 class obabel:
 
-    def __init__(self, mol):
+    def __init__(self, mol, loglevel = 0):
+        # set log level of global logghandler (this is a global setting!)
+        ob_log_handler.SetOutputLevel(0)
         assert mol.periodic == False and mol.bcond == 0
         self._mol = mol
         # generate the pybel object 
