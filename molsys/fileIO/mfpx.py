@@ -217,17 +217,17 @@ def write(mol, f, fullcell = True, topoformat = "new"):
     if mol.is_bb:
         ### BLOCK DEFINITION ###################################################
         ### bbcenter write ###
-        if mol.center_point != 'special':
-            f.write('# bbcenter %s\n' % mol.center_point)
+        if mol.bb.center_type != 'special':
+            f.write('# bbcenter %s\n' % mol.bb.center_type)
         else:
             f.write('# bbcenter %s %12.6f %12.6f %12.6f\n' %
-                    tuple([mol.center_point]+ mol.special_center_point.tolist()))
+                    tuple([mol.bb.center_type]+ mol.bb.center_xyz.tolist()))
         ### bbconn write ###
         # sort by connectors' types
-        _argsorted_type = argsorted(mol.connectors_type)
-        connectors_type = [mol.connectors_type[_] for _ in _argsorted_type]
-        connector_atoms = [sorted(mol.connector_atoms[_]) for _ in _argsorted_type]
-        connectors      = [mol.connectors[_] for _ in _argsorted_type]
+        _argsorted_type = argsorted(mol.bb.connector_types)
+        connectors_type = [mol.bb.connector_types[_] for _ in _argsorted_type]
+        connector_atoms = [sorted(mol.bb.connector_atoms[_]) for _ in _argsorted_type]
+        connectors      = [mol.bb.connector[_] for _ in _argsorted_type]
         # sort by connector atoms after connectors' types
         _sort_priority = [_*mol.natoms for _ in connectors_type]
         connector_atoms_priority = [
