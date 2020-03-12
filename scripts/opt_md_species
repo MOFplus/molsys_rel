@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""test script to optimize all systems in the DB
+
+all systems with zero energy and not TS are picked and optimized
+"""
+
+import pylmps
+import molsys
+import sys
+from molsys.util import RDB
+
+if len(sys.argv) < 2:
+    print ("usage:  opt_md_species <db_path>")
+    exit
+    
+db_path = sys.argv[1]
+
+print ("open database %s" % db_path)
+rdb = RDB.RDB(db_path)
+
+# get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
+db = rdb.db
+rows = db((db.md_species.energy == 0.0) & (db.md_species.foffset != 0)).select()
+
+lot = rdb.get_lot("ReaxFF")
+
+for r in rows:
+    print ("retreive species %d (type %d) from reaction event %d" % (r.spec, r.foffset, r.reventID))
+    print (r.smiles)
+    # get mol object from DB
+    fname, mfpxf = db.md_species.mfpx.retrieve(r.mfpx)
+    mfpxs = mfpxf.read().decode('utf-8')
+    mfpxf.close()
+    mol = molsys.mol.from_string(mfpxs)
+    # setup lammps and minimize with reax
+    pl = pylmps.pylmps("reax")
+    pl.setup(mol = mol, local=True, ff="ReaxFF")
+    init_energy = pl.calc_energy()
+    final_energy = pl.MIN(0.01)
+    print ("\n\n#####################################")
+    print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
+    print ("########################################\n\n")
+    # store these results to the DB
+    # first update coords and get mol object back from lammps
+    pl.update_mol()
+    opt_mol = pl.mol
+    # update the energy value
+    r.update_record(energy=init_energy)
+    rdb.add_opt_species(opt_mol, lot, final_energy, r.id)
+    pl.end()
+
+
+
+
+
+
