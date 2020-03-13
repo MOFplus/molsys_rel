@@ -206,3 +206,33 @@ class bb:
         if self.connector_atypes is not None:
             self.connector_atypes = [self.connector_atypes[i] for i in order]
         return
+
+    def remove_carboxylates(self,co2mol=None):
+        ''' this function is meant to be used to convert a molecule
+            which is not yet a bb type to a bb type by removing 
+            carboxylates and carboxylic acid groups and adding 
+            connectors where the carboxylates were '''
+        # find carboxylates
+        from molsys.util.atomtyper import atomtyper
+        m = copy.copy(self.mol)
+        at = atomtyper(m); at()        
+        if co2mol is None:
+            m.addon('groups')
+            m.groups.register_group_atype('carbox',atypes = ['o1_c1','c3'])
+            idxs = m.groups('carbox')
+        else:
+            m.addon('graph')
+            m.graph.make_graph(hashes=False)
+            idxs = m.graph.find_sub(co2mol.graph)
+        carboxy_atoms = sorted([item for sublist in idxs for item in sublist])
+        other_atoms = [x for x in range(m.natoms) if x not in carboxy_atoms]
+        other_conn = [[x for xx in m.conn[x] if (carboxy_atoms.count(xx) != 0)] for x in other_atoms] # get atom indices connected to the carboxylates
+        other_conn = sorted([item for sublist in other_conn for item in sublist]) # flatten list
+        offset = [len(np.where(np.array(carboxy_atoms) <= x)[0]) for x in other_atoms]
+        newmol = m.new_mol_by_index(other_atoms)
+        if not hasattr(newmol,'bb'): newmol.addon('bb')
+        connector = [x-offset[other_atoms.index(x)] for x in other_conn]
+        newmol.bb.setup(connector)
+        return newmol
+
+

@@ -125,6 +125,5 @@ class topo:
                         del_bonds.append((i,j))
                     nm.add_bond(i, new_atom)
         for b in del_bonds:
-            print ("delete bond %s " % str(b))
             nm.delete_bond(b[0], b[1])
         return nm
