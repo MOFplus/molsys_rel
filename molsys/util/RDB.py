@@ -181,9 +181,11 @@ class RDB:
 
     def get_lot(self, lot):
         row = self.db(self.db.lot.name==lot).select().first()
-        id = row.id
         if row is None:
             id = self.db.lot.insert(name=lot)
+        else:
+            id = row.id
+        print (type(id))
         return id
 
     def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False, postpone_commit=False):
@@ -299,7 +301,7 @@ class RDB:
             energy (float): energy of the system (unit is defiend by lot)
             mdspecID (int): reference id of the md_species entry
         """
-        if type(lot) != type(1):
+        if type(lot) == type(""):
             lot = self.get_lot(lot)
         xyzf = io.BytesIO(bytes(mol.to_string(ftype="xyz"), "utf-8"))
         optID = self.db.opt_species.insert(
