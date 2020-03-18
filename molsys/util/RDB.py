@@ -96,6 +96,11 @@ class RDB:
             "r:md_species:from_spec",   # source species ref
             "r:md_species:to_spec",     # target species ref
         ]
+        dbstruc["similar"] = [
+            "r:lot",          # ref to lot
+            "r:opt_species",   # ref to opt_species
+            "r:opt_species:similar_opt_speciesID",  # ref to opt_species
+        ]
         #############################################################################################
         self._define_tables(dbstruc)
         # define soem defaults
@@ -310,9 +315,17 @@ class RDB:
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz")
         )
         self.db.commit()
-        return
+        return optID
         
-
+    def add_similar(self, lot, optspecID, simoptspecID):
+        if type(lot) == type(""):
+            lot = self.get_lot(lot)
+        self.db.similar.insert(
+                lotID = lot,
+                opt_speciesID = optspecID,
+                similar_opt_speciesID = simoptspecID)
+        self.db.commit()
+        return
 
 if __name__ == "__main__":
     rdb = RDB("./test", mode="n")

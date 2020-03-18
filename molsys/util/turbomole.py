@@ -1,3 +1,6 @@
+"""
+This module contains Turbomole related tools.
+"""
 import os
 import numpy
 import tempfile
@@ -27,8 +30,12 @@ class ChargeIsNotWritteninControlFileError(Exception):
         self.errors = errors
         return
 
-
-
+class dscfDidNotConverge(Exception):
+    def __init__(self, message=None, errors=None):
+        # Calling the base class with the parameter it needs
+        super().__init__(message)
+        self.errors = errors
+        return
 
 
 
@@ -154,7 +161,56 @@ class GeneralTools:
                 new_control.write(line)
         return
 
+    def make_tmole_dft_input_for_fermi_smearing(elems, xyz, M_start, path, max_mem, title, lot_DFT):
+        """Creates a tmole input called 'turbo.in'.
 
+        Parameters
+        ----------
+        elems   : the list of elements
+        xyz     : numpy array of shape (len(elems),3)
+        M_start : the initial multiplicity before Fermi smearing
+                   = 3 for systems with even number of electrons
+                   = 2 for systems with odd number of electrons
+        max_mem : Maximum memory per core to use in the calculations.
+        title   : title of the job
+        lot_DFT : DFT level of theory, must be string
+        """
+        turbo_in_path = os.path.join(path,"turbo.in")
+        c = xyz*angstrom
+        f = open(turbo_in_path,"w")
+        f.write("%title\n")
+        f.write("%s\n" % title)
+        f.write("%method\n")
+        f.write("ENRGY :: ri-u%s [gen_mult = %d, scf_dsta = 1, gen_symm = c1, scf_msil = 1000, scf_rico = %d, for_maxc = %d]\n" %
+                (lot_DFT, M_start, max_mem, max_mem))
+        f.write("%coord\n")
+        for i in range(len(elems)):
+            f.write("  %19.14f %19.14f %19.14f   %-2s\n" %
+                    (c[i,0],c[i,1], c[i,2], elems[i]))
+        f.write("%add_control_commands\n")
+        f.write("$disp3\n")
+        f.write("$fermi tmstrt=300.00 tmend= 50.00 tmfac=0.900 hlcrt=1.0E-01 stop=1.0E-03\n")
+        f.write("ADD END\n")
+        f.write("%end\n")
+        f.close()
+        return
+
+    def run_tmole(path=os.getcwd()):
+        maindir = os.getcwd()
+        os.chdir(path)
+        os.system("tmole")
+        if os.path.isfile("dscf_problem"):
+            raise dscfDidNotConverge("dscf did not converge! Check the directory %s." % path)
+        os.chdir(maindir)
+        return
+
+    def kdg(path=os.getcwd(), dg_name=""):
+        """Removes the data group named <dg_name>."""
+        maindir = os.getcwd()
+        os.chdir(path)
+        os.system("kdg $%s" % dg_name)
+        os.chdir(maindir)
+        return
 
 
 
@@ -218,8 +274,6 @@ class GeometryTools:
         ### remove the tmp directory ###
         shutil.rmtree(tmp_path)
         return point_group
-
-
 
     def _write_define_check_symmetry(self, path=os.getcwd()):
         """ Writes a 'define.in' file to get the detected point group. """
@@ -292,7 +346,6 @@ class GeometryTools:
                 if 'natoms' in lines:
                     natoms = int(lines.strip().split('=')[-1])
         return natoms
-
 
 
 

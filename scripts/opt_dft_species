@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""test script to optimize all systems in the DB
+
+all systems with zero energy and not TS are picked and optimized
+"""
+
+import pylmps
+import molsys
+import sys
+import os
+from molsys.util import RDB
+from molsys.util import turbomole
+
+
+from   molsys.util.units import angstrom
+
+
+if len(sys.argv) < 3:
+    print ("usage:  opt_md_species <db_path> <dft_method>")
+    exit
+
+# Get the system arguments
+db_path = sys.argv[1]
+lot_DFT = sys.argv[2]
+
+# Create a DFT folder with the name of the method
+dft_functional = lot_DFT.split("/")[0]
+basis_set = lot_DFT.split("/")[1]
+dft_dir_name = "-".join([dft_functional,basis_set])
+maindir = os.getcwd()
+dft_path = os.path.join(maindir,dft_dir_name)
+if not os.path.isdir(dft_path):
+    os.mkdir(dft_path)
+
+# Maximum memory in MB/core
+MAXMEM = 500
+
+# Open the database
+print ("open database %s" % db_path)
+rdb = RDB.RDB(db_path)
+
+# Get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
+db = rdb.db
+
+lot_FF = rdb.get_lot("ReaxFF")
+rows = db(db.opt_species.lotID == lot_FF).select()
+
+# Get the opt_species.id of the similar structures
+similar_rows = db(db.opt_species.id == db.similar.opt_speciesID).select(db.opt_species.id)
+
+# Get the list of similar structures
+similar_ids = []
+for s in similar_rows:
+    similar_ids.append(s.id)
+
+# Perform the QM calculation only on the species which are unique.
+for r in rows:
+    if r.id not in similar_ids:
+        fname = "%s/storage/xyz/%s" %(db_path,r.xyz)
+        mol = molsys.mol.from_file(fname, "xyz")
+        subdir_name = '%05d' % r.id
+        dft_subdir_path = os.path.join(dft_path, subdir_name)
+        if not os.path.isdir(dft_subdir_path):
+            os.mkdir(dft_subdir_path)
+        else:
+            sys.exit('The directory %s already exists' % dft_subdir_path)
+        nel = turbomole.Mol(mol).count_number_of_electrons()
+        if (nel % 2) == 0:
+            M_start = 3
+        else:
+            M_start = 2
+        print(type(mol.elems))
+        print(mol.xyz.shape)
+        new_xyz = turbomole.GeometryTools().add_noise(mol = mol, active_atoms = [])
+
+        title = "%s" % r.xyz
+        turbomole.GeneralTools.make_tmole_dft_input_for_fermi_smearing(
+                elems=mol.elems, 
+                xyz=new_xyz, 
+                M_start=M_start, 
+                path=dft_subdir_path, 
+                max_mem=MAXMEM, 
+                title=title, 
+                lot_DFT=lot_DFT)
+        converged = turbomole.GeneralTools.run_tmole(dft_subdir_path)
+        print(converged)
+        turbomole.GeneralTools.kdg(dft_subdir_path,"fermi")
+
+
+
+#rows = db((db.md_species.energy == 0.0) & (db.md_species.foffset != 0)).select()
+#
+#lot = rdb.get_lot("ReaxFF")
+#
+#for r in rows:
+#    print ("retreive species %d (type %d) from reaction event %d" % (r.spec, r.foffset, r.reventID))
+#    print (r.smiles)
+#    # get mol object from DB
+#    fname, mfpxf = db.md_species.mfpx.retrieve(r.mfpx)
+#    mfpxs = mfpxf.read().decode('utf-8')
+#    mfpxf.close()
+#    mol = molsys.mol.from_string(mfpxs)
+#    # setup lammps and minimize with reax
+#    pl = pylmps.pylmps("reax")
+#    pl.setup(mol = mol, local=True, ff="ReaxFF")
+#    init_energy = pl.calc_energy()
+#    final_energy = pl.MIN(0.01)
+#    print ("\n\n#####################################")
+#    print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
+#    print ("########################################\n\n")
+#    # store these results to the DB
+#    # first update coords and get mol object back from lammps
+#    pl.update_mol()
+#    opt_mol = pl.mol
+#    # update the energy value
+#    r.update_record(energy=init_energy)
+#    rdb.add_opt_species(opt_mol, lot, final_energy, r.id)
+#    pl.end()
+#
+#
+#
+#
+#
+#
