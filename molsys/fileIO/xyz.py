@@ -83,13 +83,13 @@ def write(mol, f, energy = None, forces = None, plain = False, charges = None):
     #TODO: this has to be tidied up and formulated more elegantly!
     if forces is None:
         for i in range(natoms):
-            f.write("%2s %12.8f %12.8f %12.8f\n" % (elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
+            f.write("%2s %12.8f %12.8f %12.8f\n" % (elems[i].capitalize(), mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2]))
     else:
         for i in range(natoms):
             if charges is None:
                 f.write("%2s %12.8f %12.8f %12.8f   %12.8f %12.8f %12.8f\n" % 
-                (elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2], forces[i,0], forces[i,1], forces[i,2]))
+                (elems[i].capitalize(), mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2], forces[i,0], forces[i,1], forces[i,2]))
             else:
                 f.write("%2s %12.8f %12.8f %12.8f   %12.8f %12.8f %12.8f    %12.8f\n" % 
-                (elems[i], mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2], forces[i,0], forces[i,1], forces[i,2], charges[i]))
+                (elems[i].capitalize(), mol.xyz[i,0], mol.xyz[i,1], mol.xyz[i,2], forces[i,0], forces[i,1], forces[i,2], charges[i]))
     return
