@@ -37,6 +37,13 @@ if not os.path.isdir(dft_path):
 # Maximum memory in MB/core
 MAXMEM = 500
 
+# The ZPE correction factor dictionary
+f_ZPE_dict = {'tpss/SVP':1.0019,'b3-lyp/SVP':0.9912, 'pbe0/SVP':0.9817, 'pbe/SVP':1.0179, 
+                                'b3-lyp/TZVP':0.9896,'pbe0/TZVP':0.9830,
+              # Reference: https://dx.doi.org/10.1021/jp508422u 
+              'tpssh/TZVP':0.9874}
+              # Reference:  https://dx.doi.org/10.1021/jp0519464
+
 # Open the database
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
@@ -48,16 +55,24 @@ lot_FF = rdb.get_lot("ReaxFF")
 rows = db(db.opt_species.lotID == lot_FF).select()
 
 # Get the opt_species.id of the similar structures
-similar_rows = db(db.opt_species.id == db.similar.opt_speciesID).select(db.opt_species.id)
+similar_rows = db(db.opt_species.id == db.similar.opt_speciesID).select()
 
-# Get the list of similar structures
-similar_ids = []
+# Get a dictionary of similar structures
+similar_dict = {}
 for s in similar_rows:
-    similar_ids.append(s.id)
+    similar_dict[s.opt_species.id] = s.similar.similar_opt_speciesID
 
 # Perform the QM calculation only on the species which are unique.
 for r in rows:
-    if r.id not in similar_ids:
+    if r.id not in similar_dict:
+        md_spec = db(db.md_species.id == r.md_speciesID).select().first()
+        foffset = md_spec.foffset
+        revent = db(db.revent.id == md_spec.reventID).select().first()
+        if md_spec.foffset != 0:
+            active_atoms = []
+        else:
+            active_atoms = revent.rbonds
+        print(active_atoms)
         fname = "%s/storage/xyz/%s" %(db_path,r.xyz)
         mol = molsys.mol.from_file(fname, "xyz")
         subdir_name = '%05d' % r.id
@@ -66,28 +81,50 @@ for r in rows:
             os.mkdir(dft_subdir_path)
         else:
             sys.exit('The directory %s already exists' % dft_subdir_path)
+
+        #--------.----- The determination of orbital occupations -------------#
+        # Get a start multiplicitiy for your system before Fermi smearing
         nel = turbomole.Mol(mol).count_number_of_electrons()
         if (nel % 2) == 0:
             M_start = 3
         else:
             M_start = 2
-        print(type(mol.elems))
-        print(mol.xyz.shape)
-        new_xyz = turbomole.GeometryTools().add_noise(mol = mol, active_atoms = [])
 
-        title = "%s" % r.xyz
-        turbomole.GeneralTools.make_tmole_dft_input_for_fermi_smearing(
+        new_xyz = turbomole.GeometryTools.add_noise(mol = mol, active_atoms = active_atoms)
+
+        # General Tools
+        GT = turbomole.GeneralTools(dft_subdir_path)
+
+        # Perform a single point calculation using Fermi smearing
+        GT.make_tmole_dft_input_for_fermi_smearing(
                 elems=mol.elems, 
                 xyz=new_xyz, 
                 M_start=M_start, 
-                path=dft_subdir_path, 
                 max_mem=MAXMEM, 
-                title=title, 
+                title= r.xyz, 
                 lot_DFT=lot_DFT)
-        converged = turbomole.GeneralTools.run_tmole(dft_subdir_path)
-        print(converged)
-        turbomole.GeneralTools.kdg(dft_subdir_path,"fermi")
+        converged = GT.run_tmole()
 
+        # Remove the data group $fermi from the control file
+        GT.kdg("fermi")
+
+        # If there are partial occupations round them to integers
+        GT.round_fractional_occupation()
+
+        #--------------- The optimization of the structures ------------------#
+        if mol.natoms == 1:
+            GT.ridft()
+            GT.check_dscf_converged()
+        else:
+            if foffset == 0:
+                print("This is a TS.")
+            else:
+                print("This is either reactant or product.")
+                found = turbomole.Submit(dft_subdir_path).minima_workflow()
+                if found:
+                    final_energy = turbomole.Harvest(dft_subdir_path).get_energy(f_ZPE_dict[lot_DFT])
+                    opt_mol = GT.coord_to_mol()
+                    rdb.add_opt_species(opt_mol, lot_DFT, final_energy, md_spec.id)
 
 
 #rows = db((db.md_species.energy == 0.0) & (db.md_species.foffset != 0)).select()
