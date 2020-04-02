@@ -410,9 +410,6 @@ class mol(mpiobject):
         m.atypes = elems
         return m 
 
-
-
-
     @classmethod
     def from_systrekey(cls, skey, **kwargs):
         """generate a mol/topo object from a systrekey as the barycentric embedding
@@ -444,6 +441,28 @@ class mol(mpiobject):
             m.elems.append(e)
         m.is_topo = True
         m.use_pconn = True
+        return m
+
+    @classmethod
+    def from_pdlp(cls, fname, stage, traj=True):
+        """generate mol object from pdlp file
+        
+        Args:
+            fname (string): name of pdlp file
+            stage (string): stage name
+            traj (bool, optional): if a trajectory info is present load addon and set source. Defaults to True.
+        
+        Returns:
+            molobejct: generated mol object
+        """
+        from molsys.util import pdlpio2
+        # instantiate the pdlpio2 reader
+        pio = pdlpio2.pdlpio2(fname, restart=stage, filemode="r")
+        # get the mol obejct from the pdlp file
+        m = pio.get_mol_from_system()
+        pio.close()
+        if traj:
+            m.addon("traj", source="pdlp", fname=fname, stage=stage)
         return m
 
 
