@@ -18,6 +18,7 @@ def read(mol, f, cycle = 0):
     fline = f.readline().split()
     natoms = int(fline[0])
     line = f.readline()
+    mol.xyzheader = line
     periodic = False
     # check for keywords used in extended xyz format
     # in the moment only the lattice keyword is implemented

@@ -275,21 +275,22 @@ class RDB:
             (self.db.md_species.foffset == 1) &
             (self.db.md_species.spec == from_spec)
         ).select().first()
-        assert from_smd is not None, "no species %d in frame %d to connect" % (from_fid, from_spec)
+        # assert from_smd is not None, "no species %d in frame %d to connect" % (from_spec, from_fid)
         to_smd = self.db(
             (self.db.md_species.reventID == to_ev.id) &
             (self.db.md_species.foffset == -1) &
             (self.db.md_species.spec == to_spec)
         ).select().first()
-        assert to_smd is not None, "no species %d in frame %d to connect" % (to_fid, to_spec)
+        # assert to_smd is not None, "no species %d in frame %d to connect" % (to_spec, to_fid)
         # now we can add a new edge into the reaction graph
-        reactID = self.db.react.insert(
-            from_rev  = from_ev.id,
-            to_rev    = to_ev.id,
-            from_spec = from_smd.id,
-            to_spec   = to_smd.id 
-        )
-        self.db.commit()
+        if (from_smd is not None) and (to_smd is not None):
+            reactID = self.db.react.insert(
+                from_rev  = from_ev.id,
+                to_rev    = to_ev.id,
+                from_spec = from_smd.id,
+                to_spec   = to_smd.id 
+            )
+            self.db.commit()
         return
 
     def add_opt_species(self, mol, lot, energy, mdspecID):

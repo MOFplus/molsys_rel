@@ -388,7 +388,7 @@ class mol(mpiobject):
     
     @classmethod
     def from_cp2k_restart(cls, restart, **kwargs):
-        ''' generic reader for the mol class, reading a periodic cp2k restart file
+        ''' reads and parses a cp2k restart file
         Parameters:
             restart     : restart filename
             **kwargs    : all options of the parser are passed by the kwargs
@@ -401,6 +401,7 @@ class mol(mpiobject):
         coords = np.array([[float(y) for i,y in enumerate(x.split()) if i != 0] for x in xyz_str])
         cell = np.array([[float(y) for y in x.split()[1:]] for x in txt.split('&CELL\n',1)[-1].split('&END CELL\n')[0].split('\n')[0:3]])
         m = cls.from_array(coords)
+        m.cp2ktxt = txt
         m.natoms = len(coords)
         m.set_xyz(coords)
         m.set_cell(cell,cell_only=True)
@@ -409,9 +410,6 @@ class mol(mpiobject):
         m.detect_conn()
         m.atypes = elems
         return m 
-
-
-
 
     @classmethod
     def from_systrekey(cls, skey, **kwargs):
@@ -444,6 +442,28 @@ class mol(mpiobject):
             m.elems.append(e)
         m.is_topo = True
         m.use_pconn = True
+        return m
+
+    @classmethod
+    def from_pdlp(cls, fname, stage, traj=True):
+        """generate mol object from pdlp file
+        
+        Args:
+            fname (string): name of pdlp file
+            stage (string): stage name
+            traj (bool, optional): if a trajectory info is present load addon and set source. Defaults to True.
+        
+        Returns:
+            molobejct: generated mol object
+        """
+        from molsys.util import pdlpio2
+        # instantiate the pdlpio2 reader
+        pio = pdlpio2.pdlpio2(fname, restart=stage, filemode="r")
+        # get the mol obejct from the pdlp file
+        m = pio.get_mol_from_system()
+        pio.close()
+        if traj:
+            m.addon("traj", source="pdlp", fname=fname, stage=stage)
         return m
 
 
