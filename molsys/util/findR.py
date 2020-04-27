@@ -251,7 +251,6 @@ class species:
             pmol (molsys object): parent mol object from pdlp file 
         """
         aids = list(self.aids) # in order to map backwards
-        aids.sort() # not sure if that is really needed
         self.mol = molsys.mol.from_array(xyz)
         self.mol.set_cell(pmol.get_cell())
         self.mol.set_elems([pmol.elems[i] for i in aids])
@@ -632,6 +631,9 @@ class findR(mpiobject):
         self.bondord_cutoff = 0.5  # below this bond roder a bond is registered but swithced off
         self.min_atom = 10         # below this number of atoms a species is considered as gasphase
         self.min_elems = {"c" : 2} # below this number of atoms of the given element in the species it is not tracked
+        # for debugging
+        self.nunconnected = 0
+        self.unconnected = []
         # for the search
         self.sstep ={
             "forward" : 200,
@@ -902,7 +904,7 @@ class findR(mpiobject):
                             # connect events (start with connecting last_event with the first in the segment)
                             if len(segment_events) > 0:
                                 for revt in segment_events:
-                                    self.connect_events(last_event, revt, verbose=verbose)
+                                    self.connect_events(last_event, revt)
                                     last_event = revt
                             # now move forward again stating from segment_end
                             mode = "forward"
@@ -928,6 +930,11 @@ class findR(mpiobject):
                 sumform = self.frames[currentf].get_main_species_formula()
                 print ("&& current %10d  next %10d  mode %8s   (current frame sumformula %s" % (currentf, nextf, mode, sumform))
         # end of mainloop
+        # DEBUG
+        if self.nunconnected > 0:
+            print ("NUMBER OF UNCONNECTED EVENTS: %d" % self.nunconnected)
+            for r in self.unconnected:
+                print ("%5d --> %5d" % r)
         return
 
     def store_initial_event(self):
@@ -1052,26 +1059,27 @@ class findR(mpiobject):
         else:
             fid1 = revt1.TS_fid+1
         fid2 = revt2.TS_fid-1
+        comparer = self.get_comparer(fid1, fid2)
+        flag = comparer.check()
         # if the two events are side by side (revt2.TS_fid = revt1._TSfid+1) then fid1 > fid2
         #  => this will always lead to a fail ... this should never happen.
         # in this case we can not connect from PR1 to ED2. instead ED2 is TS1!
-        if fid1 > fid2:
-            # fid1 -= 1
+        if (fid1 >= fid2) or (flag != 0):
             if verbose:
-                print ("Two reaction events next to each other")
-                print ("We connect TS1 with ED2 in this case")
-                print ("frame ID 1: %d Frame ID 2: %d" % (fid1, fid2))
-        comparer = self.get_comparer(fid1, fid2)
-        flag = comparer.check(verbose=verbose)
+                print ("##########################################################")
+                print ("connecting between %d and %d" % (fid1, fid2))
+                print ("products of revent 1: %s" % str(revt1.PR_spec))
+                print ("educts of revent   2: %s" % str(revt2.ED_spec))
+                print ("sumforms frame 1 %s" % str(self.frames[fid1].get_main_species_formula()))
+                print ("sumforms frame 2 %s" % str(self.frames[fid2].get_main_species_formula()))
+                print ("##########################################################")
         # assert flag == 0, "ED of revt2 not equal PR revt1 .. this should never happen"
         if flag != 0:
-            print ("This should never happen (flag is %d)" % flag)
-            print ("connecting between %d and %d" % (fid1, fid2))
-            print ("products of revent 1: %s" % str(revt1.PR_spec))
-            print ("educts of revent   2: %s" % str(revt2.ED_spec))
-            print ("sumforms frame 1 %s" % str(self.frames[fid1].get_main_species_formula()))
-            print ("sumforms frame 2 %s" % str(self.frames[fid2].get_main_species_formula()))
-            #raise
+            print ("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            print ("This should never happen!! Could not Connect!!")
+            print ("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            self.nunconnected += 1
+            self.unconnected.append((fid1, fid2))
             return # DEBUG DEBUG -- just ignore connection in this case  
         for match in comparer.bond_match:
             self.rdb.set_react(fid1, fid2, match[0], match[1])
