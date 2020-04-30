@@ -177,16 +177,30 @@ class frame:
         os.chdir("..")
 
     def get_main_species_formula(self):
-        """get the sumformula of the main specis 0
+        """get the sumformula of the tracked species
         """
-        aids = list(self.specs[0].aids)
-        elems = [self.pmol.elems[i] for i in aids]
-        cont  = list(set(elems))
-        cont.sort()
-        sumform = ""
-        for e in cont:
-            sumform += "%s%d " % (e, elems.count(e))
-        return sumform
+        sp = list(self.specs.keys())
+        sp.sort()
+        sumforms = []
+        for s in sp:
+            aids = list(self.specs[s].aids)
+            elems = [self.pmol.elems[i] for i in aids]
+            cont  = list(set(elems))
+            cont.sort()
+            sumform = ""
+            for e in cont:
+                sumform += "%s%d " % (e, elems.count(e))
+            sumforms.append(sumform)
+        return sumforms
+
+    def DEBUG_write_as_xyz(self, fname):
+        f = open(fname, "w")
+        f.write("%d\n\n" % self.pmol.natoms)
+        for i in range(self.pmol.natoms):
+            x, y, z = self.xyz[i]
+            f.write("%3s %12.6f %12.6f %12.6f\n" % (self.pmol.elems[i], x, y, z))
+        f.close()
+        return
 
 #####################  SPECIES CLASS ########################################################################################
 
@@ -307,7 +321,7 @@ class fcompare:
                 print ("products: %s" % str(list(r[1].keys())))
         return
 
-    def check_aids(self):
+    def check_aids(self, verbose = False):
         """check on level 1 for atom id matches
 
         this method implements a rather complex logic:
@@ -331,9 +345,17 @@ class fcompare:
         match_flag = 0 # all is equal on level 1
         if len(self.umatch_f1) > 0 or len(self.umatch_f2) > 0:
             match_flag = 1 # unmatched species!!
+        if verbose:
+            print ("species in f1   : %s" % str(self.f1.specs.keys()))
+            print ("species in f2   : %s" % str(self.f2.specs.keys()))
+            print ("unmatched in f1 : %s" % str(self.umatch_f1))
+            print ("unmatched in f2 : %s" % str(self.umatch_f2))
+
         return match_flag
 
     def analyse_aids(self):
+        if self.aids_analyzed:
+            return
         if self.compare_level == 0:
             self.check_aids()
         if len(self.umatch_f1)==0 and len(self.umatch_f2)==0:
@@ -377,6 +399,43 @@ class fcompare:
                         product_aids |= products[psk].aids
             # now add the final results to the reacs list
             self.reacs.append((educts, products))
+        # the above will not work if there is no tracked species in umatch_f1 (but in umatch_f2)
+        # ... in other words a species has "appeared" or formed by merging two or more untracked species
+        if len(self.umatch_f1)==0:
+            for sk2 in self.umatch_f2:
+                s2 = self.f2.specs[sk2]
+                products = {sk2: s2}
+                product_aids = s2.aids.copy()
+                # now find all the species in frame 1 to match the atoms 
+                educts = {}
+                educt_aids = set()
+                for a in product_aids:
+                    esk = self.f1.molg.vp.mid[a]
+                    if esk not in educts:
+                        educts[esk] = self.f1.make_species(esk)
+                        educt_aids |= educts[esk].aids
+                # do the following until educt_aids and product_aids match
+                while not (educt_aids == product_aids):
+                    # which atoms are in products that are not in the educt species? --> add them
+                    for a in product_aids - educt_aids:
+                        # to which species in frame 1 does this atom belong to?
+                        esk = self.f1.molg.vp.mid[a]
+                        # is this already in educts?
+                        if esk not in educts:
+                            # we need to make a new species object and add it (as non-tracked)
+                            educts[esk] = self.f1.make_species(esk)
+                            educt_aids |= educts[esk].aids
+                    # which atoms are in the educts that are not in the product species? add them
+                    for a in educt_aids - product_aids:
+                        # to which species in frame 2 does this atom belong to?
+                        psk = self.f2.molg.vp.mid[a]
+                        # is this already in educts?
+                        if psk not in products:
+                            # we need to make a new species object and add it (as non-tracked)
+                            products[psk] = self.f2.make_species(psk)
+                            product_aids |= products[psk].aids
+                # now add the final results to the reacs list
+                self.reacs.append((educts, products))   
         self.nreacs = len(self.reacs)
         self.aids_analyzed = True
         return
@@ -419,7 +478,7 @@ class fcompare:
             self.formed_bonds.append(formed_bonds)
         return
 
-    def check_bonds(self):
+    def check_bonds(self, verbose = False):
         """check on level 2 for identical bonds
 
         we use the existing pairs of species in self.aids_match to identify species that have identical aids
@@ -447,14 +506,14 @@ class fcompare:
         else:
             return 0 # all equal
 
-    def check(self):
+    def check(self, verbose = False):
         """check identity of species on all levels (1 and 2) 
         """
-        mf = self.check_aids()
+        mf = self.check_aids(verbose=verbose)
         if mf > 0:
             return mf
         # aids are equal -> chek bonds
-        return self.check_bonds()
+        return self.check_bonds(verbose=verbose)
 
 #####################  REACTIVE EVENT CLASS ########################################################################################
 # this class is instantiated with a comparer (between two frames)
@@ -480,7 +539,7 @@ class revent:
         else:
             # currently we allow only for single reaction events per frame 
             # this would change if there is more than one tracked species ....
-            assert comparer.nreacs == 1
+            assert comparer.nreacs == 1 , "Currently only single reaction events are processed"
             r = 0 # pick first reaction (the only one)
             educts, products = comparer.reacs[r]
             self.broken_bonds     = comparer.broken_bonds[r]
@@ -572,6 +631,7 @@ class findR(mpiobject):
         self.timer = Timer(name="findR")
         self.bondord_cutoff = 0.5  # below this bond roder a bond is registered but swithced off
         self.min_atom = 10         # below this number of atoms a species is considered as gasphase
+        self.min_elems = {"c" : 2} # below this number of atoms of the given element in the species it is not tracked
         # for the search
         self.sstep ={
             "forward" : 200,
@@ -608,26 +668,40 @@ class findR(mpiobject):
         molg.ep.bord = molg.new_edge_property("float")
         molg.ep.filt = molg.new_edge_property("bool")
         for j in range(self.maxbond):
-            e = bondtab[j]-1
             o = bondord[j]
-            # WARNING: this is not safe ... we assume that veriex numbers are =>0 and <natoms tp be valid ... this is likely but not entirely safe
-            #                     TBI: adda table with number of bonds in the pdlp write out and use that for the loop
-            if (e[0] >= 0 and e[0]<self.natoms and e[1] >= 0 and e[1] < self.natoms):
-                newb = molg.add_edge(e[0], e[1])
-                isbond = o > self.bondord_cutoff
-                molg.ep.bord[newb] = o
-                molg.ep.filt[newb] = isbond 
-            else:
-                # invalid vertices in e -> stop (this is NOT safe!! see comment above)
+            # invalid entries are marked with a bondord = -1.0
+            if o < 0.0:
                 break
+            e = bondtab[j]-1
+            # TO BE REMOVED ... this is a legacy check for the old incorrect pdlp files 
+            if (e[0] < 0 or e[0] >= self.natoms or e[1] < 0 or e[1] >= self.natoms):
+                break
+            # END TO BE REMOVED
+            newb = molg.add_edge(e[0], e[1])
+            isbond = o > self.bondord_cutoff
+            molg.ep.bord[newb] = o
+            molg.ep.filt[newb] = isbond 
         # apply edge filter
         molg.set_edge_filter(molg.ep.filt)
         mid, hist = gtt.label_components(molg, vprop=molg.vp.mid)
         nspecies_all = len(hist)
         nspecies = []
-        # TBI: currently unmonitored species are filtered only on size .. there could be a per element filtering etc.
+        # collect number of critical elements in the species
+        elem_spec = {}
+        for e in self.min_elems.keys():
+            spec_ecount = np.zeros(nspecies_all, dtype="int32")
+            for i in range(self.natoms):
+                if self.elems[i] == e:
+                    spec_ecount[mid[i]] += 1
+            elem_spec[e] = spec_ecount
         for i in range(nspecies_all):
-            if hist[i] >= self.min_atom:
+            track = True
+            if hist[i] < self.min_atom:
+                track = False
+            for e in self.min_elems.keys():
+                if elem_spec[e][i] < self.min_elems[e]:
+                    track = False
+            if track:
                 nspecies.append(i)
         # TBI shall we reset the vertex filter of molg again?
         # add xyz and parent mol
@@ -683,6 +757,7 @@ class findR(mpiobject):
         nextf = currentf+self.sstep[mode]
         # start mainloop (just search on until we are at the end of the file)
         # init some variables
+        delta_segment_end = 0
         segment_events = []
         first_event = None # this variable stores the maximum fid of a reaction event at the beginning of a segment being a recrossing
         last_event  = None # this stores the last revent object of a segment (None in the first segment) 
@@ -788,13 +863,25 @@ class findR(mpiobject):
                                 e = event_TSfids[-1]
                                 if segment_end-e <= self.skip_recross:
                                     compare_recross = self.get_comparer(e-1, e+self.skip_recross+1)
-                                    flag = compare_recross.check()
+                                    flag = compare_recross.check(verbose=True)
                                     if flag == 0:
                                         # this is a recrossing over the segment bound
                                         if verbose:
                                             print ("recrossing over segment boundary from %d to %d" % (e-1, e+self.skip_recross+1))
+                                            # DEBUG DEBUG ... analysie what happens over the segment boundary
+                                            for ie in range(e-3, e+self.skip_recross+4):
+                                                if self.frames[ie] is None:
+                                                    self.process_frame(ie)
+                                                print ("Sumform at frame %5d : %s" % (ie, self.frames[ie].get_main_species_formula()))
+                                            # DEBUG DEBUG END
                                         recross += [len(event_TSfids)-1]
                                         first_event = e+self.skip_recross
+                                        # set segment_end to the end of the recrossing .. if we move forward we want to compare to the end of the recrossing event
+                                        print ("segment end was: %d" % segment_end)
+                                        segment_end_new = e+self.skip_recross+1
+                                        delta_segment_end = segment_end_new - segment_end
+                                        print ("delta is %d" % delta_segment_end)
+                                        segment_end = segment_end_new
                                 if verbose:
                                     if len(recross) > 0:
                                         print ("The following event indices are marked to be removed because of recrossing")
@@ -815,7 +902,7 @@ class findR(mpiobject):
                             # connect events (start with connecting last_event with the first in the segment)
                             if len(segment_events) > 0:
                                 for revt in segment_events:
-                                    self.connect_events(last_event, revt)
+                                    self.connect_events(last_event, revt, verbose=verbose)
                                     last_event = revt
                             # now move forward again stating from segment_end
                             mode = "forward"
@@ -826,7 +913,8 @@ class findR(mpiobject):
                                 print ("#########################################################")
                                 print ("all events in segment stored and connected .. moving forward again"   )
             currentf = nextf
-            nextf = currentf+self.sstep[mode]
+            nextf = currentf+self.sstep[mode]-delta_segment_end
+            delta_segment_end = 0
             # capture problems -- this should not happen
             if mode == "back":
                 if nextf < segment_start:
@@ -952,7 +1040,7 @@ class findR(mpiobject):
         return
 
     @timer("connect_events")
-    def connect_events(self, revt1, revt2):
+    def connect_events(self, revt1, revt2, verbose=False):
         """connecting two reaction events 
         
         Args:
@@ -964,9 +1052,27 @@ class findR(mpiobject):
         else:
             fid1 = revt1.TS_fid+1
         fid2 = revt2.TS_fid-1
+        # if the two events are side by side (revt2.TS_fid = revt1._TSfid+1) then fid1 > fid2
+        #  => this will always lead to a fail ... this should never happen.
+        # in this case we can not connect from PR1 to ED2. instead ED2 is TS1!
+        if fid1 > fid2:
+            # fid1 -= 1
+            if verbose:
+                print ("Two reaction events next to each other")
+                print ("We connect TS1 with ED2 in this case")
+                print ("frame ID 1: %d Frame ID 2: %d" % (fid1, fid2))
         comparer = self.get_comparer(fid1, fid2)
-        flag = comparer.check()
-        assert flag == 0, "ED of revt2 not equal PR revt1 .. this should never happen"
+        flag = comparer.check(verbose=verbose)
+        # assert flag == 0, "ED of revt2 not equal PR revt1 .. this should never happen"
+        if flag != 0:
+            print ("This should never happen (flag is %d)" % flag)
+            print ("connecting between %d and %d" % (fid1, fid2))
+            print ("products of revent 1: %s" % str(revt1.PR_spec))
+            print ("educts of revent   2: %s" % str(revt2.ED_spec))
+            print ("sumforms frame 1 %s" % str(self.frames[fid1].get_main_species_formula()))
+            print ("sumforms frame 2 %s" % str(self.frames[fid2].get_main_species_formula()))
+            #raise
+            return # DEBUG DEBUG -- just ignore connection in this case  
         for match in comparer.bond_match:
             self.rdb.set_react(fid1, fid2, match[0], match[1])
         return

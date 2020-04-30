@@ -246,14 +246,28 @@ class graph(object):
         self.molg.set_vertex_filter(filter)
         return
 
-    def get_components(self):
+    def unfilter_graph(self):
+        self.molg.clear_filters()
+        return
+
+    def get_components(self, fidx= None):
         """Get all the components aka molecules from the atomic graph
 
         it adds a property map molid to the graph
 
+        Returns:
+            number of components found
+
         """
+        if fidx is not None:
+            # filter 
+            self.filter_graph(fidx)
         label_components(self.molg, vprop=self.molg.vp.molid)
-        return
+        ncomp = max(self.molg.vp.molid.a)+1
+        if fidx is not None:
+            self.unfilter_graph()
+        comp = list(self.molg.vp.molid.a)
+        return ncomp, comp
 
     """
     #############################################################################################

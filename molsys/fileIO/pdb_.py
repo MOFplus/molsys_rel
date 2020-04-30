@@ -4,11 +4,16 @@ from __future__ import print_function
 ### filename pdb_ instead of pdb is meant
 ### to avoid conflict w/ pdb = python debugger [RA]
 
+# RS: fix residx and resnames when not set
 
 def write(mol, f, resnames = None, residx = None, end = True):
     if resnames is None:
-        resnames = [i.upper()[:3] for i in mol.fragtypes]
-        residx = [i+1 for i in mol.fragnumbers]
+        if mol.nfrags > 0:
+            resnames = [i.upper()[:3] for i in mol.fragtypes]
+            residx = [i+1 for i in mol.fragnumbers]
+        else:
+            resnames = mol.natoms * ["XYZ"]
+            residx   = mol.natoms * [1]
     # write header
     f.write("MODEL    1\n")
     # write unit cell information
