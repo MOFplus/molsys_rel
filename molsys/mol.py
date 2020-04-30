@@ -742,7 +742,7 @@ class mol(mpiobject):
                 self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
 
-    def add_pconn(self):
+    def add_pconn(self,maxiter=5000):
         """
         Generate the periodic connectivity from the exisiting connectivity
         The pconn contains the image index of the bonded neighbor
@@ -785,12 +785,18 @@ class mol(mpiobject):
                 # Sometimes, the distances are a bit different from each other, and in this case, we
                 # have to increase the threshold, until the get_distvec function will find all imgis.
                 n_conns = dc[j]+1 # if summed by 1 you get the number of occurences per unique atom
-                t = 0.01
+                t = 0.01; niter =0
                 while True:
+                    # JK: sometimes it happens here that len(imgi) in the first iteration is > n_conns
+                    # and increasing thresh does not help. In this case something went wrong and we have to
+                    # stop at some point (maxiter=5000) amounts to a thresh of 50 angstroms 
                     d,r,imgi = self.get_distvec(i,j,thresh=t)
                     t += 0.01
                     if n_conns == len(imgi):
                         break
+                    niter += 1
+                    if niter > maxiter: 
+                        raise ValueError('add_pconn failed - infinite loop prevented')
                 uimgi[j] = imgi
             atoms_pconn = []
             atoms_image = []
@@ -2385,8 +2391,12 @@ class mol(mpiobject):
             natoms = len(idx)
         if pbc:
             xyz = self.apply_pbc(xyz, 0)
-        center = np.sum(xyz,axis=0)/float(natoms)
-        return center
+        if natoms != 0:
+            center = np.sum(xyz,axis=0)/float(natoms)
+            return center
+        else:
+            logger.warning('get_coc requires at least one atom to be present in the mol instance. returning zero vector')
+            return np.array([0.0,0.0,0.0])
 
     ### CORE DATASTRUCTURES #######################################
 
