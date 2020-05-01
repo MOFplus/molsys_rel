@@ -763,7 +763,7 @@ class findR(mpiobject):
         segment_events = []
         first_event = None # this variable stores the maximum fid of a reaction event at the beginning of a segment being a recrossing
         last_event  = None # this stores the last revent object of a segment (None in the first segment) 
-        while nextf < self.nframes and nextf > 0:
+        while nextf < self.nframes and nextf >= 0:
             if not verbose:
                 print_progress(nextf/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
             self.process_frame(nextf)
