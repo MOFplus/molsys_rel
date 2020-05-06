@@ -181,10 +181,11 @@ class RDB:
 
     def get_lot(self, lot):
         row = self.db(self.db.lot.name==lot).select().first()
-        id = row.id
         if row is None:
             id = self.db.lot.insert(name=lot)
-        return id
+            return id
+        else:
+            return row.id
 
     def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False, postpone_commit=False):
         reventID = self.db.revent.insert(
