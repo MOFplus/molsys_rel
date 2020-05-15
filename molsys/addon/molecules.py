@@ -280,6 +280,7 @@ class molecules(base):
                             self._mol.ff.ric_type[k] += [new_ric]
                         self._mol.ff.parind[k] += newmol.ff.parind[k]
             ### molid has been updated using self._mol.add_mol => update the molid in ff
+            self._mol.ff._mol = self._mol
             self._mol.ff.update_molid()
         # finish up packing
         if pack:
