@@ -13,7 +13,7 @@ import tempfile
 import subprocess
 import os
 
-def thumbnail(mol, size=400, scale=1.3, transparent=True, fname=None, debug=False):
+def thumbnail(mol, size=200, scale=1.3, transparent=True, fname=None, debug=False):
     """
     generate a thumbnail from a mol object
     by default a png is returned.
