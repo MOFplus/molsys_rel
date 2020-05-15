@@ -66,9 +66,9 @@ class frame:
             self.specs = {}
         return
 
-    def add_species(self, mid):
+    def add_species(self, mid, tracked=True):
         # make all frame species (observed) with a local graph representation
-        self.specs[mid] = species(self.fid, mid, self.molg, make_graph=True)
+        self.specs[mid] = species(self.fid, mid, self.molg, make_graph=True, tracked=tracked)
         return
 
     def make_species(self, mid):
@@ -116,6 +116,8 @@ class frame:
 
         we get the current coordinates as xyz and the parent mol object pmol from the pdlp file
 
+        NOTE: the additional species added to the frame are considered to be non tracked
+
         TBI: use frame obejcts pmol and xyz to do it -> refactor calling code
         
         Args:
@@ -125,10 +127,10 @@ class frame:
         aids = []
         for mid in species:
             if mid not in self.specs:
-                self.add_species(mid)
+                self.add_species(mid, tracked=False)
             s = self.specs[mid]
             aids += list(s.aids)
-        aids.sort() # not sure if that is really needed
+        # aids.sort() # not sure if that is really needed
         self.mol = molsys.mol.from_array(xyz[aids])
         self.mol.set_cell(pmol.get_cell())
         self.mol.set_elems([pmol.elems[i] for i in aids])
@@ -275,7 +277,7 @@ class species:
 #####################  FRAME COMPARE CLASS ########################################################################################
 
 class fcompare:
-    """This class compares two frames at different levels of reolution whether species are different
+    """This class compares two frames at different levels of resolution whether species are different
        All info collected during the compairson is kept in this class in order to be exploited later
     """
 
@@ -290,11 +292,12 @@ class fcompare:
         self.f2 = f2
         # defaults
         self.compare_level = 0 # 0: no comparison, 1: atom id level, 2: connectivity level
-        self.umatch_f1 = list(self.f1.specs.keys())
-        self.umatch_f2 = list(self.f2.specs.keys())
+        self.umatch_f1 = [s for s in self.f1.specs if self.f1.specs[s].tracked]
+        self.umatch_f2 = [s for s in self.f2.specs if self.f2.specs[s].tracked]
         self.aids_match = []
         self.bond_match = []
         self.aids_analyzed = False
+        self.bonds_analyzed = False
         self.reacs = []
         self.broken_bonds = []
         self.formed_bonds = []
@@ -494,7 +497,7 @@ class fcompare:
             #      what about a tautomerism when the initial and fianl state are symmetric?
             f = gtt.isomorphism(s1.graph, s2.graph)
             # print ("%d %d %d %d %s" % (self.f1.fid, self.f2.fid, p[0], p[1], f))
-            if True:
+            if f == True:
                 self.bond_match.append(p)
             else:
                 self.missmatch.append(p)
@@ -504,6 +507,29 @@ class fcompare:
             return 2
         else:
             return 0 # all equal
+
+    def analyse_bonds(self):
+        if self.bonds_analyzed:
+            return
+        if self.compare_level < 2:
+            self.check_bonds()
+        if len(self.missmatch) == 0:
+            return
+        # now analyse all the pairs in self.missmatch: they have identical aids but a diffrent bond graph
+        self.nreacs = len(self.missmatch)
+        for p in self.missmatch:
+            # get the species of the pair
+            s1 = self.f1.specs[p[0]]
+            s2 = self.f2.specs[p[1]]
+            self.reacs.append(({p[0]: s1},{p[1]: s2}))
+            # get all edges as vertex id tuples (int tuples)
+            bs1 = set([(int(e.source()),int(e.target())) for e in s1.graph.edges()])
+            bs2 = set([(int(e.source()),int(e.target())) for e in s2.graph.edges()])
+            self.broken_bonds.append(list(bs1-bs2)) # broken: bond in frame1 but not in frame2
+            self.formed_bonds.append(list(bs2-bs1)) # formed: bond in frame2 but not in frame1
+        self.bonds_analyzed = True
+        return
+
 
     def check(self, verbose = False):
         """check identity of species on all levels (1 and 2) 
@@ -523,6 +549,11 @@ class revent:
 
     def __init__(self, comparer, fR, unimol= False):
         """generate a reaction event object
+
+        TBI: what to do if there are more then one reaction event (in two diffrent tracked species)
+             at the same time ... this is properly tracked in the comparer (nreacs>1)
+             but this means there are more revents to be generated. should we do this recursively?
+             how to store?
         
         Args:
             comparer (fcompare object): comparer that gave a reactive event
@@ -532,70 +563,66 @@ class revent:
         self.unimol = unimol
         self.fR = fR
         self.comparer = comparer
-        if unimol:
-            print ("Not implemented .. abort")
-            raise
+        # currently we allow only for single reaction events per frame 
+        # this would change if there is more than one tracked species ....
+        assert comparer.nreacs == 1 , "Currently only single reaction events are processed"
+        r = 0 # pick first reaction (the only one)
+        educts, products = comparer.reacs[r]
+        self.broken_bonds     = comparer.broken_bonds[r]
+        self.formed_bonds     = comparer.formed_bonds[r]
+        f1               = comparer.f1
+        f2               = comparer.f2
+        # choose which frame we use as TS
+        # everything is referenced to f1 which is 0 (f2 is +1)
+        # find avereage bond order of reactive bonds at f1/f2
+        f1_averborder = 0.0
+        if len(self.broken_bonds) >0:
+            for b in self.broken_bonds:
+                f1_averborder += f1.molg.ep.bord[f1.molg.edge(b[0], b[1])]
+            f1_averborder/len(self.broken_bonds)
+        f2_averborder = 0.0
+        if len(self.formed_bonds) >0:
+            for b in self.formed_bonds:
+                f2_averborder += f2.molg.ep.bord[f2.molg.edge(b[0], b[1])]
+            f2_averborder/len(self.formed_bonds)
+        if f1_averborder == 0.0:
+            TS_rfid = 1
+        elif f2_averborder == 0.0:
+            TS_rfid = 0
         else:
-            # currently we allow only for single reaction events per frame 
-            # this would change if there is more than one tracked species ....
-            assert comparer.nreacs == 1 , "Currently only single reaction events are processed"
-            r = 0 # pick first reaction (the only one)
-            educts, products = comparer.reacs[r]
-            self.broken_bonds     = comparer.broken_bonds[r]
-            self.formed_bonds     = comparer.formed_bonds[r]
-            f1               = comparer.f1
-            f2               = comparer.f2
-            # choose which frame we use as TS
-            # everything is referenced to f1 which is 0 (f2 is +1)
-            # find avereage bond order of reactive bonds at f1/f2
-            f1_averborder = 0.0
-            if len(self.broken_bonds) >0:
-                for b in self.broken_bonds:
-                    f1_averborder += f1.molg.ep.bord[f1.molg.edge(b[0], b[1])]
-                f1_averborder/len(self.broken_bonds)
-            f2_averborder = 0.0
-            if len(self.formed_bonds) >0:
-                for b in self.formed_bonds:
-                    f2_averborder += f2.molg.ep.bord[f2.molg.edge(b[0], b[1])]
-                f2_averborder/len(self.formed_bonds)
-            if f1_averborder == 0.0:
-               TS_rfid = 1
-            elif f2_averborder == 0.0:
+            if abs(f1_averborder-0.5) < abs(f2_averborder-0.5):
+                # f1 closer to TS
                 TS_rfid = 0
             else:
-                if abs(f1_averborder-0.5) < abs(f2_averborder-0.5):
-                    # f1 closer to TS
-                    TS_rfid = 0
-                else:
-                    TS_rfid = 1
-            # now store data depending on relative frame id (rfid) of the TS
-            if TS_rfid == 0:
-                self.TS = f1
-                self.PR = f2
-                self.ED = self.fR.process_frame(self.TS.fid-1)
-                # get corresponding species numbers
-                self.TS_spec = educts
-                self.PR_spec = products
-                loccomp = fcompare(self.ED, self.TS)
-                if loccomp.check_aids() == 0:
-                    # no change in atom ids .. we can use TS species for ED as well
-                    self.ED_spec = educts
-                else:
-                    print ("Houston we have a problem!!! species changed between ED and TS")
-            else:
-                self.ED = f1
-                self.TS = f2
-                self.PR = self.fR.process_frame(self.TS.fid+1)
+                TS_rfid = 1
+        # now store data depending on relative frame id (rfid) of the TS
+        if TS_rfid == 0:
+            self.TS = f1
+            self.PR = f2
+            self.ED = self.fR.process_frame(self.TS.fid-1)
+            # get corresponding species numbers
+            self.TS_spec = educts
+            self.PR_spec = products
+            loccomp = fcompare(self.ED, self.TS)
+            if loccomp.check_aids() == 0:
+                # no change in atom ids .. we can use TS species for ED as well
                 self.ED_spec = educts
-                self.TS_spec = products
-                loccomp = fcompare(self.TS, self.PR)
-                if loccomp.check_aids() == 0:
-                    # no change in atom ids .. we can use TS species for PR as well
-                    self.PR_spec = products
-                else:
-                    print ("Houston we have a problem!!! species changed between TS and PR")
-            # get TS_fid for ease
-            self.TS_fid = self.TS.fid
+            else:
+                print ("Houston we have a problem!!! species changed between ED and TS")
+        else:
+            self.ED = f1
+            self.TS = f2
+            self.PR = self.fR.process_frame(self.TS.fid+1)
+            self.ED_spec = educts
+            self.TS_spec = products
+            loccomp = fcompare(self.TS, self.PR)
+            if loccomp.check_aids() == 0:
+                # no change in atom ids .. we can use TS species for PR as well
+                self.PR_spec = products
+            else:
+                print ("Houston we have a problem!!! species changed between TS and PR")
+        # get TS_fid for ease
+        self.TS_fid = self.TS.fid
         return
 
 
@@ -629,7 +656,7 @@ class findR(mpiobject):
         self.frames = self.nframes*[None]
         self.timer = Timer(name="findR")
         self.bondord_cutoff = 0.5  # below this bond roder a bond is registered but swithced off
-        self.min_atom = 10         # below this number of atoms a species is considered as gasphase
+        self.min_atom = 6          # below this number of atoms a species is considered as gasphase
         self.min_elems = {"c" : 2} # below this number of atoms of the given element in the species it is not tracked
         # for debugging
         self.nunconnected = 0
@@ -641,8 +668,8 @@ class findR(mpiobject):
             "fine"    : 1,
         }
         self.skip_recross = 2 # number of frames to check if a reaction event was reverted
-        # now open the RDB    TBI: how to deal with a paralle run?
-        self.rdb = RDB.RDB(rdb_path)
+        # now open the RDB    TBI: how to deal with a parallel run?
+        self.rdb = RDB.RDB(rdb_path, do_commit=False) # we open in no-commit mode -> have to call commit ourselves
         # TBI  get temp and timestep from pdlp file
         self.rdb.set_md_run(pdlpfilename, stage, nframes=self.nframes, temp=2000.0, timestep=10.0)
         return
@@ -705,6 +732,7 @@ class findR(mpiobject):
                     track = False
             if track:
                 nspecies.append(i)
+            # print (nspecies)
         # TBI shall we reset the vertex filter of molg again?
         # add xyz and parent mol
         xyz = np.array(self.f_xyz[fid])      
@@ -763,7 +791,8 @@ class findR(mpiobject):
         segment_events = []
         first_event = None # this variable stores the maximum fid of a reaction event at the beginning of a segment being a recrossing
         last_event  = None # this stores the last revent object of a segment (None in the first segment) 
-        while nextf < self.nframes and nextf >= 0:
+        stop = False
+        while nextf < self.nframes and nextf >= 0 and not stop:
             if not verbose:
                 print_progress(nextf/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
             self.process_frame(nextf)
@@ -792,9 +821,13 @@ class findR(mpiobject):
                         if verbose:
                             print ("###########  Event at %d  #############" % TS_fid)
                     elif flag == 2:
-                        # TBI unimolecular reaction
-                        print ("UNIMOL REACTION EVENT!!")
-                        raise
+                        # unimolecular reaction
+                        comparer.analyse_bonds() # this method already finds the reactive bonds
+                        # make reaction event and store
+                        revt = revent(comparer, self, unimol=True)
+                        TS_fid = revt.TS_fid
+                        if verbose:
+                            print ("###########  Unimol Event at %d  #############" % TS_fid)
                     # now add the event to the list
                     segment_events.append(revt)
                     # first we need to make sure that there is no other reaction in the subsegment
@@ -898,13 +931,13 @@ class findR(mpiobject):
                             # store events in DB now
                             for revt in segment_events:
                                 if revt.unimol:
-                                    raise "unimol reactions not implemented yet"
+                                    self.store_uni_event(revt)
                                 else:
                                     self.store_bim_event(revt)
                             # connect events (start with connecting last_event with the first in the segment)
                             if len(segment_events) > 0:
                                 for revt in segment_events:
-                                    self.connect_events(last_event, revt)
+                                    self.connect_events(last_event, revt, verbose=verbose)
                                     last_event = revt
                             # now move forward again stating from segment_end
                             mode = "forward"
@@ -920,8 +953,17 @@ class findR(mpiobject):
             # capture problems -- this should not happen
             if mode == "back":
                 if nextf < segment_start:
-                    print ("backtracking went wrong -> abort")
-                    raise
+                    back_delt = segment_start - nextf
+                    if back_delt > self.skip_recross+1:
+                        print ("segement_start is %d" % segment_start)
+                        print ("nextf is %d" % nextf)
+                        print ("backtracking went wrong -> abort")
+                        raise
+                    else:
+                        if verbose:
+                            print ("backtracking to a shifted segment bound (due to recross)")
+                            print ("We shift nextf from %d to %d" % (nextf, segment_start))
+                        nextf = segment_start
             if mode == "fine":
                 if nextf > subseg_end:
                     print ("dinetracking went wrong -> abort")
@@ -929,7 +971,12 @@ class findR(mpiobject):
             if verbose:
                 sumform = self.frames[currentf].get_main_species_formula()
                 print ("&& current %10d  next %10d  mode %8s   (current frame sumformula %s" % (currentf, nextf, mode, sumform))
+            # check if the currentf has zero tracked species -> then stop searching
+            if len(self.frames[currentf].specs) == 0:
+                print ("Current frame %d has zero species to track ... stop searching")
+                stop = True
         # end of mainloop
+        self.rdb.commit()
         # DEBUG
         if self.nunconnected > 0:
             print ("NUMBER OF UNCONNECTED EVENTS: %d" % self.nunconnected)
@@ -1046,6 +1093,77 @@ class findR(mpiobject):
         )
         return
 
+    @timer("store_uni_event")
+    def store_uni_event(self, revt):
+        """store species and further info in database for an unimol reaction event
+        (one ED/TS and PR species only)
+
+        Args:
+            revt (revent object): reaction event object
+        """
+        assert revt.unimol==True, "store_uni_event called for a bimolecular event!"
+        # now we should have all data
+        # generate mol objectes with coordinates
+        xyz_ed = np.array(self.f_xyz[revt.ED.fid])
+        xyz_ts = np.array(self.f_xyz[revt.TS.fid])
+        xyz_pr = np.array(self.f_xyz[revt.PR.fid])
+        # there must be only one species in ED, PR and TS
+        # ED
+        assert len(revt.ED_spec) == 1
+        ED_spec_id = next(iter(revt.ED_spec))
+        ED_spec = revt.ED_spec[ED_spec_id]
+        ED_mol = ED_spec.make_mol(xyz_ed[list(ED_spec.aids)], self.mol)
+        # TS
+        assert len(revt.TS_spec) == 1
+        TS_spec_id = next(iter(revt.TS_spec))
+        TS_spec = revt.TS_spec[TS_spec_id]
+        TS_mol = TS_spec.make_mol(xyz_ts[list(TS_spec.aids)], self.mol)
+        #PR
+        assert len(revt.PR_spec) == 1
+        PR_spec_id = next(iter(revt.PR_spec))
+        PR_spec = revt.PR_spec[PR_spec_id]
+        PR_mol = PR_spec.make_mol(xyz_pr[list(PR_spec.aids)], self.mol)
+        # map the broken/formed bonds to atom ids of the TS subsystem
+        rbonds_global = revt.formed_bonds+revt.broken_bonds
+        rbonds = []
+        TS_aids = list(TS_spec.aids)
+        for b in rbonds_global:
+            if (b[0] not in TS_aids) or (b[1] not in TS_aids):
+                import pdb; pdb.set_trace() 
+            rbonds.append(TS_aids.index(b[0]))
+            rbonds.append(TS_aids.index(b[1]))
+        # now let us register the unimol reaction event in the database
+        revID = self.rdb.register_revent(
+            revt.TS.fid,
+            [ED_spec_id],
+            [TS_spec_id],
+            [PR_spec_id],
+            1, # number of tracked ed species .. for uni always 1
+            1, # number of tracked pr species .. for uni always 1
+            rbonds,
+            uni = True
+        )
+        # add the md species (mol objects etc) to this entry
+        self.rdb.add_md_species(
+            revID,
+            ED_mol,
+            ED_spec_id,
+            -1,   # ED
+        )
+        self.rdb.add_md_species(
+            revID,
+            PR_mol,
+            PR_spec_id,
+            1,            # PR
+        )
+        self.rdb.add_md_species(
+            revID,
+            TS_mol,
+            TS_spec_id,  
+            0
+        )
+        return
+
     @timer("connect_events")
     def connect_events(self, revt1, revt2, verbose=False):
         """connecting two reaction events 
@@ -1078,9 +1196,19 @@ class findR(mpiobject):
             print ("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             print ("This should never happen!! Could not Connect!!")
             print ("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            import pdb; pdb.set_trace()
+
             self.nunconnected += 1
             self.unconnected.append((fid1, fid2))
-            return # DEBUG DEBUG -- just ignore connection in this case  
+            return # DEBUG DEBUG -- just ignore connection in this case
+        if len(comparer.bond_match) == 0:
+            print ("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            print ("This is unexpected!!")
+            print ("the comparer did not find any matching species")
+            import pdb; pdb.set_trace()
+            self.nunconnected += 1
+            self.unconnected.append((fid1, fid2))
+
         for match in comparer.bond_match:
             self.rdb.set_react(fid1, fid2, match[0], match[1])
         return
