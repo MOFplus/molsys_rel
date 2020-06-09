@@ -29,7 +29,7 @@ typekeys = {
 
 class RDB:
 
-    def __init__(self, db_path, mode="a"):
+    def __init__(self, db_path, mode="a", do_commit=True):
         """generate a RDB access object
         
         Args:
@@ -37,7 +37,6 @@ class RDB:
             mode (str, optional): mode for opening database: a is append (must exist) n is new (must not exist). Defaults to "a".
         """
         db_path = os.path.abspath(db_path)
-        print (db_path)
         # check access mode
         if mode == "a":
             assert os.path.isdir(db_path)
@@ -47,6 +46,7 @@ class RDB:
             os.mkdir(db_path)
         self.db = DAL("sqlite://RDB.db", folder=db_path)
         self.db_path = db_path
+        self.do_commit = do_commit
         ###########################################################################################
         # define databse structure
         # 
@@ -75,11 +75,13 @@ class RDB:
         dbstruc["md_species"] = [
             "r:revent",       # ref to revent
             "t:smiles",       # smiles
+            "s:sumform",      # sum formula
             "d:energy",       # ReaxFF energy
             "i:spec",         # species ID in the frame
             "i:foffset",      # frame offset (-1 educt, 0 TS, 1 product)
             "u:mfpx",         # upload mfpx file
             "b:tracked",      # is tracked?
+            "u:png",          # thumbnail
         ]
         dbstruc["lot"] = [
             "s:name"          # level of theory
@@ -89,6 +91,7 @@ class RDB:
             "r:lot",          # ref to lot
             "d:energy",       # energy (in kcal/mol)
             "u:xyz",          # upload xyz file
+            "u:png",          # thumbnail
         ]
         dbstruc["react"] = [
             "r:revent:from_rev",        # source reaction event ref
@@ -156,12 +159,10 @@ class RDB:
     ######### API methods #####################################################################
 
     def commit(self):
-        self.cd.commit()
+        self.db.commit()
         return
 
     def set_md_run(self, pdlp_fname, stage, **kwargs):
-        # make sure that the pdlp file really exists
-        assert os.path.exists(pdlp_fname)
         # get the absolute pathname to have a reliable identifier
         pdlp_fname = os.path.abspath(pdlp_fname)
         # find out if pdlp_fname is in database
@@ -171,6 +172,8 @@ class RDB:
             # this is a new entry
             for k in ["nframes", "timestep", "temp"]:
                 assert k in kwargs, "for a new md entry %s must be specified" % k
+            # make sure that the pdlp file really exists
+            assert os.path.exists(pdlp_fname)
             mdID = self.db.md.insert(
                 path     = pdlp_fname,
                 stage    = stage,
@@ -188,11 +191,11 @@ class RDB:
         row = self.db(self.db.lot.name==lot).select().first()
         if row is None:
             id = self.db.lot.insert(name=lot)
+            return id
         else:
-            id = row.id
-        return id
+            return row.id
 
-    def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False, postpone_commit=False):
+    def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False):
         reventID = self.db.revent.insert(
             mdID       = self.current_md,
             uni        = uni,
@@ -204,7 +207,7 @@ class RDB:
             tr_pr      = tr_pr,
             rbonds     = rbonds,
         )
-        if not postpone_commit:
+        if self.do_commit:
             self.db.commit()
         return reventID
 
@@ -216,6 +219,7 @@ class RDB:
         # generate smiles
         mol.addon("obabel")
         smiles = mol.obabel.cansmiles
+        sumform = mol.get_sumformula()
         # generate the file stream
         mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         # generate a filename
@@ -224,13 +228,15 @@ class RDB:
         specID = self.db.md_species.insert(
             reventID     = reventID.id,
             smiles      = smiles,
+            sumform     = sumform,
             energy      = energy,
             spec        = spec,
             foffset     = foff,
             tracked     = tracked,
             mfpx        = self.db.md_species.mfpx.store(mfpxf, fname)
         )
-        self.db.commit()
+        if self.do_commit:
+            self.db.commit()
         return specID
 
     # TBI .. this is really stupid because we have to get revent for each species .. for DEBUG ok
@@ -254,8 +260,16 @@ class RDB:
         ).select().first()
         assert mdspec is not None, "No species %d for this reaction event" % spec
         # DEBUG DEBUG
-        print ("Frame %d Species %d frame offset %d" % (frame, spec, foff))
-        print (mdspec.smiles)
+        # print ("Frame %d Species %d frame offset %d" % (frame, spec, foff))
+        # print (mdspec.smiles)
+        return self.get_md_species_mol(mdspec)
+
+    def get_md_species_mol(self, mdspec):
+        """
+
+        Args:
+            - mdspec : a md_species database row
+        """
         # get the file and convert to a mol object
         fname, mfpxf = self.db.md_species.mfpx.retrieve(mdspec.mfpx)
         mfpxs = mfpxf.read().decode('utf-8')
@@ -279,20 +293,32 @@ class RDB:
             (self.db.md_species.foffset == 1) &
             (self.db.md_species.spec == from_spec)
         ).select().first()
-        assert from_smd is not None, "no species %d in frame %d to connect" % (from_fid, from_spec)
+        # assert from_smd is not None, "no species %d in frame %d to connect" % (from_spec, from_fid)
         to_smd = self.db(
             (self.db.md_species.reventID == to_ev.id) &
             (self.db.md_species.foffset == -1) &
             (self.db.md_species.spec == to_spec)
         ).select().first()
-        assert to_smd is not None, "no species %d in frame %d to connect" % (to_fid, to_spec)
+        # assert to_smd is not None, "no species %d in frame %d to connect" % (to_spec, to_fid)
         # now we can add a new edge into the reaction graph
-        reactID = self.db.react.insert(
-            from_rev  = from_ev.id,
-            to_rev    = to_ev.id,
-            from_spec = from_smd.id,
-            to_spec   = to_smd.id 
-        )
+        if (from_smd is not None) and (to_smd is not None):
+            reactID = self.db.react.insert(
+                from_rev  = from_ev.id,
+                to_rev    = to_ev.id,
+                from_spec = from_smd.id,
+                to_spec   = to_smd.id 
+            )
+            if self.do_commit:
+                self.db.commit()
+        return
+
+    def add_similar(self, lot, optspecID, simoptspecID):
+        if type(lot) == type(""):
+            lot = self.get_lot(lot)
+        self.db.similar.insert(
+                lotID = lot,
+                opt_speciesID = optspecID,
+                similar_opt_speciesID = simoptspecID)
         self.db.commit()
         return
 
@@ -314,18 +340,118 @@ class RDB:
             energy       = energy,
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz")
         )
-        self.db.commit()
-        return optID
-        
-    def add_similar(self, lot, optspecID, simoptspecID):
-        if type(lot) == type(""):
-            lot = self.get_lot(lot)
-        self.db.similar.insert(
-                lotID = lot,
-                opt_speciesID = optspecID,
-                similar_opt_speciesID = simoptspecID)
-        self.db.commit()
+        if self.do_commit:
+            self.db.commit()
         return
+        
+
+################################################################################################
+
+# reaction graph generation
+
+    def view_reaction_graph(self, start=None, stop=None, browser="firefox"):
+        """ generate a reaction graph
+
+        we use the current md (must be called before)
+
+        if you use svg the database must be locally available (only links to the figures are stored)
+        png can get very big
+
+        Args:
+            name (string, optional): name of the output file, default = rgraph
+            format (string, optional): format of the output (either png or svg), default = png
+            start (int, optional) : first frmae to consider
+            staop (int, optional) : last frame to consider
+        """
+        import pydot
+        import tempfile
+        import webbrowser
+        # set the path to the images
+        img_path = self.db_path + "/storage/png/"
+        # get all relevant revents
+        if start is None:
+            start = -1
+        revents = self.db((self.db.revent.mdID == self.current_md) & \
+                          (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
+        rgraph = pydot.Dot(graph_type="digraph")
+        rgnodes = {} # store all generated nodes by their md_speciesID
+        # start up with products of first event
+        cur_revent = revents[0]
+        mds = self.db((self.db.md_species.reventID == cur_revent) & \
+                      (self.db.md_species.foffset == 1)).select()
+        for m in mds:
+            new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),
+                                       image = img_path+m.png,
+                                       label = "",
+                                       shape = "box")
+            rgraph.add_node(new_node)
+            rgnodes[m.id] = new_node
+        # now loop over revents
+        for (i, cur_revent) in enumerate(revents[1:]):
+            if (stop is not None) and (cur_revent.frame > stop):
+                break
+            # make the nodes of the revent
+            educ = []
+            prod = []
+            mds = self.db((self.db.md_species.reventID == cur_revent)).select()
+            for m in mds:
+                if m.foffset == -1:
+                    new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
+                                       image = img_path+m.png,\
+                                       label = "%s" % m.sumform,\
+                                       labelloc = "t", \
+                                       shape = "box")
+                    educ.append(new_node)
+                elif m.foffset == 1:
+                    new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
+                                       image = img_path+m.png,\
+                                       label = "%s" % m.sumform,\
+                                       labelloc = "t", \
+                                       shape = "box")
+                    prod.append(new_node)
+                else:
+                    if cur_revent.uni:
+                        label = "%10d (unimol)" % cur_revent.frame
+                    else: 
+                        label = "%10d" % cur_revent.frame
+                    new_node = pydot.Node("%d_ts_%d" % (cur_revent.frame, m.spec),\
+                                       image = img_path+m.png,\
+                                       label = label,\
+                                       labelloc = "t",\
+                                       shape = "box",\
+                                       style = "rounded")
+                    ts = new_node
+                rgraph.add_node(new_node)
+                rgnodes[m.id] = new_node
+            # now add edges
+            for e in educ:
+                rgraph.add_edge(pydot.Edge(e, ts))
+            for p in prod:
+                rgraph.add_edge(pydot.Edge(ts, p))
+            # now connect from the previous events
+            concts = self.db(self.db.react.to_rev == cur_revent).select()
+            for c in concts:
+                rgraph.add_edge(pydot.Edge(rgnodes[c.from_spec], rgnodes[c.to_spec], color="blue"))
+        # done
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cwd = os.curdir
+            os.chdir(tmpdir)
+            rgraph.write_svg("rgraph.svg")
+            webbrowser.get(browser).open_new("rgraph.svg")
+            os.chdir(cwd)
+        
+    
+
+
+
+            
+
+        
+
+
+
+
+>>>>>>> 67cd6c934bfda6f13afa66a978569f08fd0d9bc2
 
 if __name__ == "__main__":
     rdb = RDB("./test", mode="n")

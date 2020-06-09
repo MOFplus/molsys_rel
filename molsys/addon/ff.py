@@ -1843,7 +1843,12 @@ class ff(base):
         for k,v in self.settings.items():
             f.write("%-15s %s\n" % (k, str(v)))
         f.write("\n")
-        keywords = [i for i in self.par.keys()]
+        # in py3 the dict keys are not reported as they are initialized. hence we sort here to 
+        # restore the same sorting as before, i.e. the list below
+        sorted_keys = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
+        all_keys = self.par.keys()
+        keywords = [x for x in sorted_keys if x in all_keys] + [x for x in all_keys if x not in sorted_keys]
+        #keywords = [i for i in self.par.keys()]
         for ic in keywords:
             ptyp = par_types[ic]
             par = self.par[ic]

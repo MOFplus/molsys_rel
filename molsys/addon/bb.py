@@ -7,6 +7,8 @@ import string
 import copy
 from collections import Counter
 import numpy as np
+from molsys.util.elems import vdw_radii as vdw
+
 
 
 import logging
@@ -112,11 +114,8 @@ class bb:
         elif self.center_type == "com":
             self.mol.set_real_mass()
             center_xyz = self.mol.get_com()
-        else:
-            mass, masstype = self.mol.get_mass(return_masstype=True)
-            self.mol.set_unit_mass()            
-            center_xyz = self.mol.get_com(idx=self.connector)
-            self.mol.set_mass(mass, masstype)
+        else: # the coc case          
+            center_xyz = self.mol.get_coc(idx=self.connector)
         self.mol.translate(-center_xyz)
         if name is not None:
             self.name = name
@@ -207,32 +206,90 @@ class bb:
             self.connector_atypes = [self.connector_atypes[i] for i in order]
         return
 
-    def remove_carboxylates(self,co2mol=None):
-        ''' this function is meant to be used to convert a molecule
+    def remove_carboxylates(self,co2mol=None,remove_carboxy_H=True):
+        """this function is meant to be used to convert a molecule
             which is not yet a bb type to a bb type by removing 
             carboxylates and carboxylic acid groups and adding 
-            connectors where the carboxylates were '''
+            connectors where the carboxylates were 
+        
+        Keyword Arguments:
+            co2mol {molsys.mol} -- co2 mol object (default: {None})
+            remove_carboxy_H {bool} -- if true, carboxylic hydrogen atoms are removed (default: {True})
+        
+        Returns:
+            molsys.mol -- the mol object with removed carboxylates
+        """        
+        from molsys.util.atomtyper import atomtyper 
+        import molsys
         # find carboxylates
-        from molsys.util.atomtyper import atomtyper
+        m = copy.copy(self.mol)
+        if remove_carboxy_H is True:
+            Hidxs = [i for i,x in enumerate(m.atypes) if ((x == 'h1_o1') and (m.elems[m.conn[i][0]][0:2]=='c3'))]
+            m.delete_atoms(Hidxs)
+            at = atomtyper(m); at()
         m = copy.copy(self.mol)
         at = atomtyper(m); at()        
         if co2mol is None:
-            m.addon('groups')
-            m.groups.register_group_atype('carbox',atypes = ['o1_c1','c3'])
-            idxs = m.groups('carbox')
-        else:
-            m.addon('graph')
-            m.graph.make_graph(hashes=False)
-            idxs = m.graph.find_sub(co2mol.graph)
+            co2mfpxtxt = '# type xyz\n3\n  1 c      0.000000    0.000000    0.000000   c3_*1o2                 -1                  -1       2       3  \n  2 o      1.500000    0.000000    0.000000   o1_c1                   -1                  -1       1  \n  3 o     -1.500000    0.000000    0.000000   o1_c1                   -1                  -1       1  \n'
+            co2mol = molsys.mol.from_string(co2mfpxtxt)
+            co2mol.addon('graph')
+            co2mol.graph.make_graph(hashes=False)
+        m.addon('graph')
+        m.graph.make_graph(hashes=False)
+        idxs = m.graph.find_sub(co2mol.graph)
         carboxy_atoms = sorted([item for sublist in idxs for item in sublist])
         other_atoms = [x for x in range(m.natoms) if x not in carboxy_atoms]
         other_conn = [[x for xx in m.conn[x] if (carboxy_atoms.count(xx) != 0)] for x in other_atoms] # get atom indices connected to the carboxylates
         other_conn = sorted([item for sublist in other_conn for item in sublist]) # flatten list
         offset = [len(np.where(np.array(carboxy_atoms) <= x)[0]) for x in other_atoms]
         newmol = m.new_mol_by_index(other_atoms)
+        newmol.set_real_mass()
         if not hasattr(newmol,'bb'): newmol.addon('bb')
         connector = [x-offset[other_atoms.index(x)] for x in other_conn]
         newmol.bb.setup(connector)
+        del newmol.bb.mol
+        newmol.bb.mol = newmol
         return newmol
+
+    @property
+    def is_organic(self,organic_elements = ["h", "b", "c", "n", "o", "f", "si", "p", "s", "cl", "as", "se", "br", "i"]
+):
+        """
+        Checks if the bb contains only organic elements
+        """        
+        elems = self.mol.elems
+        num_organic_elements = np.sum([elems.count(organic_element) for organic_element in organic_elements])
+        if num_organic_elements == self.mol.natoms:
+            return True
+        return False
+
+    def contains_disorder(self,reject_covrad_fact=0.8):
+        """        try to detect disordered parts of the structure based on heuristics:
+            - unusual bond lengths
+            - unusual coordination numbers
+        
+        Keyword Arguments:
+            reject_covrad_fact {float} -- consider bonds smaller than sum of vdw * fact as disordered (default: {0.5})
+        
+        Returns:
+            bool -- the answer to the question of the bb contains disorder
+        """        
+        from molsys.util.elems import cov_radii as cov
+        m = self.mol
+        for i in range(m.natoms):
+            # carbon atoms should have <=4 bonds
+            if m.elems[i] == 'c':
+                if len(m.conn[i]) > 4:
+                    return 'c conn'
+            if m.elems[i] == 'h':
+                if len(m.conn[i]) > 2:
+                    return 'h conn'
+        for i in range(m.natoms-1):
+            for j in range(i+1,m.natoms):
+                d,v,imgi = m.get_distvec(i,j)
+                tgt_cov = cov[m.elems[i]] + cov[m.elems[j]]
+                if d <= tgt_cov * reject_covrad_fact:
+                    return 'cov fact'
+        return False        
 
 

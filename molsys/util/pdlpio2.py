@@ -405,6 +405,17 @@ class pdlpio2(mpiobject):
         stagelist.remove("system")
         return stagelist
 
+    def get_traj_from_stage(self, sname):
+        if sname not in self.h5file.keys():
+            return False
+        stage = self.h5file[sname]
+        if "traj" in stage.keys():
+            traj = stage["traj"]
+        else:
+            traj = {}
+        return traj
+        
+
     def write_restart(self, stage=None, velocities=False):
         """write restart info to file
 

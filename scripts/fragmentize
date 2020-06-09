@@ -2,21 +2,22 @@
 # -*- coding: utf-8 -*-
 
 import molsys
-#import molsys.mol as mol
-#import molsys.util.atomtyper as atomtyper
 import sys
-
+import os
 
 name = sys.argv[1]
-
-m = molsys.mol()
-m.read(name)
-at = molsys.util.atomtyper(m)
-at()
-#m.write(name)
+if name == "all":
+    print ("fragmentizing all mfpx files in the current folder ... beware")
+    mollist = [x for x in os.listdir(".") if x.rsplit('.',1)[-1]=='mfpx']
+else:
+    mollist = [name]
 
 frag = molsys.util.fragmentizer()
-#frag(m, plot=name.split(".")[0])
-frag(m)
-m.write(name)
+for name in mollist:
+    m = molsys.mol()
+    m.read(name)
+    at = molsys.util.atomtyper(m)
+    at()
+    frag(m, verbose=True)
+    m.write(name)
 
