@@ -318,10 +318,10 @@ class pdlpio2(mpiobject):
                 self.pprint("PDLP ERROR: The requested restart stage %s does not exist in the file!" % self.restart_stage)
                 raise
             restart = rstage["restart"]
-            xyz = np.array(restart["xyz"])
-            cell = np.array(restart["cell"])
+            xyz = np.array(restart["xyz"], dtype="float64")
+            cell = np.array(restart["cell"], dtype="float64")
             if vel:
-                velocities = np.array(restart["vel"])
+                velocities = np.array(restart["vel"], dtype="float64")
         if self.mpi_size>1:
             if self.is_master:
                 self.mpi_comm.Bcast(xyz)
