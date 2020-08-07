@@ -321,6 +321,7 @@ class graph(object):
             print("unknown decomosition mode")
             return
         # now get the BBs and the net and collect the output
+
         net = self.get_net()
         print ("net constructed")
         # generate the BBs as mol objects and theri distribution to the vertices and edges
@@ -663,7 +664,10 @@ class graph(object):
                 # compute by centroid of connectors (note that this considers pbc correctly but we might have to wrap)
                 bbid = self.bbg.vp.bb[v]
                 # vpos[int(v)] = self._mol.get_coc(idx = self.decomp_map_bb2cons[bbid])
-                vpos[int(v)] = self.wrap_mol.get_coc(idx = self.decomp_map_bb2cons[bbid])
+                try:
+                    vpos[int(v)] = self.wrap_mol.get_coc(idx = self.decomp_map_bb2cons[bbid])
+                except:
+                    import pdb; pdb.set_trace()
             else:
                 print("unknown mode in get_net")
                 raise
@@ -732,11 +736,18 @@ class graph(object):
                 old_bbsg = vbb_graphs[i]
                 if old_bbsg.num_vertices() != cur_bbsg.num_vertices():
                     continue
+                #JK: there is an error thrown for single atom graphs (1 vertex 0 edges)
+                # in this case we simply check if the elements are the same
+                if old_bbsg.num_vertices() == 1:
+                    if self._mol.elems[cur_bbsg.get_vertices()[0]] == self._mol.elems[old_bbsg.get_vertices()[0]]:
+                        known = True
+                        break
                 # check if isomorphic
                 # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
-                if isomorphism(cur_bbsg, old_bbsg):
-                    known = True
-                    break
+                else:
+                    if isomorphism(cur_bbsg, old_bbsg):
+                        known = True
+                        break
             if not known:
                 # add graph
                 vbb_graphs.append(Graph(cur_bbsg, prune=True))

@@ -503,27 +503,35 @@ class mol(mpiobject):
             phonon.set_force_constants(h2)
         return phonon
 
-    def write(self, fname, ftype=None, **kwargs):
+    def write(self, fname, ftype=None, rank=None, **kwargs):
         ''' generic writer for the mol class
         Parameters:
             fname        : the filename to be written
             ftype="mfpx" : the parser type that is used to writen the file
+            rank         : deault: None, if not None but integer write if rank = 0 (e.g. we use partitions, then rank is partition rank)
             **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
-        if self.mpi_rank == 0:
-            if ftype is None:
-                fsplit = fname.rsplit('.',1)[-1]
-                if fsplit != fname: #there is an extension
-                    ftype = fsplit #ftype is inferred from extension
-                else: #there is no extension
-                    ftype = 'mfpx' #default
-            logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-            if ftype in formats.write:
-                with open(fname,"w") as f:
-                    formats.write[ftype](self,f,**kwargs)
-            else:
-                logger.error("unsupported format: %s" % ftype)
-                raise IOError("Unsupported format")
+        if rank is not None:
+            # if rank is given return only when rank is not zero (mpi_rank can be nonzero!)
+            if rank != 0:
+                return
+        else:
+            # otherise use mpi_rank
+            if self.mpi_rank != 0:
+                return
+        if ftype is None:
+            fsplit = fname.rsplit('.',1)[-1]
+            if fsplit != fname: #there is an extension
+                ftype = fsplit #ftype is inferred from extension
+            else: #there is no extension
+                ftype = 'mfpx' #default
+        logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
+        if ftype in formats.write:
+            with open(fname,"w") as f:
+                formats.write[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
         return
 
     def to_string(self, ftype='mfpx', **kwargs):
@@ -764,7 +772,7 @@ class mol(mpiobject):
                 self.pprint("   -> %3d %2s : dist %10.5f " % (conn[j], self.elems[conn[j]], d))
         return
 
-    def add_pconn(self):
+    def add_pconn(self,maxiter=5000):
         """
         Generate the periodic connectivity from the exisiting connectivity
         The pconn contains the image index of the bonded neighbor
@@ -807,12 +815,18 @@ class mol(mpiobject):
                 # Sometimes, the distances are a bit different from each other, and in this case, we
                 # have to increase the threshold, until the get_distvec function will find all imgis.
                 n_conns = dc[j]+1 # if summed by 1 you get the number of occurences per unique atom
-                t = 0.01
+                t = 0.01; niter =0
                 while True:
+                    # JK: sometimes it happens here that len(imgi) in the first iteration is > n_conns
+                    # and increasing thresh does not help. In this case something went wrong and we have to
+                    # stop at some point (maxiter=5000) amounts to a thresh of 50 angstroms 
                     d,r,imgi = self.get_distvec(i,j,thresh=t)
                     t += 0.01
                     if n_conns == len(imgi):
                         break
+                    niter += 1
+                    if niter > maxiter: 
+                        raise ValueError('add_pconn failed - infinite loop prevented')
                 uimgi[j] = imgi
             atoms_pconn = []
             atoms_image = []
@@ -2407,8 +2421,12 @@ class mol(mpiobject):
             natoms = len(idx)
         if pbc:
             xyz = self.apply_pbc(xyz, 0)
-        center = np.sum(xyz,axis=0)/float(natoms)
-        return center
+        if natoms != 0:
+            center = np.sum(xyz,axis=0)/float(natoms)
+            return center
+        else:
+            logger.warning('get_coc requires at least one atom to be present in the mol instance. returning zero vector')
+            return np.array([0.0,0.0,0.0])
 
     ### CORE DATASTRUCTURES #######################################
 

@@ -37,7 +37,7 @@ class traj:
         return
 
     def set_source(self, source, **kwargs):
-        assert source in ["pdlp", "array"]
+        assert source in ["pdlp", "array", "xyz"]
         if source == "pdlp":
             # define pdlp file by fname and stage and set arrays from there
             if self.open_pdlp is not None:
@@ -58,8 +58,38 @@ class traj:
                 self.cell = np.array(traj["cell"])
                 self.variable_cell = True
         elif source == "array":
-            print ("TO BE IMPLEMENTED")
-            raise "oh dear ..."
+            self.xyz = kwargs["array"]
+            self.fmax = self.xyz.shape[0]
+            if "cell_array" in kwargs:
+                self.cell = kwargs["cell_array"]
+                self.variable_cell = True
+        elif source == "xyz":
+            # in thsi case we reopen the xyz file and read only the xyz positions. no variable cell
+            # also elements are skipped
+            # TBI make parallel
+            axyz = []
+            fxyz = open(kwargs["fname"], "r")
+            stop = False
+            while not stop:
+                line = fxyz.readline()
+                if len(line) > 0:
+                    natoms = int(line.split()[0])
+                    assert natoms == self._mol.get_natoms()
+                    fxyz.readline()
+                    xyz = []
+                    for i in range(natoms):
+                        line = fxyz.readline()
+                        xyz.append([float(v) for v in line.split()[1:4]])
+                    axyz.append(xyz)
+                else:
+                    stop = True
+            fxyz.close()
+            self.xyz = np.array(axyz)
+            self.fmax = self.xyz.shape[0]
+        # check if the number of atoms in the provided xyz array is correct
+        assert self.xyz.shape[1] == self._mol.get_natoms()
+        assert self.xyz.shape[2] == 3
+        # TBI : check shapes of cell arrays
         self.set_frame(self.fid)
         return
 
@@ -77,7 +107,7 @@ class traj:
 
     def write(self, fname, first=0, last=None, stride=1):
         ftype = fname.rsplit(".", 1)[-1]
-        assert ftype in ["pdb"] , "Filetype %s not allowed for trajectory writing" % ftype
+        assert ftype in ["pdb", "xyz"] , "Filetype %s not allowed for trajectory writing" % ftype
         if self._mol.mpi_rank == 0:
             f = open(fname, "w")
             if last is None:

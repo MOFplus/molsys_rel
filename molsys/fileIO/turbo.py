@@ -197,12 +197,15 @@ def read_gradfile(mol, f, cycle):
     return
 
 
-def write(mol, f):
+def write(mol, f, gradient = None, energy = 0.0, cycle = 0):
     ### write check ###
     try:
         f.write ### do nothing
     except AttributeError:
         raise IOError("%s is not writable" % f)
+    if gradient is not None:
+        write_gradient(mol, f, gradient, energy, cycle)
+        return
     ### write func ###
     f.write("$coord\n")
     c = mol.xyz*angstrom
@@ -211,3 +214,20 @@ def write(mol, f):
                 (c[i,0],c[i,1], c[i,2], mol.elems[i]))
     f.write("$end\n")
     return
+
+def write_gradient(mol, f, gradient, energy, cycle):
+    ## TBI: make append mode (no cycle needed) : read until $end .. overwrite and add $end and circle +=1
+    gradient *= (kcalmol/angstrom)
+    energy   *= kcalmol
+    gradnorm = numpy.linalg.norm(gradient)
+    f.write("  cycle = %3d   SCF energy = %12.6f   |dE/dxyz| = %12.6f\n" % (cycle, energy, gradnorm))
+    c = mol.xyz*angstrom
+    for i in range(mol.natoms):
+        f.write("  %19.14f %19.14f %19.14f   %-2s\n" % 
+                (c[i,0],c[i,1], c[i,2], mol.elems[i]))
+    for i in range(mol.natoms):
+        line = "  %25.15G %25.15G %25.15G \n" % tuple(gradient[i])
+        f.write(line.replace("e", "D"))
+    return    
+
+

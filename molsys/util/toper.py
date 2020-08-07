@@ -1395,18 +1395,27 @@ class topotyper(object):
     def deconstruct(self, split_by_org=True, depth=10, max_supercell_size=5):
         """ Perform deconstruction """
         logger.info('Perform topological deconstruction')
+        import time; t1 = time.time()
         self.mg.handle_islands(silent=True)
+        print('handle_islands %5.1f'  % (time.time()-t1),); t1 = time.time()
         self.mg.determine_Nk()
+        print('determine_Nk %5.1f' % (time.time()-t1),); t1 = time.time()
         self.mg.find_cluster_threshold()
+        print('find_cluster_threshold %5.1f' % (time.time()-t1),); t1 = time.time()
         self.mg.get_clusters()
+        print('get_clusters %5.1f' % (time.time()-t1),); t1 = time.time()
         if split_by_org:
             self.mg.get_bbs_by_organicity()
         else:
             self.mg.get_bbs()
+        print('get_bbs %5.1f' % (time.time()-t1),); t1 = time.time()
         self.tg = self.mg.make_topograph(False)
-        cs = self.tg.get_all_cs(depth=depth)
-        vs = self.tg.get_all_vs(max_supercell_size=max_supercell_size)
-        self.cs, self.vs = self.tg.get_unique_vd(cs, vs)
+        print('make_topograph %5.1f' % (time.time()-t1),); t1 = time.time()
+        #cs = self.tg.get_all_cs(depth=depth)
+        #print('get_all_cs %5.1f' % (time.time()-t1),); t1 = time.time()
+        #vs = self.tg.get_all_vs(max_supercell_size=max_supercell_size)
+        #print('get_all_vs %5.1f' % (time.time()-t1),); t1 = time.time()
+        #self.cs, self.vs = self.tg.get_unique_vd(cs, vs)
         return
 
     def compute_colors(self, sort_flag=True):

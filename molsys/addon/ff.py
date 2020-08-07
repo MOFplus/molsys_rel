@@ -58,10 +58,12 @@ from molsys.addon import base
 import itertools
 import copy
 import string
-try:
-    import cPickle as Pickle
-except ImportError:
-    import _pickle as Pickle
+# try:
+#     import cPickle as Pickle
+# except ImportError:
+#     import _pickle as Pickle
+# replace serilization via Pickle by JSON (more safe and human readable)
+import json
 
 import logging
 logger = logging.getLogger("molsys.ff")
@@ -1210,7 +1212,8 @@ class ff(base):
             for i in v[1:]:
                 fitdat["equivs"][i] = v[0]
         ### dump fitdat to json file
-        with open("espfit.pickle", "wb") as f: Pickle.dump(fitdat, f)
+        with open("espfit.json", "w") as f:
+            f.write(json.dumps(fitdat, indent=4, sort_keys=True))
         return
 
     def varnames2par(self):
@@ -1843,7 +1846,12 @@ class ff(base):
         for k,v in self.settings.items():
             f.write("%-15s %s\n" % (k, str(v)))
         f.write("\n")
-        keywords = [i for i in self.par.keys()]
+        # in py3 the dict keys are not reported as they are initialized. hence we sort here to 
+        # restore the same sorting as before, i.e. the list below
+        sorted_keys = ["bnd", "ang", "dih", "oop", "cha", "vdw"]
+        all_keys = self.par.keys()
+        keywords = [x for x in sorted_keys if x in all_keys] + [x for x in all_keys if x not in sorted_keys]
+        #keywords = [i for i in self.par.keys()]
         for ic in keywords:
             ptyp = par_types[ic]
             par = self.par[ic]

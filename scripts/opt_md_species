@@ -9,47 +9,84 @@ all systems with zero energy and not TS are picked and optimized
 import pylmps
 import molsys
 import sys
+import os
+import numpy as np
 from molsys.util import RDB
 
 if len(sys.argv) < 2:
-    print ("usage:  opt_md_species <db_path>")
-    exit
+    print ("usage:  opt_md_species <db_path> <pdlp_file> <stage>")
+    exit()
     
-db_path = sys.argv[1]
+### default ####
+forceconst = 1000.0
+
+
+db_path   = sys.argv[1]
+pdlp_path = sys.argv[2]
+pdlp_path = os.path.abspath(pdlp_path)
+stage     = sys.argv[3]
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
+print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 
 # get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
 db = rdb.db
-rows = db((db.md_species.energy == 0.0) & (db.md_species.foffset != 0)).select()
+md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+revents = db((db.revent.mdID == md)).select()
 
 lot = rdb.get_lot("ReaxFF")
 
-for r in rows:
-    print ("retreive species %d (type %d) from reaction event %d" % (r.spec, r.foffset, r.reventID))
-    print (r.smiles)
-    # get mol object from DB
-    fname, mfpxf = db.md_species.mfpx.retrieve(r.mfpx)
-    mfpxs = mfpxf.read().decode('utf-8')
-    mfpxf.close()
-    mol = molsys.mol.from_string(mfpxs)
-    # setup lammps and minimize with reax
-    pl = pylmps.pylmps("reax")
-    pl.setup(mol = mol, local=True, ff="ReaxFF")
-    init_energy = pl.calc_energy()
-    final_energy = pl.MIN(0.01)
-    print ("\n\n#####################################")
-    print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
-    print ("########################################\n\n")
-    # store these results to the DB
-    # first update coords and get mol object back from lammps
-    pl.update_mol()
-    opt_mol = pl.mol
-    # update the energy value
-    r.update_record(energy=init_energy)
-    rdb.add_opt_species(opt_mol, lot, final_energy, r.id)
-    pl.end()
+for r in revents:
+    # get all md_species for this event
+    mdspec = db((db.md_species.reventID == r) & (db.md_species.energy == 0.0)).select()
+    if len(mdspec) > 0:
+        print ("optimize MD species from reaction event %d" % (md.id))
+        for m in mdspec:
+            # get mol object from DB
+            fname, mfpxf = db.md_species.mfpx.retrieve(m.mfpx)
+            mfpxs = mfpxf.read().decode('utf-8')
+            mfpxf.close()
+            mol = molsys.mol.from_string(mfpxs)
+            print ("This is species %s" % fname)
+            if m.foffset == 0:
+                TS = True
+                # this is the TS -> fix bonds
+                rbonds = r.rbonds
+                print ("TS species .. fix %s" % str(rbonds))
+                rbonds = np.array(rbonds)
+                nrbonds = len(rbonds)//2
+                rbonds.shape = (nrbonds, 2)
+                # all molecules are non-perioidc  .. just compute current bond distance
+                bondlength = []
+                for i in range(nrbonds):
+                    r = mol.xyz[rbonds[i,0]]-mol.xyz[rbonds[i,1]]
+                    bondlength.append(np.sqrt((r*r).sum()))
+            else:
+                TS = False
+            # setup lammps and minimize with reax
+            pl = pylmps.pylmps("reax")
+            pl.setup(mol = mol, local=True, ff="ReaxFF")
+            init_energy = pl.calc_energy()
+            if TS:
+                for i in range(rbonds.shape[0]):
+                    par = (forceconst, bondlength[i])
+                    pl.add_restraint("bnd", tuple(rbonds[i]), par)
+            final_energy = pl.MIN(0.01)
+            if TS:
+                pl.clear_restraints()
+            # final_energy = pl.calc_energy()
+            print ("\n\n########################################")
+            print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
+            print ("########################################\n\n")
+            # store these results to the DB
+            # first update coords and get mol object back from lammps
+            pl.update_mol()
+            opt_mol = pl.mol
+            # update the energy value
+            m.update_record(energy=init_energy)
+            rdb.add_opt_species(opt_mol, lot, final_energy, m.id)
+            pl.end()
 
 
 
