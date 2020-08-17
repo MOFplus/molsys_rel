@@ -52,6 +52,8 @@ class RDB:
         # 
         #           core of RDB -> here the tabel layout of the sql database is defined
         #
+
+        # GS: Note maybe obvious, but as reminder for references the order in dbstruc matters
         dbstruc = OrderedDict()
         dbstruc["md"] = [       
             "s:path",         # filename of the pdlp file
@@ -61,7 +63,20 @@ class RDB:
             "d:temp"          # temperature in Kelvin
         ]         # TBI !!! add more info here ... this is is just for testing
                   #         username, datetime, method, .... more
+        dbstruc["unique_revent"] = [
+            "r:md",           # ref to table md
+            "b:uni",          # true if unimolecular
+            "i:rcid",         # reaction class ID
+            "i:frame",        # frame number
+            "li:ed",          # educt species (sorted)
+            "li:ts",          # transition state species
+            "li:pr",          # product species
+            "i:tr_ed",        # number of traced educt species
+            "i:tr_pr",        # number of traced product species
+            "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
+        ]
         dbstruc["revent"] = [
+            "r:unique_revent",# ref to table unique_revent GS: Avoid redundant information in revent and unique_revent    
             "r:md",           # ref to table md
             "b:uni",          # true if unimolecular
             "i:frame",        # frame number
@@ -191,8 +206,37 @@ class RDB:
         print (type(id))
         return id
 
-    def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False):
+    def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False, rclass_index=0):
+
+        rows = self.db(self.db.unique_revent.rcid == rclass_index).select()
+          
+        print(len(rows))
+        assert len(rows) < 2, "Non unique reaction found with ID %s" % rclass_index 
+        
+        # new reaction class found
+        if len(rows) == 0:
+            reventID = self.db.unique_revent.insert(
+                mdID       = self.current_md,
+                uni        = uni,
+                rcid       = rclass_index,
+                frame      = frame,
+                ed         = ed,
+                ts         = ts,
+                pr         = pr,
+                tr_ed      = tr_ed,
+                tr_pr      = tr_pr,
+                rbonds     = rbonds,
+            )
+            # I think we need to commit here
+            self.db.commit()
+
+            rc = reventID
+
+        else:
+            rc = rows[0]
+
         reventID = self.db.revent.insert(
+            unique_revent = rc,
             mdID       = self.current_md,
             uni        = uni,
             frame      = frame,
@@ -203,6 +247,7 @@ class RDB:
             tr_pr      = tr_pr,
             rbonds     = rbonds,
         )
+
         if self.do_commit:
             self.db.commit()
         return reventID

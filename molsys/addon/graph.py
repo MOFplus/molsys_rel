@@ -8,6 +8,7 @@
 
 """
 
+import graph_tool
 from graph_tool import Graph, GraphView
 from graph_tool.topology import *
 import copy
@@ -819,6 +820,31 @@ class graph(object):
                 mol_bb.write("ebb_%d.mfpx" % i)
         self.decomp_bb_exist = True
         return (self.decomp_vbb, self.decomp_vbb_map, self.decomp_ebb, self.decomp_ebb_map)
+
+    @staticmethod
+    def is_equal(molg1, molg2):
+        """helper function to identify if two molecular graphs are equal 
+        
+        Args:
+            molg1 (molecular graph): molecular graph to be compared to molg2 
+            molg2 (molecular graph): molecular graph to be compared to molg1 
+            
+
+        Return:
+            bool
+        """
+
+        similarity = graph_tool.topology.similarity(molg1,molg2)
+
+        is_equal = graph_tool.topology.isomorphism(molg1,molg2)
+
+        #GS
+        print("is_equal " + str(is_equal))
+        #GS
+
+        is_equal = (similarity > 0.8)
+
+        return is_equal
 
     def _convert_bb2mol(self, bb, bbg):
         """helper function to convert a bb (index) and bbg (graph) to a mol object

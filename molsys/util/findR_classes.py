@@ -252,7 +252,7 @@ class species:
         self.molg = molg # parent molgraph
         # find all vertices in molg that belong to this species mid
         vs = gtu.find_vertex(molg, molg.vp.mid, mid)
-        self.aids = set([int(v) for v in vs]) # atomids -> TBI do we need to sort? seems like they are sroted as they come
+        self.aids = set([int(v) for v in vs]) # atomids -> TBI do we need to sort? seems like they are sorted as they come
         self.graph = None
         if make_graph:
             # now make a view of molg for this species         
@@ -606,7 +606,7 @@ class fcompare:
 
 class revent:
 
-    def __init__(self, comparer, fR, unimol= False):
+    def __init__(self, comparer, fR, reaction_class_list=None, unimol= False):
         """generate a reaction event object
 
         TBI: what to do if there are more then one reaction event (in two diffrent tracked species)
@@ -617,6 +617,7 @@ class revent:
         Args:
             comparer (fcompare object): comparer that gave a reactive event
             fR (parent findR object): to access process_frame
+            reaction_class_list (list of revent): if not none a list of reaction classes. If revent is a new reaction class it will be added  
             unimol (bool, optional): is unimolecular. Defaults to False.
         """
         self.unimol = unimol
@@ -692,4 +693,35 @@ class revent:
                 print ("Houston we have a problem!!! species changed between TS and PR")
         # get TS_fid for ease
         self.TS_fid = self.TS.fid
+
+        # determine if we have a unique reaction (a new reaction class)
+        if reaction_class_list is not  None:
+            is_new_class = False 
+
+            # some quick checks (sum forumla etc.)
+            # TODO
+
+            #
+            # detailed check
+            #
+            if len(reaction_class_list) == 0:
+                is_new_class = True
+
+            reaction_class_index = 0
+            for revt in reaction_class_list:
+                is_new_class = is_new_class or molsys.addon.graph.is_equal(self.TS.molg, revt.TS.molg) == False
+                is_new_class = is_new_class or molsys.addon.graph.is_equal(self.ED.molg, revt.ED.molg) == False
+                is_new_class = is_new_class or molsys.addon.graph.is_equal(self.PR.molg, revt.PR.molg) == False
+
+                if is_new_class == True:
+                    break
+
+                reaction_class_index += 1
+
+            if is_new_class == True:
+                reaction_class_list.append(self)
+                reaction_class_index = len(reaction_class_list) - 1
+
+            self.reaction_class_index = reaction_class_index
+
         return
