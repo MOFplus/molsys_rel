@@ -840,7 +840,8 @@ class graph(object):
 
         is_equal = graph_tool.topology.isomorphism(molg1,molg2)
 
-        print("similarity: " + str(similarity))
+        #if similarity > 0.99:
+        #    print("similarity: " + str(similarity))
 
         is_equal = (similarity > 0.8)
 
