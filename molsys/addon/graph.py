@@ -16,6 +16,8 @@ import numpy as np
 import molsys
 from molsys.util import elems
 
+import uuid
+
 import logging
 logger = logging.getLogger("molsys.graph")
 
@@ -838,11 +840,15 @@ class graph(object):
 
         is_equal = graph_tool.topology.isomorphism(molg1,molg2)
 
-        #GS
-        print("is_equal " + str(is_equal))
-        #GS
+        print("similarity: " + str(similarity))
 
         is_equal = (similarity > 0.8)
+
+        #if is_equal:
+        #    idname = uuid.uuid4() 
+        #    graph_tool.draw.graph_draw(molg1,output=str(idname) + "-graph1.png")
+        #    graph_tool.draw.graph_draw(molg2,output=str(idname) + "-graph2.png")
+        
 
         return is_equal
 

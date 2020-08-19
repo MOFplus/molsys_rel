@@ -148,7 +148,6 @@ class findR(mpiobject):
         first_event = None # this variable stores the maximum fid of a reaction event at the beginning of a segment being a recrossing
         last_event  = None # this stores the last revent object of a segment (None in the first segment) 
         stop = False
-        revent_classes = [] # list containing the different classes of (unique) reaction events
         while nextf < self.nframes and nextf >= 0 and not stop:
             if not verbose:
                 print_progress(nextf/self.sstep["forward"], self.nframes/self.sstep["forward"], suffix="Scanning Frames")
@@ -173,7 +172,7 @@ class findR(mpiobject):
                         # search critical bond
                         comparer.find_react_bond()   
                         # now we are ready to make a reaction event and store it
-                        revt = revent(comparer, self, revent_classes)
+                        revt = revent(comparer, self)
                         TS_fid = revt.TS_fid
                         if verbose:
                             print ("###########  Event at %d  #############" % TS_fid)
@@ -181,7 +180,7 @@ class findR(mpiobject):
                         # unimolecular reaction
                         comparer.analyse_bonds() # this method already finds the reactive bonds
                         # make reaction event and store
-                        revt = revent(comparer, self, revent_classes, unimol=True)
+                        revt = revent(comparer, self, unimol=True)
                         TS_fid = revt.TS_fid
                         if verbose:
                             print ("###########  Unimol Event at %d  #############" % TS_fid)
@@ -430,8 +429,7 @@ class findR(mpiobject):
             PR_spec_id,
             len(ED_spec_tracked),
             len(PR_spec_tracked),
-            rbonds,
-            rclass_index = revt.reaction_class_index
+            rbonds
         )
         # add the md species (mol objects etc) to this entry
         for i,s in enumerate(ED_spec_id):
@@ -506,8 +504,7 @@ class findR(mpiobject):
             1, # number of tracked ed species .. for uni always 1
             1, # number of tracked pr species .. for uni always 1
             rbonds,
-            uni = True,
-            rclass_index = revt.reaction_class_index
+            uni = True
         )
         # add the md species (mol objects etc) to this entry
         self.rdb.add_md_species(

@@ -28,6 +28,8 @@ import graph_tool.topology as gtt
 import graph_tool.util as gtu
 import graph_tool.draw as gtd
 
+import uuid
+import graph_tool
 
 #####################  FRAME CLASS ########################################################################################
 
@@ -110,6 +112,7 @@ class frame:
     def make_species(self, mid):
         # return a species object (without a local graph)
         return species(self.fid, mid, self.molg, make_graph=False, tracked=False)
+
 
     @property
     def nspecies(self):
@@ -421,7 +424,7 @@ class fcompare:
         if len(self.umatch_f1)==0 and len(self.umatch_f2)==0:
             # there is nothing to do
             return
-        # we have soem unmatched species -> there is one (or more) reaction(s) between these frames
+        # we have some unmatched species -> there is one (or more) reaction(s) between these frames
         # find groups of species that define a reaction
         #    all atom ids in the union of the educts sets must be also in the products set
         for sk1 in self.umatch_f1:
@@ -606,7 +609,7 @@ class fcompare:
 
 class revent:
 
-    def __init__(self, comparer, fR, reaction_class_list=None, unimol= False):
+    def __init__(self, comparer, fR, unimol= False):
         """generate a reaction event object
 
         TBI: what to do if there are more then one reaction event (in two diffrent tracked species)
@@ -617,7 +620,6 @@ class revent:
         Args:
             comparer (fcompare object): comparer that gave a reactive event
             fR (parent findR object): to access process_frame
-            reaction_class_list (list of revent): if not none a list of reaction classes. If revent is a new reaction class it will be added  
             unimol (bool, optional): is unimolecular. Defaults to False.
         """
         self.unimol = unimol
@@ -694,34 +696,5 @@ class revent:
         # get TS_fid for ease
         self.TS_fid = self.TS.fid
 
-        # determine if we have a unique reaction (a new reaction class)
-        if reaction_class_list is not  None:
-            is_new_class = False 
-
-            # some quick checks (sum forumla etc.)
-            # TODO
-
-            #
-            # detailed check
-            #
-            if len(reaction_class_list) == 0:
-                is_new_class = True
-
-            reaction_class_index = 0
-            for revt in reaction_class_list:
-                is_new_class = is_new_class or molsys.addon.graph.is_equal(self.TS.molg, revt.TS.molg) == False
-                is_new_class = is_new_class or molsys.addon.graph.is_equal(self.ED.molg, revt.ED.molg) == False
-                is_new_class = is_new_class or molsys.addon.graph.is_equal(self.PR.molg, revt.PR.molg) == False
-
-                if is_new_class == True:
-                    break
-
-                reaction_class_index += 1
-
-            if is_new_class == True:
-                reaction_class_list.append(self)
-                reaction_class_index = len(reaction_class_list) - 1
-
-            self.reaction_class_index = reaction_class_index
 
         return

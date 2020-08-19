@@ -76,7 +76,8 @@ class RDB:
             "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
         ]
         dbstruc["revent"] = [
-            "r:unique_revent",# ref to table unique_revent GS: Avoid redundant information in revent and unique_revent    
+            "r:unique_revent",# ref to table unique_revent
+            "b:reversed",     # is it the back reaction in unique_revent?
             "r:md",           # ref to table md
             "b:uni",          # true if unimolecular
             "i:frame",        # frame number
@@ -125,7 +126,7 @@ class RDB:
 
         keys are teble names, vlaues are lists corresponding to fields with names split by :
         """ 
-        # define soem defaults here
+        # define some defaults here
         db=self.db
         for t in dbstruc:
             fields = []
@@ -206,37 +207,9 @@ class RDB:
         print (type(id))
         return id
 
-    def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False, rclass_index=0):
-
-        rows = self.db(self.db.unique_revent.rcid == rclass_index).select()
-          
-        print(len(rows))
-        assert len(rows) < 2, "Non unique reaction found with ID %s" % rclass_index 
-        
-        # new reaction class found
-        if len(rows) == 0:
-            reventID = self.db.unique_revent.insert(
-                mdID       = self.current_md,
-                uni        = uni,
-                rcid       = rclass_index,
-                frame      = frame,
-                ed         = ed,
-                ts         = ts,
-                pr         = pr,
-                tr_ed      = tr_ed,
-                tr_pr      = tr_pr,
-                rbonds     = rbonds,
-            )
-            # I think we need to commit here
-            self.db.commit()
-
-            rc = reventID
-
-        else:
-            rc = rows[0]
+    def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False):
 
         reventID = self.db.revent.insert(
-            unique_revent = rc,
             mdID       = self.current_md,
             uni        = uni,
             frame      = frame,
