@@ -838,18 +838,17 @@ class graph(object):
 
         similarity = graph_tool.topology.similarity(molg1,molg2)
 
-        is_equal = graph_tool.topology.isomorphism(molg1,molg2)
+        #is_equal = graph_tool.topology.isomorphism(molg1,molg2)
 
         #if similarity > 0.99:
         #    print("similarity: " + str(similarity))
 
-        is_equal = (similarity > 0.8)
+        is_equal = (similarity > 0.99)
 
         #if is_equal:
         #    idname = uuid.uuid4() 
         #    graph_tool.draw.graph_draw(molg1,output=str(idname) + "-graph1.png")
         #    graph_tool.draw.graph_draw(molg2,output=str(idname) + "-graph2.png")
-        
 
         return is_equal
 

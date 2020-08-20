@@ -206,6 +206,24 @@ class RDB:
             id = row.id
         print (type(id))
         return id
+    
+    def register_unique_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False):
+
+        reventID = self.db.unique_revent.insert(
+            mdID       = self.current_md,
+            uni        = uni,
+            frame      = frame,
+            ed         = ed,
+            ts         = ts,
+            pr         = pr,
+            tr_ed      = tr_ed,
+            tr_pr      = tr_pr,
+            rbonds     = rbonds,
+        )
+
+        if self.do_commit:
+            self.db.commit()
+        return reventID
 
     def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False):
 
