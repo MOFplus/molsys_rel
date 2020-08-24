@@ -11,6 +11,54 @@ import sys
 import os
 import numpy as np
 from molsys.util import RDB
+from molsys.util import print_progress
+
+
+def check_all(bool_list):
+    if len(bool_list) > 0:
+        return all(bool_list)
+    else:
+        return False
+
+
+def add_compare_data(comparer, mdpec):
+
+    for m in mdspec.sort(lambda row: row.sumform):
+    
+        # get mol object from DB
+        fname, mfpxf = db.md_species.mfpx.retrieve(m.mfpx)
+        mfpxs = mfpxf.read().decode('utf-8')
+        mfpxf.close()
+        mol = molsys.mol.from_string(mfpxs)
+    
+        sumform = mol.get_sumformula()
+    
+        mol.addon("graph")
+        mol.graph.make_graph()
+        molg = mol.graph.molg
+
+        if (m.foffset ==  0 ):
+            comparer["molgraph:ts"].append(molg)
+            comparer["sumform:ts"].append(sumform)
+        if (m.foffset == -1 ):
+            comparer["molgraph:educt"].append(molg)
+            comparer["sumform:educt"].append(sumform)
+        if (m.foffset ==  1 ):
+            comparer["molgraph:product"].append(molg)
+            comparer["sumform:product"].append(sumform) 
+
+    return
+
+####################################################################################
+#
+# TODO 
+#
+#  1) Make option to filter only reactions involving changes in the C-graph
+#      -> Do this by new make_graph (e.g. make_comp_graph) in molsys 
+#
+#  2) Remove Bottlenecks
+#
+####################################################################################
 
 if len(sys.argv) < 2:
     print ("usage:  find_unique_reactions <db_path> <pdlp_file> <stage>")
@@ -31,106 +79,134 @@ print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 db = rdb.db
 md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
 revents = db((db.revent.mdID == md)).select()
+num_all = (len(revents))
 
-unique_reactions = []
-
-num_non_unique = 0
+# init counter
 num_unique = 0
 
-num_all = (len(revents))
+#
+# Read in all unique reactions
+#
+unique_reactions = []
+unique_comparer = {}
+for r in revents:
+    if r["unique_reventID"] is not None:
+        unique_reactions.append(r)
+        unique_comparer[r["unique_reventID"]] = { "molgraph:ts" : []
+                                                , "sumform:ts"  : []
+                                                , "molgraph:educt" : []
+                                                , "sumform:educt"  : []
+                                                , "molgraph:product" : []
+                                                , "sumform:product"  : []
+                                                }
+
+        mdspec = db((db.md_species.reventID == r)).select()
+
+        add_compare_data(unique_comparer[r["unique_reventID"]], mdspec)
+
+
+num_unique = len(unique_comparer)
+
+#
+# Main loop to sort out non-unique reactions
+#
 count = 0
 
 for r in revents:
 
     count += 1
-    print( str(count) + " of " + str(num_all))
 
-    # the first unique reaction is simple
-    if len(unique_reactions) == 0:
-        unique_reactions.append(r)
+    print_progress.print_progress(count, num_all)
+
+    # Check if revent has alredy record field unique_revent and skip in this case 
+    if r["unique_reventID"] is not None:
         continue
+    
 
     is_unique  = True
-    same_ts    = False
-    same_pr    = False
-    same_ed    = False
-    same_pr_ed = False
-    same_ed_pr = False
+    same_ts    = False 
+    same_pr    = False 
+    same_ed    = False 
+    same_pr_ed = False 
+    same_ed_pr = False 
+
+    is_reversed = False
 
     # get all md_species for this event
     mdspec = db((db.md_species.reventID == r)).select()
     if len(mdspec) > 0:
-        #print ("Compare MD species" )
-        #print ("n(species) = " + str(len(mdspec)))
-        for m in mdspec:
 
-            if m.tracked:
-                # get mol object from DB
-                fname, mfpxf = db.md_species.mfpx.retrieve(m.mfpx)
-                mfpxs = mfpxf.read().decode('utf-8')
-                mfpxf.close()
-                mol = molsys.mol.from_string(mfpxs)
-                #print ("This is species %s" % fname)
+        # Note: We have to sort the mdspecies to always match the same species in order
+        #       to match them in the comparison
+        for m in mdspec.sort(lambda row: row.sumform):
 
-                have_ts = (m.foffset == 0 )
-                have_ed = (m.foffset == -1)
-                have_pr = (m.foffset == 1 )
-                
-                mol.addon("graph")
-                mol.graph.make_graph()
+            # get mol object from DB
+            fname, mfpxf = db.md_species.mfpx.retrieve(m.mfpx)
+            mfpxs = mfpxf.read().decode('utf-8')
+            mfpxf.close()
+            mol = molsys.mol.from_string(mfpxs)
 
-                #
-                # compare with elements in unique_reaction list
-                #
+            have_ts = (m.foffset == 0 )
+            have_ed = (m.foffset == -1)
+            have_pr = (m.foffset == 1 )
+            
+            mol.addon("graph")
+            mol.graph.make_graph()
 
-                for ur in unique_reactions:
-                    ur_mdspec = db((db.md_species.reventID == ur)).select()
+            #
+            # compare with elements in unique_reaction list
+            #
 
-                    for ur_m in ur_mdspec:
+            for ur in unique_reactions:
+                ur_mdspec = db((db.md_species.reventID == ur)).select()
 
-                        if ur_m.tracked:
-                            fname, mfpxf = db.md_species.mfpx.retrieve(ur_m.mfpx)
-                            mfpxs = mfpxf.read().decode('utf-8')
-                            mfpxf.close()
-                            ur_mol = molsys.mol.from_string(mfpxs)
+                for ur_m in ur_mdspec.sort(lambda row: row.sumform):
 
-                            ur_mol.addon("graph")
-                            ur_mol.graph.make_graph()
+                    fname, mfpxf = db.md_species.mfpx.retrieve(ur_m.mfpx)
+                    mfpxs = mfpxf.read().decode('utf-8')
+                    mfpxf.close()
+                    ur_mol = molsys.mol.from_string(mfpxs)
 
-                            is_same = molsys.addon.graph.is_equal(mol.graph.molg, ur_mol.graph.molg)
+                    ur_mol.addon("graph")
+                    ur_mol.graph.make_graph()
 
-                            #if is_same:
-                            #    print("IS SAME")
-                            #else:
-                            #    print("IS DIFFERENT")
+                    # Quick check(s)
+                    is_same = ( ur_mol.get_sumformula() == mol.get_sumformula() ) 
 
-                            if not is_same:
-                                continue
+                    if not is_same:
+                        continue      # We need to continue since maybe edukt = product for example
 
-                            same_ts = same_ts or (have_ts and ur_m.foffset ==  0)
-                            same_ed = same_ed or (have_ed and ur_m.foffset == -1)
-                            same_pr = same_pr or (have_pr and ur_m.foffset ==  1)
+                    # ellaborate check
+                    is_same = molsys.addon.graph.is_equal(mol.graph.molg, ur_mol.graph.molg)
 
-                            same_pr_ed = same_pr_ed or (have_ed and ur_m.foffset ==  1)
-                            same_ed_pr = same_ed_pr or (have_pr and ur_m.foffset == -1)
+                    if not is_same:
+                        continue
 
-                            #print("================================================")
-                            #print("same_ts : " + str(same_ts))
-                            #print("same_ed : " + str(same_ed))
-                            #print("same_pr : " + str(same_pr))
-                            #print("same_pr_ed : " + str(same_pr_ed))
-                            #print("same_ed_pr : " + str(same_ed_pr))
-                            #print("================================================")
+                    same_ts = same_ts or (have_ts and ur_m.foffset ==  0)
+                    same_ed = same_ed or (have_ed and ur_m.foffset == -1)
+                    same_pr = same_pr or (have_pr and ur_m.foffset ==  1)
+
+                    same_pr_ed = same_pr_ed or (have_ed and ur_m.foffset ==  1)
+                    same_ed_pr = same_ed_pr or (have_pr and ur_m.foffset == -1)
+
+                    #if have_ed:
+                    #    same_ed.append(ur_m.foffset == -1)
+                    #    same_pr_ed.append(ur_m.foffset ==  1)
+                    #elif have_pr:
+                    #    same_pr.append(ur_m.foffset == 1)
+                    #    same_ed_pr.append(ur_m.foffset == -1)
+                    #elif have_ts:
+                    #    same_ts.append(ur_m.foffset ==  0)
 
 
     # many boolean operations, which are probably not fast in python
     same_reaction = (same_ts and same_pr and same_ed) 
     back_reaction = (same_ts and same_pr_ed and same_ed_pr)
 
+    is_reversed = back_reaction
+
     is_unique = not (same_reaction or back_reaction)
 
-
-    num_non_unique += 1
 
     if is_unique:
         unique_reactions.append(r)
@@ -151,12 +227,18 @@ for r in revents:
         )
 
         # Update reaction event
-        r["unique_revent"] = revID
-        #r.update_record(unique_revent=revID)
+        r.update_record(unique_reventID=revID)
+        r.update_record(reversed=is_reversed)
+    else:
+        # update reaction event
+        r.update_record(unique_reventID=ur["unique_reventID"])
+        r.update_record(reversed=is_reversed)
 
-        db.commit()
 
-num_non_unique -= num_unique
+        #db.commit()
+
+num_non_unique = num_all - num_unique
+db.commit()
 
 
 print("Num unique : " + str(num_unique)) 

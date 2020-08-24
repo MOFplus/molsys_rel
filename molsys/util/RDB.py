@@ -66,7 +66,6 @@ class RDB:
         dbstruc["unique_revent"] = [
             "r:md",           # ref to table md
             "b:uni",          # true if unimolecular
-            "i:rcid",         # reaction class ID
             "i:frame",        # frame number
             "li:ed",          # educt species (sorted)
             "li:ts",          # transition state species

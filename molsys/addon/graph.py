@@ -824,31 +824,31 @@ class graph(object):
         return (self.decomp_vbb, self.decomp_vbb_map, self.decomp_ebb, self.decomp_ebb_map)
 
     @staticmethod
-    def is_equal(molg1, molg2):
+    def is_equal(molg1, molg2, use_fast_check=False):
         """helper function to identify if two molecular graphs are equal 
         
         Args:
             molg1 (molecular graph): molecular graph to be compared to molg2 
             molg2 (molecular graph): molecular graph to be compared to molg1 
-            
+            use_fast_check (bool): will enforce a fast check based on the similarity rather than a graph isomorphisim
 
         Return:
             bool
         """
 
-        similarity = graph_tool.topology.similarity(molg1,molg2)
+        if use_fast_check:
 
-        #is_equal = graph_tool.topology.isomorphism(molg1,molg2)
+            similarity = graph_tool.topology.similarity(molg1,molg2)
 
-        #if similarity > 0.99:
-        #    print("similarity: " + str(similarity))
+            is_equal = (similarity > 0.99)
 
-        is_equal = (similarity > 0.99)
+        else:
 
-        #if is_equal:
-        #    idname = uuid.uuid4() 
-        #    graph_tool.draw.graph_draw(molg1,output=str(idname) + "-graph1.png")
-        #    graph_tool.draw.graph_draw(molg2,output=str(idname) + "-graph2.png")
+            is_equal = graph_tool.topology.isomorphism(molg1,molg2)
+            #is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2)
+
+            # TODO check based on isomap that topologies really match (avoid similarity due to interchange of atoms A-B-C <> A-C-B
+
 
         return is_equal
 
