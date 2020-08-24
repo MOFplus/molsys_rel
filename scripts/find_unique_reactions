@@ -49,6 +49,20 @@ def add_compare_data(comparer, mdpec):
 
     return
 
+def compare_species(species,sumforms,mol,check):
+
+    for sp,sp_sumform in zip(species,sumforms):
+    
+        is_same = (  sp_sumform == mol.get_sumformula() ) 
+    
+        if not is_same:
+            return False
+    
+        check = check or molsys.addon.graph.is_equal(mol.graph.molg, sp)
+
+    return check
+
+
 ####################################################################################
 #
 # TODO 
@@ -158,45 +172,56 @@ for r in revents:
             #
 
             for ur in unique_reactions:
-                ur_mdspec = db((db.md_species.reventID == ur)).select()
 
-                for ur_m in ur_mdspec.sort(lambda row: row.sumform):
+                compare_data = unique_comparer[ur["unique_reventID"]]
 
-                    fname, mfpxf = db.md_species.mfpx.retrieve(ur_m.mfpx)
-                    mfpxs = mfpxf.read().decode('utf-8')
-                    mfpxf.close()
-                    ur_mol = molsys.mol.from_string(mfpxs)
+                if have_ts:
+                    for sp,sp_sumform in zip(compare_data["molgraph:ts"],compare_data["sumform:ts"]):
 
-                    ur_mol.addon("graph")
-                    ur_mol.graph.make_graph()
+                        is_same = (  sp_sumform == mol.get_sumformula() ) 
 
-                    # Quick check(s)
-                    is_same = ( ur_mol.get_sumformula() == mol.get_sumformula() ) 
+                        if not is_same:
+                            break
 
-                    if not is_same:
-                        continue      # We need to continue since maybe edukt = product for example
+                        same_ts = same_ts or molsys.addon.graph.is_equal(mol.graph.molg, sp)
+                
+                if have_ed:
+                    for sp,sp_sumform in zip(compare_data["molgraph:educt"],compare_data["sumform:educt"]):
 
-                    # ellaborate check
-                    is_same = molsys.addon.graph.is_equal(mol.graph.molg, ur_mol.graph.molg)
+                        is_same = (  sp_sumform == mol.get_sumformula() ) 
 
-                    if not is_same:
-                        continue
+                        if not is_same:
+                            break
 
-                    same_ts = same_ts or (have_ts and ur_m.foffset ==  0)
-                    same_ed = same_ed or (have_ed and ur_m.foffset == -1)
-                    same_pr = same_pr or (have_pr and ur_m.foffset ==  1)
+                        same_ed = same_ed or molsys.addon.graph.is_equal(mol.graph.molg, sp)
 
-                    same_pr_ed = same_pr_ed or (have_ed and ur_m.foffset ==  1)
-                    same_ed_pr = same_ed_pr or (have_pr and ur_m.foffset == -1)
+                    for sp,sp_sumform in zip(compare_data["molgraph:product"],compare_data["sumform:product"]):
 
-                    #if have_ed:
-                    #    same_ed.append(ur_m.foffset == -1)
-                    #    same_pr_ed.append(ur_m.foffset ==  1)
-                    #elif have_pr:
-                    #    same_pr.append(ur_m.foffset == 1)
-                    #    same_ed_pr.append(ur_m.foffset == -1)
-                    #elif have_ts:
-                    #    same_ts.append(ur_m.foffset ==  0)
+                        is_same = (  sp_sumform == mol.get_sumformula() ) 
+
+                        if not is_same:
+                            break
+
+                        same_ed_pr = same_ed_pr or molsys.addon.graph.is_equal(mol.graph.molg, sp)
+
+                if have_pr:
+                    for sp,sp_sumform in zip(compare_data["molgraph:product"],compare_data["sumform:product"]):
+
+                        is_same = (  sp_sumform == mol.get_sumformula() ) 
+
+                        if not is_same:
+                            break
+
+                        same_pr = same_pr or molsys.addon.graph.is_equal(mol.graph.molg, sp)
+
+                    for sp,sp_sumform in zip(compare_data["molgraph:educt"],compare_data["sumform:educt"]):
+
+                        is_same = (  sp_sumform == mol.get_sumformula() ) 
+
+                        if not is_same:
+                            break
+
+                        same_pr_ed = same_pr_ed or molsys.addon.graph.is_equal(mol.graph.molg, sp)
 
 
     # many boolean operations, which are probably not fast in python
@@ -225,6 +250,18 @@ for r in revents:
             r["tr_pr"],
             r["rbonds"]
         )
+
+        unique_comparer[revID] = { "molgraph:ts" : []
+                                 , "sumform:ts"  : []
+                                 , "molgraph:educt" : []
+                                 , "sumform:educt"  : []
+                                 , "molgraph:product" : []
+                                 , "sumform:product"  : []
+                                 }
+
+        mdspec = db((db.md_species.reventID == r)).select()
+
+        add_compare_data(unique_comparer[revID], mdspec)
 
         # Update reaction event
         r.update_record(unique_reventID=revID)
