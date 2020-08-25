@@ -122,11 +122,11 @@ num_unique = 0
 # Read in all unique reactions
 #
 unique_reactions = []
-unique_comparer = {}
+unique_cmp_data  = {}
 for r in revents:
     if r["unique_reventID"] is not None:
         unique_reactions.append(r)
-        unique_comparer[r["unique_reventID"]] = { "molgraph:ts" : []
+        unique_cmp_data[r["unique_reventID"]] = { "molgraph:ts" : []
                                                 , "sumform:ts"  : []
                                                 , "molgraph:ed" : []
                                                 , "sumform:ed"  : []
@@ -136,10 +136,10 @@ for r in revents:
 
         mdspec = db((db.md_species.reventID == r)).select()
 
-        add_compare_data(unique_comparer[r["unique_reventID"]], mdspec)
+        add_compare_data(unique_cmp_data[r["unique_reventID"]], mdspec)
 
 
-num_unique = len(unique_comparer)
+num_unique = len(unique_cmp_data)
 
 #
 # Main loop to sort out non-unique reactions
@@ -193,7 +193,7 @@ for r in revents:
 
             for ur in unique_reactions:
 
-                compare_data = unique_comparer[ur["unique_reventID"]]
+                compare_data = unique_cmp_data[ur["unique_reventID"]]
 
                 if have_ts:
                     same_ts = compare_species(compare_data["molgraph:ts"],compare_data["sumform:ts"],mol,same_ts)
@@ -234,7 +234,7 @@ for r in revents:
             r["uni"]
         )
 
-        unique_comparer[revID] = { "molgraph:ts" : []
+        unique_cmp_data[revID] = { "molgraph:ts" : []
                                  , "sumform:ts"  : []
                                  , "molgraph:ed" : []
                                  , "sumform:ed"  : []
@@ -244,7 +244,7 @@ for r in revents:
 
         mdspec = db((db.md_species.reventID == r)).select()
 
-        add_compare_data(unique_comparer[revID], mdspec)
+        add_compare_data(unique_cmp_data[revID], mdspec)
 
         # Update reaction event
         r.update_record(unique_reventID=revID)

@@ -844,11 +844,9 @@ class graph(object):
 
         else:
 
-            is_equal = graph_tool.topology.isomorphism(molg1,molg2)
-            #is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2)
+            is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
 
             # TODO check based on isomap that topologies really match (avoid similarity due to interchange of atoms A-B-C <> A-C-B
-
 
         return is_equal
 
