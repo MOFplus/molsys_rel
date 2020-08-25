@@ -64,7 +64,6 @@ class RDB:
         ]         # TBI !!! add more info here ... this is is just for testing
                   #         username, datetime, method, .... more
         dbstruc["unique_revent"] = [
-            "r:md",           # ref to table md
             "b:uni",          # true if unimolecular
             "i:frame",        # frame number
             "li:ed",          # educt species (sorted)
@@ -72,7 +71,6 @@ class RDB:
             "li:pr",          # product species
             "i:tr_ed",        # number of traced educt species
             "i:tr_pr",        # number of traced product species
-            "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
         ]
         dbstruc["revent"] = [
             "r:unique_revent",# ref to table unique_revent
@@ -206,18 +204,16 @@ class RDB:
         print (type(id))
         return id
     
-    def register_unique_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False):
+    def register_unique_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, uni=False):
 
         reventID = self.db.unique_revent.insert(
-            mdID       = self.current_md,
             uni        = uni,
             frame      = frame,
             ed         = ed,
             ts         = ts,
             pr         = pr,
             tr_ed      = tr_ed,
-            tr_pr      = tr_pr,
-            rbonds     = rbonds,
+            tr_pr      = tr_pr
         )
 
         if self.do_commit:
