@@ -26,6 +26,7 @@ from molsys.util import RDB
 # import external classes 
 from molsys.util.findR_classes import frame, species, fcompare, revent
 
+import sys
 
 class findR(mpiobject):
 
@@ -166,26 +167,40 @@ class findR(mpiobject):
                     subseg_start = nextf   #      and currentf changes
                     mode = "fine"
                 elif mode == "fine":
+                    revt_lst = []
                     if flag == 1:
                         # we found a bimolecular reaction
                         comparer.analyse_aids()
                         # search critical bond
                         comparer.find_react_bond()   
                         # now we are ready to make a reaction event and store it
-                        revt = revent(comparer, self)
-                        TS_fid = revt.TS_fid
+                        #revt = revent(comparer, self)
+                        #TS_fid = revt.TS_fid
+
+                        for ireac in range(comparer.nreacs):
+                            revt_lst.append(revent(comparer, self, ireac=ireac))
+
+                        TS_fid = revt_lst[0].TS_fid
+
                         if verbose:
                             print ("###########  Event at %d  #############" % TS_fid)
                     elif flag == 2:
                         # unimolecular reaction
                         comparer.analyse_bonds() # this method already finds the reactive bonds
                         # make reaction event and store
-                        revt = revent(comparer, self, unimol=True)
-                        TS_fid = revt.TS_fid
+                        #revt = revent(comparer, self, unimol=True)
+                        #TS_fid = revt.TS_fid
+
+                        for ireac in range(comparer.nreacs):
+                            revt_lst.append(revent(comparer, self, unimol=True, ireac=ireac))
+
+                        TS_fid = revt_lst[0].TS_fid
                         if verbose:
                             print ("###########  Unimol Event at %d  #############" % TS_fid)
                     # now add the event to the list
-                    segment_events.append(revt)
+                    #segment_events.append(revt)
+                    segment_events.extend(revt_lst)
+
                     # first we need to make sure that there is no other reaction in the subsegment
                     #   test if the product (TS_fid+1) is equal to the end of the subsegment (subseg_end)
                     #   if this is not the case then we have to go forward in fine mode further on
@@ -472,17 +487,17 @@ class findR(mpiobject):
         xyz_pr = np.array(self.f_xyz[revt.PR.fid])
         # there must be only one species in ED, PR and TS
         # ED
-        assert len(revt.ED_spec) == 1
+        assert len(revt.ED_spec) == 1, "Found %s species, but only 1 expected" % (len(revt.ED_spec))
         ED_spec_id = next(iter(revt.ED_spec))
         ED_spec = revt.ED_spec[ED_spec_id]
         ED_mol = ED_spec.make_mol(xyz_ed[list(ED_spec.aids)], self.mol)
         # TS
-        assert len(revt.TS_spec) == 1
+        assert len(revt.TS_spec) == 1, "Found %s species, but only 1 expected" % (len(revt.TS_spec))
         TS_spec_id = next(iter(revt.TS_spec))
         TS_spec = revt.TS_spec[TS_spec_id]
         TS_mol = TS_spec.make_mol(xyz_ts[list(TS_spec.aids)], self.mol)
-        #PR
-        assert len(revt.PR_spec) == 1
+        # PR
+        assert len(revt.PR_spec) == 1, "Found %s species, but only 1 expected" % (len(revt.PR_spec))
         PR_spec_id = next(iter(revt.PR_spec))
         PR_spec = revt.PR_spec[PR_spec_id]
         PR_mol = PR_spec.make_mol(xyz_pr[list(PR_spec.aids)], self.mol)
@@ -545,24 +560,30 @@ class findR(mpiobject):
         # print ("DEBUG in unconnlist: %s" % self.unconn_species)
         for edsid in revt.ED_spec:
             eds = revt.ED_spec[edsid]
+            if len(revt.ED_spec) != len(set(revt.ED_spec)):
+                print("Educt list is not unique")
             if eds.tracked:
                 # match with existing species in the unconnected list
                 noccur = self.unconn_species.count(eds)
                 if noccur != 1:
-                    import pdb; pdb.set_trace()
-                indprs = self.unconn_species.index(eds)
-                prs = self.unconn_species[indprs]
-                # reomve it from the unconn list
-                self.unconn_species.pop(indprs)
-                # now connect in the database from product to educt
-                # print ("connect %s with %s " % (prs, eds))
-                self.rdb.set_react(prs.fid, eds.fid, prs.mid, eds.mid)
+                    # GS: Now just print a Warning
+                    print("WARNING: Possible problem in connect_events")
+                    print(noccur)
+                #    import pdb; pdb.set_trace()
+
+                else:
+                    indprs = self.unconn_species.index(eds)
+                    prs = self.unconn_species[indprs]
+                    # remove it from the unconn list
+                    self.unconn_species.pop(indprs)
+                    # now connect in the database from product to educt
+                    # print ("connect %s with %s " % (prs, eds))
+                    self.rdb.set_react(prs.fid, eds.fid, prs.mid, eds.mid)
         # ok, now we have to add all the new tracked product species from this event to the unconn list
         for prsid in revt.PR_spec:
             prs = revt.PR_spec[prsid]
             if prs.tracked:
                 self.unconn_species.append(prs)
-                # print ("adding %s " % prs)
         return
 
     @timer("connect_events_old")

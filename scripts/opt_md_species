@@ -26,6 +26,10 @@ pdlp_path = sys.argv[2]
 pdlp_path = os.path.abspath(pdlp_path)
 stage     = sys.argv[3]
 
+lot = "ReaxFF"
+if len(sys.argv) > 4:
+   lot = sys.argv[4]
+
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
 print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
@@ -35,7 +39,7 @@ db = rdb.db
 md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
 revents = db((db.revent.mdID == md)).select()
 
-lot = rdb.get_lot("ReaxFF")
+#lot = rdb.get_lot("ReaxFF")
 
 for r in revents:
     # get all md_species for this event
@@ -64,9 +68,34 @@ for r in revents:
                     bondlength.append(np.sqrt((r*r).sum()))
             else:
                 TS = False
-            # setup lammps and minimize with reax
-            pl = pylmps.pylmps("reax")
-            pl.setup(mol = mol, local=True, ff="ReaxFF")
+            #
+            # setup lammps and minimize with level of theory in lot (default ReaxFF)
+            #
+            pl = pylmps.pylmps("opt")
+            if lot == "ReaxFF":
+                pl.setup(mol = mol, local=True, ff="ReaxFF")
+            elif lot in ["GFN0","GFN1","GFN2"]:
+
+                gfn_param_set = { "GFN0" : 0
+                                , "GFN1" : 1
+                                , "GFN2" : 2
+                                }
+
+                # instantiate the external potential expot_xtb
+
+                # We use mainly default settings, but set the maximal iterations higher 
+                # since the structures are very deformed in the MD simulation
+                ep = pylmps.expot_xtb(mol,gfn_param_set[lot],verbose=0,maxiter=1000)
+
+                # we need to register the objects callback as a global function
+                callback = ep.callback
+
+                # now add the expot object together with the name of the global callback
+                pl.add_external_potential(ep, "callback")
+
+                # setup xTB
+                pl.setup(local=True, mol = mol, ff="xTB")
+
             init_energy = pl.calc_energy()
             if TS:
                 for i in range(rbonds.shape[0]):

@@ -452,10 +452,10 @@ class RDB:
         # done
         with tempfile.TemporaryDirectory() as tmpdir:
             cwd = os.curdir
-            os.chdir(tmpdir)
+            #os.chdir(tmpdir)
             rgraph.write_svg("rgraph.svg")
             webbrowser.get(browser).open_new("rgraph.svg")
-            os.chdir(cwd)
+            #os.chdir(cwd)
         
     
 

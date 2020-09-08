@@ -329,6 +329,7 @@ class species:
         bother = set([(int(e.source()),int(e.target())) for e in other.graph.edges()])
         if bself != bother:
             return False
+
         # if we are here the species are equal
         return True
         
@@ -451,6 +452,11 @@ class fcompare:
                         # we need to make a new species object and add it (as non-tracked)
                         educts[esk] = self.f1.make_species(esk)
                         educt_aids |= educts[esk].aids
+
+                        # avoid that found educt is in first list. In that case you will find a reaction twice
+                        if esk in self.umatch_f1:
+                            self.umatch_f1.remove(esk)
+
                 # which atoms are in the educts that are not in the product species? add them
                 for a in educt_aids - product_aids:
                     # to which species in frame 2 does this atom belong to?
@@ -460,7 +466,11 @@ class fcompare:
                         # we need to make a new species object and add it (as non-tracked)
                         products[psk] = self.f2.make_species(psk)
                         product_aids |= products[psk].aids
-            # now add the final results to the reacs list
+
+                        # GS: unsure if this is required. Should avoid to assign a product twice
+                        if psk in self.umatch_f2:
+                            self.umatch_f2.remove(psk)
+                        
             self.reacs.append((educts, products))
         # the above will not work if there is no tracked species in umatch_f1 (but in umatch_f2)
         # ... in other words a species has "appeared" or formed by merging two or more untracked species
@@ -488,6 +498,8 @@ class fcompare:
                             # we need to make a new species object and add it (as non-tracked)
                             educts[esk] = self.f1.make_species(esk)
                             educt_aids |= educts[esk].aids
+
+
                     # which atoms are in the educts that are not in the product species? add them
                     for a in educt_aids - product_aids:
                         # to which species in frame 2 does this atom belong to?
@@ -609,7 +621,7 @@ class fcompare:
 
 class revent:
 
-    def __init__(self, comparer, fR, unimol= False):
+    def __init__(self, comparer, fR, unimol= False, ireac=0):
         """generate a reaction event object
 
         TBI: what to do if there are more then one reaction event (in two diffrent tracked species)
@@ -621,14 +633,18 @@ class revent:
             comparer (fcompare object): comparer that gave a reactive event
             fR (parent findR object): to access process_frame
             unimol (bool, optional): is unimolecular. Defaults to False.
+            ireac (int,optional): specifies the reaction event
         """
         self.unimol = unimol
         self.fR = fR
         self.comparer = comparer
         # currently we allow only for single reaction events per frame 
         # this would change if there is more than one tracked species ....
-        assert comparer.nreacs == 1 , "Currently only single reaction events are processed"
-        r = 0 # pick first reaction (the only one)
+        #assert comparer.nreacs == 1 , "Currently only single reaction events are processed. Error occured for frames %s and %s" % (comparer.f1.fid, comparer.f2.fid)
+        #r = 0 # pick first reaction (the only one)
+        assert comparer.nreacs > ireac, "Too many reaction events requested..."
+        r = ireac
+        print("ireac " + str(ireac) + " frames " + str(comparer.f1.fid) + " and " + str(comparer.f2.fid) )
         educts, products = comparer.reacs[r]
         self.broken_bonds     = comparer.broken_bonds[r]
         self.formed_bonds     = comparer.formed_bonds[r]
