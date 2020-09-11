@@ -366,7 +366,8 @@ class RDB:
 
 # reaction graph generation
 
-    def view_reaction_graph(self, start=None, stop=None, browser="firefox"):
+
+    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False):
         """ generate a reaction graph
 
         we use the current md (must be called before)
@@ -383,19 +384,36 @@ class RDB:
         import pydot
         import tempfile
         import webbrowser
+        import warnings
         # set the path to the images
         img_path = self.db_path + "/storage/png/"
         # get all relevant revents
         if start is None:
             start = -1
-        revents = self.db((self.db.revent.mdID == self.current_md) & \
-                          (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
+
+        if only_unique_reactions:
+            revents = self.db((self.db.unique_revent.frame >= start)).select(orderby=self.db.unique_revent.frame)
+
+            all_revents = self.db((self.db.revent.mdID == self.current_md) & \
+                                  (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
+        else:
+            revents = self.db((self.db.revent.mdID == self.current_md) & \
+                              (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
+
+
         rgraph = pydot.Dot(graph_type="digraph")
         rgnodes = {} # store all generated nodes by their md_speciesID
         # start up with products of first event
         cur_revent = revents[0]
-        mds = self.db((self.db.md_species.reventID == cur_revent) & \
-                      (self.db.md_species.foffset == 1)).select()
+        if only_unique_reactions:
+            # Find a reaction event of this reaction class
+            reventID = self.db(self.db.revent.unique_reventID == cur_revent).select()[0]
+
+            mds = self.db((self.db.md_species.reventID == reventID) & \
+                          (self.db.md_species.foffset == 1)).select()
+        else:
+            mds = self.db((self.db.md_species.reventID == cur_revent) & \
+                          (self.db.md_species.foffset == 1)).select()
         for m in mds:
             new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),
                                        image = img_path+m.png,
@@ -410,7 +428,15 @@ class RDB:
             # make the nodes of the revent
             educ = []
             prod = []
-            mds = self.db((self.db.md_species.reventID == cur_revent)).select()
+            if only_unique_reactions:
+                reventIDs = self.db(self.db.revent.unique_reventID == cur_revent).select()
+
+                reventID = reventIDs[0]
+
+                mds = self.db((self.db.md_species.reventID == reventID)).select()
+            else:
+                mds = self.db((self.db.md_species.reventID == cur_revent)).select()
+
             for m in mds:
                 if m.foffset == -1:
                     new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
@@ -446,9 +472,12 @@ class RDB:
             for p in prod:
                 rgraph.add_edge(pydot.Edge(ts, p))
             # now connect from the previous events
-            concts = self.db(self.db.react.to_rev == cur_revent).select()
-            for c in concts:
-                rgraph.add_edge(pydot.Edge(rgnodes[c.from_spec], rgnodes[c.to_spec], color="blue"))
+            if only_unique_reactions:
+                warnings.warn("Using only the unique reactions I can not generate a fully connected reaction graph!")
+            else:
+                concts = self.db(self.db.react.to_rev == cur_revent).select()
+                for c in concts:
+                    rgraph.add_edge(pydot.Edge(rgnodes[c.from_spec], rgnodes[c.to_spec], color="blue"))
         # done
         with tempfile.TemporaryDirectory() as tmpdir:
             cwd = os.curdir
