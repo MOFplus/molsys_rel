@@ -847,19 +847,11 @@ class graph(object):
             is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
 
             # Check if maping is correct
-            #jdx = 0
-            #for idx in isomap:
-            #    print(idx)
-            #    if molg1.vertex(idx)  != molg2.vertex(jdx):
-            #        is_equal = False
-            #        break
-
-            #    jdx += 1 
-
-            for vi,vj in zip(isomap,molg2.vertices()):
-                if vi != vj:
-                    is_equal = False
-                    break
+            if is_equal:
+                for vi,vj in zip(isomap,molg2.vertices()):
+                    if vi != vj:
+                        is_equal = False
+                        break
 
         return is_equal
 
