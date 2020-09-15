@@ -846,7 +846,20 @@ class graph(object):
 
             is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
 
-            # TODO check based on isomap that topologies really match (avoid similarity due to interchange of atoms A-B-C <> A-C-B
+            # Check if maping is correct
+            #jdx = 0
+            #for idx in isomap:
+            #    print(idx)
+            #    if molg1.vertex(idx)  != molg2.vertex(jdx):
+            #        is_equal = False
+            #        break
+
+            #    jdx += 1 
+
+            for vi,vj in zip(isomap,molg2.vertices()):
+                if vi != vj:
+                    is_equal = False
+                    break
 
         return is_equal
 

@@ -84,7 +84,7 @@ def compare_species(species,sumforms,mol,check):
         if not is_same:
             break 
     
-        check = check or molsys.addon.graph.is_equal(mol.graph.molg, sp)
+        check = check or molsys.addon.graph.is_equal(mol.graph.molg, sp, use_fast_check=False)
 
     return check
 
