@@ -65,6 +65,7 @@ class RDB:
                   #         username, datetime, method, .... more
         dbstruc["unique_revent"] = [
             "b:uni",          # true if unimolecular
+            "b:change",       # change in graph for educt and products (used for screening)
             "i:frame",        # frame number
             "li:ed",          # educt species (sorted)
             "li:ts",          # transition state species
@@ -204,10 +205,11 @@ class RDB:
         print (type(id))
         return id
     
-    def register_unique_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, uni=False):
+    def register_unique_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, uni=False, change=True):
 
         reventID = self.db.unique_revent.insert(
             uni        = uni,
+            change     = change,
             frame      = frame,
             ed         = ed,
             ts         = ts,
@@ -429,9 +431,17 @@ class RDB:
             educ = []
             prod = []
             if only_unique_reactions:
+
+                if not cur_revent["change"]:
+                    continue
+
                 reventIDs = self.db(self.db.revent.unique_reventID == cur_revent).select()
 
-                reventID = reventIDs[0]
+                if len(reventIDs) > 0:
+                    reventID = reventIDs[0]
+                else:
+                    #GS TODO this is a quick hack to make it run through. There is something fishy here
+                    continue
 
                 mds = self.db((self.db.md_species.reventID == reventID)).select()
             else:
