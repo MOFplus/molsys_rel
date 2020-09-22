@@ -395,9 +395,6 @@ class RDB:
 
         if only_unique_reactions:
             revents = self.db((self.db.unique_revent.frame >= start)).select(orderby=self.db.unique_revent.frame)
-
-            all_revents = self.db((self.db.revent.mdID == self.current_md) & \
-                                  (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
         else:
             revents = self.db((self.db.revent.mdID == self.current_md) & \
                               (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
