@@ -30,6 +30,11 @@ lot = "ReaxFF"
 if len(sys.argv) > 4:
    lot = sys.argv[4]
 
+only_unique_reactions=False
+if len(sys.argv) > 5:
+   only_unique_reactions=bool(sys.argv[5])
+
+
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
 print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
@@ -37,13 +42,27 @@ print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 # get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
 db = rdb.db
 md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
-revents = db((db.revent.mdID == md)).select()
+
+if only_unique_reactions:
+    revents = db(db.unique_revent).select() 
+else:
+    revents = db((db.revent.mdID == md)).select()
 
 #lot = rdb.get_lot("ReaxFF")
 
 for r in revents:
     # get all md_species for this event
-    mdspec = db((db.md_species.reventID == r) & (db.md_species.energy == 0.0)).select()
+    if only_unique_reactions:
+        # Just get the first revent of this unique revent class
+        cur_event = db(db.revent.unique_reventID == r).select()[0]
+
+        mdspec = db((db.md_species.reventID == cur_event) & \
+                          (db.md_species.energy == 0.0)).select()
+    else:
+        mdspec = db((db.md_species.reventID == r) & (db.md_species.energy == 0.0)).select()
+        cur_event = r
+
+
     if len(mdspec) > 0:
         print ("optimize MD species from reaction event %d" % (md.id))
         for m in mdspec:
@@ -56,7 +75,8 @@ for r in revents:
             if m.foffset == 0:
                 TS = True
                 # this is the TS -> fix bonds
-                rbonds = r.rbonds
+                rbonds = cur_event.rbonds
+
                 print ("TS species .. fix %s" % str(rbonds))
                 rbonds = np.array(rbonds)
                 nrbonds = len(rbonds)//2
