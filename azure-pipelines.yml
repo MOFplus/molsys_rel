@@ -9,6 +9,8 @@ trigger:
 # later we can think of a different pool for molsys
 pool: pylmps 
 
+steps:
+
 - script: |
     echo cd tests
     echo "do something"
