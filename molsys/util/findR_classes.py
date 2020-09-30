@@ -28,6 +28,8 @@ import graph_tool.topology as gtt
 import graph_tool.util as gtu
 import graph_tool.draw as gtd
 
+import uuid
+import graph_tool
 
 #####################  FRAME CLASS ########################################################################################
 
@@ -110,6 +112,7 @@ class frame:
     def make_species(self, mid):
         # return a species object (without a local graph)
         return species(self.fid, mid, self.molg, make_graph=False, tracked=False)
+
 
     @property
     def nspecies(self):
@@ -252,7 +255,7 @@ class species:
         self.molg = molg # parent molgraph
         # find all vertices in molg that belong to this species mid
         vs = gtu.find_vertex(molg, molg.vp.mid, mid)
-        self.aids = set([int(v) for v in vs]) # atomids -> TBI do we need to sort? seems like they are sroted as they come
+        self.aids = set([int(v) for v in vs]) # atomids -> TBI do we need to sort? seems like they are sorted as they come
         self.graph = None
         if make_graph:
             # now make a view of molg for this species         
@@ -326,6 +329,7 @@ class species:
         bother = set([(int(e.source()),int(e.target())) for e in other.graph.edges()])
         if bself != bother:
             return False
+
         # if we are here the species are equal
         return True
         
@@ -421,7 +425,7 @@ class fcompare:
         if len(self.umatch_f1)==0 and len(self.umatch_f2)==0:
             # there is nothing to do
             return
-        # we have soem unmatched species -> there is one (or more) reaction(s) between these frames
+        # we have some unmatched species -> there is one (or more) reaction(s) between these frames
         # find groups of species that define a reaction
         #    all atom ids in the union of the educts sets must be also in the products set
         for sk1 in self.umatch_f1:
@@ -448,6 +452,11 @@ class fcompare:
                         # we need to make a new species object and add it (as non-tracked)
                         educts[esk] = self.f1.make_species(esk)
                         educt_aids |= educts[esk].aids
+
+                        # avoid that found educt is in first list. In that case you will find a reaction twice
+                        if esk in self.umatch_f1:
+                            self.umatch_f1.remove(esk)
+
                 # which atoms are in the educts that are not in the product species? add them
                 for a in educt_aids - product_aids:
                     # to which species in frame 2 does this atom belong to?
@@ -457,7 +466,11 @@ class fcompare:
                         # we need to make a new species object and add it (as non-tracked)
                         products[psk] = self.f2.make_species(psk)
                         product_aids |= products[psk].aids
-            # now add the final results to the reacs list
+
+                        # GS: unsure if this is required. Should avoid to assign a product twice
+                        if psk in self.umatch_f2:
+                            self.umatch_f2.remove(psk)
+                        
             self.reacs.append((educts, products))
         # the above will not work if there is no tracked species in umatch_f1 (but in umatch_f2)
         # ... in other words a species has "appeared" or formed by merging two or more untracked species
@@ -485,6 +498,8 @@ class fcompare:
                             # we need to make a new species object and add it (as non-tracked)
                             educts[esk] = self.f1.make_species(esk)
                             educt_aids |= educts[esk].aids
+
+
                     # which atoms are in the educts that are not in the product species? add them
                     for a in educt_aids - product_aids:
                         # to which species in frame 2 does this atom belong to?
@@ -606,7 +621,7 @@ class fcompare:
 
 class revent:
 
-    def __init__(self, comparer, fR, unimol= False):
+    def __init__(self, comparer, fR, unimol= False, ireac=0):
         """generate a reaction event object
 
         TBI: what to do if there are more then one reaction event (in two diffrent tracked species)
@@ -618,14 +633,18 @@ class revent:
             comparer (fcompare object): comparer that gave a reactive event
             fR (parent findR object): to access process_frame
             unimol (bool, optional): is unimolecular. Defaults to False.
+            ireac (int,optional): specifies the reaction event
         """
         self.unimol = unimol
         self.fR = fR
         self.comparer = comparer
         # currently we allow only for single reaction events per frame 
         # this would change if there is more than one tracked species ....
-        assert comparer.nreacs == 1 , "Currently only single reaction events are processed"
-        r = 0 # pick first reaction (the only one)
+        #assert comparer.nreacs == 1 , "Currently only single reaction events are processed. Error occured for frames %s and %s" % (comparer.f1.fid, comparer.f2.fid)
+        #r = 0 # pick first reaction (the only one)
+        assert comparer.nreacs > ireac, "Too many reaction events requested..."
+        r = ireac
+        print("ireac " + str(ireac) + " frames " + str(comparer.f1.fid) + " and " + str(comparer.f2.fid) )
         educts, products = comparer.reacs[r]
         self.broken_bonds     = comparer.broken_bonds[r]
         self.formed_bonds     = comparer.formed_bonds[r]
@@ -692,4 +711,6 @@ class revent:
                 print ("Houston we have a problem!!! species changed between TS and PR")
         # get TS_fid for ease
         self.TS_fid = self.TS.fid
+
+
         return

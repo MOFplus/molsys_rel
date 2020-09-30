@@ -20,7 +20,16 @@ db_path = sys.argv[1]
 rdb = RDB.RDB(db_path)
 db = rdb.db
 
-md_spec_rows = db(db.md_species.png == None).select()
+replot = False
+if len(sys.argv) > 2:
+    replot = bool(sys.argv[2]) 
+    print("I will replot all graphics")
+
+
+if replot:
+    md_spec_rows = db(db.md_species).select()
+else:
+    md_spec_rows = db(db.md_species.png == None).select()
 
 nitems = len(md_spec_rows)
 
@@ -36,7 +45,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         else:
             size = 200
             scale = 1.3
-        thumbnail.thumbnail(mol, size=size, scale=scale, fname=img_fname)
+        thumbnail.thumbnail(mol, size=size, scale=scale, fname=img_fname, own_bonds=True)
         imgf = open(img_fname, "rb")
         mdspec.png = db.md_species.png.store(imgf, img_fname)
         mdspec.update_record()

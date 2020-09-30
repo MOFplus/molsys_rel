@@ -503,27 +503,35 @@ class mol(mpiobject):
             phonon.set_force_constants(h2)
         return phonon
 
-    def write(self, fname, ftype=None, **kwargs):
+    def write(self, fname, ftype=None, rank=None, **kwargs):
         ''' generic writer for the mol class
         Parameters:
             fname        : the filename to be written
             ftype="mfpx" : the parser type that is used to writen the file
+            rank         : deault: None, if not None but integer write if rank = 0 (e.g. we use partitions, then rank is partition rank)
             **kwargs     : all options of the parser are passed by the kwargs
                              see molsys.io.* for detailed info'''
-        if self.mpi_rank == 0:
-            if ftype is None:
-                fsplit = fname.rsplit('.',1)[-1]
-                if fsplit != fname: #there is an extension
-                    ftype = fsplit #ftype is inferred from extension
-                else: #there is no extension
-                    ftype = 'mfpx' #default
-            logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
-            if ftype in formats.write:
-                with open(fname,"w") as f:
-                    formats.write[ftype](self,f,**kwargs)
-            else:
-                logger.error("unsupported format: %s" % ftype)
-                raise IOError("Unsupported format")
+        if rank is not None:
+            # if rank is given return only when rank is not zero (mpi_rank can be nonzero!)
+            if rank != 0:
+                return
+        else:
+            # otherise use mpi_rank
+            if self.mpi_rank != 0:
+                return
+        if ftype is None:
+            fsplit = fname.rsplit('.',1)[-1]
+            if fsplit != fname: #there is an extension
+                ftype = fsplit #ftype is inferred from extension
+            else: #there is no extension
+                ftype = 'mfpx' #default
+        logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
+        if ftype in formats.write:
+            with open(fname,"w") as f:
+                formats.write[ftype](self,f,**kwargs)
+        else:
+            logger.error("unsupported format: %s" % ftype)
+            raise IOError("Unsupported format")
         return
 
     def to_string(self, ftype='mfpx', **kwargs):

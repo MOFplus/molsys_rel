@@ -8,12 +8,15 @@
 
 """
 
+import graph_tool
 from graph_tool import Graph, GraphView
 from graph_tool.topology import *
 import copy
 import numpy as np
 import molsys
 from molsys.util import elems
+
+import uuid
 
 import logging
 logger = logging.getLogger("molsys.graph")
@@ -77,6 +80,37 @@ class graph(object):
                         #self.molg.add_edge( self.molg.vertex(self.vert2atom.index(ja)),self.molg.vertex(i))
         return
 
+    def make_comp_graph(self, elem_list = ["c"], idx = None):
+        """
+        Like make_graph this creates a graph for the mol object, but here we focus on a graph 
+        for comparing molecular species in reactions. In the current graph we only look at the C-graph
+
+        """
+        if idx is None: idx = range(self._mol.natoms)
+        # now add vertices
+        self.vert2atom = []  
+        ig = 0
+        for i in idx:
+            if self._mol.elems[i] in elem_list:
+                self.molg.add_vertex()
+                self.vert2atom.append(i)
+                vtype = self._mol.atypes[i]
+                # extract element and coordination number
+                if "_" in vtype:
+                    vtype = vtype.split("_")[0]
+                self.molg.vp.type[ig] = vtype
+                ig += 1
+        self.nvertices = len(self.vert2atom)
+        logger.info("generated a graph for a mol object with %d vertices" % self.nvertices)
+        # now add edges ... only bonds between vertices
+        for i in range(self.nvertices):
+            ia = self.vert2atom[i]
+            for ja in self._mol.conn[ia]:
+                if ja>=ia:   #we need a .le. here for those atoms/vertices connected to itself twice in different boxes
+                    if ja in self.vert2atom:
+                        self.molg.add_edge(self.molg.vertex(i), self.molg.vertex(self.vert2atom.index(ja)))
+        return
+
     def plot_graph(self, fname, g = None, label=None, edge_label=None, size=1000, fsize=16, vsize=8, ptype = "pdf",method='arf'):
         """
         plot the graph (needs more tuning options) [via **kwargs? RA]
@@ -92,6 +126,8 @@ class graph(object):
                        sfdp
                        random
         """
+        #GS TODO call plot_molgraph to do actual plotting
+
         import graph_tool.draw as gtd
         if g:
             draw_g = g
@@ -102,6 +138,46 @@ class graph(object):
         else:
             vlabel = "type"
         g=draw_g
+        if method=='arf':
+            pos = gtd.arf_layout(draw_g, max_iter=0)
+        elif method=='frucht':
+            pos = gtd.fruchterman_reingold_layout(draw_g, n_iter=1000)
+        elif method=='radtree':
+            pos = gtd.radial_tree_layout(draw_g, draw_g.vertex(0))
+        elif method=='sfdp':
+            pos = gtd.sfdp_layout(draw_g)
+        elif method=='random':
+            pos = gtd.random_layout(draw_g)
+        else:
+            pos=None
+        gtd.graph_draw(draw_g,pos=pos, vertex_text=draw_g.vp[vlabel], vertex_font_size=fsize, vertex_size=vsize, \
+            output_size=(size, size), output=fname+"."+ptype, bg_color=[1,1,1,1])
+        return
+
+    @staticmethod
+    def plot_mol_graph(fname, g, label=None, edge_label=None, size=1000, fsize=16, vsize=8, ptype = "pdf",method='arf'):
+        """
+        plot the graph (needs more tuning options) [via **kwargs? RA]
+
+        :Parameter:
+            - fname  : filename (will write filename.pdf)
+            - size   : outputsize will be (size, size) in px [default 800]
+            - fsize  : font size [default 10]
+            - method : placement method to draw graph, can be one of
+                       arf
+                       frucht
+                       radtree
+                       sfdp
+                       random
+        """
+        import graph_tool.draw as gtd
+        if label:
+            vlabel = label
+        else:
+            vlabel = "type"
+
+        draw_g = g
+
         if method=='arf':
             pos = gtd.arf_layout(draw_g, max_iter=0)
         elif method=='frucht':
@@ -819,6 +895,66 @@ class graph(object):
                 mol_bb.write("ebb_%d.mfpx" % i)
         self.decomp_bb_exist = True
         return (self.decomp_vbb, self.decomp_vbb_map, self.decomp_ebb, self.decomp_ebb_map)
+
+    @staticmethod
+    def is_equal(molg1, molg2, use_fast_check=False):
+        """helper function to identify if two molecular graphs are equal 
+        
+        Args:
+            molg1 (molecular graph): molecular graph to be compared to molg2 
+            molg2 (molecular graph): molecular graph to be compared to molg1 
+            use_fast_check (bool): will enforce a fast check based on the similarity rather than a graph isomorphisim
+
+        Return:
+            bool
+        """
+
+        error_code = 0
+
+        if use_fast_check:
+
+            similarity = graph_tool.topology.similarity(molg1,molg2)
+
+            is_equal = (similarity > 0.99)
+
+        else:
+
+            try:
+
+                e1 = molg1.get_edges()
+                e2 = molg2.get_edges()
+
+                if e1.shape[0] > 0 and e2.shape[0] > 0:
+
+                    is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
+
+                    # Check if maping is correct
+                    if is_equal:
+                        for vi,vj in zip(isomap,molg2.vertices()):
+                            if vi != vj:
+                                is_equal = False
+                                break
+                else:
+                    # We don't have any edges... 
+
+                    # compare vertices
+                    vert1 = molg1.get_vertices()
+                    vert2 = molg2.get_vertices()
+
+                    is_equal = True
+
+                    for v1, v2 in zip(vert1,vert2):
+                        if v1 != v2:
+                            is_equal = False
+                            break
+
+            except:
+                print("An error occured during the graph comparison")
+                is_equal = False
+                error_code = 1 
+
+
+        return is_equal, error_code
 
     def _convert_bb2mol(self, bb, bbg):
         """helper function to convert a bb (index) and bbg (graph) to a mol object

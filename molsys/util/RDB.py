@@ -52,6 +52,8 @@ class RDB:
         # 
         #           core of RDB -> here the tabel layout of the sql database is defined
         #
+
+        # GS: Note maybe obvious, but as reminder for references the order in dbstruc matters
         dbstruc = OrderedDict()
         dbstruc["md"] = [       
             "s:path",         # filename of the pdlp file
@@ -61,7 +63,19 @@ class RDB:
             "d:temp"          # temperature in Kelvin
         ]         # TBI !!! add more info here ... this is is just for testing
                   #         username, datetime, method, .... more
+        dbstruc["unique_revent"] = [
+            "b:uni",          # true if unimolecular
+            "b:change",       # change in graph for educt and products (used for screening)
+            "i:frame",        # frame number
+            "li:ed",          # educt species (sorted)
+            "li:ts",          # transition state species
+            "li:pr",          # product species
+            "i:tr_ed",        # number of traced educt species
+            "i:tr_pr",        # number of traced product species
+        ]
         dbstruc["revent"] = [
+            "r:unique_revent",# ref to table unique_revent
+            "b:reversed",     # is it the back reaction in unique_revent?
             "r:md",           # ref to table md
             "b:uni",          # true if unimolecular
             "i:frame",        # frame number
@@ -115,7 +129,7 @@ class RDB:
 
         keys are teble names, vlaues are lists corresponding to fields with names split by :
         """ 
-        # define soem defaults here
+        # define some defaults here
         db=self.db
         for t in dbstruc:
             fields = []
@@ -191,11 +205,30 @@ class RDB:
         row = self.db(self.db.lot.name==lot).select().first()
         if row is None:
             id = self.db.lot.insert(name=lot)
-            return id
         else:
-            return row.id
+            id = row.id
+        print (type(id))
+        return id
+    
+    def register_unique_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, uni=False, change=True):
+
+        reventID = self.db.unique_revent.insert(
+            uni        = uni,
+            change     = change,
+            frame      = frame,
+            ed         = ed,
+            ts         = ts,
+            pr         = pr,
+            tr_ed      = tr_ed,
+            tr_pr      = tr_pr
+        )
+
+        if self.do_commit:
+            self.db.commit()
+        return reventID
 
     def register_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, rbonds, uni=False):
+
         reventID = self.db.revent.insert(
             mdID       = self.current_md,
             uni        = uni,
@@ -207,6 +240,7 @@ class RDB:
             tr_pr      = tr_pr,
             rbonds     = rbonds,
         )
+
         if self.do_commit:
             self.db.commit()
         return reventID
@@ -349,7 +383,8 @@ class RDB:
 
 # reaction graph generation
 
-    def view_reaction_graph(self, start=None, stop=None, browser="firefox"):
+
+    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False):
         """ generate a reaction graph
 
         we use the current md (must be called before)
@@ -366,19 +401,33 @@ class RDB:
         import pydot
         import tempfile
         import webbrowser
+        import warnings
         # set the path to the images
         img_path = self.db_path + "/storage/png/"
         # get all relevant revents
         if start is None:
             start = -1
-        revents = self.db((self.db.revent.mdID == self.current_md) & \
-                          (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
+
+        if only_unique_reactions:
+            revents = self.db((self.db.unique_revent.frame >= start)).select(orderby=self.db.unique_revent.frame)
+        else:
+            revents = self.db((self.db.revent.mdID == self.current_md) & \
+                              (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
+
+
         rgraph = pydot.Dot(graph_type="digraph")
         rgnodes = {} # store all generated nodes by their md_speciesID
         # start up with products of first event
         cur_revent = revents[0]
-        mds = self.db((self.db.md_species.reventID == cur_revent) & \
-                      (self.db.md_species.foffset == 1)).select()
+        if only_unique_reactions:
+            # Find a reaction event of this reaction class
+            reventID = self.db(self.db.revent.unique_reventID == cur_revent).select()[0]
+
+            mds = self.db((self.db.md_species.reventID == reventID) & \
+                          (self.db.md_species.foffset == 1)).select()
+        else:
+            mds = self.db((self.db.md_species.reventID == cur_revent) & \
+                          (self.db.md_species.foffset == 1)).select()
         for m in mds:
             new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),
                                        image = img_path+m.png,
@@ -393,7 +442,23 @@ class RDB:
             # make the nodes of the revent
             educ = []
             prod = []
-            mds = self.db((self.db.md_species.reventID == cur_revent)).select()
+            if only_unique_reactions:
+
+                if not cur_revent["change"]:
+                    continue
+
+                reventIDs = self.db(self.db.revent.unique_reventID == cur_revent).select()
+
+                if len(reventIDs) > 0:
+                    reventID = reventIDs[0]
+                else:
+                    #GS TODO this is a quick hack to make it run through. There is something fishy here
+                    continue
+
+                mds = self.db((self.db.md_species.reventID == reventID)).select()
+            else:
+                mds = self.db((self.db.md_species.reventID == cur_revent)).select()
+
             for m in mds:
                 if m.foffset == -1:
                     new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
@@ -429,16 +494,19 @@ class RDB:
             for p in prod:
                 rgraph.add_edge(pydot.Edge(ts, p))
             # now connect from the previous events
-            concts = self.db(self.db.react.to_rev == cur_revent).select()
-            for c in concts:
-                rgraph.add_edge(pydot.Edge(rgnodes[c.from_spec], rgnodes[c.to_spec], color="blue"))
+            if only_unique_reactions:
+                warnings.warn("Using only the unique reactions I can not generate a fully connected reaction graph!")
+            else:
+                concts = self.db(self.db.react.to_rev == cur_revent).select()
+                for c in concts:
+                    rgraph.add_edge(pydot.Edge(rgnodes[c.from_spec], rgnodes[c.to_spec], color="blue"))
         # done
         with tempfile.TemporaryDirectory() as tmpdir:
             cwd = os.curdir
-            os.chdir(tmpdir)
+            #os.chdir(tmpdir)
             rgraph.write_svg("rgraph.svg")
             webbrowser.get(browser).open_new("rgraph.svg")
-            os.chdir(cwd)
+            #os.chdir(cwd)
         
     
 
