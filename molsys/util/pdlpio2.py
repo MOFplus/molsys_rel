@@ -122,7 +122,7 @@ class pdlpio2(mpiobject):
         #
         self.file_version = 1.2
         if self.fexists is True:
-            if self.mode is "ffe" or self.mode is "restart":
+            if self.mode == "ffe" or self.mode == "restart":
                 # this is an exisiting file and we are in ffe/restart mode and want to add data => make sure all is matching
                 if self.is_master:
                     file_version = self.h5file.attrs["version"]
@@ -130,7 +130,7 @@ class pdlpio2(mpiobject):
                     file_version = None
                 file_version = self.mpi_comm.bcast(file_version)  
                 assert self.file_version == file_version, "PDLP ERROR: Exisiting file has a different version! Can not add data"
-                if self.mode is "ffe":
+                if self.mode == "ffe":
                     # check the system if it contains the same molecule (we could be more clever here, but if the list of atomtypes is identical we should be safe)
                     # TBI mor consistent tests like paramters etc .. we could read the complete mol out and compare
                     self.compare_system()
