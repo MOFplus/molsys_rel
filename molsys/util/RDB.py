@@ -113,11 +113,6 @@ class RDB:
             "r:md_species:from_spec",   # source species ref
             "r:md_species:to_spec",     # target species ref
         ]
-        dbstruc["similar"] = [
-            "r:lot",          # ref to lot
-            "r:opt_species",   # ref to opt_species
-            "r:opt_species:similar_opt_speciesID",  # ref to opt_species
-        ]
         #############################################################################################
         self._define_tables(dbstruc)
         # define soem defaults
@@ -346,16 +341,6 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_similar(self, lot, optspecID, simoptspecID):
-        if type(lot) == type(""):
-            lot = self.get_lot(lot)
-        self.db.similar.insert(
-                lotID = lot,
-                opt_speciesID = optspecID,
-                similar_opt_speciesID = simoptspecID)
-        self.db.commit()
-        return
-
     def add_opt_species(self, mol, lot, energy, mdspecID):
         """add an optimized structure to the DB
         
@@ -519,7 +504,6 @@ class RDB:
 
 
 
->>>>>>> 67cd6c934bfda6f13afa66a978569f08fd0d9bc2
 
 if __name__ == "__main__":
     rdb = RDB("./test", mode="n")
