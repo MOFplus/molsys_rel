@@ -116,68 +116,78 @@ rdb = RDB.RDB(db_path)
 # Get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
 db = rdb.db
 
-lot_FF = rdb.get_lot("ReaxFF")
-rows = db(db.opt_species.lotID == lot_FF).select()
-
-# Get the opt_species.id of the similar structures
-similar_rows = db(db.opt_species.id == db.similar.opt_speciesID).select()
-
-# Get a dictionary of similar structures
-similar_dict = {}
-for s in similar_rows:
-    similar_dict[s.opt_species.id] = s.similar.similar_opt_speciesID
+# Select all the UNIQUE REACTION events from the database
+revents = db(db.unique_revent).select()
 
 # Perform the QM calculation only on the species which are unique.
 jobids = []
 ncurjobs = 0
-for r in rows:
-    if r.id not in similar_dict:
-        # Set up some variables
-        md_spec = db(db.md_species.id == r.md_speciesID).select().first()
-        foffset = md_spec.foffset
-        revent = db(db.revent.id == md_spec.reventID).select().first()
-        md_xyz_path = "%s/storage/xyz/%s" %(db_path,r.xyz)
-        if md_spec.foffset != 0:
-            active_atoms = []
-        else:
-            active_atoms = revent.rbonds
- 
-        # Create the subdirectory for the DFT calculation
-        subdir_name = '%05d' % r.id
-        dft_subdir_path = os.path.join(dft_path, subdir_name)
-        if not os.path.isdir(dft_subdir_path):
-            os.mkdir(dft_subdir_path)
-        else:
-            sys.exit('The directory %s already exists' % dft_subdir_path)
 
+
+for r in revents:
+#for r in rows:
+
+    # Just get the first revent of this unique revent class
+    cur_event = db(db.revent.unique_reventID == r).select().first()
+    md_specs = db((db.md_species.reventID == cur_event)).select()
+
+
+    for md_spec in md_specs:
+       # Set up the active atoms which whose internal coordinates will be 
+       # kept fixed during the geometry optimization (for the transition states.)
+       foffset = md_spec.foffset
+       # if not TS --> No constraint 
+       if md_spec.foffset != 0: 
+           active_atoms = []
+       # if TS --> Get the list of atoms defining the reactive bonds
+       else:
+           active_atoms = list(set(cur_event.rbonds))
+
+ 
+       # Get the directory of the coordinates file of the MD species
+       fname, mfpxf = db.md_species.mfpx.retrieve(md_spec.mfpx)
+       md_mfpx_path = mfpxf.name
+
+#================================ modified up to here.
+   
+   
+    
+       # Create the subdirectory for the DFT calculation
+       subdir_name = '%05d' % md_spec.id
+       dft_subdir_path = os.path.join(dft_path, subdir_name)
+       if not os.path.isdir(dft_subdir_path):
+           os.mkdir(dft_subdir_path)
+       else:
+           sys.exit('The directory %s already exists' % dft_subdir_path)
+   
        
-        #--------------- MAIN ------------------#
-        # Submission Tools
-        ST = turbomole.SubmissionTools(dft_subdir_path)
-        
-        if submit:
-            ST.write_submit_py(foffset, active_atoms, max_mem, md_xyz_path, lot_DFT)
-            while ncurjobs == max_njobs:
-                time.sleep(30)
-                ncurjobs = get_ncurjobs(jobids)
-                print("Inside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)                                     
-            os.chdir(dft_subdir_path)
-            sbatchout = os.popen("sbatch -J spec%d %s" %(r.id, os.path.join(dft_path,"submit.sh"))).read()
-            os.chdir(dft_path)
-            jobids.append(sbatchout.split()[3])
-            ncurjobs = get_ncurjobs(jobids)
-            print("Outside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)              
-        else:
-            atom = ST.common_workflow(active_atoms, max_mem, md_xyz_path, lot_DFT)
-            if not atom:
-               if foffset == 0:
-                   found = ST.transition_state_workflow(active_atoms)
-               else:
-                   found = ST.minima_workflow()
-            if found:
-                os.system("touch found")
-            else:
-                os.system("touch notfound")
+       #--------------- MAIN ------------------#
+       # Submission Tools
+       ST = turbomole.SubmissionTools(dft_subdir_path)
+       
+       if submit:
+           ST.write_submit_py(foffset, active_atoms, max_mem, md_mfpx_path, lot_DFT)
+           while ncurjobs == max_njobs:
+               time.sleep(30)
+               ncurjobs = get_ncurjobs(jobids)
+               print("Inside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)                                     
+           os.chdir(dft_subdir_path)
+           sbatchout = os.popen("sbatch -J spec%d %s" %(md_spec.id, os.path.join(dft_path,"submit.sh"))).read()
+           os.chdir(dft_path)
+           jobids.append(sbatchout.split()[3])
+           ncurjobs = get_ncurjobs(jobids)
+           print("Outside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)              
+       else:
+           atom = ST.common_workflow(active_atoms, max_mem, md_mfpx_path, lot_DFT)
+           if not atom:
+              if foffset == 0:
+                  found = ST.transition_state_workflow(active_atoms)
+              else:
+                  found = ST.minima_workflow()
+           if found:
+               os.system("touch found")
+           else:
+               os.system("touch notfound")
 
 #for r in rows:
 #    if r.id not in similar_dict:

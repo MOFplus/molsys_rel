@@ -225,22 +225,23 @@ class GeometryTools:
         """
         if active_atoms != []:
             noise_ini = (numpy.random.rand(mol.natoms-len(active_atoms),3)-0.5)/10.0
-            noise = GeometryTools._make_noise_without_active_atoms(noise_ini, active_atoms) 
+            noise = GeometryTools._make_noise_without_active_atoms(mol, noise_ini, active_atoms) 
         else:
             noise = (numpy.random.rand(mol.natoms,3)-0.5)/10.0
         # add the noise array to the coordinates array
         new_xyz = mol.xyz + noise
         return new_xyz
 
-    def _make_noise_without_active_atoms(noise_ini, active_atoms):
+    def _make_noise_without_active_atoms(mol, noise_ini, active_atoms):
         """ For the case of active atoms (in transition states), makes 
         sure that there is no noise added to the coordinates of these atoms.
         """
         noise_list = noise_ini.tolist()
         noise_to_add = []
+        print(active_atoms)
         j = 0
         for i in range(mol.natoms):
-            if (i+1) in active_atoms:
+            if i in active_atoms:
                 noise_to_add.append([0.0,0.0,0.0])
             else:
                 noise_to_add.append(noise_list[j])
@@ -411,18 +412,28 @@ class SubmissionTools:
         return
 
     def _freeze_atoms(self, active_atoms):
+        a_a = ''
+        for i in active_atoms:
+            a_a += str(i+1)
+            if i != active_atoms[-1]:
+               a_a += ',' 
         """ writes a new define file to fix active atoms in internal coordinates. """
         define_in_path = os.path.join(self.path,'define.in')
         f = open(define_in_path, 'w')
         f.write(' \n')
         f.write('y\n')
-        f.write('fix %s\n' %(active_atoms))
+        # adds the letter f to the coord file next to the active atoms
+        f.write('fix %s\n' %(a_a))
+        # defines internal coordinates, also taking into account of the active atoms
         f.write('ired\n')
+        # removes the letter f in the coord file, so that only internal coordinates are frozen
         f.write('fix none\n')
+        # leaves the geometry menu
         f.write('*\n')
+        # exits define
         f.write('qq\n')
         f.close()
-        GeneralTools(self.path).invoke_define()
+        os.system('define < %s > %s' %(define_in_path, os.path.join(self.path,'define.out')))
         return
 
     def _ired_and_itvc_1(self):
@@ -496,8 +507,8 @@ class SubmissionTools:
         os.chdir(maindir)
         return
 
-    def common_workflow(self, active_atoms, max_mem, md_xyz_path, lot_DFT):
-        mol = molsys.mol.from_file(md_xyz_path, "xyz")
+    def common_workflow(self, active_atoms, max_mem, md_mfpx_path, lot_DFT):
+        mol = molsys.mol.from_file(md_mfpx_path, "mfpx")
         """determines the orbital occupations before through Fermi smearing."""
         nel = Mol(mol).count_number_of_electrons()
         if (nel % 2) == 0:
@@ -512,7 +523,7 @@ class SubmissionTools:
                 new_xyz, 
                 M_start, 
                 max_mem, 
-                md_xyz_path, 
+                md_mfpx_path, 
                 lot_DFT)
         GT.run_tmole()
         # Remove the data group $fermi from the control file
@@ -533,6 +544,40 @@ class SubmissionTools:
         self.jobex()
         if not self._check_geo_opt_converged():
             print("Transition state pre-optimization did not converge.")
+        else:
+            # remove the gradient left from the previous calculation.
+            os.remove('gradient')
+
+            # define internal coordinates without constraints and set itvc to 1.
+            os.system('kdg intdef')
+            os.system('kdg redundant')
+            self._ired_and_itvc_1()
+
+            # assign symmetry
+            point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
+            print("point_group_final", point_group_final)
+            if point_group_final != "c1":
+                point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
+                if point_group_assigned == point_group_final:
+                    print("The point group is changed to %s." % point_group_final)
+                else:
+                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % ( point_group_final, point_group_assigned))
+
+            # perform aoforce calculation     
+            self.aoforce()
+            
+            # check the number of imaginary frequencies
+            inum, imfreq = self.check_imaginary_frequency()
+            if inum == 0:
+                print('No imaginary frequency at the start structure.')
+            elif inum == 1:
+                self.jobex(ts=True)
+                if not self._check_geo_opt_converged():
+                   print('The transition state optimazation did not converge.')
+                else:
+                   self.aoforce()
+                   inum, imfreq = self.check_imaginary_frequency()
+                   if inum == 1: 
         return found
 
     def minima_workflow(self):
@@ -568,7 +613,7 @@ class SubmissionTools:
             found = self.minima_workflow()
         return found
 
-    def write_submit_py(self, foffset, active_atoms, max_mem, md_xyz_path, lot_DFT):
+    def write_submit_py(self, foffset, active_atoms, max_mem, md_mfpx_path, lot_DFT):
         active_atoms_string = ','.join([str(atom) for atom in active_atoms])
         f_path = os.path.join(self.path,"submit.py")
         f = open(f_path,"a")
@@ -579,7 +624,7 @@ class SubmissionTools:
         f.write("ST = turbomole.SubmissionTools()\n")
         f.write("atom = ST.common_workflow(active_atoms = [%s],\n"% active_atoms_string )
         f.write("                   max_mem = %d,\n" % max_mem)
-        f.write("                   md_xyz_path = '%s',\n" % md_xyz_path)
+        f.write("                   md_mfpx_path = '%s',\n" % md_mfpx_path)
         f.write("                   lot_DFT = '%s')\n" % lot_DFT)
         f.write("if not atom:\n")
         if foffset == 0:
