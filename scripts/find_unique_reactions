@@ -193,7 +193,7 @@ for r in revents:
             have_ts = (m.foffset == 0 )
             have_ed = (m.foffset == -1)
             have_pr = (m.foffset == 1 )
-            
+          
             mol.addon("graph")
             mol.graph.make_comp_graph()
 

@@ -66,6 +66,9 @@ class graph(object):
                         vtype = "#"
                 self.molg.vp.type[ig] = vtype
                 ig += 1
+                # GS
+                print(vtype)
+                # GS
         self.nvertices = len(self.vert2atom)
         logger.info("generated a graph for a mol object with %d vertices" % self.nvertices)
         # now add edges ... only bonds between vertices
@@ -928,10 +931,13 @@ class graph(object):
 
                     is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
 
-                    # Check if maping is correct
+                    ## Check if maping is correct
                     if is_equal:
                         for vi,vj in zip(isomap,molg2.vertices()):
-                            if vi != vj:
+                            if vi < 0:
+                                is_equal = False
+                                break
+                            if molg1.vp.type[vi] != molg2.vp.type[vj]:
                                 is_equal = False
                                 break
                 else:
