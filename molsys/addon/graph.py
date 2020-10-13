@@ -66,9 +66,6 @@ class graph(object):
                         vtype = "#"
                 self.molg.vp.type[ig] = vtype
                 ig += 1
-                # GS
-                print(vtype)
-                # GS
         self.nvertices = len(self.vert2atom)
         logger.info("generated a graph for a mol object with %d vertices" % self.nvertices)
         # now add edges ... only bonds between vertices
