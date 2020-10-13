@@ -173,6 +173,7 @@ class frame:
         # rotate into principal axes
         xyz = mol.get_xyz()
         mol.set_xyz(rotations.align_pax(xyz, masses = mol.get_mass()))
+        mol.set_atypes(mol.get_elems())
         # add connectivity
         conn = []
         for i in aids:
@@ -295,6 +296,7 @@ class species:
         # rotate into principal axes
         xyz = self.mol.get_xyz()
         self.mol.set_xyz(rotations.align_pax(xyz, masses = self.mol.get_mass()))
+        self.mol.set_atypes(self.mol.get_elems())
         # add connectivity
         if self.graph is None:
             self.make_graph()
