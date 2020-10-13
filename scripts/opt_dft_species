@@ -12,6 +12,7 @@ import sys
 import getopt
 import os
 import time
+import numpy
 from molsys.util import RDB
 from molsys.util import turbomole
 
@@ -123,17 +124,16 @@ revents = db(db.unique_revent).select()
 jobids = []
 ncurjobs = 0
 
-
+neq = 0
+graphchange = {}
 for r in revents:
-#for r in rows:
 
-    # Just get the first revent of this unique revent class
+    # just get the first revent of this unique revent class
     cur_event = db(db.revent.unique_reventID == r).select().first()
     md_specs = db((db.md_species.reventID == cur_event)).select()
 
-
     for md_spec in md_specs:
-       # Set up the active atoms which whose internal coordinates will be 
+       # set up the active atoms which whose internal coordinates will be 
        # kept fixed during the geometry optimization (for the transition states.)
        foffset = md_spec.foffset
        # if not TS --> No constraint 
@@ -144,98 +144,131 @@ for r in revents:
            active_atoms = list(set(cur_event.rbonds))
 
  
-       # Get the directory of the coordinates file of the MD species
+       # get the directory of the coordinates file of the MD species
+       lotID = rdb.get_lot("ReaxFF")
+       opt_spec = db((db.opt_species.md_speciesID == md_spec.id) & (db.opt_species.lotID == lotID)).select().first()
+       fname, xyz = db.opt_species.xyz.retrieve(opt_spec.xyz)
+       opt_xyz_path = xyz.name
+       opt_mol = molsys.mol.from_file(opt_xyz_path, "xyz")
+       opt_mol.detect_conn()
+       opt_mol.addon("graph")
+       opt_mol.graph.make_graph()
+
        fname, mfpxf = db.md_species.mfpx.retrieve(md_spec.mfpx)
        md_mfpx_path = mfpxf.name
+       md_mol = molsys.mol.from_file(md_mfpx_path, "mfpx")
+       md_mol.detect_conn()
+       md_mol.addon("graph")
+       md_mol.graph.make_graph()
 
-#================================ modified up to here.
-   
-   
-    
-       # Create the subdirectory for the DFT calculation
-       subdir_name = '%05d' % md_spec.id
-       dft_subdir_path = os.path.join(dft_path, subdir_name)
-       if not os.path.isdir(dft_subdir_path):
-           os.mkdir(dft_subdir_path)
-       else:
-           sys.exit('The directory %s already exists' % dft_subdir_path)
-   
-       
-       #--------------- MAIN ------------------#
-       # Submission Tools
-       ST = turbomole.SubmissionTools(dft_subdir_path)
-       
-       if submit:
-           ST.write_submit_py(foffset, active_atoms, max_mem, md_mfpx_path, lot_DFT)
-           while ncurjobs == max_njobs:
-               time.sleep(30)
-               ncurjobs = get_ncurjobs(jobids)
-               print("Inside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)                                     
-           os.chdir(dft_subdir_path)
-           sbatchout = os.popen("sbatch -J spec%d %s" %(md_spec.id, os.path.join(dft_path,"submit.sh"))).read()
-           os.chdir(dft_path)
-           jobids.append(sbatchout.split()[3])
-           ncurjobs = get_ncurjobs(jobids)
-           print("Outside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)              
-       else:
-           atom = ST.common_workflow(active_atoms, max_mem, md_mfpx_path, lot_DFT)
-           if not atom:
-              if foffset == 0:
-                  found = ST.transition_state_workflow(active_atoms)
-              else:
-                  found = ST.minima_workflow()
-           if found:
-               os.system("touch found")
-           else:
-               os.system("touch notfound")
+       equal =  molsys.addon.graph.is_equal(md_mol.graph.molg, opt_mol.graph.molg, use_fast_check=False)
+       if not equal[0]:
+           neq += 1
+           # find the bonds
+           RMSD_sum = 0
+           for i,conn in enumerate(md_mol.conn):
+               for j in conn:
+                   md_dist  = numpy.sqrt(numpy.square(md_mol.xyz[i] - md_mol.xyz[j]).sum())
+                   opt_dist = numpy.sqrt(numpy.square(opt_mol.xyz[i] - opt_mol.xyz[j]).sum())
+                   RMSD_sum += numpy.square(md_dist-opt_dist)
+           RMSD = numpy.sqrt(RMSD_sum/len(md_mol.conn))
+           print(RMSD, md_mol.conn, opt_mol.conn)
+           graphchange[RMSD] = '%s\n%s' %(md_mfpx_path,opt_xyz_path)
 
-#for r in rows:
-#    if r.id not in similar_dict:
-#        fname = "%s/storage/xyz/%s" %(db_path,r.xyz)
-#        subdir_name = '%05d' % r.id
-#        dft_subdir_path = os.path.join(dft_path, subdir_name)
-#        found = os.path.join(dft_subdir_path,"found")
-#        notfound = os.path.join(dft_subdir_path,"notfound")
-#        while not (os.path.isfile(found) or os.path.isfile(notfound)):
-#            time.sleep(10)
-#
-#if found:
-#    final_energy = turbomole.Harvest(dft_subdir_path).get_energy(f_ZPE_dict[lot_DFT])
-#    opt_mol = GT.coord_to_mol()
-#    rdb.add_opt_species(opt_mol, lot_DFT, final_energy, md_spec.id)
+f = open('md_opt_graph_change','w')
+for sd in sorted(graphchange):
+    f.write('%f\n%s\n\n\n' %(sd, graphchange[sd]))
+f.close()
+print(neq)
 
-
-#rows = db((db.md_species.energy == 0.0) & (db.md_species.foffset != 0)).select()
-#
-#lot = rdb.get_lot("ReaxFF")
-#
-#for r in rows:
-#    print ("retreive species %d (type %d) from reaction event %d" % (r.spec, r.foffset, r.reventID))
-#    print (r.smiles)
-#    # get mol object from DB
-#    fname, mfpxf = db.md_species.mfpx.retrieve(r.mfpx)
-#    mfpxs = mfpxf.read().decode('utf-8')
-#    mfpxf.close()
-#    mol = molsys.mol.from_string(mfpxs)
-#    # setup lammps and minimize with reax
-#    pl = pylmps.pylmps("reax")
-#    pl.setup(mol = mol, local=True, ff="ReaxFF")
-#    init_energy = pl.calc_energy()
-#    final_energy = pl.MIN(0.01)
-#    print ("\n\n#####################################")
-#    print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
-#    print ("########################################\n\n")
-#    # store these results to the DB
-#    # first update coords and get mol object back from lammps
-#    pl.update_mol()
-#    opt_mol = pl.mol
-#    # update the energy value
-#    r.update_record(energy=init_energy)
-#    rdb.add_opt_species(opt_mol, lot, final_energy, r.id)
-#    pl.end()
-#
-#
-#
-#
-#
-#
+####================================ modified up to here.
+###   
+###   
+###    
+###       # Create the subdirectory for the DFT calculation
+###       subdir_name = '%05d' % md_spec.id
+###       dft_subdir_path = os.path.join(dft_path, subdir_name)
+###       if not os.path.isdir(dft_subdir_path):
+###           os.mkdir(dft_subdir_path)
+###       else:
+###           sys.exit('The directory %s already exists' % dft_subdir_path)
+###   
+###       
+###       #--------------- MAIN ------------------#
+###       # Submission Tools
+###       ST = turbomole.SubmissionTools(dft_subdir_path)
+###       
+###       if submit:
+###           ST.write_submit_py(foffset, active_atoms, max_mem, md_mfpx_path, lot_DFT)
+###           while ncurjobs == max_njobs:
+###               time.sleep(30)
+###               ncurjobs = get_ncurjobs(jobids)
+###               print("Inside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)                                     
+###           os.chdir(dft_subdir_path)
+###           sbatchout = os.popen("sbatch -J spec%d %s" %(md_spec.id, os.path.join(dft_path,"submit.sh"))).read()
+###           os.chdir(dft_path)
+###           jobids.append(sbatchout.split()[3])
+###           ncurjobs = get_ncurjobs(jobids)
+###           print("Outside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)              
+###       else:
+###           atom = ST.common_workflow(active_atoms, max_mem, md_mfpx_path, lot_DFT)
+###           if not atom:
+###              if foffset == 0:
+###                  found = ST.transition_state_workflow(active_atoms)
+###              else:
+###                  found = ST.minima_workflow()
+###           if found:
+###               os.system("touch found")
+###           else:
+###               os.system("touch notfound")
+###
+####for r in rows:
+####    if r.id not in similar_dict:
+####        fname = "%s/storage/xyz/%s" %(db_path,r.xyz)
+####        subdir_name = '%05d' % r.id
+####        dft_subdir_path = os.path.join(dft_path, subdir_name)
+####        found = os.path.join(dft_subdir_path,"found")
+####        notfound = os.path.join(dft_subdir_path,"notfound")
+####        while not (os.path.isfile(found) or os.path.isfile(notfound)):
+####            time.sleep(10)
+####
+####if found:
+####    final_energy = turbomole.Harvest(dft_subdir_path).get_energy(f_ZPE_dict[lot_DFT])
+####    opt_mol = GT.coord_to_mol()
+####    rdb.add_opt_species(opt_mol, lot_DFT, final_energy, md_spec.id)
+###
+###
+####rows = db((db.md_species.energy == 0.0) & (db.md_species.foffset != 0)).select()
+####
+####lot = rdb.get_lot("ReaxFF")
+####
+####for r in rows:
+####    print ("retreive species %d (type %d) from reaction event %d" % (r.spec, r.foffset, r.reventID))
+####    print (r.smiles)
+####    # get mol object from DB
+####    fname, mfpxf = db.md_species.mfpx.retrieve(r.mfpx)
+####    mfpxs = mfpxf.read().decode('utf-8')
+####    mfpxf.close()
+####    mol = molsys.mol.from_string(mfpxs)
+####    # setup lammps and minimize with reax
+####    pl = pylmps.pylmps("reax")
+####    pl.setup(mol = mol, local=True, ff="ReaxFF")
+####    init_energy = pl.calc_energy()
+####    final_energy = pl.MIN(0.01)
+####    print ("\n\n#####################################")
+####    print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
+####    print ("########################################\n\n")
+####    # store these results to the DB
+####    # first update coords and get mol object back from lammps
+####    pl.update_mol()
+####    opt_mol = pl.mol
+####    # update the energy value
+####    r.update_record(energy=init_energy)
+####    rdb.add_opt_species(opt_mol, lot, final_energy, r.id)
+####    pl.end()
+####
+####
+####
+####
+####
+####

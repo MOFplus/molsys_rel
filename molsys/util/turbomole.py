@@ -401,6 +401,16 @@ class Mol:
            self.MM += self.mass[t]*amount
         return self.MM
 
+    def make_molecular_graph(self, mol):
+        # if the connectivity information not defined before, detect it.
+        if not any(mol.conn):
+            mol.detect_conn()
+        print(mol.conn)
+        mol.addon("graph")
+        mol.graph.make_graph()
+        self.mg = mol.graph.molg
+        return self.mg
+
 
 class SubmissionTools:
     """Performs submission of the jobs."""
@@ -577,7 +587,8 @@ class SubmissionTools:
                 else:
                    self.aoforce()
                    inum, imfreq = self.check_imaginary_frequency()
-                   if inum == 1: 
+#                   if inum == 1: 
+
         return found
 
     def minima_workflow(self):
