@@ -926,7 +926,7 @@ class graph(object):
 
                 if e1.shape[0] > 0 and e2.shape[0] > 0:
 
-                    is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
+                    is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,vertex_inv1=molg1.vp.type, vertex_inv2=molg2.vp.type,isomap=True)
 
                     ## Check if maping is correct
                     if is_equal:
