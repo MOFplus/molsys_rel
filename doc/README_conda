@@ -1,0 +1,57 @@
+
+Some dependencies like graph_tool or openbabel are difficult to get installed properly.
+We found that conda provides a quick and easy way to get an environment to run molsys and
+pylmps/lammps. The drawback is that you are installing compilers and libraries seperate from you
+underlying linux distro which can take a few GB of space. Not a real issue nowadays anymore.
+The advantage is that you still have your regular environment as well.
+
+however: lammps needs to be completely recompiled (new libs and compilers) and you need to use 
+this version within conda (and keep another one under your pillow)
+
+First download the Miniconda3-latest-Linux-x86_64.sh script from the Conda webpage and run it
+(no root needed)
+
+bash ~/Downloads/Miniconda3-latest-Linux-x86_64.sh
+-> restart shell
+conda config --set auto_activate_base false
+-> restart shell
+conda activate
+
+conda env create -f molsys.yml
+
+
+to compile lammps:
+for new_Sept2020 branch you need to add -std=c++11 to MAKE/Makefile.mpi (not conda related)
+
+activate molsys environment
+
+comment out line 
+# CXX =         g++
+in Makefile.g++ in the colvars dirctory (the $CXX is already set by conda!!)
+
+
+
+Here is the molsys.yml file
+
+###############################################################################################
+name: molsys
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python
+  - numpy
+  - scipy
+  - mpi4py
+  - h5py
+  - graph-tool
+  - openbabel
+  - xtb-python
+  - gcc_linux-64
+  - gxx_linux-64
+  - gfortran_linux-64
+  - pip
+  - pip:
+     - pydal
+
+
