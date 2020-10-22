@@ -67,7 +67,7 @@ def add_compare_data(comparer, mdspec):
 
     return
 
-def compare_species(species,sumforms,mol,check):
+def compare_species(species,sumforms,mol):
     """
 
     Compare species in unique reaction list with mol object
@@ -76,8 +76,10 @@ def compare_species(species,sumforms,mol,check):
         - species  : list of the species 
         - sumforms : list of thim sum formula of th species 
         - mol      : mol object to compare
-        - check    : current status of check
     """
+
+    check = False
+    is_first = True
 
     for sp,sp_sumform in zip(species,sumforms):
     
@@ -88,7 +90,14 @@ def compare_species(species,sumforms,mol,check):
  
         is_equal, error_code = molsys.addon.graph.is_equal(mol.graph.molg, sp, use_fast_check=False)
  
-        check = check or is_equal
+        if is_first:
+            check = is_equal
+            is_first = False
+        else:
+            check = is_equal and check
+
+        if not check:
+            break
 
         if error_code != 0:
             myid = uuid.uuid4()
@@ -167,18 +176,21 @@ for r in revents:
         continue
     
 
-    is_unique  = True
-    same_ts    = False 
-    same_pr    = False 
-    same_ed    = False 
-    same_pr_ed = False 
-    same_ed_pr = False 
-
-    is_reversed = False
+    is_unique     = True
+    is_reversed   = False
+    same_reaction = False
+    back_reaction = False
 
     # get all md_species for this event
     mdspec = db((db.md_species.reventID == r)).select()
     if len(mdspec) > 0:
+
+        #
+        # extract ts, ed and pr for this reaction  
+        #  
+        ed_mol = None
+        pr_mol = None
+        ts_mol = None
 
         # Note: We have to sort the mdspecies to always match the same species in order
         #       to match them in the comparison
@@ -197,34 +209,40 @@ for r in revents:
             mol.addon("graph")
             mol.graph.make_comp_graph()
 
-            #
-            # compare with elements in unique_reaction list
-            #
+            if have_ts:
+                ts_mol = mol
+             
+            if have_ed:
+                ed_mol = mol
 
-            for ur in unique_reactions:
-
-                compare_data = unique_cmp_data[ur["unique_reventID"]]
-
-                if have_ts:
-                    same_ts = compare_species(compare_data["molgraph:ts"],compare_data["sumform:ts"],mol,same_ts)
-
-                if have_ed:
-                    same_ed = compare_species(compare_data["molgraph:ed"],compare_data["sumform:ed"],mol,same_ed)
-                    same_ed_pr = compare_species(compare_data["molgraph:pr"],compare_data["sumform:pr"],mol,same_ed_pr)
-
-                if have_pr:
-                    same_pr = compare_species(compare_data["molgraph:pr"],compare_data["sumform:pr"],mol,same_pr)
-                    same_pr_ed = compare_species(compare_data["molgraph:ed"],compare_data["sumform:ed"],mol,same_pr_ed)
+            if have_pr:
+                pr_mol = mol
 
 
-    # many boolean operations, which are probably not fast in python
-    same_reaction = (same_ts and same_pr and same_ed) 
-    back_reaction = (same_ts and same_pr_ed and same_ed_pr)
+        #
+        # compare with elements in unique_reaction list
+        #
+        for ur in reversed(unique_reactions):
 
-    is_reversed = back_reaction
+            urid = ur["unique_reventID"] 
+
+            compare_data = unique_cmp_data[urid]
+
+            same_ts    = compare_species(compare_data["molgraph:ts"],compare_data["sumform:ts"],ts_mol)
+            same_ed    = compare_species(compare_data["molgraph:ed"],compare_data["sumform:ed"],ed_mol)
+            same_ed_pr = compare_species(compare_data["molgraph:pr"],compare_data["sumform:pr"],ed_mol)
+            same_pr    = compare_species(compare_data["molgraph:pr"],compare_data["sumform:pr"],pr_mol)
+            same_pr_ed = compare_species(compare_data["molgraph:ed"],compare_data["sumform:ed"],pr_mol)
+
+            same_reaction = (same_ts and same_pr and same_ed) 
+            back_reaction = (same_ts and same_pr_ed and same_ed_pr)
+
+            if same_reaction or back_reaction:
+                break
 
     is_unique = not (same_reaction or back_reaction)
 
+    is_reversed = back_reaction
 
     if is_unique:
         unique_reactions.append(r)
