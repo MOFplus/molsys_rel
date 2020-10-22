@@ -189,7 +189,7 @@ def write(mol, f, fullcell = True, topoformat = "new"):
         if "topo" in mol.loaded_addons:
             for k in ["systrekey", "RCSRname", "spgr", "coord_seq",'transitivity']:
                 v = getattr(mol.topo, k)
-                if v is not "None":
+                if v != "None":
                     if type(v) == type([]):
                         topoinfo[k] = "|".join(v)
                     else:

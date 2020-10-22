@@ -122,7 +122,7 @@ class pdlpio2(mpiobject):
         #
         self.file_version = 1.2
         if self.fexists is True:
-            if self.mode is "ffe" or self.mode is "restart":
+            if self.mode == "ffe" or self.mode == "restart":
                 # this is an exisiting file and we are in ffe/restart mode and want to add data => make sure all is matching
                 if self.is_master:
                     file_version = self.h5file.attrs["version"]
@@ -130,7 +130,7 @@ class pdlpio2(mpiobject):
                     file_version = None
                 file_version = self.mpi_comm.bcast(file_version)  
                 assert self.file_version == file_version, "PDLP ERROR: Exisiting file has a different version! Can not add data"
-                if self.mode is "ffe":
+                if self.mode == "ffe":
                     # check the system if it contains the same molecule (we could be more clever here, but if the list of atomtypes is identical we should be safe)
                     # TBI mor consistent tests like paramters etc .. we could read the complete mol out and compare
                     self.compare_system()
@@ -271,7 +271,7 @@ class pdlpio2(mpiobject):
         assert OK, "PDLP ERROR: The system in the pdlp file is not equivalent to your actual system. Aborting!"
         return
 
-    def get_mol_from_system(self, vel=False):
+    def get_mol_from_system(self, vel=False, restart_ff=True):
         """ read mol info from system group and generate a mol object 
 
         in parallel this is done on the master only and the data is broadcasted to the other nodes
@@ -342,7 +342,7 @@ class pdlpio2(mpiobject):
         # start with ff
         ff_data = None
         if self.is_master:
-            if "ff" in list(system.keys()):
+            if ("ff" in list(system.keys())) and restart_ff:
                 # ok, there is force field data in this file lets read it in as a packed directory
                 ff_data = {}
                 ff = system["ff"]
