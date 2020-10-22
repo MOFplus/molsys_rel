@@ -19,9 +19,6 @@ import uuid
 #
 # TODO 
 #
-#  1) Make option to filter only reactions involving changes in the C-graph
-#      -> Do this by new make_graph (e.g. make_comp_graph) in molsys 
-#
 #  2) Needs more verification
 #
 ####################################################################################
@@ -67,7 +64,7 @@ def add_compare_data(comparer, mdspec):
 
     return
 
-def compare_species(species,sumforms,mol):
+def compare_species(species,sumforms,mols):
     """
 
     Compare species in unique reaction list with mol object
@@ -75,17 +72,18 @@ def compare_species(species,sumforms,mol):
     Args:
         - species  : list of the species 
         - sumforms : list of thim sum formula of th species 
-        - mol      : mol object to compare
+        - mols     : list of mol object to compare
     """
 
     check = False
     is_first = True
 
-    for sp,sp_sumform in zip(species,sumforms):
+    for sp,sp_sumform,mol in zip(species,sumforms,mols):
     
         is_same = (  sp_sumform == mol.get_sumformula() ) 
     
         if not is_same:
+            check = False
             break 
  
         is_equal, error_code = molsys.addon.graph.is_equal(mol.graph.molg, sp, use_fast_check=False)
@@ -188,9 +186,9 @@ for r in revents:
         #
         # extract ts, ed and pr for this reaction  
         #  
-        ed_mol = None
-        pr_mol = None
-        ts_mol = None
+        ed_mol = [] 
+        pr_mol = [] 
+        ts_mol = [] 
 
         # Note: We have to sort the mdspecies to always match the same species in order
         #       to match them in the comparison
@@ -210,13 +208,13 @@ for r in revents:
             mol.graph.make_comp_graph()
 
             if have_ts:
-                ts_mol = mol
+                ts_mol.append(mol)
              
             if have_ed:
-                ed_mol = mol
+                ed_mol.append(mol)
 
             if have_pr:
-                pr_mol = mol
+                pr_mol.append(mol)
 
 
         #
