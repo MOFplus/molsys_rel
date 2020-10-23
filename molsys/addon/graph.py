@@ -926,6 +926,14 @@ class graph(object):
 
                 if e1.shape[0] > 0 and e2.shape[0] > 0:
 
+                    # quick exist?
+                    vert1 = molg1.get_vertices()
+                    vert2 = molg2.get_vertices()
+
+                    if len(vert1) != len(vert2):
+                       is_equal = False
+                       return is_equal, error_code
+
                     is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,vertex_inv1=molg1.vp.type, vertex_inv2=molg2.vp.type,isomap=True)
 
                     ## Check if maping is correct
@@ -944,10 +952,14 @@ class graph(object):
                     vert1 = molg1.get_vertices()
                     vert2 = molg2.get_vertices()
 
+                    if len(vert1) != len(vert2):
+                       is_equal = False
+                       return is_equal, error_code
+
                     is_equal = True
 
                     for v1, v2 in zip(vert1,vert2):
-                        if v1 != v2:
+                        if molg1.vp.type[v1] != molg2.vp.type[v2]:
                             is_equal = False
                             break
 
