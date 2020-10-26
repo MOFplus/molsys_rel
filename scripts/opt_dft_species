@@ -150,14 +150,14 @@ for r in revents:
        fname, xyz = db.opt_species.xyz.retrieve(opt_spec.xyz)
        opt_xyz_path = xyz.name
        opt_mol = molsys.mol.from_file(opt_xyz_path, "xyz")
-       opt_mol.detect_conn()
+       opt_mol.detect_conn(thresh = 0.2)
        opt_mol.addon("graph")
        opt_mol.graph.make_graph()
 
        fname, mfpxf = db.md_species.mfpx.retrieve(md_spec.mfpx)
        md_mfpx_path = mfpxf.name
        md_mol = molsys.mol.from_file(md_mfpx_path, "mfpx")
-       md_mol.detect_conn()
+       md_mol.detect_conn(thresh = 0.2)
        md_mol.addon("graph")
        md_mol.graph.make_graph()
 
