@@ -420,6 +420,9 @@ class RDB:
                                        shape = "box")
             rgraph.add_node(new_node)
             rgnodes[m.id] = new_node
+
+        num_revents = 0
+
         # now loop over revents
         for (i, cur_revent) in enumerate(revents[1:]):
             if (stop is not None) and (cur_revent.frame > stop):
@@ -485,13 +488,19 @@ class RDB:
                 concts = self.db(self.db.react.to_rev == cur_revent).select()
                 for c in concts:
                     rgraph.add_edge(pydot.Edge(rgnodes[c.from_spec], rgnodes[c.to_spec], color="blue"))
+            num_revents += 1
         # done
         with tempfile.TemporaryDirectory() as tmpdir:
             cwd = os.curdir
             #os.chdir(tmpdir)
             rgraph.write_svg("rgraph.svg")
+            rgraph.write_png("rgraph.png")
             webbrowser.get(browser).open_new("rgraph.svg")
             #os.chdir(cwd)
+ 
+
+
+        print("Number of plotted events: " + str(num_revents))
         
     
 

@@ -1,0 +1,105 @@
+
+Some dependencies like graph_tool or openbabel are difficult to get installed properly.
+We found that conda provides a quick and easy way to get an environment to run molsys and
+pylmps/lammps. The drawback is that you are installing compilers and libraries separate from you
+underlying linux distro which can take a few GB of space. Not a real issue nowadays anymore.
+The advantage is that you still have your regular environment as well.
+
+however: lammps needs to be completely recompiled (new libs and compilers) and you need to use 
+this version within conda (and keep another one under your pillow)
+
+First download the Miniconda3-latest-Linux-x86_64.sh script from the Conda webpage and run it
+(no root needed)
+
+bash ~/Downloads/Miniconda3-latest-Linux-x86_64.sh
+-> restart shell
+conda config --set auto_activate_base false
+-> restart shell
+conda activate
+
+conda env create -f molsys.yml
+
+
+to compile lammps:
+##################
+for new_Sept2020 branch you need to add -std=c++11 to src/MAKE/Makefile.mpi 
+to the CCFLAGS (not conda related)
+
+h5md/hdf5
+#########
+For the pdlp dump (dump_pdlp.cpp/h) you need to have the proper settings for compiling and linking to libhdf5.
+As explained in the installation instructions (pylmps/README.md) you need to edit the Makefile.lammps in the 
+lib/h5md folder to contain the include and lib path for hdf5. Since conda brings its own libdf5 edti this file
+(it seems to work with the systems libhdf5 as well ... needs more testing but this is consistent)
+
+the two lines for include and lib path should look like this:
+(<username> is your username assuming that you installed your conda in /home/<username>/conda)
+
+h5md_SYSINC = -I/home/<username>/conda/envs/molsys/include
+h5md_SYSLIB = -L/home/<username>/conda/envs/molsys/lib -lhdf5
+
+colvars
+#######
+comment out line 
+# CXX =         g++
+in Makefile.g++ in the colvars dirctory (the $CXX is already set by conda!!)
+
+python
+######
+In order to build the python lib with python3.8 (conda) you need to add the flag --embed to python3-config
+You need to add it in lib/python/Makefile.lammps (best is to make copy with the extension .python3.8)
+in the second line (python_SYSLIB) after --ldflags. It then reads :
+
+python_SYSLIB = $(shell which python3-config > /dev/null 2>&1 && python3-config --ldflags --embed || (which python-config > /dev/null 2>&1 && python-config --ldflags || :))
+
+recompile
+#########
+Do not forget to active the molsys environment in order to use the conda python3.8 and the conda compilers and libs
+>>> conda activate molsys
+
+Follow the installation instructions and "make clean" first. 
+It is important to compile both m5md and colvars again before compiling the complete lammps
+
+
+in lib/h5md:
+>>> make -f Makefile.h5cc clean
+>>> make -f Makefile.h5cc
+
+in lib/colvars:
+>>> make -f Makefile.g++ clean
+>>> make -f Makefile.g++ clean
+
+(One more remark not conda related: after checking out the new lammps branch you need to reconfigure all packages!)
+in src:
+>>> make pu
+>>> make clean-all
+>>> make mode=shlib mpi
+
+That should be it. Let us know if things do not work for you.
+
+
+
+Here is the molsys.yml file (just copy into a correspondign file)
+###############################################################################################
+name: molsys
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python
+  - numpy
+  - scipy
+  - mpi4py
+  - h5py
+  - graph-tool
+  - openbabel
+  - xtb-python
+  - packmol
+  - gcc_linux-64
+  - gxx_linux-64
+  - gfortran_linux-64
+  - pip
+  - pip:
+     - pydal
+
+

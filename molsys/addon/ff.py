@@ -494,13 +494,13 @@ class ric:
         b2 = apex2-central2
         n1 = np.cross(b0,b1)
         n2 = np.cross(b1,b2)
-        try:
-            arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
-        except FloatingPointError as e:
-            if e.message == 'invalid value encountered in double_scalars':
-                arg = 0.0
-            else:
-                raise(e)
+        nn1 = np.linalg.norm(n1)
+        nn2 = np.linalg.norm(n2)
+        if (nn1 < 1.0e-13) or (nn2 < 1.0e-13):
+            arg = 0.0 
+            # TBI: this indicates a linear unit -> skip dihedral at al
+        else:
+            arg = -np.dot(n1,n2)/(nn1*nn2)
         if abs(1.0-arg) < 10**-14:
             arg = 1.0
         elif abs(1.0+arg) < 10**-14:
@@ -866,7 +866,7 @@ class ff(base):
             self.timer.start("fragment graph")
             self._mol.addon("fragments")
             self.fragments = self._mol.fragments
-            self.fragments.make_frag_graph()
+            self.fragments.make_frag_graph() 
             if plot:
                 self.fragments.plot_frag_graph(plot, ptype="png", vsize=20, fsize=20, size=1200)
             # create full atomistic graph
@@ -1187,7 +1187,7 @@ class ff(base):
             - ind(int): atom index
         """
         parind = self.parind["cha"]
-        fitdat = {"fixed":{}, "equivs": {}, "parnames": []}
+        fitdat = {"fixed":{}, "equivs": {}, "parnames": [], "qtot": 0.0}
         ### first gather already assigned charges and dump them to fitdat["fixed"]
         for i,p in enumerate(parind):
             fitdat["parnames"].append(p[0])
@@ -1334,12 +1334,12 @@ class ff(base):
                         raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
                     par_ij = (pot,[A,B,C])    
                 # all combinations are symmetric .. store pairs bith ways
-                self.vdwdata[types[i]+":"+types[j]] = par_ij
+                self.vdwdata[types[i]+":"+types[j]] = par_ij 
                 self.vdwdata[types[j]+":"+types[i]] = par_ij   
 
                 self.chadata[types[i]+":"+types[j]] = par_ij
-                self.chadata[types[j]+":"+types[i]] = par_ij  
-        #import pdb; pdb.set_trace()
+                self.chadata[types[j]+":"+types[i]] = par_ij          
+                #import pdb; pdb.set_trace()
         self.pair_potentials_initalized = True
         return
 
@@ -2072,6 +2072,8 @@ class ff(base):
         systems with variables can not be packed
 
         TODO: currently we only handle the ring attribute, needs to be more general if other attributes will be used in the future
+
+        TBI: we need to pack vdwpr and chapr
         """
         #assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
         if hasattr(self.par, 'variables'): return {}

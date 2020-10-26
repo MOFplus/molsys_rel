@@ -576,7 +576,7 @@ class mol(mpiobject):
             self.write(_tmpfname, ftype=ftype, **kwargs)
             if program is None:
                 program = "moldenx"
-            if opts is () and program == "moldenx":
+            if opts == () and program == "moldenx":
                 opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
             try:
                 ret = subprocess.call([program, _tmpfname] + list(opts))
@@ -591,7 +591,7 @@ class mol(mpiobject):
         return
 
     def molden(self, opts=(), **kwargs):
-        if opts is ():
+        if opts == ():
             opts = ('-a', '-l', '-S', '-hoff', '-geom', '1080x1080')
         if self.mpi_rank == 0:
             self.view(ftype='txyz', program='moldenx', opts=opts, **kwargs)
