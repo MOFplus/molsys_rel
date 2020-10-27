@@ -66,6 +66,7 @@ class RDB:
 
         dbstruc["species"] = [
             "s:sumform",      # sum formula
+            "s:smiles",       # smiles
             "u:molgraph",     # holds the molecular graph 
         ]
 
@@ -281,6 +282,20 @@ class RDB:
             foffset     = foff,
             tracked     = tracked,
             mfpx        = self.db.md_species.mfpx.store(mfpxf, fname)
+        )
+        if self.do_commit:
+            self.db.commit()
+        return specID
+
+    def add_species(self, mol):
+        # generate smiles
+        mol.addon("obabel")
+        smiles = mol.obabel.cansmiles
+        sumform = mol.get_sumformula()
+        # register in the database
+        specID = self.db.md_species.insert(
+            sumform     = sumform,
+            smiles      = smiles
         )
         if self.do_commit:
             self.db.commit()
