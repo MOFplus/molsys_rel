@@ -55,6 +55,42 @@ class RDB:
 
         # GS: Note maybe obvious, but as reminder for references the order in dbstruc matters
         dbstruc = OrderedDict()
+        #
+        # reaction space 
+        # 
+        dbstruc["reactions"] = [
+            "b:uni",          # true if unimolecular
+            "b:change",       # change in graph for educt and products (used for screening)
+            "s:source",       # information on where this reactions comes from
+        ]
+
+        dbstruc["species"] = [
+            "s:sumform",      # sum formula
+            "u:molgraph",     # holds the molecular graph 
+        ]
+
+        dbstruc["reac2spec"] = [
+            "r:reactions",   # reference to the reactions table
+            "r:species",     # reference to educt in species table
+            "i:type",        # type (-1 educt, 0 TS, 1 product)            
+        ]
+
+        dbstruc["lot"] = [
+            "s:name"          # level of theory
+        ]
+        dbstruc["opt_species"] = [
+            "r:species",      # reference to species table 
+            "r:lot",          # ref to lot
+            "d:energy",       # energy (in kcal/mol)
+            "u:xyz",          # upload xyz file
+            "u:png",          # thumbnail
+        ]
+        
+
+        #
+        # MD space 
+        #
+ 
         dbstruc["md"] = [       
             "s:path",         # filename of the pdlp file
             "s:stage",        # name of the stage
@@ -63,18 +99,9 @@ class RDB:
             "d:temp"          # temperature in Kelvin
         ]         # TBI !!! add more info here ... this is is just for testing
                   #         username, datetime, method, .... more
-        dbstruc["unique_revent"] = [
-            "b:uni",          # true if unimolecular
-            "b:change",       # change in graph for educt and products (used for screening)
-            "i:frame",        # frame number
-            "li:ed",          # educt species (sorted)
-            "li:ts",          # transition state species
-            "li:pr",          # product species
-            "i:tr_ed",        # number of traced educt species
-            "i:tr_pr",        # number of traced product species
-        ]
+
         dbstruc["revent"] = [
-            "r:unique_revent",# ref to table unique_revent
+            "r:reactions",    # ref to table unique_revent
             "b:reversed",     # is it the back reaction in unique_revent?
             "r:md",           # ref to table md
             "b:uni",          # true if unimolecular
@@ -96,16 +123,7 @@ class RDB:
             "u:mfpx",         # upload mfpx file
             "b:tracked",      # is tracked?
             "u:png",          # thumbnail
-        ]
-        dbstruc["lot"] = [
-            "s:name"          # level of theory
-        ]
-        dbstruc["opt_species"] = [
-            "r:md_species",   # ref to md_species
-            "r:lot",          # ref to lot
-            "d:energy",       # energy (in kcal/mol)
-            "u:xyz",          # upload xyz file
-            "u:png",          # thumbnail
+            "b:react_compl",  # is this a reactive complex
         ]
         dbstruc["react"] = [
             "r:revent:from_rev",        # source reaction event ref
@@ -341,7 +359,7 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, mdspecID):
+    def add_opt_species(self, mol, lot, energy, specID):
         """add an optimized structure to the DB
         
         Args:
@@ -354,7 +372,7 @@ class RDB:
             lot = self.get_lot(lot)
         xyzf = io.BytesIO(bytes(mol.to_string(ftype="xyz"), "utf-8"))
         optID = self.db.opt_species.insert(
-            md_speciesID = mdspecID,
+            speciesID = specID,
             lotID        = lot,
             energy       = energy,
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz")
