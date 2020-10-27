@@ -352,66 +352,57 @@ class GeometryTools:
 
 class Mol:
 
-    def __init__(self, mol):
-        # The element symbols
-        self.symbol = ['H', 'He', 'C', 'N', 'O', 'F', 'Ne', 'S', 'Cl', 'Ar']
+    def __init__(self):
         # The dictionary of number of electrons
         self.nelectrons = {'H':1,'He':2, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10, 'S':16, 'Cl':17, 'Ar':18}
-        # The dictionary of atomic m<F2>asses in a.u. 
-        self.mass = {'H':1.0079,'He':4.0026, 'C':12.0107, 'N':14.0067, 'O':15.9994, 'F':18.9984, 'Ne':20.1797, 'S':32.065, 'Cl':35.453, 'Ar':39.948}
-        # Molecular Mass
-        self.MM = 0
-        # Number of electrons
-        self.nel = 0
-        # The formula of the molecule. e.g. for methane CH4
-        self.formula = ''
-        self.types = []
-        self.elems = []
-        for el in mol.elems:
-            self.elems.append(el.capitalize())
-            if el.capitalize() not in self.types:
-                self.types.append(el.capitalize())
         return
 
-    def make_formula(self):
-        """ Sorts the types alphabetically and counts for the number of each element type and write a formula. """
-        for t in self.types:
-            amount = self.elems.count(t)
-            if amount != 1: 
-                self.formula += t+str(amount)
-            else: 
-                self.formula += t
-        return self.formula
-
-    def count_number_of_electrons(self, charge=0):
+    def count_number_of_electrons(self, mol, charge=0):
         """ Counts the number of electrons. """
+        nel = 0
         ### count the number of electrons in the system ###
-        for t in self.types:
-           amount = self.elems.count(t)
-           self.nel += self.nelectrons[t]*amount
+        for t in set(mol.elems):
+           amount = mol.elems.count(t)
+           nel += self.nelectrons[t.capitalize()]*amount
         ### account for the charge of the molecule ###
-        self.nel -= charge
-        return self.nel
+        nel -= charge
+        return nel
 
-    def molecular_mass(self, mol):
-        """ Calculates the molecular mass in a.u. """
-        self.MM = 0
-        for t in self.types:
-           amount = self.elems.count(t)
-           self.MM += self.mass[t]*amount
-        return self.MM
-
-    def make_molecular_graph(self, mol):
+    def make_molecular_graph(self, mol, thresh = 0.2):
         # if the connectivity information not defined before, detect it.
         if not any(mol.conn):
-            mol.detect_conn()
+            mol.detect_conn(thresh)
         print(mol.conn)
         mol.addon("graph")
         mol.graph.make_graph()
         self.mg = mol.graph.molg
         return self.mg
 
+    def separate_molecules(self, mol, thresh = 0.2):
+       """Returns a dictionary of mol objects."""
+       mg = self.make_molecular_graph(mol)
+       # label the components of the molecular graph to which each vertex in the the graph belongs
+       labels = label_components(mg)[0].a.tolist()
+       # number of molecules
+       n_mols = len(set(labels))
+       # now create mol objects with the separated molecules
+       mols = []
+       for i in set(labels):
+           n_atoms = labels.count(i)
+           mol_str = '%d\n\n' %n_atoms
+           counter = 0
+           for j,label in enumerate(labels):
+               if i == label:
+                   mol_str += '%s %5.10f %5.10f %5.10f' %(mol.elems[j], mol.xyz[j,0], mol.xyz[j,1], mol.xyz[j,2])
+                   counter += 1
+                   if counter != n_atoms:
+                       mol_str += '\n'
+           mol_tmp = molsys.mol.from_string(mol_str, 'xyz')
+           mol_tmp.detect_conn(thresh)
+           mols.append[mol_tmp]
+       return mols
 
+ 
 class SubmissionTools:
     """Performs submission of the jobs."""
     def __init__(self, path=os.getcwd()):
@@ -500,27 +491,26 @@ class SubmissionTools:
         return inum, imfreq
 
     def jobex(self, ts=False):
-        maindir = os.getcwd()
-        os.chdir(self.path)
         if ts:
             os.system("jobex -ri -trans > jobex.out")
         else:
             os.system("jobex -ri > jobex.out")
-        os.chdir(maindir)
         return
 
     def aoforce(self):
-        maindir = os.getcwd()
-        os.chdir(self.path)
         os.system("aoforce > aoforce.out")
         os.remove("dh")
-        os.chdir(maindir)
         return
 
-    def common_workflow(self, active_atoms, max_mem, md_mfpx_path, lot_DFT):
-        mol = molsys.mol.from_file(md_mfpx_path, "mfpx")
+    def IRC(self):
+        os.system("DRC -i -c 150 > IRC.out")
+        return
+
+
+    def common_workflow(self, active_atoms, max_mem, ref_struc_path, lot_DFT):
+        mol = molsys.mol.from_file(ref_struc_path, ref_struc_path.split('.')[-1])
         """determines the orbital occupations before through Fermi smearing."""
-        nel = Mol(mol).count_number_of_electrons()
+        nel = Mol().count_number_of_electrons(mol = mol, charge = 0)
         if (nel % 2) == 0:
             M_start = 3
         else:
@@ -533,7 +523,7 @@ class SubmissionTools:
                 new_xyz, 
                 M_start, 
                 max_mem, 
-                md_mfpx_path, 
+                ref_struc_path,
                 lot_DFT)
         GT.run_tmole()
         # Remove the data group $fermi from the control file
@@ -546,9 +536,98 @@ class SubmissionTools:
             atom = True
             GT.check_dscf_converged()
             os.system("touch found")
-        return atom 
+        return atom
 
-    def transition_state_workflow(self, active_atoms):
+
+    def find_end_points_from_IRC(self):
+        path_minus = os.path.join(self.path, 'displaced_minus') 
+        path_plus  = os.path.join(self.path, 'displaced_plus')
+
+        os.system("t2x %s/coord > %s/coord.xyz" %(path_minus, path_minus))
+        mol_minus =  molsys.mol.from_file('%s/coord.xyz' %path_minus,'xyz')
+        mol_minus.detect_conn(thresh = 0.2)
+        mols_minus = Mol().separate_molecules(mol_minus)
+
+        os.system("t2x %s/coord > %s/coord.xyz" %(path_plus, path_plus))
+        mol_plus =  molsys.mol.from_file('%s/coord.xyz' %path_plus,'xyz')
+        mol_plus.detect_conn(thresh = 0.2)
+        mols_plus = Mol().separate_molecules(mol_plus)
+
+        return mols_minus, mols_plus
+
+
+    def check_end_points(self, mols_minus, mols_plus, path_ref_educts, path_ref_products):
+        """
+        Compares the molecular graphs of the output of the IRC calculation to those of reference structures.
+        mols_minus        : List of mol objects created by separating the molecules from IRC output, displaced_minus
+        mols_plus         : List of mol objects created by separating the molecules from IRC output, displaced_plus
+        path_ref_educts   : List of path of the reference educts   (e.g. from ReaxFF optimized structures)
+        path_ref_products : List of path of the reference products (e.g. from ReaxFF optimized structures)
+        """
+        is_similar = False
+        n_mol_minus  = len(mols_minus)
+        n_mol_plus   = len(mols_plus)
+        n_mol_educts = len(path_ref_educts)
+        n_mol_products = len(path_ref_products)
+        if (n_mol_minus == n_mol_educts and n_mol_plus == n_mol_products) or (n_mol_minus == n_mol_products and n_mol_plus == n_mol_educts):
+            educt_minus_is_similar = True
+            educt_plus_is_similar = True
+            for ed in path_ref_educts:
+                mol_ed   = molsys.mol.from_file(path_ref_educts)
+                mg_ed = Mol().make_molecular_graph(mol_ed)
+
+                educt_minus_tmp = False
+                for mol_minus in mols_minus:
+                    mg_minus  = Mol().make_molecular_graph(mol_minus)
+                    is_equal = molsys.addon.graph.is_equal(mg_ed, mg_min, use_fast_check=False)
+                    if is_equal: 
+                        educt_minus_tmp = educt_minus_tmp or True
+                    else:
+                        educt_minus_tmp = educt_minus_tmp or False
+                educt_minus_is_similar = educt_minus_is_similar and educt_minus_tmp
+
+                educt_plus_tmp  = False
+                for mol_plus in mols_plus:
+                    mg_plus = Mol().make_molecular_graph(mol_plus)
+                    is_equal = molsys.addon.graph.is_equal(mg_ed, mg_plus, use_fast_check=False)
+                    if is_equal: 
+                        educt_plus_tmp = educt_plus_tmp or True
+                    else:
+                        educt_plus_tmp = educt_plus_tmp or False
+                educt_plus_is_similar = educt_plus_is_similar and educt_plus_tmp
+
+            prod_minus_is_similar = True
+            prod_plus_is_similar = True                       
+            for prod in path_ref_products:
+                mol_prod = molsys.mol.from_file(path_ref_products)
+                mg_prod = Mol().make_molecular_graph(mol_ed)
+
+                product_minus_tmp = False
+                for mol_minus in mols_minus:
+                    mg_min  = Mol().make_molecular_graph(mol_minus)
+                    is_equal = molsys.addon.graph.is_equal(mg_prod, mg_min, use_fast_check=False)
+                    if is_equal: 
+                        product_minus_tmp = product_minus_tmp or True
+                    else:
+                        product_minus_tmp = product_minus_tmp or False
+                prod_minus_is_similar = prod_minus_is_similar and product_minus_tmp
+
+                product_plus_tmp  = False
+                for mol_plus in mols_plus:
+                    mg_plus = Mol().make_molecular_graph(mol_plus)
+                    is_equal = molsys.addon.graph.is_equal(mg_prod, mg_plus, use_fast_check=False)
+                    if is_equal: 
+                        product_plus_tmp = product_plus_tmp or True
+                    else:
+                        product_plus_tmp = product_plus_tmp or False
+                product_plus_is_similar = product_plus_is_similar and product_plus_tmp
+            if (educt_minus_is_similar and prod_plus_is_similar) or (educt_plus_is_similar and prod_minus_is_similar):
+                is_similar = True
+            else:
+                print("This transition state do not connect the corresponding educts and products.")
+        return is_similar
+
+    def transition_state_workflow(self, active_atoms, path_ref_educts, path_ref_products):
         found = False
         self._freeze_atoms(active_atoms)
         self.jobex()
@@ -587,8 +666,11 @@ class SubmissionTools:
                 else:
                    self.aoforce()
                    inum, imfreq = self.check_imaginary_frequency()
-#                   if inum == 1: 
-
+                   if inum == 1: 
+                       print("There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.")
+                       self.IRC()
+                       mols_minus, mols_plus = self.find_end_points_from_IRC()
+                       found = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
         return found
 
     def minima_workflow(self):
@@ -624,8 +706,7 @@ class SubmissionTools:
             found = self.minima_workflow()
         return found
 
-    def write_submit_py(self, foffset, active_atoms, max_mem, md_mfpx_path, lot_DFT):
-        active_atoms_string = ','.join([str(atom) for atom in active_atoms])
+    def write_submit_py(self, foffset, active_atoms, max_mem, ref_struc_path, lot_DFT, path_ref_educts = [], path_ref_products = []):
         f_path = os.path.join(self.path,"submit.py")
         f = open(f_path,"a")
         f.write("import os\n")
@@ -633,13 +714,13 @@ class SubmissionTools:
         f.write("from molsys.util import turbomole\n")
         f.write("# Submission Tools\n")
         f.write("ST = turbomole.SubmissionTools()\n")
-        f.write("atom = ST.common_workflow(active_atoms = [%s],\n"% active_atoms_string )
+        f.write("atom = ST.common_workflow(active_atoms = %s,\n"% str(active_atoms) )
         f.write("                   max_mem = %d,\n" % max_mem)
-        f.write("                   md_mfpx_path = '%s',\n" % md_mfpx_path)
+        f.write("                   ref_struc_path = '%s',\n" % ref_struc_path)
         f.write("                   lot_DFT = '%s')\n" % lot_DFT)
         f.write("if not atom:\n")
         if foffset == 0:
-            f.write("    found = ST.transition_state_workflow([%s])\n" % active_atoms_string)
+            f.write("    found = ST.transition_state_workflow(%s, %s, %s)\n" % (str(active_atoms), str(path_ref_educts), str(path_ref_products)))
         else:
             f.write("    found = ST.minima_workflow()\n")
         f.write("    if found:\n")

@@ -113,6 +113,8 @@ f_ZPE_dict = {'tpss/SVP':1.0019,'b3-lyp/SVP':0.9912, 'pbe0/SVP':0.9817, 'pbe/SVP
 # Open the database
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
+lotID = rdb.get_lot("ReaxFF")
+
 
 # Get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
 db = rdb.db
@@ -131,6 +133,20 @@ for r in revents:
     # just get the first revent of this unique revent class
     cur_event = db(db.revent.unique_reventID == r).select().first()
     md_specs = db((db.md_species.reventID == cur_event)).select()
+    educts = db((db.md_species.reventID == cur_event) & (db.md_species.foffset == -1)).select()
+    products = db((db.md_species.reventID == cur_event) & (db.md_species.foffset == 1)).select()
+
+    path_ref_educts = []
+    for ed in educts:
+        opt_ed = db((db.opt_species.md_speciesID == ed.id) & (db.opt_species.lotID == lotID)).select().first()
+        fname, xyz = db.opt_species.xyz.retrieve(opt_ed.xyz)
+        path_ref_educts.append(xyz.name)
+
+    path_ref_products = []
+    for prod in products:
+        opt_prod = db((db.opt_species.md_speciesID == prod.id) & (db.opt_species.lotID == lotID)).select().first()
+        fname, xyz = db.opt_species.xyz.retrieve(opt_prod.xyz)
+        path_ref_products.append(xyz.name)
 
     for md_spec in md_specs:
        # set up the active atoms which whose internal coordinates will be 
@@ -145,7 +161,6 @@ for r in revents:
 
  
        # get the directory of the coordinates file of the MD species
-       lotID = rdb.get_lot("ReaxFF")
        opt_spec = db((db.opt_species.md_speciesID == md_spec.id) & (db.opt_species.lotID == lotID)).select().first()
        fname, xyz = db.opt_species.xyz.retrieve(opt_spec.xyz)
        opt_xyz_path = xyz.name
@@ -161,6 +176,8 @@ for r in revents:
        md_mol.addon("graph")
        md_mol.graph.make_graph()
 
+       ref_struc_path = opt_xyz_path
+
        equal =  molsys.addon.graph.is_equal(md_mol.graph.molg, opt_mol.graph.molg, use_fast_check=False)
        if not equal[0]:
            neq += 1
@@ -172,103 +189,119 @@ for r in revents:
                    opt_dist = numpy.sqrt(numpy.square(opt_mol.xyz[i] - opt_mol.xyz[j]).sum())
                    RMSD_sum += numpy.square(md_dist-opt_dist)
            RMSD = numpy.sqrt(RMSD_sum/len(md_mol.conn))
-           print(RMSD, md_mol.conn, opt_mol.conn)
+#           print(RMSD, md_mol.conn, opt_mol.conn)
            graphchange[RMSD] = '%s\n%s' %(md_mfpx_path,opt_xyz_path)
 
-f = open('md_opt_graph_change','w')
-for sd in sorted(graphchange):
-    f.write('%f\n%s\n\n\n' %(sd, graphchange[sd]))
-f.close()
-print(neq)
 
-####================================ modified up to here.
-###   
-###   
-###    
-###       # Create the subdirectory for the DFT calculation
-###       subdir_name = '%05d' % md_spec.id
-###       dft_subdir_path = os.path.join(dft_path, subdir_name)
-###       if not os.path.isdir(dft_subdir_path):
-###           os.mkdir(dft_subdir_path)
-###       else:
-###           sys.exit('The directory %s already exists' % dft_subdir_path)
-###   
-###       
-###       #--------------- MAIN ------------------#
-###       # Submission Tools
-###       ST = turbomole.SubmissionTools(dft_subdir_path)
-###       
-###       if submit:
-###           ST.write_submit_py(foffset, active_atoms, max_mem, md_mfpx_path, lot_DFT)
-###           while ncurjobs == max_njobs:
-###               time.sleep(30)
-###               ncurjobs = get_ncurjobs(jobids)
-###               print("Inside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)                                     
-###           os.chdir(dft_subdir_path)
-###           sbatchout = os.popen("sbatch -J spec%d %s" %(md_spec.id, os.path.join(dft_path,"submit.sh"))).read()
-###           os.chdir(dft_path)
-###           jobids.append(sbatchout.split()[3])
-###           ncurjobs = get_ncurjobs(jobids)
-###           print("Outside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)              
-###       else:
-###           atom = ST.common_workflow(active_atoms, max_mem, md_mfpx_path, lot_DFT)
-###           if not atom:
-###              if foffset == 0:
-###                  found = ST.transition_state_workflow(active_atoms)
-###              else:
-###                  found = ST.minima_workflow()
-###           if found:
-###               os.system("touch found")
-###           else:
-###               os.system("touch notfound")
-###
-####for r in rows:
-####    if r.id not in similar_dict:
-####        fname = "%s/storage/xyz/%s" %(db_path,r.xyz)
-####        subdir_name = '%05d' % r.id
-####        dft_subdir_path = os.path.join(dft_path, subdir_name)
-####        found = os.path.join(dft_subdir_path,"found")
-####        notfound = os.path.join(dft_subdir_path,"notfound")
-####        while not (os.path.isfile(found) or os.path.isfile(notfound)):
-####            time.sleep(10)
-####
-####if found:
-####    final_energy = turbomole.Harvest(dft_subdir_path).get_energy(f_ZPE_dict[lot_DFT])
-####    opt_mol = GT.coord_to_mol()
-####    rdb.add_opt_species(opt_mol, lot_DFT, final_energy, md_spec.id)
-###
-###
-####rows = db((db.md_species.energy == 0.0) & (db.md_species.foffset != 0)).select()
-####
-####lot = rdb.get_lot("ReaxFF")
-####
-####for r in rows:
-####    print ("retreive species %d (type %d) from reaction event %d" % (r.spec, r.foffset, r.reventID))
-####    print (r.smiles)
-####    # get mol object from DB
-####    fname, mfpxf = db.md_species.mfpx.retrieve(r.mfpx)
-####    mfpxs = mfpxf.read().decode('utf-8')
-####    mfpxf.close()
-####    mol = molsys.mol.from_string(mfpxs)
-####    # setup lammps and minimize with reax
-####    pl = pylmps.pylmps("reax")
-####    pl.setup(mol = mol, local=True, ff="ReaxFF")
-####    init_energy = pl.calc_energy()
-####    final_energy = pl.MIN(0.01)
-####    print ("\n\n#####################################")
-####    print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
-####    print ("########################################\n\n")
-####    # store these results to the DB
-####    # first update coords and get mol object back from lammps
-####    pl.update_mol()
-####    opt_mol = pl.mol
-####    # update the energy value
-####    r.update_record(energy=init_energy)
-####    rdb.add_opt_species(opt_mol, lot, final_energy, r.id)
-####    pl.end()
-####
-####
-####
-####
-####
-####
+
+#================================ modified up to here.
+  
+   
+    
+       # Create the subdirectory for the DFT calculation
+       subdir_name = '%05d' % opt_spec.id
+       dft_subdir_path = os.path.join(dft_path, subdir_name)
+       if not os.path.isdir(dft_subdir_path):
+           os.mkdir(dft_subdir_path)
+       else:
+           sys.exit('The directory %s already exists' % dft_subdir_path)
+   
+       
+       #--------------- MAIN ------------------#
+       # Submission Tools
+       ST = turbomole.SubmissionTools(dft_subdir_path)
+       
+       if submit:
+           if foffset == 0:
+               ST.write_submit_py(foffset, active_atoms, max_mem, ref_struc_path, lot_DFT, path_ref_educts, path_ref_products)
+           else:
+               ST.write_submit_py(foffset, active_atoms, max_mem, ref_struc_path, lot_DFT)
+
+           # Only submit jobs according to the requested amound of nodes
+           while ncurjobs == max_njobs:
+               time.sleep(30)
+               ncurjobs = get_ncurjobs(jobids)
+               print("Inside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)                                     
+           os.chdir(dft_subdir_path)
+           sbatchout = os.popen("sbatch -J spec%d %s" %(md_spec.id, os.path.join(dft_path,"submit.sh"))).read()
+           os.chdir(dft_path)
+           jobids.append(sbatchout.split()[3])
+           ncurjobs = get_ncurjobs(jobids)
+           print("Outside the while loop:","jobids=", jobids, "ncurjobs=", ncurjobs, "njobs_per_node=", max_njobs)              
+       else:
+           atom = ST.common_workflow(active_atoms, max_mem, ref_struc_path, lot_DFT)
+           if not atom:
+              if foffset == 0:
+                  found = ST.transition_state_workflow(active_atoms, path_ref_educts, path_ref_products)
+              else:
+                  found = ST.minima_workflow()
+           if found:
+               os.system("touch found")
+           else:
+               os.system("touch notfound")
+
+
+
+
+
+
+
+
+
+
+
+## 
+## for r in rows:
+##     if r.id not in similar_dict:
+##         fname = "%s/storage/xyz/%s" %(db_path,r.xyz)
+##         subdir_name = '%05d' % r.id
+##         dft_subdir_path = os.path.join(dft_path, subdir_name)
+##         found = os.path.join(dft_subdir_path,"found")
+##         notfound = os.path.join(dft_subdir_path,"notfound")
+##         while not (os.path.isfile(found) or os.path.isfile(notfound)):
+##             time.sleep(10)
+## 
+## if found:
+##     final_energy = turbomole.Harvest(dft_subdir_path).get_energy(f_ZPE_dict[lot_DFT])
+##     opt_mol = GT.coord_to_mol()
+##     rdb.add_opt_species(opt_mol, lot_DFT, final_energy, md_spec.id)
+## 
+## 
+## rows = db((db.md_species.energy == 0.0) & (db.md_species.foffset != 0)).select()
+## 
+## lot = rdb.get_lot("ReaxFF")
+## 
+## for r in rows:
+##     print ("retreive species %d (type %d) from reaction event %d" % (r.spec, r.foffset, r.reventID))
+##     print (r.smiles)
+##     # get mol object from DB
+##     fname, mfpxf = db.md_species.mfpx.retrieve(r.mfpx)
+##     mfpxs = mfpxf.read().decode('utf-8')
+##     mfpxf.close()
+##     mol = molsys.mol.from_string(mfpxs)
+##     # setup lammps and minimize with reax
+##     pl = pylmps.pylmps("reax")
+##     pl.setup(mol = mol, local=True, ff="ReaxFF")
+##     init_energy = pl.calc_energy()
+##     final_energy = pl.MIN(0.01)
+##     print ("\n\n#####################################")
+##     print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
+##     print ("########################################\n\n")
+##     # store these results to the DB
+##     # first update coords and get mol object back from lammps
+##     pl.update_mol()
+##     opt_mol = pl.mol
+##     # update the energy value
+##     r.update_record(energy=init_energy)
+##     rdb.add_opt_species(opt_mol, lot, final_energy, r.id)
+##     pl.end()
+##  
+## 
+## 
+## 
+##f = open('md_opt_graph_change','w')
+##for sd in sorted(graphchange):
+##    f.write('%f\n%s\n\n\n' %(sd, graphchange[sd]))
+##f.close()
+##print(neq)
+##
