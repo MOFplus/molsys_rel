@@ -5,7 +5,6 @@
 
 """
 
-#import pylmps
 import molsys
 import sys
 import os
@@ -282,15 +281,15 @@ for r in revents:
         for ed in ed_mol:
            specid = rdb.add_species(ed)
            rdb.add_reac2spec(reactID,specid,-1)
-           rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid)
+           rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="")
         for pr in pr_mol:
            specid = rdb.add_species(pr)
            rdb.add_reac2spec(reactID,specid, 1) 
-           rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid)
+           rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="")
         for ts in ts_mol:
            specid = rdb.add_species(ts)
            rdb.add_reac2spec(reactID,specid, 0) 
-           rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid)
+           rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="")
 
         # Update reaction event
         r.update_record(reactionsID=reactID)
