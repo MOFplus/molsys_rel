@@ -224,17 +224,12 @@ class RDB:
         print (type(id))
         return id
     
-    def register_unique_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, uni=False, change=True):
+    def register_reaction(self, uni=False, change=True, source="fromMD"):
 
-        reventID = self.db.unique_revent.insert(
+        reventID = self.db.reactions.insert(
             uni        = uni,
             change     = change,
-            frame      = frame,
-            ed         = ed,
-            ts         = ts,
-            pr         = pr,
-            tr_ed      = tr_ed,
-            tr_pr      = tr_pr
+            source     = source,
         )
 
         if self.do_commit:
@@ -296,6 +291,17 @@ class RDB:
         specID = self.db.md_species.insert(
             sumform     = sumform,
             smiles      = smiles
+        )
+        if self.do_commit:
+            self.db.commit()
+        return specID
+
+    def add_reac2spec(self, reactID,specID,itype):
+        # register in the database
+        reac2specMD = self.db.reac2spec.insert(
+            reactions   = reactID,
+            species     = specID,
+            type        = itype
         )
         if self.do_commit:
             self.db.commit()
