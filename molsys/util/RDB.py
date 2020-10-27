@@ -73,7 +73,7 @@ class RDB:
         dbstruc["reac2spec"] = [
             "r:reactions",   # reference to the reactions table
             "r:species",     # reference to educt in species table
-            "i:type",        # type (-1 educt, 0 TS, 1 product)            
+            "i:label",       # type (-1 educt, 0 TS, 1 product)            
         ]
 
         dbstruc["lot"] = [
@@ -221,7 +221,6 @@ class RDB:
             id = self.db.lot.insert(name=lot)
         else:
             id = row.id
-        print (type(id))
         return id
     
     def register_reaction(self, uni=False, change=True, source="fromMD"):
@@ -288,7 +287,7 @@ class RDB:
         smiles = mol.obabel.cansmiles
         sumform = mol.get_sumformula()
         # register in the database
-        specID = self.db.md_species.insert(
+        specID = self.db.species.insert(
             sumform     = sumform,
             smiles      = smiles
         )
@@ -296,16 +295,16 @@ class RDB:
             self.db.commit()
         return specID
 
-    def add_reac2spec(self, reactID,specID,itype):
+    def add_reac2spec(self, reactID, specID, itype):
         # register in the database
-        reac2specMD = self.db.reac2spec.insert(
-            reactions   = reactID,
-            species     = specID,
-            type        = itype
+        reac2specID = self.db.reac2spec.insert(
+            reactionsID = reactID,
+            speciesID   = specID,
+            label       = itype
         )
         if self.do_commit:
             self.db.commit()
-        return specID
+        return reac2specID
 
     # TBI .. this is really stupid because we have to get revent for each species .. for DEBUG ok
     #        but merge these methods and make it more clever
