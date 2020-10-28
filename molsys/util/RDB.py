@@ -443,33 +443,22 @@ class RDB:
         if start is None:
             start = -1
 
-        if only_unique_reactions:
-            revents = self.db((self.db.reactions)).select()
-        else:
-            revents = self.db((self.db.revent.mdID == self.current_md) & \
-                              (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
+        already_visited = {}
+
+        revents = self.db((self.db.revent.mdID == self.current_md) & \
+                          (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
 
 
         rgraph = pydot.Dot(graph_type="digraph")
         rgnodes = {} # store all generated nodes by their md_speciesID
         # start up with products of first event
         cur_revent = revents[0]
-        if only_unique_reactions:
-            # Find a reaction event of this reaction class
-            reventID = self.db(self.db.revent.reactionsID == cur_revent).select()[0]
 
-            mds = self.db((self.db.md_species.reventID == reventID) & \
-                          (self.db.md_species.foffset == 1)).select()
-
-        else:
-            mds = self.db((self.db.md_species.reventID == cur_revent) & \
-                          (self.db.md_species.foffset == 1)).select()
+        mds = self.db((self.db.md_species.reventID == cur_revent) & \
+                      (self.db.md_species.foffset == 1)).select()
            
         for m in mds:
-            if only_unique_reactions:
-               frame =  reventID.frame
-            else:
-               frame = cur_revent.frame
+            frame = cur_revent.frame
             new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),
                                        image = img_path+m.png,
                                        label = "",
@@ -488,35 +477,30 @@ class RDB:
             prod = []
             if only_unique_reactions:
 
-                if not cur_revent["change"]:
-                    continue
-
-                reventIDs = self.db(self.db.revent.reactionsID == cur_revent).select()
-
-                if len(reventIDs) > 0:
-                    reventID = reventIDs[0]
+                reactID = cur_revent["reactionsID"]
+ 
+                if reactID in already_visited:
+                   continue
                 else:
-                    #GS TODO this is a quick hack to make it run through. There is something fishy here
+                   already_visited[reactID] = True
+
+                reactions = self.db((self.db.reactions.id == reactID)).select().first()
+
+                if not reactions["change"]:
                     continue
 
-                mds = self.db((self.db.md_species.reventID == reventID)).select()
-            else:
-                mds = self.db((self.db.md_species.reventID == cur_revent)).select()
+            mds = self.db((self.db.md_species.reventID == cur_revent) & (self.db.md_species.react_compl == False)  ).select()
 
             for m in mds:
-                if only_unique_reactions:
-                   frame =  reventID.frame
-                else:
-                   frame = cur_revent.frame
                 if m.foffset == -1:
-                    new_node = pydot.Node("%d_ed_%d" % (frame, m.spec),\
+                    new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
                                        shape = "box")
                     educ.append(new_node)
                 elif m.foffset == 1:
-                    new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),\
+                    new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
@@ -524,10 +508,10 @@ class RDB:
                     prod.append(new_node)
                 else:
                     if cur_revent.uni:
-                        label = "%10d (unimol)" % frame
-                    else: 
-                        label = "%10d" % frame
-                    new_node = pydot.Node("%d_ts_%d" % (frame, m.spec),\
+                        label = "%10d (unimol)" % cur_revent.frame 
+                    else:
+                        label = "%10d" % cur_revent.frame
+                    new_node = pydot.Node("%d_ts_%d" % (cur_revent.frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = label,\
                                        labelloc = "t",\
@@ -558,7 +542,6 @@ class RDB:
             webbrowser.get(browser).open_new("rgraph.svg")
             #os.chdir(cwd)
  
-
 
         print("Number of plotted events: " + str(num_revents))
         
