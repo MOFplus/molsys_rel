@@ -372,16 +372,16 @@ class Mol:
         # if the connectivity information not defined before, detect it.
         if not any(mol.conn):
             mol.detect_conn(thresh)
-        print(mol.conn)
         mol.addon("graph")
         mol.graph.make_graph()
-        self.mg = mol.graph.molg
-        return self.mg
+        return
 
     def separate_molecules(self, mol, thresh = 0.2):
        """Returns a dictionary of mol objects."""
-       mg = self.make_molecular_graph(mol)
+       self.make_molecular_graph(mol)
+       mg = mol.graph.molg
        # label the components of the molecular graph to which each vertex in the the graph belongs
+       from graph_tool.topology import label_components
        labels = label_components(mg)[0].a.tolist()
        # number of molecules
        n_mols = len(set(labels))
@@ -399,7 +399,7 @@ class Mol:
                        mol_str += '\n'
            mol_tmp = molsys.mol.from_string(mol_str, 'xyz')
            mol_tmp.detect_conn(thresh)
-           mols.append[mol_tmp]
+           mols.append(mol_tmp)
        return mols
 
  
@@ -573,13 +573,16 @@ class SubmissionTools:
             educt_minus_is_similar = True
             educt_plus_is_similar = True
             for ed in path_ref_educts:
-                mol_ed   = molsys.mol.from_file(path_ref_educts)
-                mg_ed = Mol().make_molecular_graph(mol_ed)
+                mol_ed   = molsys.mol.from_file(ed)
+                Mol().make_molecular_graph(mol_ed)
+                mg_ed = mol_ed.graph.molg
+                print(mg_ed.list_properties)
 
                 educt_minus_tmp = False
                 for mol_minus in mols_minus:
-                    mg_minus  = Mol().make_molecular_graph(mol_minus)
-                    is_equal = molsys.addon.graph.is_equal(mg_ed, mg_min, use_fast_check=False)
+                    Mol().make_molecular_graph(mol_minus)
+                    mg_minus = mol_minus.graph.molg
+                    is_equal = molsys.addon.graph.is_equal(mg_ed, mg_minus, use_fast_check=False)[0]
                     if is_equal: 
                         educt_minus_tmp = educt_minus_tmp or True
                     else:
@@ -588,9 +591,10 @@ class SubmissionTools:
 
                 educt_plus_tmp  = False
                 for mol_plus in mols_plus:
-                    mg_plus = Mol().make_molecular_graph(mol_plus)
-                    is_equal = molsys.addon.graph.is_equal(mg_ed, mg_plus, use_fast_check=False)
-                    if is_equal: 
+                    Mol().make_molecular_graph(mol_plus)
+                    mg_plus = mol_plus.graph.molg
+                    is_equal = molsys.addon.graph.is_equal(mg_ed, mg_plus, use_fast_check=False)[0]
+                    if is_equal:
                         educt_plus_tmp = educt_plus_tmp or True
                     else:
                         educt_plus_tmp = educt_plus_tmp or False
@@ -599,13 +603,14 @@ class SubmissionTools:
             prod_minus_is_similar = True
             prod_plus_is_similar = True                       
             for prod in path_ref_products:
-                mol_prod = molsys.mol.from_file(path_ref_products)
-                mg_prod = Mol().make_molecular_graph(mol_ed)
+                mol_prod = molsys.mol.from_file(prod)
+                Mol().make_molecular_graph(mol_prod)
+                mg_prod = mol_prod.graph.molg
 
                 product_minus_tmp = False
                 for mol_minus in mols_minus:
-                    mg_min  = Mol().make_molecular_graph(mol_minus)
-                    is_equal = molsys.addon.graph.is_equal(mg_prod, mg_min, use_fast_check=False)
+                    mg_minus = mol_minus.graph.molg
+                    is_equal = molsys.addon.graph.is_equal(mg_prod, mg_minus, use_fast_check=False)[0]
                     if is_equal: 
                         product_minus_tmp = product_minus_tmp or True
                     else:
@@ -614,17 +619,17 @@ class SubmissionTools:
 
                 product_plus_tmp  = False
                 for mol_plus in mols_plus:
-                    mg_plus = Mol().make_molecular_graph(mol_plus)
-                    is_equal = molsys.addon.graph.is_equal(mg_prod, mg_plus, use_fast_check=False)
+                    mg_plus = mol_plus.graph.molg
+                    is_equal = molsys.addon.graph.is_equal(mg_prod, mg_plus, use_fast_check=False)[0]
                     if is_equal: 
                         product_plus_tmp = product_plus_tmp or True
                     else:
                         product_plus_tmp = product_plus_tmp or False
-                product_plus_is_similar = product_plus_is_similar and product_plus_tmp
+                prod_plus_is_similar = prod_plus_is_similar and product_plus_tmp
             if (educt_minus_is_similar and prod_plus_is_similar) or (educt_plus_is_similar and prod_minus_is_similar):
                 is_similar = True
             else:
-                print("This transition state do not connect the corresponding educts and products.")
+                print("This transition state do not connect the reference educts and products.")
         return is_similar
 
     def transition_state_workflow(self, active_atoms, path_ref_educts, path_ref_products):
@@ -669,8 +674,8 @@ class SubmissionTools:
                    if inum == 1: 
                        print("There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.")
                        self.IRC()
-                       mols_minus, mols_plus = self.find_end_points_from_IRC()
-                       found = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+                      mols_minus, mols_plus = self.find_end_points_from_IRC()
+                      found = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
         return found
 
     def minima_workflow(self):
@@ -793,7 +798,7 @@ class Slurm:
         s_script.write("#=====================================\n")
         s_script.write("# Copy everything back                \n")
         s_script.write("#=====================================\n")
-        s_script.write("cp $TMPDIR/* $SLURM_SUBMIT_DIR/\n")
+        s_script.write("cp -r $TMPDIR/* $SLURM_SUBMIT_DIR/\n")
         s_script.write("exit\n")
         s_script.close()
         return
