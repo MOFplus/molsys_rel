@@ -55,7 +55,7 @@ def add_compare_data(comparer, mdspec):
 
     return
 
-def compare_species(species,sumforms,mols):
+def compare_species(species,sumforms,moldata):
     """
 
     Compare species in unique reaction list with mol object
@@ -63,11 +63,13 @@ def compare_species(species,sumforms,mols):
     Args:
         - species  : list of the species 
         - sumforms : list of thim sum formula of th species 
-        - mols     : list of mol object to compare
+        - moldata  : list of (mol object, mdspecies) to compare
     """
 
     check = False
     is_first = True
+
+    mols = [m[0] for m in moldata]
 
     for sp,sp_sumform,mol in zip(species,sumforms,mols):
     
@@ -200,13 +202,13 @@ for r in revents:
             mol.graph.make_comp_graph()
 
             if have_ts:
-                ts_mol.append(mol)
+                ts_mol.append((mol,m))
              
             if have_ed:
-                ed_mol.append(mol)
+                ed_mol.append((mol,m))
 
             if have_pr:
-                pr_mol.append(mol)
+                pr_mol.append((mol,m))
 
 
         #
@@ -278,18 +280,21 @@ for r in revents:
         #
         # let species ref to reaction
         #
-        for ed in ed_mol:
+        for ed,m in ed_mol:
            specid = rdb.add_species(ed)
            rdb.add_reac2spec(reactID,specid,-1)
            rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="")
-        for pr in pr_mol:
+           m.update_record(speciesID=specid)
+        for pr,m in pr_mol:
            specid = rdb.add_species(pr)
            rdb.add_reac2spec(reactID,specid, 1) 
            rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="")
-        for ts in ts_mol:
+           m.update_record(speciesID=specid)
+        for ts,m in ts_mol:
            specid = rdb.add_species(ts)
            rdb.add_reac2spec(reactID,specid, 0) 
            rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="")
+           m.update_record(speciesID=specid)
 
         # Update reaction event
         r.update_record(reactionsID=reactID)

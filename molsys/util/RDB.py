@@ -118,6 +118,7 @@ class RDB:
         ]
         dbstruc["md_species"] = [
             "r:revent",       # ref to revent
+            "r:species",      # ref to species
             "t:smiles",       # smiles
             "s:sumform",      # sum formula
             "d:energy",       # ReaxFF energy
@@ -285,9 +286,15 @@ class RDB:
 
     def add_species(self, mol):
         sumform = mol.get_sumformula()
+        if mol.graph is None:
+           mol.addon("graph")
+        mol.graph.make_comp_graph()
+        molg = mol.graph.molg
+	#molgf = io.BytesIO(bytes(molg.save(,fmt="gt")), "utf-8"))    # TODO ask rochus
         # register in the database
         specID = self.db.species.insert(
-            sumform     = sumform
+            sumform     = sumform #,
+            #molgraph    = self.db_species.molgraph.store(molgf, "molg.gt") # TODO ask rochus
         )
         if self.do_commit:
             self.db.commit()
