@@ -330,7 +330,8 @@ class RDB:
         mdspec = self.db(
             (self.db.md_species.reventID == revent.id) &
             (self.db.md_species.foffset == foff) & 
-            (self.db.md_species.spec == spec)
+            (self.db.md_species.spec == spec) &
+            (self.db.md_species.react_compl == False)
         ).select().first()
         assert mdspec is not None, "No species %d for this reaction event" % spec
         # DEBUG DEBUG
@@ -365,13 +366,15 @@ class RDB:
         from_smd = self.db(
             (self.db.md_species.reventID == from_ev.id) &
             (self.db.md_species.foffset == 1) &
-            (self.db.md_species.spec == from_spec)
+            (self.db.md_species.spec == from_spec) &
+            (self.db.md_species.react_compl == False)
         ).select().first()
         # assert from_smd is not None, "no species %d in frame %d to connect" % (from_spec, from_fid)
         to_smd = self.db(
             (self.db.md_species.reventID == to_ev.id) &
             (self.db.md_species.foffset == -1) &
-            (self.db.md_species.spec == to_spec)
+            (self.db.md_species.spec == to_spec) &
+            (self.db.md_species.react_compl == False)
         ).select().first()
         # assert to_smd is not None, "no species %d in frame %d to connect" % (to_spec, to_fid)
         # now we can add a new edge into the reaction graph
@@ -455,6 +458,7 @@ class RDB:
         cur_revent = revents[0]
 
         mds = self.db((self.db.md_species.reventID == cur_revent) & \
+                      (self.db.md_species.react_compl == False)   & \
                       (self.db.md_species.foffset == 1)).select()
            
         for m in mds:

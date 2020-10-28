@@ -144,7 +144,7 @@ for r in revents:
                                             , "sumform:pr"  : []
                                             }
 
-        mdspec = db((db.md_species.reventID == r)).select()
+        mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
 
         add_compare_data(unique_cmp_data[r["reactionsID"]], mdspec)
 
@@ -177,7 +177,7 @@ for r in revents:
     ts_mol = [] 
 
     # get all md_species for this event
-    mdspec = db((db.md_species.reventID == r)).select()
+    mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False) ).select()
     if len(mdspec) > 0:
 
         #
@@ -249,7 +249,7 @@ for r in revents:
                    , "sumform:pr"  : []
                    }
 
-        mdspec = db((db.md_species.reventID == r)).select()
+        mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
 
         add_compare_data(cmp_data, mdspec)
 
