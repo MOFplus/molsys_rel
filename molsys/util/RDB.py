@@ -87,6 +87,7 @@ class RDB:
             "u:png",          # thumbnail
             "s:path",         # path to input files for this job
             "b:molgchange",   # indicates change in molgraph w.r.t. species
+            "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
         ]
         
 
@@ -121,7 +122,6 @@ class RDB:
             "r:species",      # ref to species
             "t:smiles",       # smiles
             "s:sumform",      # sum formula
-            "d:energy",       # ReaxFF energy
             "i:spec",         # species ID in the frame
             "i:foffset",      # frame offset (-1 educt, 0 TS, 1 product)
             "u:mfpx",         # upload mfpx file
@@ -260,7 +260,7 @@ class RDB:
         event = self.db(self.db.revent.frame == frame).select().first()
         return event
 
-    def add_md_species(self, reventID, mol, spec, foff, tracked=True, energy=0.0):
+    def add_md_species(self, reventID, mol, spec, foff, tracked=True, react_compl=False):
         # generate smiles
         mol.addon("obabel")
         smiles = mol.obabel.cansmiles
@@ -274,11 +274,11 @@ class RDB:
             reventID     = reventID.id,
             smiles      = smiles,
             sumform     = sumform,
-            energy      = energy,
             spec        = spec,
             foffset     = foff,
             tracked     = tracked,
-            mfpx        = self.db.md_species.mfpx.store(mfpxf, fname)
+            mfpx        = self.db.md_species.mfpx.store(mfpxf, fname),
+            react_compl = react_compl
         )
         if self.do_commit:
             self.db.commit()
@@ -290,11 +290,13 @@ class RDB:
            mol.addon("graph")
         mol.graph.make_comp_graph()
         molg = mol.graph.molg
-	#molgf = io.BytesIO(bytes(molg.save(,fmt="gt")), "utf-8"))    # TODO ask rochus
+        molgf = io.BytesIO()    
+        mol.graph.molg.save(molgf,fmt="gt")
+        molgf.seek(0)
         # register in the database
         specID = self.db.species.insert(
-            sumform     = sumform #,
-            #molgraph    = self.db_species.molgraph.store(molgf, "molg.gt") # TODO ask rochus
+            sumform     = sumform ,
+            molgraph    = self.db.species.molgraph.store(molgf, "molg.gt") 
         )
         if self.do_commit:
             self.db.commit()
@@ -384,7 +386,7 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False):
+    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=[]):
         """add an optimized structure to the DB
         
         Args:
@@ -404,7 +406,8 @@ class RDB:
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz"),
             mfpx         = self.db.opt_species.mfpx.store(mfpxf, "opt.mfpx"),
             path         = path,
-            molgchange   = change_molg
+            molgchange   = change_molg,
+            rbonds       = rbonds
         )
         if self.do_commit:
             self.db.commit()
