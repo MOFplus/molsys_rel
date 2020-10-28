@@ -578,7 +578,7 @@ class findR(mpiobject):
                     self.unconn_species.pop(indprs)
                     # now connect in the database from product to educt
                     # print ("connect %s with %s " % (prs, eds))
-                    self.rdb.set_react(prs.fid, eds.fid, prs.mid, eds.mid)
+                    self.rdb.set_rgraph(prs.fid, eds.fid, prs.mid, eds.mid)
         # ok, now we have to add all the new tracked product species from this event to the unconn list
         for prsid in revt.PR_spec:
             prs = revt.PR_spec[prsid]
@@ -633,7 +633,7 @@ class findR(mpiobject):
             print ("DEBUG: check this match between frame %5d (species %2d) and frame %5d (species%2d)" % (fid1, match[0], fid2, match[1]))
             if not self.frames[fid1].specs[match[0]] == self.frames[fid2].specs[match[1]]:
                 import pdb; pdb.set_trace()
-            self.rdb.set_react(fid1, fid2, match[0], match[1])
+            self.rdb.set_rgraph(fid1, fid2, match[0], match[1])
         return
 
     ##########################  DEBUG stuff #################################################################

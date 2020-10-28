@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""test script to optimize all systems in the DB
+
+all systems with zero energy and not TS are picked and optimized
+"""
+
+import pylmps
+import molsys
+import sys
+import os
+import numpy as np
+from molsys.util import RDB
+
+if len(sys.argv) < 2:
+    print ("usage:  opt_md_species <db_path> <pdlp_file> <stage>")
+    exit()
+    
+### default ####
+forceconst = 1000.0
+
+
+db_path   = sys.argv[1]
+pdlp_path = sys.argv[2]
+pdlp_path = os.path.abspath(pdlp_path)
+stage     = sys.argv[3]
+
+lot = "ReaxFF"
+if len(sys.argv) > 4:
+   lot = sys.argv[4]
+
+only_unique_reactions=False
+if len(sys.argv) > 5:
+   only_unique_reactions=bool(sys.argv[5])
+
+
+print ("open database %s" % db_path)
+rdb = RDB.RDB(db_path)
+print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
+
+# get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
+db = rdb.db
+md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+
+if only_unique_reactions:
+    revents = db(db.reactions).select() 
+else:
+    revents = db((db.revent.mdID == md)).select()
+
+#lot = rdb.get_lot("ReaxFF")
+
+for r in revents:
+    # get all md_species for this event
+    if only_unique_reactions:
+        # Just get the first revent of this unique revent class
+        cur_event = db(db.revent.reactionsID == r).select()[0]
+
+        mdspec = db((db.md_species.reventID == cur_event) & \
+                          (db.md_species.energy == 0.0)).select()
+    else:
+        mdspec = db((db.md_species.reventID == r) & (db.md_species.energy == 0.0)).select()
+        cur_event = r
+
+
+    if len(mdspec) > 0:
+        print ("optimize MD species from reaction event %d" % (md.id))
+        for m in mdspec:
+            # get mol object from DB
+            fname, mfpxf = db.md_species.mfpx.retrieve(m.mfpx)
+            mfpxs = mfpxf.read().decode('utf-8')
+            mfpxf.close()
+            mol = molsys.mol.from_string(mfpxs)
+            mol.addon("graph")
+            mol.graph.make_comp_graph()
+            molg_init = mol.graph.molg
+
+            print ("This is species %s" % fname)
+            if m.foffset == 0:
+                TS = True
+                # this is the TS -> fix bonds
+                rbonds = cur_event.rbonds
+
+                print ("TS species .. fix %s" % str(rbonds))
+                rbonds = np.array(rbonds)
+                nrbonds = len(rbonds)//2
+                rbonds.shape = (nrbonds, 2)
+                # all molecules are non-perioidc  .. just compute current bond distance
+                bondlength = []
+                for i in range(nrbonds):
+                    r = mol.xyz[rbonds[i,0]]-mol.xyz[rbonds[i,1]]
+                    bondlength.append(np.sqrt((r*r).sum()))
+            else:
+                TS = False
+            #
+            # setup lammps and minimize with level of theory in lot (default ReaxFF)
+            #
+            pl = pylmps.pylmps("opt")
+            if lot == "ReaxFF":
+                pl.setup(mol = mol, local=True, ff="ReaxFF")
+            elif lot in ["GFN0","GFN1","GFN2"]:
+
+                gfn_param_set = { "GFN0" : 0
+                                , "GFN1" : 1
+                                , "GFN2" : 2
+                                }
+
+                # instantiate the external potential expot_xtb
+
+                # We use mainly default settings, but set the maximal iterations higher 
+                # since the structures are very deformed in the MD simulation
+                ep = pylmps.expot_xtb(mol,gfn_param_set[lot],verbose=0,maxiter=1000)
+
+                # we need to register the objects callback as a global function
+                callback = ep.callback
+
+                # now add the expot object together with the name of the global callback
+                pl.add_external_potential(ep, "callback")
+
+                # setup xTB
+                pl.setup(local=True, mol = mol, ff="xTB")
+
+            init_energy = pl.calc_energy()
+            if TS:
+                for i in range(rbonds.shape[0]):
+                    par = (forceconst, bondlength[i])
+                    pl.add_restraint("bnd", tuple(rbonds[i]), par)
+            final_energy = pl.MIN(0.01)
+            if TS:
+                pl.clear_restraints()
+            # final_energy = pl.calc_energy()
+            print ("\n\n########################################")
+            print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
+            print ("########################################\n\n")
+            # store these results to the DB
+            # first update coords and get mol object back from lammps
+            pl.update_mol()
+            opt_mol = pl.mol
+            opt_mol.addon("graph")
+            opt_mol.graph.make_comp_graph()
+            molg_opt = opt_mol.graph.molg
+
+            is_equal, error_code = molsys.addon.graph.is_equal(molg_init, molg_opt)
+
+            if error_code != 0:
+               print("Error during molgraph comparison!")
+               sys.exit(1)
+
+            # update the energy value
+            m.update_record(energy=init_energy)
+            specid = rdb.add_species(mol)
+            changed = not is_equal
+            rdb.add_opt_species(opt_mol, lot, final_energy, specid, path="",change_molg=changed)
+            pl.end()
+
+
+
+
+
+

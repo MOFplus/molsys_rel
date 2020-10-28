@@ -55,6 +55,45 @@ class RDB:
 
         # GS: Note maybe obvious, but as reminder for references the order in dbstruc matters
         dbstruc = OrderedDict()
+        #
+        # reaction space 
+        # 
+        dbstruc["reactions"] = [
+            "b:uni",          # true if unimolecular
+            "b:change",       # change in graph for educt and products (used for screening)
+            "s:source",       # information on where this reactions comes from
+        ]
+
+        dbstruc["species"] = [
+            "s:sumform",      # sum formula
+            "u:molgraph",     # holds the molecular graph 
+        ]
+
+        dbstruc["reac2spec"] = [
+            "r:reactions",   # reference to the reactions table
+            "r:species",     # reference to educt in species table
+            "i:label",       # type (-1 educt, 0 TS, 1 product)            
+        ]
+
+        dbstruc["lot"] = [
+            "s:name"          # level of theory
+        ]
+        dbstruc["opt_species"] = [
+            "r:species",      # reference to species table 
+            "r:lot",          # ref to lot
+            "d:energy",       # energy (in kcal/mol)
+            "u:xyz",          # upload xyz file
+            "u:mfpx",         # upload mfpx file        
+            "u:png",          # thumbnail
+            "s:path",         # path to input files for this job
+            "b:molgchange",   # indicates change in molgraph w.r.t. species
+        ]
+        
+
+        #
+        # MD space 
+        #
+ 
         dbstruc["md"] = [       
             "s:path",         # filename of the pdlp file
             "s:stage",        # name of the stage
@@ -63,18 +102,9 @@ class RDB:
             "d:temp"          # temperature in Kelvin
         ]         # TBI !!! add more info here ... this is is just for testing
                   #         username, datetime, method, .... more
-        dbstruc["unique_revent"] = [
-            "b:uni",          # true if unimolecular
-            "b:change",       # change in graph for educt and products (used for screening)
-            "i:frame",        # frame number
-            "li:ed",          # educt species (sorted)
-            "li:ts",          # transition state species
-            "li:pr",          # product species
-            "i:tr_ed",        # number of traced educt species
-            "i:tr_pr",        # number of traced product species
-        ]
+
         dbstruc["revent"] = [
-            "r:unique_revent",# ref to table unique_revent
+            "r:reactions",    # ref to table unique_revent
             "b:reversed",     # is it the back reaction in unique_revent?
             "r:md",           # ref to table md
             "b:uni",          # true if unimolecular
@@ -96,18 +126,9 @@ class RDB:
             "u:mfpx",         # upload mfpx file
             "b:tracked",      # is tracked?
             "u:png",          # thumbnail
+            "b:react_compl",  # is this a reactive complex
         ]
-        dbstruc["lot"] = [
-            "s:name"          # level of theory
-        ]
-        dbstruc["opt_species"] = [
-            "r:md_species",   # ref to md_species
-            "r:lot",          # ref to lot
-            "d:energy",       # energy (in kcal/mol)
-            "u:xyz",          # upload xyz file
-            "u:png",          # thumbnail
-        ]
-        dbstruc["react"] = [
+        dbstruc["rgraph"] = [
             "r:revent:from_rev",        # source reaction event ref
             "r:revent:to_rev",          # target reaction event ref
             "r:md_species:from_spec",   # source species ref
@@ -202,20 +223,14 @@ class RDB:
             id = self.db.lot.insert(name=lot)
         else:
             id = row.id
-        print (type(id))
         return id
     
-    def register_unique_revent(self, frame, ed, ts, pr, tr_ed, tr_pr, uni=False, change=True):
+    def register_reaction(self, uni=False, change=True, source="fromMD"):
 
-        reventID = self.db.unique_revent.insert(
+        reventID = self.db.reactions.insert(
             uni        = uni,
             change     = change,
-            frame      = frame,
-            ed         = ed,
-            ts         = ts,
-            pr         = pr,
-            tr_ed      = tr_ed,
-            tr_pr      = tr_pr
+            source     = source,
         )
 
         if self.do_commit:
@@ -268,6 +283,27 @@ class RDB:
             self.db.commit()
         return specID
 
+    def add_species(self, mol):
+        sumform = mol.get_sumformula()
+        # register in the database
+        specID = self.db.species.insert(
+            sumform     = sumform
+        )
+        if self.do_commit:
+            self.db.commit()
+        return specID
+
+    def add_reac2spec(self, reactID, specID, itype):
+        # register in the database
+        reac2specID = self.db.reac2spec.insert(
+            reactionsID = reactID,
+            speciesID   = specID,
+            label       = itype
+        )
+        if self.do_commit:
+            self.db.commit()
+        return reac2specID
+
     # TBI .. this is really stupid because we have to get revent for each species .. for DEBUG ok
     #        but merge these methods and make it more clever
     def get_revent_species(self,frame):
@@ -306,7 +342,7 @@ class RDB:
         mol = molsys.mol.from_string(mfpxs)
         return mol, fname
 
-    def set_react(self, from_fid, to_fid, from_spec, to_spec):
+    def set_rgraph(self, from_fid, to_fid, from_spec, to_spec):
         """connect reaction events -> make an edge in the reaction graph
         
         Args:
@@ -331,7 +367,7 @@ class RDB:
         # assert to_smd is not None, "no species %d in frame %d to connect" % (to_spec, to_fid)
         # now we can add a new edge into the reaction graph
         if (from_smd is not None) and (to_smd is not None):
-            reactID = self.db.react.insert(
+            rgraphID = self.db.rgraph.insert(
                 from_rev  = from_ev.id,
                 to_rev    = to_ev.id,
                 from_spec = from_smd.id,
@@ -341,7 +377,7 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, mdspecID):
+    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False):
         """add an optimized structure to the DB
         
         Args:
@@ -352,12 +388,16 @@ class RDB:
         """
         if type(lot) == type(""):
             lot = self.get_lot(lot)
-        xyzf = io.BytesIO(bytes(mol.to_string(ftype="xyz"), "utf-8"))
+        xyzf  = io.BytesIO(bytes(mol.to_string(ftype="xyz"), "utf-8"))
+        mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         optID = self.db.opt_species.insert(
-            md_speciesID = mdspecID,
+            speciesID = specID,
             lotID        = lot,
             energy       = energy,
-            xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz")
+            xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz"),
+            mfpx         = self.db.opt_species.mfpx.store(mfpxf, "opt.mfpx"),
+            path         = path,
+            molgchange   = change_molg
         )
         if self.do_commit:
             self.db.commit()
@@ -394,7 +434,7 @@ class RDB:
             start = -1
 
         if only_unique_reactions:
-            revents = self.db((self.db.unique_revent.frame >= start)).select(orderby=self.db.unique_revent.frame)
+            revents = self.db((self.db.reactions)).select()
         else:
             revents = self.db((self.db.revent.mdID == self.current_md) & \
                               (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
@@ -406,15 +446,21 @@ class RDB:
         cur_revent = revents[0]
         if only_unique_reactions:
             # Find a reaction event of this reaction class
-            reventID = self.db(self.db.revent.unique_reventID == cur_revent).select()[0]
+            reventID = self.db(self.db.revent.reactionsID == cur_revent).select()[0]
 
             mds = self.db((self.db.md_species.reventID == reventID) & \
                           (self.db.md_species.foffset == 1)).select()
+
         else:
             mds = self.db((self.db.md_species.reventID == cur_revent) & \
                           (self.db.md_species.foffset == 1)).select()
+           
         for m in mds:
-            new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),
+            if only_unique_reactions:
+               frame =  reventID.frame
+            else:
+               frame = cur_revent.frame
+            new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),
                                        image = img_path+m.png,
                                        label = "",
                                        shape = "box")
@@ -435,7 +481,7 @@ class RDB:
                 if not cur_revent["change"]:
                     continue
 
-                reventIDs = self.db(self.db.revent.unique_reventID == cur_revent).select()
+                reventIDs = self.db(self.db.revent.reactionsID == cur_revent).select()
 
                 if len(reventIDs) > 0:
                     reventID = reventIDs[0]
@@ -448,15 +494,19 @@ class RDB:
                 mds = self.db((self.db.md_species.reventID == cur_revent)).select()
 
             for m in mds:
+                if only_unique_reactions:
+                   frame =  reventID.frame
+                else:
+                   frame = cur_revent.frame
                 if m.foffset == -1:
-                    new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
+                    new_node = pydot.Node("%d_ed_%d" % (frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
                                        shape = "box")
                     educ.append(new_node)
                 elif m.foffset == 1:
-                    new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
+                    new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
@@ -464,10 +514,10 @@ class RDB:
                     prod.append(new_node)
                 else:
                     if cur_revent.uni:
-                        label = "%10d (unimol)" % cur_revent.frame
+                        label = "%10d (unimol)" % frame
                     else: 
-                        label = "%10d" % cur_revent.frame
-                    new_node = pydot.Node("%d_ts_%d" % (cur_revent.frame, m.spec),\
+                        label = "%10d" % frame
+                    new_node = pydot.Node("%d_ts_%d" % (frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = label,\
                                        labelloc = "t",\
@@ -485,7 +535,7 @@ class RDB:
             if only_unique_reactions:
                 warnings.warn("Using only the unique reactions I can not generate a fully connected reaction graph!")
             else:
-                concts = self.db(self.db.react.to_rev == cur_revent).select()
+                concts = self.db(self.db.rgraph.to_rev == cur_revent).select()
                 for c in concts:
                     rgraph.add_edge(pydot.Edge(rgnodes[c.from_spec], rgnodes[c.to_spec], color="blue"))
             num_revents += 1
