@@ -144,7 +144,7 @@ for r in revents:
                                             , "sumform:pr"  : []
                                             }
 
-        mdspec = db((db.md_species.reventID == r)).select()
+        mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
 
         add_compare_data(unique_cmp_data[r["reactionsID"]], mdspec)
 
@@ -177,7 +177,7 @@ for r in revents:
     ts_mol = [] 
 
     # get all md_species for this event
-    mdspec = db((db.md_species.reventID == r)).select()
+    mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False) ).select()
     if len(mdspec) > 0:
 
         #
@@ -249,7 +249,7 @@ for r in revents:
                    , "sumform:pr"  : []
                    }
 
-        mdspec = db((db.md_species.reventID == r)).select()
+        mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
 
         add_compare_data(cmp_data, mdspec)
 
@@ -280,20 +280,22 @@ for r in revents:
         #
         # let species ref to reaction
         #
+        rbonds = []
         for ed,m in ed_mol:
            specid = rdb.add_species(ed)
            rdb.add_reac2spec(reactID,specid,-1)
-           rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="")
+           rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
            m.update_record(speciesID=specid)
         for pr,m in pr_mol:
            specid = rdb.add_species(pr)
            rdb.add_reac2spec(reactID,specid, 1) 
-           rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="")
+           rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
            m.update_record(speciesID=specid)
         for ts,m in ts_mol:
            specid = rdb.add_species(ts)
+           rbonds = r["rbonds"]  
            rdb.add_reac2spec(reactID,specid, 0) 
-           rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="")
+           rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
            m.update_record(speciesID=specid)
 
         # Update reaction event

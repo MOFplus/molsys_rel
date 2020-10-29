@@ -430,6 +430,9 @@ class findR(mpiobject):
         TS_spec_id = list(revt.TS_spec.keys())
         TS_spec_id.sort()
         TS_mol, TS_aids = revt.TS.make_mol(revt.TS_spec)
+        # experimental make  reactive complex
+        ED_react_compl, ED_react_compl_aids = revt.ED.make_mol(revt.ED_spec)
+        PR_react_compl, PR_react_compl_aids = revt.PR.make_mol(revt.PR_spec)
         # map the broken/formed bonds to atom ids of the TS subsystem
         rbonds_global = revt.formed_bonds+revt.broken_bonds
         rbonds = []
@@ -468,6 +471,20 @@ class findR(mpiobject):
             TS_mol,
             TS_spec_id[0],    # species of TS are stored in revent, here only first
             0
+        )
+        self.rdb.add_md_species(
+            revID,
+            ED_react_compl,
+            ED_spec_id[0],    
+            -1,
+            react_compl = True
+        )
+        self.rdb.add_md_species(
+            revID,
+            PR_react_compl,
+            PR_spec_id[0],    
+            1,
+            react_compl = True
         )
         return
 

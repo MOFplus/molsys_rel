@@ -87,6 +87,7 @@ class RDB:
             "u:png",          # thumbnail
             "s:path",         # path to input files for this job
             "b:molgchange",   # indicates change in molgraph w.r.t. species
+            "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
         ]
         
 
@@ -121,7 +122,6 @@ class RDB:
             "r:species",      # ref to species
             "t:smiles",       # smiles
             "s:sumform",      # sum formula
-            "d:energy",       # ReaxFF energy
             "i:spec",         # species ID in the frame
             "i:foffset",      # frame offset (-1 educt, 0 TS, 1 product)
             "u:mfpx",         # upload mfpx file
@@ -260,7 +260,7 @@ class RDB:
         event = self.db(self.db.revent.frame == frame).select().first()
         return event
 
-    def add_md_species(self, reventID, mol, spec, foff, tracked=True, energy=0.0):
+    def add_md_species(self, reventID, mol, spec, foff, tracked=True, react_compl=False):
         # generate smiles
         mol.addon("obabel")
         smiles = mol.obabel.cansmiles
@@ -274,11 +274,11 @@ class RDB:
             reventID     = reventID.id,
             smiles      = smiles,
             sumform     = sumform,
-            energy      = energy,
             spec        = spec,
             foffset     = foff,
             tracked     = tracked,
-            mfpx        = self.db.md_species.mfpx.store(mfpxf, fname)
+            mfpx        = self.db.md_species.mfpx.store(mfpxf, fname),
+            react_compl = react_compl
         )
         if self.do_commit:
             self.db.commit()
@@ -290,11 +290,13 @@ class RDB:
            mol.addon("graph")
         mol.graph.make_comp_graph()
         molg = mol.graph.molg
-	#molgf = io.BytesIO(bytes(molg.save(,fmt="gt")), "utf-8"))    # TODO ask rochus
+        molgf = io.BytesIO()    
+        mol.graph.molg.save(molgf,fmt="gt")
+        molgf.seek(0)
         # register in the database
         specID = self.db.species.insert(
-            sumform     = sumform #,
-            #molgraph    = self.db_species.molgraph.store(molgf, "molg.gt") # TODO ask rochus
+            sumform     = sumform ,
+            molgraph    = self.db.species.molgraph.store(molgf, "molg.gt") 
         )
         if self.do_commit:
             self.db.commit()
@@ -328,7 +330,8 @@ class RDB:
         mdspec = self.db(
             (self.db.md_species.reventID == revent.id) &
             (self.db.md_species.foffset == foff) & 
-            (self.db.md_species.spec == spec)
+            (self.db.md_species.spec == spec) &
+            (self.db.md_species.react_compl == False)
         ).select().first()
         assert mdspec is not None, "No species %d for this reaction event" % spec
         # DEBUG DEBUG
@@ -363,13 +366,15 @@ class RDB:
         from_smd = self.db(
             (self.db.md_species.reventID == from_ev.id) &
             (self.db.md_species.foffset == 1) &
-            (self.db.md_species.spec == from_spec)
+            (self.db.md_species.spec == from_spec) &
+            (self.db.md_species.react_compl == False)
         ).select().first()
         # assert from_smd is not None, "no species %d in frame %d to connect" % (from_spec, from_fid)
         to_smd = self.db(
             (self.db.md_species.reventID == to_ev.id) &
             (self.db.md_species.foffset == -1) &
-            (self.db.md_species.spec == to_spec)
+            (self.db.md_species.spec == to_spec) &
+            (self.db.md_species.react_compl == False)
         ).select().first()
         # assert to_smd is not None, "no species %d in frame %d to connect" % (to_spec, to_fid)
         # now we can add a new edge into the reaction graph
@@ -384,7 +389,7 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False):
+    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=[]):
         """add an optimized structure to the DB
         
         Args:
@@ -404,7 +409,8 @@ class RDB:
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz"),
             mfpx         = self.db.opt_species.mfpx.store(mfpxf, "opt.mfpx"),
             path         = path,
-            molgchange   = change_molg
+            molgchange   = change_molg,
+            rbonds       = rbonds
         )
         if self.do_commit:
             self.db.commit()
@@ -440,33 +446,23 @@ class RDB:
         if start is None:
             start = -1
 
-        if only_unique_reactions:
-            revents = self.db((self.db.reactions)).select()
-        else:
-            revents = self.db((self.db.revent.mdID == self.current_md) & \
-                              (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
+        already_visited = {}
+
+        revents = self.db((self.db.revent.mdID == self.current_md) & \
+                          (self.db.revent.frame >= start)).select(orderby=self.db.revent.frame)
 
 
         rgraph = pydot.Dot(graph_type="digraph")
         rgnodes = {} # store all generated nodes by their md_speciesID
         # start up with products of first event
         cur_revent = revents[0]
-        if only_unique_reactions:
-            # Find a reaction event of this reaction class
-            reventID = self.db(self.db.revent.reactionsID == cur_revent).select()[0]
 
-            mds = self.db((self.db.md_species.reventID == reventID) & \
-                          (self.db.md_species.foffset == 1)).select()
-
-        else:
-            mds = self.db((self.db.md_species.reventID == cur_revent) & \
-                          (self.db.md_species.foffset == 1)).select()
+        mds = self.db((self.db.md_species.reventID == cur_revent) & \
+                      (self.db.md_species.react_compl == False)   & \
+                      (self.db.md_species.foffset == 1)).select()
            
         for m in mds:
-            if only_unique_reactions:
-               frame =  reventID.frame
-            else:
-               frame = cur_revent.frame
+            frame = cur_revent.frame
             new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),
                                        image = img_path+m.png,
                                        label = "",
@@ -485,35 +481,30 @@ class RDB:
             prod = []
             if only_unique_reactions:
 
-                if not cur_revent["change"]:
-                    continue
-
-                reventIDs = self.db(self.db.revent.reactionsID == cur_revent).select()
-
-                if len(reventIDs) > 0:
-                    reventID = reventIDs[0]
+                reactID = cur_revent["reactionsID"]
+ 
+                if reactID in already_visited:
+                   continue
                 else:
-                    #GS TODO this is a quick hack to make it run through. There is something fishy here
+                   already_visited[reactID] = True
+
+                reactions = self.db((self.db.reactions.id == reactID)).select().first()
+
+                if not reactions["change"]:
                     continue
 
-                mds = self.db((self.db.md_species.reventID == reventID)).select()
-            else:
-                mds = self.db((self.db.md_species.reventID == cur_revent)).select()
+            mds = self.db((self.db.md_species.reventID == cur_revent) & (self.db.md_species.react_compl == False)  ).select()
 
             for m in mds:
-                if only_unique_reactions:
-                   frame =  reventID.frame
-                else:
-                   frame = cur_revent.frame
                 if m.foffset == -1:
-                    new_node = pydot.Node("%d_ed_%d" % (frame, m.spec),\
+                    new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
                                        shape = "box")
                     educ.append(new_node)
                 elif m.foffset == 1:
-                    new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),\
+                    new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
@@ -521,10 +512,10 @@ class RDB:
                     prod.append(new_node)
                 else:
                     if cur_revent.uni:
-                        label = "%10d (unimol)" % frame
-                    else: 
-                        label = "%10d" % frame
-                    new_node = pydot.Node("%d_ts_%d" % (frame, m.spec),\
+                        label = "%10d (unimol)" % cur_revent.frame 
+                    else:
+                        label = "%10d" % cur_revent.frame
+                    new_node = pydot.Node("%d_ts_%d" % (cur_revent.frame, m.spec),\
                                        image = img_path+m.png,\
                                        label = label,\
                                        labelloc = "t",\
@@ -555,7 +546,6 @@ class RDB:
             webbrowser.get(browser).open_new("rgraph.svg")
             #os.chdir(cwd)
  
-
 
         print("Number of plotted events: " + str(num_revents))
         

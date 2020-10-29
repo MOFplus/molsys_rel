@@ -14,6 +14,38 @@ import numpy as np
 from molsys.util import RDB
 
 
+class base_calculator:
+
+    def __init__(self, mol, params : dict):
+        self.name = "base"
+        self.mol = mol
+        self.natoms = mol.get_natoms()
+        self.energy = 0.0
+        self.force  = np.zeros([self.natoms, 3], dtype="float64")  
+        return
+
+    def calc_energy(self):
+        return self.energy
+
+    def calc_energy_force(self):
+        return self.energy, self.force
+
+    def optimize(TS=False):
+        final_energy = 0.0
+        print("You called the base class")
+        return final_energy
+
+class reaxff_calculator(base_calculator):
+
+    def __init__(self, mol, params : dict):
+        super(base_calculator, self).__init__()
+        self.pl = pylmps.pylmps("opt")
+        self.pl.setup(mol = mol, local=True, ff="ReaxFF")
+        return
+
+    def calc_energy(self):
+        return self.calc_energy()
+
 def get_mol_from_opt_spec(ospec):
     # get mol object from DB
     fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
@@ -82,7 +114,7 @@ for r in reactions:
            if start_lot == rdb.get_lot("fromMD"):
 
               # get md_species for this species
-              mdspec = db(db.md_species.speciesID == specID).select().first()
+              mdspec = db((db.md_species.speciesID == specID) & (db.md_species.react_compl == False) ).select().first()
 
               # get revent for this mdspecies
               cur_event = db(db.revent.id == mdspec["reventID"]).select().first()
