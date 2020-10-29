@@ -206,19 +206,16 @@ for r in reactions:
            TS = True
         rbonds =  []
         if TS:
-           if start_lotID == rdb.get_lot("fromMD"):
-              # get md_species for this species
-              optspec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID) ).select().first()
-              # get revent for this mdspecies
-              rbonds = optspec["rbonds"]
-              rbonds = np.array(rbonds)
-              nrbonds = len(rbonds)//2
-              rbonds.shape = (nrbonds, 2)
-              # all molecules are non-perioidc  .. just compute current bond distance
-              bondlength = []
-              for i in range(nrbonds):
-                  r = mol.xyz[rbonds[i,0]]-mol.xyz[rbonds[i,1]]
-                  bondlength.append(np.sqrt((r*r).sum()))
+           # get revent for this mdspecies
+           rbonds = ospec["rbonds"]
+           rbonds = np.array(rbonds)
+           nrbonds = len(rbonds)//2
+           rbonds.shape = (nrbonds, 2)
+           # all molecules are non-perioidc  .. just compute current bond distance
+           bondlength = []
+           for i in range(nrbonds):
+               r = mol.xyz[rbonds[i,0]]-mol.xyz[rbonds[i,1]]
+               bondlength.append(np.sqrt((r*r).sum()))
         #
         # setup lammps and minimize with level of theory in lot (default ReaxFF)
         #
@@ -246,7 +243,8 @@ for r in reactions:
            sys.exit(1)
         # add to db newly optimized structure
         changed = not is_equal
-        rdb.add_opt_species(opt_mol, params["lot"], final_energy, specID, path="",change_molg=changed)
+        rbonds = ospec["rbonds"] # restore the old rbonds add_opt_species does not lik numpy arrays :-(
+        rdb.add_opt_species(opt_mol, params["lot"], final_energy, specID, path="",change_molg=changed,rbonds=rbonds)
         calculator.end()
 
 
