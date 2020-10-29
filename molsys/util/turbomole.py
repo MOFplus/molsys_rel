@@ -632,6 +632,68 @@ class SubmissionTools:
                 print("This transition state do not connect the reference educts and products.")
         return is_similar
 
+
+
+    '''
+    get the max energy structure
+    '''
+    def getthemaxenergystruc(self):
+        if os.isdir("woelfling_current.out"):
+            with open("woelfling_current.out") as woelflingcurrent:
+               max_struc = 0 # the point of the maximum structure
+               energieslist = []
+               enprofile = [[],[]]
+               for lines in woelflingcurrent:
+                   self.strucnum += 1
+                   line = lines.rstrip('\n')
+                   if 'structure ' in line:
+                       enlist=line.split(None,7)
+                       enprofile[1].append(enlist[5])
+                       enprofile[0].append(enlist[1])
+                       energieslist.append(enlist)
+            woelflingcurrent.close()
+            sortedenprofile = sorted(energieslist, key=itemgetter(5))
+            self.strucnum = int(sortedenprofile[0][1])
+            plt.plot(enprofile[0],enprofile[1])
+            plt.ylabel('Energy Profile (Hartree)')
+            plt.savefig('energy_profile.pdf', format='pdf')
+        else:
+            print("No woelfling calculations have been performed.")
+        return max_struc
+
+    '''
+    workflow to perform a TS search using woelfling
+    '''
+    def woelfling_workflow(self):
+        # perform the woelfling calculation
+        os.system('woelfling-job > woelfling.out')
+        # determine which of the points is a TS guess structure
+        max_struc = self.getthemaxenergystruc()
+        print('The maximum energy structure is %d, it will perform the calculations in the directory rechnung-%d.' %(self.strucnum, self.strucnum))
+        # get into the corresponding directory and calculate its Hessian
+        os.chdir('rechnung-%d' %(max_struc))
+        os.system('cpc ts-test')
+        os.chdir('ts-test')
+        defineinput = open('define.in', 'w')
+        defineinput.write(' \n')
+        defineinput.write('y\n')
+        defineinput.write('ired\n')
+        defineinput.write('*\n')
+        defineinput.write(' \n')
+        defineinput.write(' \n')
+        defineinput.write(' \n')
+        defineinput.write(' \n')
+        defineinput.write('stp\n')
+        defineinput.write('itvc\n')
+        defineinput.write('1\n')
+        defineinput.write(' \n')
+        defineinput.write('q\n')
+        defineinput.close()
+        os.system('define < define.in > define.out')
+        os.system('ridft > ridft.out')
+        self.aoforce()
+        return
+
     def transition_state_workflow(self, active_atoms, path_ref_educts, path_ref_products):
         found = False
         self._freeze_atoms(active_atoms)
