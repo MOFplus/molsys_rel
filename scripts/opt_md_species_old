@@ -149,7 +149,7 @@ for r in revents:
 
             # update the energy value
             m.update_record(energy=init_energy)
-            specid = rdb.add_species(mol)
+            specid, is_new = rdb.add_species(mol)
             changed = not is_equal
             rdb.add_opt_species(opt_mol, lot, final_energy, specid, path="",change_molg=changed)
             pl.end()

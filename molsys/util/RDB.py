@@ -284,23 +284,40 @@ class RDB:
             self.db.commit()
         return specID
 
-    def add_species(self, mol):
+    def add_species(self, mol, check_if_included=False):
+        is_new = True
         sumform = mol.get_sumformula()
         if mol.graph is None:
            mol.addon("graph")
-        mol.graph.make_comp_graph()
+        mol.graph.make_graph()
         molg = mol.graph.molg
         molgf = io.BytesIO()    
         mol.graph.molg.save(molgf,fmt="gt")
         molgf.seek(0)
+        if check_if_included:
+           # get all species with same sumform
+           specs = self.db((self.db.species.sumform == sumform)).select()
+           for sp in specs:
+              fname, molgf1 = self.db.species.molgraph.retrieve(sp.molgraph)
+              from graph_tool import Graph
+              g = Graph(directed=False)
+              g.load(molgf1)
+              molgf1.close()
+              is_equal, error_code = molsys.addon.graph.is_equal(molg, g, use_fast_check=False) 
+              if is_equal:
+                 is_new = False
+                 specID = sp.id
+                 break 
         # register in the database
-        specID = self.db.species.insert(
-            sumform     = sumform ,
-            molgraph    = self.db.species.molgraph.store(molgf, "molg.gt") 
-        )
-        if self.do_commit:
-            self.db.commit()
-        return specID
+        if is_new:
+           specID = self.db.species.insert(
+               sumform     = sumform ,
+               molgraph    = self.db.species.molgraph.store(molgf, "molg.gt") 
+           )
+           if self.do_commit:
+               self.db.commit()
+
+        return specID, is_new
 
     def add_reac2spec(self, reactID, specID, itype):
         # register in the database
@@ -389,7 +406,7 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=[]):
+    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=None):
         """add an optimized structure to the DB
         
         Args:

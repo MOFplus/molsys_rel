@@ -933,18 +933,19 @@ class graph(object):
                     if len(vert1) != len(vert2):
                        is_equal = False
                        return is_equal, error_code
+                   
+                    is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
+                    #is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,vertex_inv1=molg1.vp.type, vertex_inv2=molg2.vp.type,isomap=True)
 
-                    is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,vertex_inv1=molg1.vp.type, vertex_inv2=molg2.vp.type,isomap=True)
-
-                    ## Check if maping is correct
-                    if is_equal:
-                        for vi,vj in zip(isomap,molg2.vertices()):
-                            if vi < 0:
-                                is_equal = False
-                                break
-                            if molg1.vp.type[vi] != molg2.vp.type[vj]:
-                                is_equal = False
-                                break
+                    ### Check if maping is correct
+                    #if is_equal:
+                    #    for vi,vj in zip(isomap,molg2.vertices()):
+                    #        if vi < 0:
+                    #            is_equal = False
+                    #            break
+                    #        if molg1.vp.type[vi] != molg2.vp.type[vj]:
+                    #            is_equal = False
+                    #            break
                 else:
                     # We don't have any edges... 
 
