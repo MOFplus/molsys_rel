@@ -66,7 +66,8 @@ class RDB:
 
         dbstruc["species"] = [
             "s:sumform",      # sum formula
-            "u:molgraph",     # holds the molecular graph 
+            "u:compare_data", # holds the molecular graph 
+            "s:compare_type", # specifies the comparison type e.g. molgraph
         ]
 
         dbstruc["reac2spec"] = [
@@ -284,39 +285,42 @@ class RDB:
             self.db.commit()
         return specID
 
-    def add_species(self, mol, check_if_included=False):
+    def add_species(self, mol, check_if_included=False, compare_type = "molg_from_mol"):
         is_new = True
+        assert compare_type in ["molg_from_mol"], "Unknown comparison type"
+        mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         sumform = mol.get_sumformula()
         if mol.graph is None:
            mol.addon("graph")
         mol.graph.make_graph()
         molg = mol.graph.molg
-        molgf = io.BytesIO()    
-        mol.graph.molg.save(molgf,fmt="gt")
-        molgf.seek(0)
         if check_if_included:
            # get all species with same sumform
            specs = self.db((self.db.species.sumform == sumform)).select()
            for sp in specs:
-              fname, molgf1 = self.db.species.molgraph.retrieve(sp.molgraph)
-              from graph_tool import Graph
-              g = Graph(directed=False)
-              g.load(molgf1)
-              molgf1.close()
-              is_equal, error_code = molsys.addon.graph.is_equal(molg, g, use_fast_check=False) 
-              if is_equal:
-                 is_new = False
-                 specID = sp.id
-                 break 
-        # register in the database
+              cmp_type = sp["compare_type"]
+              if cmp_type == compare_type:
+                 # only compare species of the same type
+                 fname, mfpxf1 = self.db.species.compare_data.retrieve(sp.compare_data)
+                 mfpxs = mfpxf1.read().decode('utf-8')
+                 mfpxf1.close()
+                 mol1 = molsys.mol.from_string(mfpxs)
+                 mol1.addon("graph")
+                 mol1.graph.make_graph()
+                 is_equal, error_code = molsys.addon.graph.is_equal(mol1.graph.molg, molg, use_fast_check=False)
+                 if is_equal:
+                    is_new = False
+                    specID = sp.id
+                    break
+              else:
+                 is_new = True
+                 continue 
         if is_new:
            specID = self.db.species.insert(
-               sumform     = sumform ,
-               molgraph    = self.db.species.molgraph.store(molgf, "molg.gt") 
+               sumform       = sumform ,
+               compare_data  = self.db.species.compare_data.store(mfpxf, "mol4molg.mfpx") ,
+               compare_type  = compare_type
            )
-           if self.do_commit:
-               self.db.commit()
-
         return specID, is_new
 
     def add_reac2spec(self, reactID, specID, itype):
