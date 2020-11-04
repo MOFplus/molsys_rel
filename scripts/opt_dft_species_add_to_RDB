@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+
+import os
+import molsys
+from molsys.util import RDB
+from molsys.util import turbomole
+
+
+
+
+def get_energy(dft_subdir_path, atom):
+   """ Read the energy from the aoforce output or from the ridft output.
+   SPE: Single point energy
+   ZPE: Zero point vibrational energy
+   """
+   GT = turbomole.GeneralTools(dft_subdir_path)
+   if atom:
+       SPE = GT.get_energy_from_ridft_out()
+       ZPE = 0.0
+   else:
+       SPE, ZPE = GT.get_energy_from_aoforce_out()
+   return  SPE, ZPE
+
+# input
+db_path = '/home/oyoender/opt_dft_test/run1/rdb-01.11.2020/'
+dft_path = os.getcwd()
+dft_subdir_paths = []
+for path in os.listdir(dft_path):
+   if os.path.isdir(path):
+       dft_subdir_paths.append(os.path.abspath(path))
+
+for dft_subdir_path in dft_subdir_paths:
+    assert os.path.isfile(os.path.join(dft_subdir_path,'submit.py'))
+    TS = False
+    
+    rdb = RDB.RDB(db_path)
+    db = rdb.db
+    
+    # Retrieve the missing information
+    f = open(os.path.join(dft_subdir_path,'submit.py'),'r')
+    for line in f:
+        if 'ref_struc_path' in line:
+            ospec_mfpx_path = line.strip().split()[2].split("'")[1]
+        if 'lot_DFT' in line:
+            lot_DFT = line.strip().split()[2].split("'")[1]
+        if 'transition_state_workflow' in line:
+            TS = True
+    
+    specID = int(os.path.basename(dft_subdir_path))
+    
+    if not TS: rbonds = []
+    
+    mol_ini = molsys.mol.from_file(ospec_mfpx_path)
+    
+    dft_spec = db(db.opt_species.path == dft_subdir_path).select().first()
+    inDB = False
+    if dft_spec != None: inDB = True
+    
+    if not inDB:
+        found = os.path.isfile(os.path.join(dft_subdir_path,'FOUND'))
+    
+        if found:
+            # is it an atom or not? get the final energy accordingly...
+            mol_ini.get_natoms()
+            print(mol_ini.natoms)
+            if mol_ini.natoms == 1:
+                atom = True
+            else:
+                atom = False
+            final_energy, zpe = get_energy(dft_subdir_path, atom)
+        
+            # compare the graph of the reference structure and the optimized structure
+            mol_ini.detect_conn(thresh = 0.2)
+            mol_ini.addon("graph")
+            mol_ini.graph.make_comp_graph()
+            molg_init = mol_ini.graph.molg
+            os.system('t2x %s > %s' %(os.path.join(dft_subdir_path,"coord"),os.path.join(dft_subdir_path,"coord.xyz")))
+            opt_mol = molsys.mol.from_file(os.path.join(dft_subdir_path,"coord.xyz"))
+            opt_mol.detect_conn(thresh = 0.2)
+            opt_mol.addon("graph")
+            opt_mol.graph.make_comp_graph()
+            molg_opt = opt_mol.graph.molg
+            is_equal, error_code = molsys.addon.graph.is_equal(molg_init, molg_opt)
+            changed = not is_equal
+        
+            print(found, opt_mol, lot_DFT, final_energy, specID, dft_subdir_path, zpe, changed, rbonds)
+            # add to the database
+            rdb.add_opt_species(opt_mol, lot_DFT, final_energy, specID, dft_subdir_path, zpe, changed, rbonds)
+        
+        else:
+            try:
+                reason = open(os.path.join(dft_subdir_path,'NOTFOUND'),'r').read()
+                print('Species %s with lot=%s is not added to the database, due to the reason: %s' %(lot_DFT, specID, reason))
+            except:
+                print('The expected NOTFOUND file does not exist under %s.' %dft_subdir_path)
+    else:
+        print('Species %s with lot=%s is not added to the database. An entry for %s already is in the DB!' %(specID, lot_DFT, dft_subdir_path))
