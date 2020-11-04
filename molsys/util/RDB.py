@@ -87,6 +87,7 @@ class RDB:
             "u:mfpx",         # upload mfpx file        
             "u:png",          # thumbnail
             "s:path",         # path to input files for this job
+            "s:info",         # additional information on the optimization you want to store
             "b:molgchange",   # indicates change in molgraph w.r.t. species
             "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
         ]
@@ -410,7 +411,7 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=None):
+    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=None, info=""):
         """add an optimized structure to the DB
         
         Args:
@@ -430,6 +431,7 @@ class RDB:
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz"),
             mfpx         = self.db.opt_species.mfpx.store(mfpxf, "opt.mfpx"),
             path         = path,
+            info         = info,
             molgchange   = change_molg,
             rbonds       = rbonds
         )
