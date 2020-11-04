@@ -24,14 +24,6 @@ class SymmetryAssignmentChangedtheStructureError(Exception):
         self.errors = errors
         return
 
-class dscfDidNotConverge(Exception):
-    def __init__(self, message=None, errors=None):
-        # Calling the base class with the parameter it needs
-        super().__init__(message)
-        self.errors = errors
-        return
-
-
 
 class GeneralTools:
     def __init__(self, path=os.getcwd()):
@@ -116,9 +108,9 @@ class GeneralTools:
         return M
 
     
-    def round_fractional_occupation(self, control_name='control'):
+    def round_fractional_occupation(self):
         """ Rounds the occupations and writes a new control file. """
-        control_path = os.path.join(self.path,"control")
+        control_path = os.path.join(self.path,'control')
         if not os.path.isfile(control_path):
             raise FileNotFoundError("There is no control file in the directory %s." % self.path)
         THRESHOLD = 1.0E-7
@@ -150,19 +142,19 @@ class GeneralTools:
                 new_control.write(line)
         return
 
-    def make_tmole_dft_input_for_fermi_smearing(self, elems, xyz, M_start, max_mem, title, lot_DFT):
+
+    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot_DFT, fermi = True):
         """Creates a tmole input called 'turbo.in'.
 
         Parameters
         ----------
         elems   : the list of elements
         xyz     : numpy array of shape (len(elems),3)
-        M_start : the initial multiplicity before Fermi smearing
-                   = 3 for systems with even number of electrons
-                   = 2 for systems with odd number of electrons
+        M       : the (initial) spin multiplicity
         max_mem : Maximum memory per core to use in the calculations.
         title   : title of the job
         lot_DFT : DFT level of theory, must be string
+        fermi   : Boolean for Fermi smearing
         """
         turbo_in_path = os.path.join(self.path,"turbo.in")
         c = xyz*angstrom
@@ -171,14 +163,15 @@ class GeneralTools:
         f.write("%s\n" % title)
         f.write("%method\n")
         f.write("ENRGY :: ri-u%s [gen_mult = %d, gen_symm = c1, scf_dsta = 1, scf_msil = 1000, scf_rico = %d, for_maxc = %d]\n" %
-                (lot_DFT, M_start, max_mem, max_mem))
+                (lot_DFT, M, max_mem, max_mem))
         f.write("%coord\n")
         for i in range(len(elems)):
             f.write("  %19.14f %19.14f %19.14f   %-2s\n" %
                     (c[i,0],c[i,1], c[i,2], elems[i]))
         f.write("%add_control_commands\n")
         f.write("$disp3\n")
-        f.write("$fermi tmstrt=300.00 tmend= 50.00 tmfac=0.900 hlcrt=1.0E-01 stop=1.0E-03\n")
+        if fermi:
+            f.write("$fermi tmstrt=300.00 tmend= 50.00 tmfac=0.900 hlcrt=1.0E-01 stop=1.0E-03\n")
         f.write("ADD END\n")
         f.write("%end\n")
         f.close()
@@ -188,21 +181,40 @@ class GeneralTools:
         maindir = os.getcwd()
         os.chdir(self.path)
         os.system("tmole &>/dev/null")
-        self.check_dscf_converged()
         os.chdir(maindir)
         return
 
     def check_dscf_converged(self):
+        converged = True
         if os.path.isfile(os.path.join(self.path,"dscf_problem")):
-            raise dscfDidNotConverge("SCF did not converge! Check the directory %s." % self.path)
-        return
+             converged = False
+        return converged
+
+    def get_energy_from_ridft_out(self, ridft_out_name = 'ridft.out'):
+        ridftout = open(os.path.join(self.path, ridft_out_name),'r')
+        for line in ridftout:
+           l = line.split()
+           if  'total' in l and 'energy' in l and '=' in l:
+               SPE = float(l[4])
+        return SPE
+
+    def get_energy_from_aoforce_out(self, aoforce_out_name = 'aoforce.out'):
+        aoforce_path = os.path.join(self.path, aoforce_out_name)
+        with open(aoforce_path) as aoforce:
+            for line in aoforce:
+                if '  zero point VIBRATIONAL energy  ' in line:
+                    ZPE = float(line.split()[6]) # The zero point vibrational energy in Hartree
+                if 'SCF-energy' in line:
+                    SPE = float(line.split()[3]) # Energy in Hartree
+        return SPE, ZPE
 
     def ridft(self):
         maindir = os.getcwd()
         os.chdir(self.path)
         os.system("ridft > ridft.out")
+        SPE =  self.get_energy_from_ridft_out()
         os.chdir(maindir)
-        return
+        return SPE
 
 
     def kdg(self, dg_name=""):
@@ -403,8 +415,8 @@ class Mol:
        return mols
 
  
-class SubmissionTools:
-    """Performs submission of the jobs."""
+class OptimizationTools:
+    """Methods for the optimization of QM species with ridft."""
     def __init__(self, path=os.getcwd()):
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
@@ -492,9 +504,9 @@ class SubmissionTools:
 
     def jobex(self, ts=False):
         if ts:
-            os.system("jobex -ri -trans > jobex.out")
+            os.system("jobex -ri -c 150 -trans > jobex.out")
         else:
-            os.system("jobex -ri > jobex.out")
+            os.system("jobex -ri -c 150 > jobex.out")
         return
 
     def aoforce(self):
@@ -507,36 +519,50 @@ class SubmissionTools:
         return
 
 
-    def common_workflow(self, active_atoms, max_mem, ref_struc_path, lot_DFT):
-        mol = molsys.mol.from_file(ref_struc_path, ref_struc_path.split('.')[-1])
-        """determines the orbital occupations before through Fermi smearing."""
-        nel = Mol().count_number_of_electrons(mol = mol, charge = 0)
-        if (nel % 2) == 0:
-            M_start = 3
-        else:
-            M_start = 2
-        new_xyz = GeometryTools.add_noise(mol, active_atoms)
+    def common_workflow(self, fermi, M, active_atoms, max_mem, ref_struc_path, lot_DFT):
+        ''' Performs single point calculation.'''
+        mol = molsys.mol.from_file(ref_struc_path)
         GT = GeneralTools(self.path)
-        # Perform a single point calculation using Fermi smearing
-        GT.make_tmole_dft_input_for_fermi_smearing(
-                mol.elems, 
-                new_xyz, 
-                M_start, 
-                max_mem, 
-                ref_struc_path,
-                lot_DFT)
-        GT.run_tmole()
-        # Remove the data group $fermi from the control file
-        GT.kdg("fermi")
-        # If there are partial occupations round them to integers
-    #    GT.round_fractional_occupation()
         atom = False
-        GT.ridft()
         if mol.natoms == 1:
             atom = True
-            GT.check_dscf_converged()
-            os.system("touch found")
-        return atom
+        if fermi:
+            # Determine the orbital occupations through Fermi smearing.
+            # Mstart : initial spin multiplicity
+            #        = 3 for systems with even number of electrons
+            #        = 2 for systems with odd number of electrons
+            nel = Mol().count_number_of_electrons(mol = mol, charge = 0)
+            if (nel % 2) == 0:
+                M_start = 3
+            else:
+                M_start = 2
+            new_xyz = GeometryTools.add_noise(mol, active_atoms)
+            GT.make_tmole_dft_input(
+                    mol.elems, 
+                    new_xyz, 
+                    M_start, 
+                    max_mem, 
+                    ref_struc_path,
+                    lot_DFT,
+                    True) # True for Fermi smearing
+            GT.run_tmole()
+            # Remove the data group $fermi from the control file
+            GT.kdg("fermi")
+            # If there are partial occupations round them to integers
+            GT.round_fractional_occupation()
+        else:
+            GT.make_tmole_dft_input(
+                    mol.elems, 
+                    new_xyz, 
+                    M, 
+                    max_mem, 
+                    ref_struc_path,
+                    lot_DFT,
+                    False) # No Fermi smearing
+            GT.run_tmole()
+        energy = GT.ridft()
+        converged = GT.check_dscf_converged()
+        return atom, converged, energy
 
 
     def find_end_points_from_IRC(self):
@@ -565,6 +591,7 @@ class SubmissionTools:
         path_ref_products : List of path of the reference products (e.g. from ReaxFF optimized structures)
         """
         is_similar = False
+        reason = ''
         n_mol_minus  = len(mols_minus)
         n_mol_plus   = len(mols_plus)
         n_mol_educts = len(path_ref_educts)
@@ -629,8 +656,9 @@ class SubmissionTools:
             if (educt_minus_is_similar and prod_plus_is_similar) or (educt_plus_is_similar and prod_minus_is_similar):
                 is_similar = True
             else:
-                print("This transition state do not connect the reference educts and products.")
-        return is_similar
+                reason = 'This transition state do not connect the reference educts and products.'
+                print(reason)
+        return is_similar, reason
 
 
 
@@ -658,7 +686,7 @@ class SubmissionTools:
             plt.ylabel('Energy Profile (Hartree)')
             plt.savefig('energy_profile.pdf', format='pdf')
         else:
-            print("No woelfling calculations have been performed.")
+            print('No woelfling calculations have been performed.')
         return max_struc
 
     '''
@@ -696,10 +724,14 @@ class SubmissionTools:
 
     def transition_state_workflow(self, active_atoms, path_ref_educts, path_ref_products):
         found = False
+        reason = ""    
+        # freeze the active atoms
         self._freeze_atoms(active_atoms)
+        # pre-optimization
         self.jobex()
         if not self._check_geo_opt_converged():
-            print("Transition state pre-optimization did not converge.")
+            reason = 'Transition state pre-optimization did not converge.'
+            print(reason)
         else:
             # remove the gradient left from the previous calculation.
             os.remove('gradient')
@@ -725,46 +757,55 @@ class SubmissionTools:
             # check the number of imaginary frequencies
             inum, imfreq = self.check_imaginary_frequency()
             if inum == 0:
-                print('No imaginary frequency at the start structure.')
+                
+                reason = 'No imaginary frequency at the start structure.'
+                print(reason)
             elif inum == 1:
                 self.jobex(ts=True)
                 if not self._check_geo_opt_converged():
-                   print('The transition state optimazation did not converge.')
+                   reason = 'The transition state optimzation did not converge.'
+                   print(reason)
                 else:
                    self.aoforce()
                    inum, imfreq = self.check_imaginary_frequency()
                    if inum == 1: 
-                       print("There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.")
-                       self.IRC()
+                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
+                      self.IRC()
                       mols_minus, mols_plus = self.find_end_points_from_IRC()
-                      found = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
-        return found
+                      found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+        return found, reason
 
     def minima_workflow(self):
         found = False
+        reason = ""
         point_group_initial = GeometryTools.get_point_group_from_coord(self.path,'coord')
         print("point_group_initial", point_group_initial)
         self.jobex()
-        self._check_geo_opt_converged()
-        point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
-        print("point_group_final", point_group_final)
-        if point_group_final != "c1":
-            point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
-            if point_group_assigned == point_group_final:
-                print("The point group is changed to %s." % point_group_final)
-            else:
-                print("The molecule has point group of %s. However, the abelian point group %s is assigned." % ( point_group_final, point_group_assigned))
-            GeneralTools(self.path).ridft()
-            self.jobex()
-            self._check_geo_opt_converged()
-        self.aoforce()
-        inum, imfreq = self.check_imaginary_frequency()
-        if inum == 0:
-            found = True
-            print("The minima found succesfully.")
+        if self._check_geo_opt_converged():
+            point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
+            print("point_group_final", point_group_final)
+            if point_group_final != "c1":
+                point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
+                if point_group_assigned == point_group_final:
+                    print("The point group is changed to %s." % point_group_final)
+                else:
+                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % ( point_group_final, point_group_assigned))
+                GeneralTools(self.path).ridft()
+                self.jobex()
+                if self._check_geo_opt_converged():
+                    self.aoforce()
+                    inum, imfreq = self.check_imaginary_frequency()
+                    if inum == 0:
+                        found = True
+                        print("The equilibrium structure is found succesfully!")
+                    else:
+                        reason = "There are imaginary frequencies. This is not an equilibrium structure."
+                        print(reason)
+                else:
+                    reason = "The geometry optimization is failed."
         else:
-            print("There are imaginary frequencies. This is not a minima.")
-        return found
+            reason = "The geometry optimization is failed."
+        return found, reason
 
     def submit(self, foffset, active_atoms):
         if foffset == 0:
@@ -773,53 +814,63 @@ class SubmissionTools:
             found = self.minima_workflow()
         return found
 
-    def write_submit_py(self, foffset, active_atoms, max_mem, ref_struc_path, lot_DFT, path_ref_educts = [], path_ref_products = []):
+    def write_submit_py(self, TS, M, active_atoms, max_mem, ref_struc_path, lot_DFT, path_ref_educts = [], path_ref_products = []):
         f_path = os.path.join(self.path,"submit.py")
         f = open(f_path,"a")
         f.write("import os\n")
         f.write("import molsys\n")
         f.write("from molsys.util import turbomole\n")
-        f.write("# Submission Tools\n")
-        f.write("ST = turbomole.SubmissionTools()\n")
-        f.write("atom = ST.common_workflow(active_atoms = %s,\n"% str(active_atoms) )
-        f.write("                   max_mem = %d,\n" % max_mem)
-        f.write("                   ref_struc_path = '%s',\n" % ref_struc_path)
-        f.write("                   lot_DFT = '%s')\n" % lot_DFT)
-        f.write("if not atom:\n")
-        if foffset == 0:
-            f.write("    found = ST.transition_state_workflow(%s, %s, %s)\n" % (str(active_atoms), str(path_ref_educts), str(path_ref_products)))
+        f.write("# Optimization Tools\n")
+        f.write("ST = turbomole.OptimizationTools()\n")
+        f.write("atom, converged, init_energy = ST.common_workflow(")
+        if TS:
+            f.write("fermi = False,\n")
+            f.write("M = %d,\n" %M )     
         else:
-            f.write("    found = ST.minima_workflow()\n")
+            f.write("fermi = True,\n")
+            f.write("M = None,\n")
+        f.write("active_atoms = %s,\n"% str(active_atoms))
+        f.write("             max_mem = %d,\n" % max_mem)
+        f.write("      ref_struc_path = '%s',\n" % ref_struc_path)
+        f.write("             lot_DFT = '%s')\n" % lot_DFT)
+        f.write("if not atom:\n")
+        if TS:
+            f.write("    found, reason = ST.transition_state_workflow(%s, %s, %s)\n" % (str(active_atoms), str(path_ref_educts), str(path_ref_products)))
+        else:
+            f.write("    found, reason = ST.minima_workflow()\n")
         f.write("    if found:\n")
-        f.write("        os.system('touch found')\n")
+        f.write("        os.system('touch FOUND')\n")
         f.write("    else:\n")
-        f.write("        os.system('touch notfound')")
+        f.write("        f = open('NOTFOUND','a')\n")
+        f.write("        f.write('%s' %reason)\n")
+        f.write("        f.close('%s' %reason)\n")
         f.close()
         return
 
 
+
 class Slurm:
 
-#    def get_avail_nodes():
-#        sinfo = os.popen('sinfo --format="%n %t %c %m"').read()
-#        n_t_c_m = sinfo.split("\n")
-#        avail_nodes = []
-#        for lines in n_t_c_m:
-#            line = lines.split()
-#            if len(line)==4 and line[1] == "idle":
-#                avail_nodes.append((line[0],int(line[2]),int(line[3])))
-#        return avail_nodes
-#
-#
-#    def get_avail_nodes_of_(partition):
-#        sinfo = os.popen('sinfo --format="%n %t %P"').read()
-#        n_t_P = sinfo.split("\n")
-#        avail_nodes = []
-#        for lines in n_t_P:
-#            line = lines.split()
-#            if len(line)==3 and line[1] == "idle" and line[2].startswith(partition):
-#                avail_nodes.append(line[0])
-#        return avail_nodes
+    def get_avail_nodes():
+        sinfo = os.popen('sinfo --format="%n %t %c %m"').read()
+        n_t_c_m = sinfo.split("\n")
+        avail_nodes = []
+        for lines in n_t_c_m:
+            line = lines.split()
+            if len(line)==4 and line[1] == "idle":
+                avail_nodes.append((line[0],int(line[2]),int(line[3])))
+        return avail_nodes
+
+
+    def get_avail_nodes_of_(partition="normal"):
+        sinfo = os.popen('sinfo --format="%n %t %P"').read()
+        n_t_P = sinfo.split("\n")
+        avail_nodes = []
+        for lines in n_t_P:
+            line = lines.split()
+            if len(line)==3 and line[1] == "idle" and line[2].startswith(partition):
+                avail_nodes.append(line[0])
+        return avail_nodes
 
     def get_partition_info(partition="normal"):
         sinfo = os.popen('sinfo --format="%P %c %m"').read()
@@ -833,7 +884,7 @@ class Slurm:
 
     def write_submission_script(path=os.getcwd(), TURBODIR="", ntasks=8, partition="normal"):
         s_script_path = os.path.join(path, "submit.sh")
-        s_script = open(s_script_path,"a")
+        s_script = open(s_script_path,"w")
         s_script.write("#!/bin/bash\n")
         s_script.write("#SBATCH --ntasks=%d\n" %ntasks)
         s_script.write("#SBATCH --nodes=1\n")
@@ -876,15 +927,7 @@ class Harvest:
             self.path = path
         return
 
-    def get_energy(self, f_ZPE = 1.0):
-        aoforce_path = os.path.join(self.path, "aoforce.out")
-        with open(aoforce_path) as aoforce:
-            for line in aoforce:
-                if '  zero point VIBRATIONAL energy  ' in line:
-                    self.ZPE = float(line.split()[6]) # The zero point vibrational energy in Hartree
-                if 'SCF-energy' in line:
-                    self.SPE = float(line.split()[3]) # Energy in Hartree
-        return (self.SPE + f_ZPE*self.ZPE)
+
 
 
 

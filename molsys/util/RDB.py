@@ -81,10 +81,11 @@ class RDB:
         dbstruc["opt_species"] = [
             "r:species",      # reference to species table 
             "r:lot",          # ref to lot
-            "d:energy",       # energy (in kcal/mol)
+            "d:energy",       # energy (in kcal/mol or Hartree)
             "u:xyz",          # upload xyz file
             "u:mfpx",         # upload mfpx file        
             "u:png",          # thumbnail
+            "d:zpe",          # zero point vibrational energy if available (in Hartree)
             "s:path",         # path to input files for this job
             "b:molgchange",   # indicates change in molgraph w.r.t. species
             "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
@@ -389,13 +390,14 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=[]):
+    def add_opt_species(self, mol, lot, energy, specID, path, zpe=0, change_molg=False, rbonds=[]):
         """add an optimized structure to the DB
         
         Args:
             mol (mol object): structure to be stored
             lot (string or int): name or id of the level of theory
-            energy (float): energy of the system (unit is defiend by lot)
+            energy (float): energy of the system (unit is defined by lot)
+            zpe (float): zero point energy of the system (unit is defined by lot)
             mdspecID (int): reference id of the md_species entry
         """
         if type(lot) == type(""):
@@ -409,6 +411,7 @@ class RDB:
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz"),
             mfpx         = self.db.opt_species.mfpx.store(mfpxf, "opt.mfpx"),
             path         = path,
+            zpe          = zpe,
             molgchange   = change_molg,
             rbonds       = rbonds
         )
