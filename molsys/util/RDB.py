@@ -66,7 +66,8 @@ class RDB:
 
         dbstruc["species"] = [
             "s:sumform",      # sum formula
-            "u:molgraph",     # holds the molecular graph 
+            "u:compare_data", # holds the molecular graph 
+            "s:compare_type", # specifies the comparison type e.g. molgraph
         ]
 
         dbstruc["reac2spec"] = [
@@ -85,7 +86,6 @@ class RDB:
             "u:xyz",          # upload xyz file
             "u:mfpx",         # upload mfpx file        
             "u:png",          # thumbnail
-            "d:zpe",          # zero point vibrational energy if available (in Hartree)
             "s:path",         # path to input files for this job
             "b:molgchange",   # indicates change in molgraph w.r.t. species
             "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
@@ -285,23 +285,43 @@ class RDB:
             self.db.commit()
         return specID
 
-    def add_species(self, mol):
+    def add_species(self, mol, check_if_included=False, compare_type = "molg_from_mol"):
+        is_new = True
+        assert compare_type in ["molg_from_mol"], "Unknown comparison type"
+        mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         sumform = mol.get_sumformula()
         if mol.graph is None:
            mol.addon("graph")
-        mol.graph.make_comp_graph()
+        mol.graph.make_graph()
         molg = mol.graph.molg
-        molgf = io.BytesIO()    
-        mol.graph.molg.save(molgf,fmt="gt")
-        molgf.seek(0)
-        # register in the database
-        specID = self.db.species.insert(
-            sumform     = sumform ,
-            molgraph    = self.db.species.molgraph.store(molgf, "molg.gt") 
-        )
-        if self.do_commit:
-            self.db.commit()
-        return specID
+        if check_if_included:
+           # get all species with same sumform
+           specs = self.db((self.db.species.sumform == sumform)).select()
+           for sp in specs:
+              cmp_type = sp["compare_type"]
+              if cmp_type == compare_type:
+                 # only compare species of the same type
+                 fname, mfpxf1 = self.db.species.compare_data.retrieve(sp.compare_data)
+                 mfpxs = mfpxf1.read().decode('utf-8')
+                 mfpxf1.close()
+                 mol1 = molsys.mol.from_string(mfpxs)
+                 mol1.addon("graph")
+                 mol1.graph.make_graph()
+                 is_equal, error_code = molsys.addon.graph.is_equal(mol1.graph.molg, molg, use_fast_check=False)
+                 if is_equal:
+                    is_new = False
+                    specID = sp.id
+                    break
+              else:
+                 is_new = True
+                 continue 
+        if is_new:
+           specID = self.db.species.insert(
+               sumform       = sumform ,
+               compare_data  = self.db.species.compare_data.store(mfpxf, "mol4molg.mfpx") ,
+               compare_type  = compare_type
+           )
+        return specID, is_new
 
     def add_reac2spec(self, reactID, specID, itype):
         # register in the database
@@ -390,14 +410,13 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, specID, path, zpe=0, change_molg=False, rbonds=[]):
+    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=None):
         """add an optimized structure to the DB
         
         Args:
             mol (mol object): structure to be stored
             lot (string or int): name or id of the level of theory
             energy (float): energy of the system (unit is defined by lot)
-            zpe (float): zero point energy of the system (unit is defined by lot)
             mdspecID (int): reference id of the md_species entry
         """
         if type(lot) == type(""):
@@ -411,7 +430,6 @@ class RDB:
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz"),
             mfpx         = self.db.opt_species.mfpx.store(mfpxf, "opt.mfpx"),
             path         = path,
-            zpe          = zpe,
             molgchange   = change_molg,
             rbonds       = rbonds
         )

@@ -282,21 +282,24 @@ for r in revents:
         #
         rbonds = []
         for ed,m in ed_mol:
-           specid = rdb.add_species(ed)
+           specid, is_new = rdb.add_species(ed,True)
            rdb.add_reac2spec(reactID,specid,-1)
-           rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-           m.update_record(speciesID=specid)
+           if is_new:
+              rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
         for pr,m in pr_mol:
-           specid = rdb.add_species(pr)
+           specid, is_new = rdb.add_species(pr,True)
            rdb.add_reac2spec(reactID,specid, 1) 
-           rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-           m.update_record(speciesID=specid)
+           if is_new:
+              rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
         for ts,m in ts_mol:
-           specid = rdb.add_species(ts)
+           specid, is_new = rdb.add_species(ts,True)
            rbonds = r["rbonds"]  
            rdb.add_reac2spec(reactID,specid, 0) 
-           rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-           m.update_record(speciesID=specid)
+           if is_new:
+              rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
 
         # Update reaction event
         r.update_record(reactionsID=reactID)
