@@ -80,11 +80,11 @@ class turbomole_calculator:
        subdir_name = '%05d' % specID
        dft_subdir_path = os.path.abspath(os.path.join(self.dft_path, subdir_name))
        exists = os.path.isdir(dft_subdir_path)
+       inDB = False
        if exists:
            rdb = RDB.RDB(db_path)
            db = rdb.db
            dft_spec = db(db.opt_species.path == dft_subdir_path).select().first()
-           inDB = False
            if dft_spec != None: inDB = True
        else:
            os.mkdir(dft_subdir_path)
@@ -265,12 +265,15 @@ jobids = []
 counter = 0
 
 if params["submit"]:
-     # get the total number of species in order to know if all jobs are submitted already
-     eq_species = db((db.reac2spec.speciesID == db.species.id) & (db.species.id == db.opt_species.speciesID) & (db.opt_species.lotID == start_lotID) & (db.reac2spec.label != 0)).select()
-     n_eq = len(eq_species)
-     
-     ts_species = db((db.reac2spec.speciesID == db.species.id) & (db.species.id == db.opt_species.speciesID) & (db.opt_species.lotID == start_lotID) & (db.reac2spec.label == 0)).select()
-     n_ts = len(ts_species)
+     n_eq = 0
+     n_ts = -1
+     for r in reactions:
+         reac2eq_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label != 0)).select()
+         for eq_spec in reac2eq_spec:
+             n_eq += 1
+         n_ts += 1
+
+     print(n_eq, n_ts)
 
 
 # Loop over the reactions
@@ -278,87 +281,86 @@ for r in reactions:
     # get all species for this reaction
     reac2spec   = db((db.reac2spec.reactionsID == r)).select()
     reac2eq_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label != 0)).select()
+    ts_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  0)).select().first()
 
     #################################### for the TS ######################################
     if params["species"] == "ts":
-        # We need the QM optimized educt and product species 
-        # 1) to determine the spin multiplicity of the TS and 
-        # 2) to compare the end points of intrinsic reaction coordinate.
-        # Therefore, select the optimized educts and products at the specified QM lot.
-        reac2educt_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label == -1)).select()
-        oeds = []
-        for ed in reac2educt_spec:
-            oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
-            oeds.append(oed)
+        if r.id != 1:
+            # We need the QM optimized educt and product species 
+            # 1) to determine the spin multiplicity of the TS and 
+            # 2) to compare the end points of intrinsic reaction coordinate.
+            # Therefore, select the optimized educts and products at the specified QM lot.
+            reac2educt_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label == -1)).select()
+            oeds = []
+            for ed in reac2educt_spec:
+                oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+                oeds.append(oed)
 
-        reac2proc_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  1)).select()
-        oprods = []
-        for prod in reac2proc_spec:
-            oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
-            oprods.append(oprod)
-        # Now select the start_lot (e.g. ReaxFF) pre-optimized TS species.
-        try:
-            reac2ts_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  0)).select().first()
-            ots =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
+            reac2proc_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  1)).select()
+            oprods = []
+            for prod in reac2proc_spec:
+                oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+                oprods.append(oprod)
+
+            # Now select the start_lot (e.g. ReaxFF) pre-optimized TS species.
+            print(ts_spec)
+            ots =  db((db.opt_species.speciesID == ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
             ots_mfpx_path = get_opt_spec_path(ots)
             rbonds = ots["rbonds"]
-        except:
-            print("The reaction %d do not have a TS." %r)
 
     ############################## for the equilibrium structures ########################
     else:
         for spec in reac2eq_spec:
-           counter += 1
-           specID = spec["speciesID"]
-           # Select the start_lot (e.g. ReaxFF) optimized equilibrium species.
-           ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
-           ospec_mfpx_path = get_opt_spec_path(ospec)
-           if params["calculator"] == "turbomole":
+            counter += 1
+            if counter < n_eq:
+                specID = spec["speciesID"]
+                # Select the start_lot (e.g. ReaxFF) optimized equilibrium species.
+                ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
+                ospec_mfpx_path = get_opt_spec_path(ospec)
+                if params["calculator"] == "turbomole":
 
-              ################################# submission to the queuing system ##################################
-              if params["submit"]:
-                 # submit the jobs to the specifies number of total cores.
-                 while ncurjobs == calculator.max_njobs:
-                      print("Maximum number of jobs running at the same time is reached. Waiting for the jobs %s to finish." %str(list(curjobids)))              
-                      time.sleep(30)
-                      ncurjobs, curjobids = get_ncurjobs(jobids)
-                 # submit the job to the queue and get the job id from the queing system
-                 dft_subdir_path, exists, inDB = calculator.make_dft_subdir(specID, db_path)
-                 if not exists and not inDB:
-                     jobid = calculator.optimize(specID, ospec_mfpx_path)
-                     # update the variables
-                     jobids.append(jobid)
-                     dft_subdir_paths[ospec] = dft_subdir_path
-                 elif exists and not in DB:
-                     print('The directory %s already exists. However, there is no entry in the DB.' %dft_subdir_path)
-                 else:
-                     print('The directory %s already exists and is in the DB.' %dft_subdir_path)
-                 ncurjobs, curjobids = get_ncurjobs(jobids)
-                 # if all of the jobs are submitted, wait until all of them are finished
-                 if len(jobids) == n_eq:
-                     while not ncurjobs == 0:
-                         print("Waiting for the final jobs %s to finish..." %str(list(curjobids)))
-                         time.sleep(30)
-                         ncurjobs, curjobids = get_ncurjobs(jobids)
-                     print("All of the jobs are finished.")
-                     print(n_eq, counter) 
+                    ################################# submission to the queuing system ##################################
+                    if params["submit"]:
+                        # submit the jobs to the specifies number of total cores.
+                        while ncurjobs == calculator.max_njobs:
+                            print("Maximum number of jobs running at the same time is reached. Waiting for the jobs %s to finish." %str(list(curjobids)))              
+                            time.sleep(30)
+                            ncurjobs, curjobids = get_ncurjobs(jobids)
+                        # submit the job to the queue and get the job id from the queing system
+                        dft_subdir_path, exists, inDB = calculator.make_dft_subdir(specID, db_path)
+                        if not exists and not inDB:
+                            jobid = calculator.optimize(specID, ospec_mfpx_path)
+                            # update the variables
+                            jobids.append(jobid)
+                            dft_subdir_paths[ospec] = dft_subdir_path
+                        elif exists and not inDB:
+                            print('The directory %s already exists. However, there is no entry in the DB.' %dft_subdir_path)
+                        else:
+                            print('The directory %s already exists and is in the DB.' %dft_subdir_path)
+                        ncurjobs, curjobids = get_ncurjobs(jobids)
+                        # if all of the jobs are submitted, wait until all of them are finished
+                        if len(jobids) == n_eq:
+                            while not ncurjobs == 0:
+                                print("Waiting for the final jobs %s to finish..." %str(list(curjobids)))
+                                time.sleep(30)
+                                ncurjobs, curjobids = get_ncurjobs(jobids)
+                            print("All of the jobs are finished.")
 
 
+                    ##################################### optimize in series  ###########################################
+                    else:
+                        dft_subdir_path, exists, inDB = calculator.make_dft_subdir(specID, db_path)
+                        if not exists and not inDB:
+                            found, reason, init_energy, final_energy, zpe = calculator.optimize(specID, ospec_mfpx_path)
+                            dft_subdir_paths[ospec] = dft_subdir_path
+                        elif exists and not inDB:
+                            print('The directory %s already exists. However, there is no entry in the DB.' %dft_subdir_path)
+                        else:
+                            print('The directory %s already exists and is in the DB.' %dft_subdir_path)
 
-              ##################################### optimize in series  ###########################################
-              else:
-                 dft_subdir_path, exists, inDB = calculator.make_dft_subdir(specID, db_path)
-                 if not exists and not inDB:
-                     found, reason, init_energy, final_energy, zpe = calculator.optimize(specID, ospec_mfpx_path)
-                     dft_subdir_paths[ospec] = dft_subdir_path
-                 elif exists and not in DB:
-                     print('The directory %s already exists. However, there is no entry in the DB.' %dft_subdir_path)
-                 else:
-                     print('The directory %s already exists and is in the DB.' %dft_subdir_path)
-
-           else:
-              print("Unknown calculator!")
-              sys.exit(1)
+                else:
+                   print("Unknown calculator!")
+                   sys.exit(1)
 
 
 #if params["submit"]:

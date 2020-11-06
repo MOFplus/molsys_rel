@@ -520,27 +520,35 @@ class OptimizationTools:
 
 
     def common_workflow(self, fermi, M, active_atoms, max_mem, ref_struc_path, lot_DFT):
-        ''' Performs single point calculation.'''
+        ''' Performs single point calculation, adds a noise within 0.1 Angstrom to the reference structure. 
+        fermi          : logical, to apply Fermi smearing or not
+        M              : in case of Fermi smearing, the initial spin multiplicity; otherwise, the multiplicity
+        max_mem        : maximum memory per core
+        ref_struc_path : the path to the reference structure; e.g. from ReaxFF
+        lot_DFT        : string, e.g. tpss/SVP 
+        '''
         mol = molsys.mol.from_file(ref_struc_path)
         GT = GeneralTools(self.path)
         atom = False
+        new_xyz = GeometryTools.add_noise(mol, active_atoms)
         if mol.natoms == 1:
             atom = True
         if fermi:
             # Determine the orbital occupations through Fermi smearing.
-            # Mstart : initial spin multiplicity
-            #        = 3 for systems with even number of electrons
-            #        = 2 for systems with odd number of electrons
-            nel = Mol().count_number_of_electrons(mol = mol, charge = 0)
-            if (nel % 2) == 0:
-                M_start = 3
-            else:
-                M_start = 2
-            new_xyz = GeometryTools.add_noise(mol, active_atoms)
+            if M == None:
+                # if the multiplicity is not defined already assign the following:
+                # M      : initial spin multiplicity
+                #        = 3 for systems with even number of electrons
+                #        = 2 for systems with odd number of electrons
+                nel = Mol().count_number_of_electrons(mol = mol, charge = 0)
+                if (nel % 2) == 0:
+                    M = 3
+                else:
+                    M = 2
             GT.make_tmole_dft_input(
                     mol.elems, 
                     new_xyz, 
-                    M_start, 
+                    M, 
                     max_mem, 
                     ref_struc_path,
                     lot_DFT,
@@ -562,6 +570,12 @@ class OptimizationTools:
             GT.run_tmole()
         energy = GT.ridft()
         converged = GT.check_dscf_converged()
+        if not converged:
+            f = open(os.path.join(self.path,'NOTFOUND'),'a')
+            f.write('The ridft calculation did not converge.')
+            f.close()
+        elif atom:
+            os.system('touch %s' %os.path.join(self.path,'FOUND'))
         return atom, converged, energy
 
 
@@ -789,20 +803,19 @@ class OptimizationTools:
                 if point_group_assigned == point_group_final:
                     print("The point group is changed to %s." % point_group_final)
                 else:
-                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % ( point_group_final, point_group_assigned))
+                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % (point_group_final, point_group_assigned))
                 GeneralTools(self.path).ridft()
                 self.jobex()
-                if self._check_geo_opt_converged():
-                    self.aoforce()
-                    inum, imfreq = self.check_imaginary_frequency()
-                    if inum == 0:
-                        found = True
-                        print("The equilibrium structure is found succesfully!")
-                    else:
-                        reason = "There are imaginary frequencies. This is not an equilibrium structure."
-                        print(reason)
-                else:
+                if not self._check_geo_opt_converged():
                     reason = "The geometry optimization is failed."
+            self.aoforce()
+            inum, imfreq = self.check_imaginary_frequency()
+            if inum == 0:
+                found = True
+                print("The equilibrium structure is found succesfully!")
+            else:
+                reason = "There are imaginary frequencies. This is not an equilibrium structure."
+                print(reason)
         else:
             reason = "The geometry optimization is failed."
         return found, reason
@@ -825,11 +838,11 @@ class OptimizationTools:
         f.write("atom, converged, init_energy = ST.common_workflow(")
         if TS:
             f.write("fermi = False,\n")
-            f.write("M = %d,\n" %M )     
+            f.write("                   M = %d,\n" %M )     
         else:
             f.write("fermi = True,\n")
-            f.write("M = None,\n")
-        f.write("active_atoms = %s,\n"% str(active_atoms))
+            f.write("                   M = None,\n")
+        f.write("        active_atoms = %s,\n"% str(active_atoms))
         f.write("             max_mem = %d,\n" % max_mem)
         f.write("      ref_struc_path = '%s',\n" % ref_struc_path)
         f.write("             lot_DFT = '%s')\n" % lot_DFT)
