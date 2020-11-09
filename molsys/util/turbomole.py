@@ -318,30 +318,6 @@ class GeometryTools:
         return point_group
 
 
-    def _write_define_new_point_group(new_point_group='c1', path=os.getcwd()):
-        ### get the number of alpha and beta electrons ###
-        nalpha, nbeta = GeneralTools(path).get_nalpha_and_nbeta_from_ridft_output()
-        ### get the charge ###
-        charge = GeneralTools(path).read_charge_from_control()
-        ### write a define input ###
-        define_in_path = os.path.join(path,"define.in")
-        f = open(define_in_path,"w")
-        f.write("\n")
-        f.write("y\n")
-        f.write("desy \n")
-        f.write("sy %s\n" % new_point_group)
-        f.write("ired\n")
-        f.write("*\n")
-        f.write("\n")
-        f.write("eht\n")
-        f.write("\n")
-        f.write("%d\n" % charge)
-        f.write("n\n")
-        f.write("u %d\n" % abs(nalpha-nbeta))
-        f.write("*\n\n\nq")
-        f.close()
-        return
-
     def _get_natoms_from_control(path=os.getcwd()):
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
@@ -351,27 +327,41 @@ class GeometryTools:
                     natoms = int(lines.strip().split('=')[-1])
         return natoms
 
-    def change_point_group(path=os.getcwd(), point_group='c1'):
-        non_abelian_point_groups = {  'o':'d2',  'oh':'d2h',  'td':'c2v',  'th':'s6',    't':'d2',
-                                'd2d':'c2v','d3d':'s6',  'd4d':'s8',  'd5d':'s10', 'd6d':'s12','d7d':'s14','d8d':'s16',
-                                'd3h':'c2v','d4h':'c4h', 'd5h':'c2v', 'd6h':'c2h', 'd7h':'c2v', 'd8h':'c2h',
-                                'c3v':'cs', 'c4v':'c2v', 'c5v':'c5',  'c6v':'c2v', 'c7v':'c7', 'c8v':'c8',
-                                 'd3':'c3',  'd4':'c4',   'd5':'c5',   'd6':'c6',   'd7':'c7',  'd8':'c8'}
-        if point_group in non_abelian_point_groups:
-            point_group_to_assign = non_abelian_point_groups[point_group] 
-        else:
-            point_group_to_assign = point_group
-        ### Get the number of atoms ###
-        natoms = GeometryTools._get_natoms_from_control(path)
+    def change_point_group(path=os.getcwd()):
         ### write the define.in file ###
-        GeometryTools._write_define_new_point_group(point_group_to_assign, path)
-        ### invoke define ###
-        GeneralTools(path).invoke_define(define_out_name = "define-test.out")
-        ### check if the number of atoms is still the same ###
-        newnatoms = GeometryTools._get_natoms_from_control(path)
-        if natoms != newnatoms:
-            raise SymmetryAssignmentChangedtheStructureError("The structure is does not follow the  point group %s symmetry operations. Therefore, while trying to change the symmetry group, new atoms are added to enforce it." % new_point_group)
-        return point_group_to_assign
+        old_control = os.path.join(path,'control')
+        maindir = os.getcwd()
+        newsym_path = os.path.join(path,"newsym")
+
+        os.chdir(path)
+        os.system('cpc %s' %newsym_path)
+
+        os.chdir(newsym_path)
+        ### write a define input ###
+        define_in_path = os.path.join(newsym_path,"define.in")
+        f = open(define_in_path,"w")
+        f.write("\n")
+        f.write("y\n")
+        f.write("desy \n")
+        f.write("ired\n")
+        f.write("*\n")
+        f.write("\n")
+        f.write("use %s\n" %old_control)
+        f.write("\n\n\nq")
+        f.close()
+        
+        GeneralTools(newsym_path).invoke_define(define_out_name = "define-test.out")
+
+        os.chdir(path)
+        files = os.listdir(path)
+        for f in files:
+            if os.path.isfile(f) and f not in ['submit.py','submit.out','turbo.in']:
+                os.remove(f)
+
+        os.system('cp %s/* %s' %(newsym_path, path))
+        shutil.rmtree(newsym_path)
+        os.chdir(maindir)
+        return
 
         
 
@@ -610,20 +600,48 @@ class OptimizationTools:
         return atom, converged, energy
 
 
-    def find_end_points_from_IRC(self):
-        path_minus = os.path.join(self.path, 'displaced_minus') 
-        path_plus  = os.path.join(self.path, 'displaced_plus')
+    def find_end_points_from_IRC(self, M, max_mem, lot_DFT):
+        maindir = os.getcwd()
 
+        # MINUS
+        path_minus = os.path.join(self.path, 'displaced_minus') 
         os.system("t2x %s/coord > %s/coord.xyz" %(path_minus, path_minus))
         mol_minus =  molsys.mol.from_file('%s/coord.xyz' %path_minus,'xyz')
-        mol_minus.detect_conn(thresh = 0.2)
-        mols_minus = Mol().separate_molecules(mol_minus)
 
+        sub_path_minus = os.path.join(path_minus, 'minus')
+        os.mkdir(sub_path_minus)
+        GeneralTools(sub_path_minus).make_tmole_dft_input(mol_minus.elems, mol_minus.xyz, M, max_mem, 'minus', lot_DFT, False)
+        GeneralTools(sub_path_minus).run_tmole()
+        os.chdir(sub_path_minus)
+        self.jobex()
+        converged = self.check_geo_opt_converged()
+        # TODO I should check if these are converged... 
+        os.system("t2x %s/coord > %s/coord.xyz" %(sub_path_minus, sub_path_minus))
+        opt_mol_minus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_minus,'xyz')
+        opt_mol_minus.detect_conn(thresh = 0.2)
+
+        mols_minus = Mol().separate_molecules(opt_mol_minus)
+
+        # PLUS
+        path_plus  = os.path.join(self.path, 'displaced_plus')
         os.system("t2x %s/coord > %s/coord.xyz" %(path_plus, path_plus))
-        mol_plus =  molsys.mol.from_file('%s/coord.xyz' %path_plus,'xyz')
-        mol_plus.detect_conn(thresh = 0.2)
-        mols_plus = Mol().separate_molecules(mol_plus)
+        mol_plus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_plus,'xyz')
 
+        sub_path_plus = os.path.join(path_plus, 'plus')
+        os.mkdir(sub_path_plus)
+        GeneralTools(sub_path_plus).make_tmole_dft_input(mol_plus.elems, mol_plus.xyz, M, max_mem, 'plus', lot_DFT, False)
+        GeneralTools(sub_path_plus).run_tmole()
+        os.chdir(sub_path_plus)
+        self.jobex()
+        converged = self.check_geo_opt_converged()
+        # TODO I should check if these are converged... 
+        os.system("t2x %s/coord > %s/coord.xyz" %(sub_path_plus, sub_path_plus))
+        opt_mol_plus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_plus,'xyz')
+        opt_mol_plus.detect_conn(thresh = 0.2)
+
+        mols_plus = Mol().separate_molecules(opt_mol_plus)
+
+        os.chdir(maindir)
         return mols_minus, mols_plus
 
 
@@ -830,7 +848,7 @@ class OptimizationTools:
         # pre-optimization
         self.jobex()
         if not self.check_geo_opt_converged():
-            reason = 'Transition state pre-optimization did not converge.'
+            reason += 'Transition state pre-optimization did not converge.\n'
             print(reason)
         else:
             # remove the gradient left from the previous calculation.
@@ -845,11 +863,7 @@ class OptimizationTools:
             point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
             print("point_group_final", point_group_final)
             if point_group_final != "c1":
-                point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
-                if point_group_assigned == point_group_final:
-                    print("The point group is changed to %s." % point_group_final)
-                else:
-                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % ( point_group_final, point_group_assigned))
+                GeometryTools.change_point_group(self.path)
 
             # perform aoforce calculation     
             self.aoforce()
@@ -857,42 +871,46 @@ class OptimizationTools:
             # check the number of imaginary frequencies
             inum, imfreq = self.check_imaginary_frequency()
             if inum == 0:        
-                reason = 'No imaginary frequency at the start structure.'
+                reason += 'No imaginary frequency at the start structure.\n'
                 print(reason)
             elif inum == 1:
                 self.jobex(ts=True)
                 if not self.check_geo_opt_converged():
-                   reason = 'The transition state optimzation did not converge.'
+                   reason += 'The transition state optimzation did not converge.\n'
                    print(reason)
                 else:
                    self.aoforce()
                    inum, imfreq = self.check_imaginary_frequency()
                    if inum == 1: 
-                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
+                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.\n')
                       self.IRC()
                       mols_minus, mols_plus = self.find_end_points_from_IRC()
                       found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+                   else:
+                      reason += 'The final number of imaginary frequency is not 1.\n'
             elif inum > 1:
-                print('There are more than one imaginary frequencies. But it will try to optimize.')
+                reason += 'There are more than one imaginary frequencies. But it will try to optimize.\n'
+                print(reason)
                 self.jobex(ts=True)
                 if not self.check_geo_opt_converged():
-                   reason = 'The transition state optimzation did not converge.'
+                   reason += 'The transition state optimzation did not converge.\n'
                    print(reason)
                 else:
                    self.aoforce()
                    inum, imfreq = self.check_imaginary_frequency()
                    if inum == 1:
-                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
+                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.\n')
                       self.IRC()
                       mols_minus, mols_plus = self.find_end_points_from_IRC()
                       found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
                    else:
-                      reason = 'The final number of imaginary frequency is not 1.'
+                      reason += 'The final number of imaginary frequency is not 1.\n'
         return found, reason
 
     def minima_workflow(self):
         found = False
         reason = ""
+
         point_group_initial = GeometryTools.get_point_group_from_coord(self.path,'coord')
         print("point_group_initial", point_group_initial)
         self.jobex()
@@ -900,25 +918,25 @@ class OptimizationTools:
             point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
             print("point_group_final", point_group_final)
             if point_group_final != "c1":
-                point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
-                if point_group_assigned == point_group_final:
-                    print("The point group is changed to %s." % point_group_final)
-                else:
-                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % (point_group_final, point_group_assigned))
+                GeometryTools.change_point_group(self.path)
                 GeneralTools(self.path).ridft()
                 self.jobex()
                 if not self.check_geo_opt_converged():
-                    reason = "The geometry optimization is failed."
-            self.aoforce()
-            inum, imfreq = self.check_imaginary_frequency()
-            if inum == 0:
-                found = True
-                print("The equilibrium structure is found succesfully!")
+                    reason += "The geometry optimization is failed.\n"
+                else:
+                    self.aoforce()
             else:
-                reason = "There are imaginary frequencies. This is not an equilibrium structure."
-                print(reason)
+                self.aoforce()
+            if os.path.isfile('aoforce.out'):
+                inum, imfreq = self.check_imaginary_frequency()
+                if inum == 0:
+                    found = True
+                    print("The equilibrium structure is found succesfully!")
+                else:
+                    reason += "There are imaginary frequencies. This is not an equilibrium structure.\n"
+                    print(reason)
         else:
-            reason = "The geometry optimization is failed."
+            reason += "The geometry optimization is failed."
         return found, reason
 
     def submit(self, foffset, active_atoms):
