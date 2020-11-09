@@ -318,16 +318,7 @@ class GeometryTools:
         return point_group
 
 
-    def _get_natoms_from_control(path=os.getcwd()):
-        if not os.path.isdir(path):
-            raise FileNotFoundError("The directory %s does not exist." % path)
-        with open(os.path.join(path,'control'),'r') as control:
-            for lines in control:
-                if 'natoms' in lines:
-                    natoms = int(lines.strip().split('=')[-1])
-        return natoms
-
-    def change_point_group(path=os.getcwd()):
+    def detect_and_change_point_group(path=os.getcwd()):
         ### write the define.in file ###
         old_control = os.path.join(path,'control')
         maindir = os.getcwd()
@@ -774,7 +765,18 @@ class OptimizationTools:
         os.system('cp %s %s' %(os.path.join(path_ref_ed,   'coord'), os.path.join(woefling_dir, 'ini')))
         os.system('cp %s %s' %(os.path.join(path_ref_prod, 'coord'), os.path.join(woefling_dir, 'fin')))
         os.system('cat ini fin > coords')
-        # TODO add to the control file $woelfling key
+        # add to the control file $woelfling key
+        newlines = ''
+        with open('control') as control:
+           for line in control:
+               if 'end' in line:
+                   newlines += '$woelfling\n ninter  24 \n riter   0 \n ncoord  2 \n align   0 \n maxit   40 \n dlst    3.0 \n thr     1.0E-4 \n method  q \n$end'
+               else:
+                   newlines += line
+        f = open('control','w')
+        f.write(newlines)
+        f.close()
+        print(newlines)
         # perform the woelfling calculation
         os.system('woelfling-job > woelfling.out')
         # determine which of the points is a TS guess structure
@@ -863,7 +865,7 @@ class OptimizationTools:
             point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
             print("point_group_final", point_group_final)
             if point_group_final != "c1":
-                GeometryTools.change_point_group(self.path)
+                GeometryTools.detect_and_change_point_group(self.path)
 
             # perform aoforce calculation     
             self.aoforce()
@@ -918,7 +920,7 @@ class OptimizationTools:
             point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
             print("point_group_final", point_group_final)
             if point_group_final != "c1":
-                GeometryTools.change_point_group(self.path)
+                GeometryTools.detect_and_change_point_group(self.path)
                 GeneralTools(self.path).ridft()
                 self.jobex()
                 if not self.check_geo_opt_converged():
@@ -962,8 +964,8 @@ class OptimizationTools:
             f.write("unimolecular      = %s\n" %str(unimolecular))
             f.write("path_ref_educts   = %s\n" %str(path_ref_educts))
             f.write("path_ref_products = %s\n" %str(path_ref_products))
-            f.write("mfpx_ed_complex   = %s\n" %mfpx_ed_complex)
-            f.write("mfpx_prod_complex = %s\n\n" %mfpx_prod_complex)
+            f.write("mfpx_ed_complex   = '%s'\n" %mfpx_ed_complex)
+            f.write("mfpx_prod_complex = '%s'\n\n" %mfpx_prod_complex)
         else:
             f.write("M                 = None\n")
             f.write("fermi             = True\n")
@@ -979,7 +981,7 @@ class OptimizationTools:
         f.write("             lot_DFT = lot_DFT)\n\n")
         f.write("if not converged:\n")
         f.write("    f = open('NOTFOUND','a')\n")
-        f.write("    f.write('%s' %reason)\n")
+        f.write("    f.write('ridft did not converge.')\n")
         f.write("    f.close()\n")
         f.write("else:\n")
         if TS:
@@ -988,10 +990,11 @@ class OptimizationTools:
             f.write("        os.system('touch FOUND')\n")
             f.write("    else:\n")
             f.write("        if unimolecular:\n")
-            f.write("            ST.woelfling_workflow(unimolecular = True,  M = M, max_mem = max_mem, lot_DFT = lot_DFT, path_ref_ed = path_ref_educts[0], path_ref_prod = path_ref_products[0]\n")
+            f.write("            ST.woelfling_workflow(unimolecular = True,  M = M, max_mem = max_mem, lot_DFT = lot_DFT, path_ref_ed = path_ref_educts[0], path_ref_prod = path_ref_products[0])\n")
             f.write("        else:\n")
-            f.write("            ST.woelfling_workflow(unimolecular = False, M = M, max_mem = max_mem, lot_DFT = lot_DFT, mpfx_ed_complex = mfpx_ed_complex, mpfx_prod_complex = mpfx_prod_complex\n")
+            f.write("            ST.woelfling_workflow(unimolecular = False, M = M, max_mem = max_mem, lot_DFT = lot_DFT, mpfx_ed_complex = mfpx_ed_complex, mpfx_prod_complex = mpfx_prod_complex)\n")
             f.write("        f = open('NOTFOUND','a')\n")
+
             f.write("        f.write('%s' %reason)\n")
             f.write("        f.close()\n")
         else:
