@@ -123,9 +123,13 @@ class turbomole_calculator:
                   final_energy = init_energy
                   zpe = 0
               else:
-                  found, reason = ST.minima_workflow()
-                  final_energy, zpe = turbomole.Harvest().get_energy()
-
+                  if converged:
+                      found, reason = ST.minima_workflow()
+                      final_energy, zpe = turbomole.Harvest().get_energy()
+                  else:
+                      f = open('NOTFOUND','a')
+                      f.write('The ridft calculation did not converge.')
+                      f.close()
           os.chdir(self.data_dir)
           return found, reason, init_energy, final_energy, zpe
 
@@ -299,97 +303,90 @@ for r in reactions:
             n_ed = len(reac2educt_spec)
             path_ref_educts = []
             M_educts = - n_ed + 1
+
+            skip = False
             for ed in reac2educt_spec:
-                try:
-                    oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
-                except:
+                oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+                if oed != None:
+                    path_ref_educts.append(oed["path"])
+                    infos = oed["info"].split(';')
+                    for info in infos:
+                        if 'M' in info:
+                            M_ed = int(info.split("=")[1])
+                    M_educts += M_ed
+                else:
+                    skip = True
                     print('%s optimized species for the species %d does not exist in the database.' %(params["lot"], ed.speciesID))
-                path_ref_educts.append(oed["path"])
-                infos = oed["info"].split(';')
-                for info in infos:
-                    if 'M' in info:
-                        M_ed = int(info.split("=")[1])
-                M_educts += M_ed
 
             reac2proc_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  1)).select()
             n_prod = len(reac2proc_spec)
             path_ref_products = []
             M_products = - n_prod + 1
             for prod in reac2proc_spec:
-                try:
-                    oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
-                except:
+                oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+                if oprod != None:
+                    path_ref_products.append(oprod["path"])
+                    infos = oprod["info"].split(';')
+                    for info in infos:
+                        if 'M' in info:
+                            M_prod = int(info.split("=")[1])
+                    M_products += M_prod
+                else:
+                    skip = True
                     print('%s optimized species for the species %d does not exist in the database.' %(params["lot"], ed.speciesID))
-                path_ref_products.append(oprod["path"])
-                infos = oprod["info"].split(';')
-                for info in infos:
-                    if 'M' in info:
-                        M_prod = int(info.split("=")[1])
-                M_products += M_prod
 
-            # Determine the multiplicity of the reaction
-            if M_educts == M_products:
-                M = M_educts
-            else:
-                M = min(M_educts, M_products)
-                print('The multiplicity of the educts and the products are not the same. The lower one is assigned.')
+            if not skip:
+                # Determine the multiplicity of the reaction
+                if M_educts == M_products:
+                    M = M_educts
+                else:
+                    M = min(M_educts, M_products)
+                    print('The multiplicity of the educts and the products are not the same. The lower one is assigned.')
 
-            ed_comp_path   = ''
-            prod_comp_path = ''
-            if n_ed == 1 and n_prod == 1:
-                unimolecular = True
-            else:
-                unimolecular = False
+                ed_comp_path   = ''
+                prod_comp_path = ''
+                if n_ed == 1 and n_prod == 1:
+                    unimolecular = True
+                else:
+                    unimolecular = False
 
-            mfpx_ed_complex   = ''
-            mfpx_prod_complex = ''
-            if not unimolecular:
-                revent    = db( db.revent.reactionsID == r.id ).select().first()
-                print(reac2ts_spec["speciesID"])
-                print(path_ref_educts, path_ref_products)
-                print(db(db.md_species.reventID == revent.id).select())
-                ed_comp   = db((db.md_species.reventID == revent.id) & (db.md_species.react_compl == True) & (db.md_species.foffset == -1)).select().first()
-                prod_comp = db((db.md_species.reventID == revent.id) & (db.md_species.react_compl == True) & (db.md_species.foffset ==  1)).select().first()
-                mfpx_ed_complex   = get_md_spec_mfpx(ed_comp)
-                mfpx_prod_complex = get_md_spec_mfpx(prod_comp)
+                mfpx_ed_complex   = ''
+                mfpx_prod_complex = ''
+                if not unimolecular:
+                    revent    = db( db.revent.reactionsID == r.id ).select().first()
+                    ed_comp   = db((db.md_species.reventID == revent.id) & (db.md_species.react_compl == True) & (db.md_species.foffset == -1)).select().first()
+                    prod_comp = db((db.md_species.reventID == revent.id) & (db.md_species.react_compl == True) & (db.md_species.foffset ==  1)).select().first()
+                    mfpx_ed_complex   = get_md_spec_mfpx(ed_comp)
+                    mfpx_prod_complex = get_md_spec_mfpx(prod_comp)
 
-            # Now select the start_lot (e.g. ReaxFF) pre-optimized TS species.
-            ots =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
-            ots_mfpx_path = get_opt_spec_path(ots)
-            rbonds = ots["rbonds"]
-            specID = reac2ts_spec["speciesID"] 
-            
+                # Now select the start_lot (e.g. ReaxFF) pre-optimized TS species.
+                ots =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
+                ots_mfpx_path = get_opt_spec_path(ots)
+                rbonds = ots["rbonds"]
+                specID = reac2ts_spec["speciesID"] 
+                
 
-            if params["calculator"] == "turbomole":
+                if params["calculator"] == "turbomole":
 
-                ################################# submission to the queuing system ##################################
-                if params["submit"]:
-                    # submit the jobs to the specifies number of total cores.
-                    while ncurjobs == calculator.max_njobs:
-                        print("Maximum number of jobs running at the same time is reached. Waiting for the jobs %s to finish." %str(list(curjobids)))
-                        time.sleep(30)
-                        ncurjobs, curjobids = get_ncurjobs(jobids)
-                    # submit the job to the queue and get the job id from the queing system
-                    dft_subdir_path, exists, inDB = calculator.make_dft_subdir(specID, db_path)
-                    if not exists and not inDB:
-                        jobid = calculator.optimize(specID, ots_mfpx_path, True, M, rbonds, unimolecular, path_ref_educts, path_ref_products, prod_comp_path, mfpx_ed_complex, mfpx_prod_complex)
-                        # update the variables
-                        jobids.append(jobid)
-                        dft_subdir_paths[ospec] = dft_subdir_path
-                    elif exists and not inDB:
-                        print('The directory %s already exists. However, there is no entry in the DB. Please, check if the directory contains the results and if so add it to the database; otherwise, remove the directory.' %dft_subdir_path)
-                    else:
-                        print('The directory %s already exists and is in the DB.' %dft_subdir_path)
-                    ncurjobs, curjobids = get_ncurjobs(jobids)
-                    # if all of the jobs are submitted, wait until all of them are finished
-                    if len(jobids) == n_eq:
-                        while not ncurjobs == 0:
-                            print("Waiting for the final jobs %s to finish..." %str(list(curjobids)))
+                    ################################# submission to the queuing system ##################################
+                    if params["submit"]:
+                        # submit the jobs to the specifies number of total cores.
+                        while ncurjobs == calculator.max_njobs:
+                            print("Maximum number of jobs running at the same time is reached. Waiting for the jobs %s to finish." %str(list(curjobids)))
                             time.sleep(30)
                             ncurjobs, curjobids = get_ncurjobs(jobids)
-                        print("All of the jobs are finished.")
-
-
+                        # submit the job to the queue and get the job id from the queing system
+                        dft_subdir_path, exists, inDB = calculator.make_dft_subdir(specID, db_path)
+                        if not exists and not inDB:
+                            jobid = calculator.optimize(specID, ots_mfpx_path, True, M, rbonds, unimolecular, path_ref_educts, path_ref_products, mfpx_ed_complex, mfpx_prod_complex)
+                            # update the variables
+                            jobids.append(jobid)
+                            dft_subdir_paths[ots] = dft_subdir_path
+                        elif exists and not inDB:
+                            print('The directory %s already exists. However, there is no entry in the DB. Please, check if the directory contains the results and if so add it to the database; otherwise, remove the directory.' %dft_subdir_path)
+                        else:
+                            print('The directory %s already exists and is in the DB.' %dft_subdir_path)
+                        ncurjobs, curjobids = get_ncurjobs(jobids)
 
 
 
