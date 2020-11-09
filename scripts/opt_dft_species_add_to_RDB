@@ -3,6 +3,7 @@
 
 
 import os
+import sys
 import molsys
 from molsys.util import RDB
 from molsys.util import turbomole
@@ -23,9 +24,27 @@ def get_energy(dft_subdir_path, atom):
        SPE, ZPE = GT.get_energy_from_aoforce_out()
    return  SPE, ZPE
 
+
+def get_M(dft_subdir_path):
+   GT = turbomole.GeneralTools(dft_subdir_path)
+   nalpha, nbeta = GT.get_nalpha_and_nbeta_from_ridft_output()
+   M = abs(nalpha-nbeta)+1
+   return M
+
+def get_ssquare(dft_subdir_path):
+   GT = turbomole.GeneralTools(dft_subdir_path)
+   ssquare = GT.read_ssquare_from_control()
+   return ssquare
+
+
 # input
-db_path = '/home/oyoender/opt_dft_test/run1/rdb-01.11.2020/'
-dft_path = os.getcwd()
+if len(sys.argv) < 2:
+    print ("usage:  add_dft_species_add_to_RDB <db_path> <dft_path>")
+    exit()
+
+db_path   = sys.argv[1]
+dft_path  = sys.argv[2]
+
 dft_subdir_paths = []
 for path in os.listdir(dft_path):
    if os.path.isdir(path):
@@ -41,9 +60,9 @@ for dft_subdir_path in dft_subdir_paths:
     # Retrieve the missing information
     f = open(os.path.join(dft_subdir_path,'submit.py'),'r')
     for line in f:
-        if 'ref_struc_path' in line:
+        if 'ref_struc_path    =' in line:
             ospec_mfpx_path = line.strip().split()[2].split("'")[1]
-        if 'lot_DFT' in line:
+        if 'lot_DFT           =' in line:
             lot_DFT = line.strip().split()[2].split("'")[1]
         if 'transition_state_workflow' in line:
             TS = True
@@ -70,7 +89,11 @@ for dft_subdir_path in dft_subdir_paths:
             else:
                 atom = False
             final_energy, zpe = get_energy(dft_subdir_path, atom)
-        
+
+            #TODO get the multiplicity
+            M =  get_M(dft_subdir_path)          
+            ssquare = get_ssquare(dft_subdir_path)  
+
             # compare the graph of the reference structure and the optimized structure
             mol_ini.detect_conn(thresh = 0.2)
             mol_ini.addon("graph")
@@ -85,9 +108,9 @@ for dft_subdir_path in dft_subdir_paths:
             is_equal, error_code = molsys.addon.graph.is_equal(molg_init, molg_opt)
             changed = not is_equal
         
-            print(found, opt_mol, lot_DFT, final_energy, specID, dft_subdir_path, zpe, changed, rbonds)
+            print(found, opt_mol, lot_DFT, final_energy, specID, dft_subdir_path, changed, rbonds, 'ZPE = %3.7f; M = %d; ssquare = %3.3f' %(zpe, M, ssquare))
             # add to the database
-            rdb.add_opt_species(opt_mol, lot_DFT, final_energy, specID, dft_subdir_path, zpe, changed, rbonds)
+            rdb.add_opt_species(opt_mol, lot_DFT, final_energy, specID, dft_subdir_path, changed, rbonds, 'ZPE = %3.7f; M = %d; ssquare = %3.3f' %(zpe, M, ssquare))
         
         else:
             try:
