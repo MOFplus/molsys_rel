@@ -445,7 +445,7 @@ class RDB:
 # reaction graph generation
 
 
-    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False):
+    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False, plot2d=False):
         """ generate a reaction graph
 
         we use the current md (must be called before)
@@ -458,6 +458,9 @@ class RDB:
             format (string, optional): format of the output (either png or svg), default = png
             start (int, optional) : first frmae to consider
             staop (int, optional) : last frame to consider
+            browser (string, optional) : browser for visualization
+            only_unique_reactions (bool, optional) : show only unqiue reactions
+            plot2d (bool, optional) : plot molecules as 2d structure
         """
         import pydot
         import tempfile
@@ -486,9 +489,23 @@ class RDB:
            
         for m in mds:
             frame = cur_revent.frame
+            if plot2d:
+                fname, mfpxf = self.db.md_species.mfpx.retrieve(m.mfpx)
+                mfpxs = mfpxf.read().decode('utf-8')
+                mfpxf.close()
+                mol = molsys.mol.from_string(mfpxs)
+                mol.addon("obabel")
+                fname = os.path.splitext(img_path+m.png)[0]
+                fimg = fname+".svg"
+                mol.obabel.plot_svg(fimg)  
+            else:
+                fimg = img_path+m.png
             new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),
-                                       image = img_path+m.png,
+                                       image = fimg,
                                        label = "",
+                                       height = 2.5,
+                                       width  = 2.5,
+                                       imagescale=False,
                                        shape = "box")
             rgraph.add_node(new_node)
             rgnodes[m.id] = new_node
@@ -519,18 +536,38 @@ class RDB:
             mds = self.db((self.db.md_species.reventID == cur_revent) & (self.db.md_species.react_compl == False)  ).select()
 
             for m in mds:
+
+                if plot2d:
+                    fname, mfpxf = self.db.md_species.mfpx.retrieve(m.mfpx)
+                    mfpxs = mfpxf.read().decode('utf-8')
+                    mfpxf.close()
+                    mol = molsys.mol.from_string(mfpxs)
+                    mol.addon("obabel")
+                    fname = os.path.splitext(img_path+m.png)[0]
+                    fimg = fname+".svg"
+                    mol.obabel.plot_svg(fimg)  
+                else:
+                    smiles = "\n"
+                    fimg = img_path+m.png
+
                 if m.foffset == -1:
                     new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
+                                       image = fimg,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        shape = "box")
                     educ.append(new_node)
                 elif m.foffset == 1:
                     new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
+                                       image = fimg,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        shape = "box")
                     prod.append(new_node)
                 else:
@@ -539,10 +576,13 @@ class RDB:
                     else:
                         label = "%10d" % cur_revent.frame
                     new_node = pydot.Node("%d_ts_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
+                                       image = fimg,\
                                        label = label,\
                                        labelloc = "t",\
                                        shape = "box",\
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        style = "rounded")
                     ts = new_node
                 rgraph.add_node(new_node)
