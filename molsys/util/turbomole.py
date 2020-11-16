@@ -266,7 +266,7 @@ class GeometryTools:
         print(active_atoms)
         j = 0
         for i in range(mol.natoms):
-            if i in active_atoms:
+            if i+1 in active_atoms:
                 noise_to_add.append([0.0,0.0,0.0])
             else:
                 noise_to_add.append(noise_list[j])
@@ -316,9 +316,6 @@ class GeometryTools:
                  if 'symmetry' in lines:
                      point_group = lines.strip().split()[1]
         return point_group
-
-
-
 
 
     def _write_define_new_point_group(new_point_group='c1', path=os.getcwd()):
@@ -443,7 +440,7 @@ class OptimizationTools:
     def freeze_atoms(self, active_atoms):
         a_a = ''
         for i in active_atoms:
-            a_a += str(i+1)
+            a_a += str(i)
             if i != active_atoms[-1]:
                a_a += ',' 
         """ writes a new define file to fix active atoms in internal coordinates. """
@@ -538,9 +535,9 @@ class OptimizationTools:
 
     def jobex(self, ts=False):
         if ts:
-            os.system("jobex -ri -c 150 -trans > jobex.out")
+            os.system("jobex -ri -c 150 -trans -gcart 4 > jobex.out")
         else:
-            os.system("jobex -ri -c 150 > jobex.out")
+            os.system("jobex -ri -c 150 -gcart 4 > jobex.out")
         return
 
     def aoforce(self):
@@ -771,24 +768,27 @@ class OptimizationTools:
             print('No woelfling calculations have been performed.')
         return max_struc
 
-    def woelfling_workflow(self, unimolecular, M, max_mem, lot_DFT, path_ref_ed = '', path_ref_prod = '', mpfx_ed_complex = '', mpfx_prod_complex = ''):
+    def woelfling_workflow(self, unimolecular, M, active_atoms, max_mem, lot_DFT, path_ref_ed = '', path_ref_prod = '', mfpx_ed_complex = '', mfpx_prod_complex = ''):
         '''workflow to perform a TS search using woelfling
         '''
+        reason = ''
         maindir = os.getcwd()
-        woefling_dir = os.path.join(maindir,'woelfling')
-        os.mkdir(woefling_dir)
-        os.chdir(woefling_dir)
+        woelfling_dir = os.path.join(maindir,'woelfling')
+        os.mkdir(woelfling_dir)
+        os.chdir(woelfling_dir)
         if not unimolecular:
             # optimize the ReaxFF complex structures
-            path_ref_ed   = os.path.join(woefling_dir, 'educt_complex')
-            path_ref_prod = os.path.join(woefling_dir, 'product_complex')
-            converged_ed,   reason_ed   = self.optimize_rxn_complex(path_ref_ed,   mpfx_ed_complex,   M, max_mem, lot_DFT, active_atoms)
-            converged_prod, reason_prod = self.optimize_rxn_complex(path_ref_prod, mpfx_prod_complex, M, max_mem, lot_DFT, active_atoms)
+            path_ref_ed   = os.path.join(woelfling_dir, 'educt_complex')
+            path_ref_prod = os.path.join(woelfling_dir, 'product_complex')
+            converged_ed,   reason_ed   = self.optimize_rxn_complex(path_ref_ed,   mfpx_ed_complex,   M, max_mem, lot_DFT, active_atoms)
+            converged_prod, reason_prod = self.optimize_rxn_complex(path_ref_prod, mfpx_prod_complex, M, max_mem, lot_DFT, active_atoms)
+        else:
+            out = os.popen('similaritycheck %s %s' %(os.path.join(path_ref_ed,'coord.xyz'),os.path.join(path_ref_prod,'coord.xyz'))).read()
         os.chdir(path_ref_prod)
-        os.system('cpc %s' % woefling_dir)
+        os.system('cpc %s' % woelfling_dir)
         os.chdir(woelfling_dir) 
-        os.system('cp %s %s' %(os.path.join(path_ref_ed,   'coord'), os.path.join(woefling_dir, 'ini')))
-        os.system('cp %s %s' %(os.path.join(path_ref_prod, 'coord'), os.path.join(woefling_dir, 'fin')))
+        os.system('cp %s %s' %(os.path.join(path_ref_ed,   'coord'), os.path.join(woelfling_dir, 'ini')))
+        os.system('cp %s %s' %(os.path.join(path_ref_prod, 'coord'), os.path.join(woelfling_dir, 'fin')))
         os.system('cat ini fin > coords')
         # add to the control file $woelfling key
         newlines = ''
@@ -805,7 +805,7 @@ class OptimizationTools:
         # perform the woelfling calculation
         os.system('woelfling-job > woelfling.out')
         # determine which of the points is a TS guess structure
-        max_struc = self.getthemaxenergystruc(path, True)
+        max_struc = self.getthemaxenergystruc(worlfling_dir, True)
         print('The maximum energy structure is %d, it will perform the calculations in the directory rechnung-%d.' %(max_struc, max_struc))
         # get into the corresponding directory and calculate its Hessian
         os.chdir('rechnung-%d' %(max_struc))
@@ -832,10 +832,10 @@ class OptimizationTools:
         os.chdir(maindir)
         return
 
-    def optimize_rxn_complex(path, mpfx_complex, M, max_mem, lot_DFT, active_atoms):
+    def optimize_rxn_complex(self, path, mfpx_complex, M, max_mem, lot_DFT, active_atoms):
         ''' optimizes the reaction complex by constraining internal coordinates of the active atoms.
         path         : string  : the path to where the optimization should be made
-        mfpx_complex : string  : the path to the mpfx structure of the complex
+        mfpx_complex : string  : the path to the mfpx structure of the complex
         M            : integer : the multiplicity as determined based on that of educts and products
         '''
         converged = False
@@ -845,17 +845,17 @@ class OptimizationTools:
         os.chdir(path)
         mol = molsys.mol.from_file(mfpx_complex)
         GT = GeneralTools(path)
-        GT.make_tmole_dft_input(elems = mol.elems, xyz = mol.xyz, M = M, max_mem = max_mem, title = mfpx_ed_complex, lot_DFT = lot_DFT, fermi = False)
+        GT.make_tmole_dft_input(elems = mol.elems, xyz = mol.xyz, M = M, max_mem = max_mem, title = mfpx_complex, lot_DFT = lot_DFT, fermi = False)
         GT.run_tmole()
         converged = GT.check_dscf_converged()
         if not converged:
-            reason = 'The self consistent field calculation did not converge for the educt complex.'
+            reason = 'The self consistent field calculation did not converge for the reactive complex.'
         else:
-            self.freeze_atoms(active_atoms)
+            OptimizationTools(path).freeze_atoms(active_atoms)
             self.jobex()
-            converged = self.check_geo_opt_converged()
+            converged = OptimizationTools(path).check_geo_opt_converged()
             if not converged:
-                reason = 'The geometry optimization did not converge for the educt complex.' 
+                reason = 'The geometry optimization did not converge for the reactive complex.' 
             else:
                 os.system('kdg intdef')
                 os.system('kdg redundant')
@@ -916,7 +916,7 @@ class OptimizationTools:
                       print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
                       self.IRC()
                       mols_minus, mols_plus = self.find_end_points_from_IRC()
-                      found, reason += self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+                      found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
             elif inum > 1:
                 print('There are more than one imaginary frequencies. But it will try to optimize.')
                 self.jobex(ts=True)
@@ -930,7 +930,7 @@ class OptimizationTools:
                       print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
                       self.IRC()
                       mols_minus, mols_plus = self.find_end_points_from_IRC()
-                      found, reason += self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+                      found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
                    else:
                       reason += 'The final number of imaginary frequency is not 1.'
         return found, reason
@@ -938,6 +938,7 @@ class OptimizationTools:
     def minima_workflow(self):
         found = False
         reason = ""
+        os.system("cpc backup-Fermi")
         point_group_initial = GeometryTools.get_point_group_from_coord(self.path,'coord')
         print("point_group_initial", point_group_initial)
         self.jobex()
@@ -1015,9 +1016,9 @@ class OptimizationTools:
             f.write("        os.system('touch FOUND')\n")
             f.write("    else:\n")
             f.write("        if unimolecular:\n")
-            f.write("            ST.woelfling_workflow(unimolecular = True,  M = M, max_mem = max_mem, lot_DFT = lot_DFT, path_ref_ed = path_ref_educts[0], path_ref_prod = path_ref_products[0])\n")
+            f.write("            ST.woelfling_workflow(unimolecular = True,  M = M, active_atoms = active_atoms, max_mem = max_mem, lot_DFT = lot_DFT, path_ref_ed = path_ref_educts[0], path_ref_prod = path_ref_products[0])\n")
             f.write("        else:\n")
-            f.write("            ST.woelfling_workflow(unimolecular = False, M = M, max_mem = max_mem, lot_DFT = lot_DFT, mpfx_ed_complex = mfpx_ed_complex, mpfx_prod_complex = mpfx_prod_complex)\n")
+            f.write("            ST.woelfling_workflow(unimolecular = False, M = M, active_atoms = active_atoms, max_mem = max_mem, lot_DFT = lot_DFT, mfpx_ed_complex = mfpx_ed_complex, mfpx_prod_complex = mfpx_prod_complex)\n")
             f.write("        f = open('NOTFOUND','a')\n")
 
             f.write("        f.write('%s' %reason)\n")

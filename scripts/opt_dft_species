@@ -99,7 +99,9 @@ class turbomole_calculator:
        ST = turbomole.OptimizationTools(dft_subdir_path)
 
        # we only fix the internal coordinates between the atoms involved in bond-order change. So convert the bonds into atoms list.
-       active_atoms = list(set(rbonds))
+       active_atoms = []
+       for i in set(rbonds):
+           active_atoms.append(i+1)
 
        ###############################   to optimize each species in series     ###########################################
        if not self.params["submit"]:

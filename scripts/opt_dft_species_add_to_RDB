@@ -28,7 +28,7 @@ def get_energy(dft_subdir_path, atom):
 def get_M(dft_subdir_path):
    GT = turbomole.GeneralTools(dft_subdir_path)
    nalpha, nbeta = GT.get_nalpha_and_nbeta_from_ridft_output()
-   M = abs(nalpha-nbeta)+1
+   M = abs(nalpha-nbeta) + 1.0
    return M
 
 def get_ssquare(dft_subdir_path):
@@ -37,18 +37,31 @@ def get_ssquare(dft_subdir_path):
    return ssquare
 
 
+def get_ssquare_from_ridft(dft_subdir_path):
+    f = open(os.path.join(dft_subdir_path,'ridft.out'),'r')
+    for line in f:
+        if 'S*S' in line:
+            ssquare = float(line.split()[1])
+    return ssquare
+
+
 # input
 if len(sys.argv) < 2:
     print ("usage:  add_dft_species_add_to_RDB <db_path> <dft_path>")
     exit()
 
-db_path   = sys.argv[1]
-dft_path  = sys.argv[2]
+test = False
+
+db_path   = os.path.abspath(sys.argv[1])
+dft_path  = os.path.abspath(sys.argv[2])
+
 
 dft_subdir_paths = []
 for path in os.listdir(dft_path):
-   if os.path.isdir(path):
-       dft_subdir_paths.append(os.path.abspath(path))
+   dft_subdir_path = os.path.join(dft_path, path)
+   if os.path.isdir(dft_subdir_path):
+       dft_subdir_paths.append(dft_subdir_path)
+
 
 for dft_subdir_path in dft_subdir_paths:
     assert os.path.isfile(os.path.join(dft_subdir_path,'submit.py'))
@@ -76,14 +89,31 @@ for dft_subdir_path in dft_subdir_paths:
     dft_spec = db(db.opt_species.path == dft_subdir_path).select().first()
     inDB = False
     if dft_spec != None: inDB = True
+
+    if test:
+        mol_ini.detect_conn(thresh = 0.2)
+        mol_ini.addon("graph")
+        mol_ini.graph.make_comp_graph()
+        molg_init = mol_ini.graph.molg
+        os.system('t2x %s > %s' %(os.path.join(dft_subdir_path,"coord"),os.path.join(dft_subdir_path,"coord.xyz")))
+        opt_mol = molsys.mol.from_file(os.path.join(dft_subdir_path,"coord.xyz"))
+        opt_mol.detect_conn(thresh = 0.2)
+        opt_mol.addon("graph")
+        opt_mol.graph.make_comp_graph()
+        molg_opt = opt_mol.graph.molg
+        if not (len(mol_ini.conn) == len(opt_mol.conn) and all(i in mol_ini.conn for i in opt_mol.conn)):
+             print('%s do not have the same connectivity as %s' %(os.path.join(dft_subdir_path,"coord.xyz"),ospec_mfpx_path))
+             print(mol_ini.conn, opt_mol.conn)
+             print(molsys.addon.graph.is_equal(molg_init, molg_opt))
     
     if not inDB:
         found = os.path.isfile(os.path.join(dft_subdir_path,'FOUND'))
-    
+
         if found:
+            print('-----------SPECIES %d-----------' %specID)
             # is it an atom or not? get the final energy accordingly...
             mol_ini.get_natoms()
-            print(mol_ini.natoms)
+
             if mol_ini.natoms == 1:
                 atom = True
             else:
@@ -91,32 +121,52 @@ for dft_subdir_path in dft_subdir_paths:
             final_energy, zpe = get_energy(dft_subdir_path, atom)
 
             #TODO get the multiplicity
-            M =  get_M(dft_subdir_path)          
-            ssquare = get_ssquare(dft_subdir_path)  
+            M =  get_M(dft_subdir_path)   
+            ssquare_exp = (M*M-1.0)/4.0
 
+            ssquare = get_ssquare(dft_subdir_path)
+
+            if test:
+                ssquare_ini = get_ssquare_from_ridft(dft_subdir_path)       
+                cont_ini = False
+                if M == 0 and ssquare_ini > 0.1:
+                    print('The initial orbitals are spin contaminated!')
+                elif M > 0 and ssquare_ini > 1.2*ssquare_exp:
+                    print('The initial orbitals are spin contaminated!')
+                if M == 0 and ssquare > 0.1:
+                    print('The final orbitals are spin contaminated!')
+                elif M > 0 and ssquare > 1.2*ssquare_exp:
+                    print('The final orbitals are spin contaminated!')
+              
             # compare the graph of the reference structure and the optimized structure
-            mol_ini.detect_conn(thresh = 0.2)
+            mol_ini.detect_conn(thresh = 0.1)
             mol_ini.addon("graph")
-            mol_ini.graph.make_comp_graph()
+            mol_ini.graph.make_graph()
             molg_init = mol_ini.graph.molg
-            os.system('t2x %s > %s' %(os.path.join(dft_subdir_path,"coord"),os.path.join(dft_subdir_path,"coord.xyz")))
+            if not os.path.isfile(os.path.join(dft_subdir_path,"coord.xyz")):
+                os.system('t2x %s > %s' %(os.path.join(dft_subdir_path,"coord"),os.path.join(dft_subdir_path,"coord.xyz")))
             opt_mol = molsys.mol.from_file(os.path.join(dft_subdir_path,"coord.xyz"))
-            opt_mol.detect_conn(thresh = 0.2)
+            opt_mol.detect_conn(thresh = 0.1)
             opt_mol.addon("graph")
-            opt_mol.graph.make_comp_graph()
+            opt_mol.graph.make_graph()
             molg_opt = opt_mol.graph.molg
+
+
             is_equal, error_code = molsys.addon.graph.is_equal(molg_init, molg_opt)
             changed = not is_equal
-        
+
+            if test:
+                print('Graph changed?', changed, 'M = %d; ssquare = %3.3f, ssquare_ini = %3.3f' %(M, ssquare, ssquare_ini))   
             print(found, opt_mol, lot_DFT, final_energy, specID, dft_subdir_path, changed, rbonds, 'ZPE = %3.7f; M = %d; ssquare = %3.3f' %(zpe, M, ssquare))
             # add to the database
             rdb.add_opt_species(opt_mol, lot_DFT, final_energy, specID, dft_subdir_path, changed, rbonds, 'ZPE = %3.7f; M = %d; ssquare = %3.3f' %(zpe, M, ssquare))
-        
-        else:
+    
+        elif not found:
             try:
                 reason = open(os.path.join(dft_subdir_path,'NOTFOUND'),'r').read()
                 print('Species %s with lot=%s is not added to the database, due to the reason: %s' %(lot_DFT, specID, reason))
             except:
                 print('The expected NOTFOUND file does not exist under %s.' %dft_subdir_path)
-    else:
+
+    elif not inDB:
         print('Species %s with lot=%s is not added to the database. An entry for %s already is in the DB!' %(specID, lot_DFT, dft_subdir_path))
