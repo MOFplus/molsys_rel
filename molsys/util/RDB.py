@@ -292,6 +292,7 @@ class RDB:
         sumform = mol.get_sumformula()
         if mol.graph is None:
            mol.addon("graph")
+        #mol.detect_conn()
         mol.graph.make_graph()
         molg = mol.graph.molg
         if check_if_included:
@@ -305,6 +306,7 @@ class RDB:
                  mfpxs = mfpxf1.read().decode('utf-8')
                  mfpxf1.close()
                  mol1 = molsys.mol.from_string(mfpxs)
+                 #mol1.detect_conn()
                  mol1.addon("graph")
                  mol1.graph.make_graph()
                  is_equal, error_code = molsys.addon.graph.is_equal(mol1.graph.molg, molg, use_fast_check=False)
@@ -517,17 +519,25 @@ class RDB:
             mds = self.db((self.db.md_species.reventID == cur_revent) & (self.db.md_species.react_compl == False)  ).select()
 
             for m in mds:
+
+                fname, mfpxf = db.md_species.mfpx.retrieve(m.mfpx)
+                mfpxs = mfpxf.read().decode('utf-8')
+                mfpxf.close()
+                mol = molsys.mol.from_string(mfpxs)
+                mol.addon("obabel")
+                smiles = mol.obabel.cansmiles  
+
                 if m.foffset == -1:
                     new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
                                        image = img_path+m.png,\
-                                       label = "%s" % m.sumform,\
+                                       label = "%s %s" % (m.sumform,smiles),\
                                        labelloc = "t", \
                                        shape = "box")
                     educ.append(new_node)
                 elif m.foffset == 1:
                     new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
                                        image = img_path+m.png,\
-                                       label = "%s" % m.sumform,\
+                                       label = "%s %s" % (m.sumform,smiles),\
                                        labelloc = "t", \
                                        shape = "box")
                     prod.append(new_node)
