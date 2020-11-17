@@ -80,7 +80,7 @@ def compare_species(species,sumforms,moldata):
             break 
  
         is_equal, error_code = molsys.addon.graph.is_equal(mol.graph.molg, sp, use_fast_check=False)
- 
+
         if is_first:
             check = is_equal
             is_first = False
@@ -121,6 +121,7 @@ print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 
 db = rdb.db
 md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+#md = db((db.md.stage == stage)).select().first()
 revents = db((db.revent.mdID == md)).select()
 num_all = (len(revents))
 
