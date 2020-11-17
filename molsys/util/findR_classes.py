@@ -162,7 +162,7 @@ class frame:
                 self.add_species(mid, tracked=False)
             s = self.specs[mid]
             aids += list(s.aids)
-        # aids.sort() # not sure if that is really needed
+        aids.sort() # This is necessary to ensure same ordering in mol object 
         mol = molsys.mol.from_array(self.xyz[aids])
         mol.set_cell(self.mol.get_cell())
         mol.set_elems([self.mol.elems[i] for i in aids])
@@ -365,7 +365,7 @@ class fcompare:
         self.reacs = []
         self.broken_bonds = []
         self.formed_bonds = []
-        self.nreacs = 0 # nomber of independent reactions for this pair of frames .. should always be 1 (??)
+        self.nreacs = 0 # number of independent reactions for this pair of frames .. should always be 1 (??)
         return
 
     def report(self, all = False):

@@ -14,6 +14,8 @@ from collections import OrderedDict
 
 import molsys
 
+import copy
+
 # DB typekeys
 typekeys = {
     "s" : "string",
@@ -87,6 +89,7 @@ class RDB:
             "u:mfpx",         # upload mfpx file        
             "u:png",          # thumbnail
             "s:path",         # path to input files for this job
+            "s:info",         # additional information on the optimization you want to store
             "b:molgchange",   # indicates change in molgraph w.r.t. species
             "li:rbonds",      # reactive bonds (list with 2*nbonds atom ids of the TS)
         ]
@@ -288,13 +291,13 @@ class RDB:
     def add_species(self, mol, check_if_included=False, compare_type = "molg_from_mol"):
         is_new = True
         assert compare_type in ["molg_from_mol"], "Unknown comparison type"
+        
         mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         sumform = mol.get_sumformula()
-        if mol.graph is None:
+        if  mol.graph is None:
            mol.addon("graph")
-        #mol.detect_conn()
         mol.graph.make_graph()
-        molg = mol.graph.molg
+        molg = copy.deepcopy(mol.graph.molg)
         if check_if_included:
            # get all species with same sumform
            specs = self.db((self.db.species.sumform == sumform)).select()
@@ -305,14 +308,15 @@ class RDB:
                  fname, mfpxf1 = self.db.species.compare_data.retrieve(sp.compare_data)
                  mfpxs = mfpxf1.read().decode('utf-8')
                  mfpxf1.close()
-                 mol1 = molsys.mol.from_string(mfpxs)
-                 #mol1.detect_conn()
-                 mol1.addon("graph")
-                 mol1.graph.make_graph()
-                 is_equal, error_code = molsys.addon.graph.is_equal(mol1.graph.molg, molg, use_fast_check=False)
+                 moldb = molsys.mol.from_string(mfpxs)
+                 moldb.addon("graph")
+                 moldb.graph.make_graph()
+                 moldbg = moldb.graph.molg
+                 is_equal, error_code = molsys.addon.graph.is_equal(moldbg, molg, use_fast_check=False)
                  if is_equal:
                     is_new = False
                     specID = sp.id
+                    return specID, is_new
                     break
               else:
                  is_new = True
@@ -323,6 +327,7 @@ class RDB:
                compare_data  = self.db.species.compare_data.store(mfpxf, "mol4molg.mfpx") ,
                compare_type  = compare_type
            )
+        mfpxf.close()
         return specID, is_new
 
     def add_reac2spec(self, reactID, specID, itype):
@@ -412,7 +417,7 @@ class RDB:
                 self.db.commit()
         return
 
-    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=None):
+    def add_opt_species(self, mol, lot, energy, specID, path, change_molg=False, rbonds=None, info=""):
         """add an optimized structure to the DB
         
         Args:
@@ -432,6 +437,7 @@ class RDB:
             xyz          = self.db.opt_species.xyz.store(xyzf, "opt.xyz"),
             mfpx         = self.db.opt_species.mfpx.store(mfpxf, "opt.mfpx"),
             path         = path,
+            info         = info,
             molgchange   = change_molg,
             rbonds       = rbonds
         )
@@ -445,7 +451,7 @@ class RDB:
 # reaction graph generation
 
 
-    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False):
+    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False, plot2d=False):
         """ generate a reaction graph
 
         we use the current md (must be called before)
@@ -458,6 +464,9 @@ class RDB:
             format (string, optional): format of the output (either png or svg), default = png
             start (int, optional) : first frmae to consider
             staop (int, optional) : last frame to consider
+            browser (string, optional) : browser for visualization
+            only_unique_reactions (bool, optional) : show only unqiue reactions
+            plot2d (bool, optional) : plot molecules as 2d structure
         """
         import pydot
         import tempfile
@@ -486,9 +495,23 @@ class RDB:
            
         for m in mds:
             frame = cur_revent.frame
+            if plot2d:
+                fname, mfpxf = self.db.md_species.mfpx.retrieve(m.mfpx)
+                mfpxs = mfpxf.read().decode('utf-8')
+                mfpxf.close()
+                mol = molsys.mol.from_string(mfpxs)
+                mol.addon("obabel")
+                fname = os.path.splitext(img_path+m.png)[0]
+                fimg = fname+".svg"
+                mol.obabel.plot_svg(fimg)  
+            else:
+                fimg = img_path+m.png
             new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),
-                                       image = img_path+m.png,
+                                       image = fimg,
                                        label = "",
+                                       height = 2.5,
+                                       width  = 2.5,
+                                       imagescale=False,
                                        shape = "box")
             rgraph.add_node(new_node)
             rgnodes[m.id] = new_node
@@ -520,25 +543,37 @@ class RDB:
 
             for m in mds:
 
-                fname, mfpxf = db.md_species.mfpx.retrieve(m.mfpx)
-                mfpxs = mfpxf.read().decode('utf-8')
-                mfpxf.close()
-                mol = molsys.mol.from_string(mfpxs)
-                mol.addon("obabel")
-                smiles = mol.obabel.cansmiles  
+                if plot2d:
+                    fname, mfpxf = self.db.md_species.mfpx.retrieve(m.mfpx)
+                    mfpxs = mfpxf.read().decode('utf-8')
+                    mfpxf.close()
+                    mol = molsys.mol.from_string(mfpxs)
+                    mol.addon("obabel")
+                    fname = os.path.splitext(img_path+m.png)[0]
+                    fimg = fname+".svg"
+                    mol.obabel.plot_svg(fimg)  
+                else:
+                    smiles = "\n"
+                    fimg = img_path+m.png
 
                 if m.foffset == -1:
                     new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
-                                       label = "%s %s" % (m.sumform,smiles),\
+                                       image = fimg,\
+                                       label = "%s" % m.sumform,\
                                        labelloc = "t", \
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        shape = "box")
                     educ.append(new_node)
                 elif m.foffset == 1:
                     new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
-                                       label = "%s %s" % (m.sumform,smiles),\
+                                       image = fimg,\
+                                       label = "%s" % m.sumform,\
                                        labelloc = "t", \
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        shape = "box")
                     prod.append(new_node)
                 else:
@@ -547,10 +582,13 @@ class RDB:
                     else:
                         label = "%10d" % cur_revent.frame
                     new_node = pydot.Node("%d_ts_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
+                                       image = fimg,\
                                        label = label,\
                                        labelloc = "t",\
                                        shape = "box",\
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        style = "rounded")
                     ts = new_node
                 rgraph.add_node(new_node)
