@@ -113,11 +113,11 @@ class GeneralTools:
                     nbeta = float(line.split()[2])
         return nalpha, nbeta
 
-    def calculate_spin_multiplicity_from(nalpha, nbeta):
+    def calculate_spin_multiplicity_from(self, nalpha, nbeta):
         """ Calculate the spin multiplicity from the number of alpha and beta electrons:
-            M = 2S+1 = 2*(nalpha-nbeta)*(1/2)+1 = (naplha-nbeta)+1
+            M = 2S+1 = 2*(nalpha-nbeta)*(1/2)+1 = (nalpha-nbeta)+1
         """
-        M = abs(round(nalpha-nbeta))+1
+        M = abs(nalpha-nbeta)+1
         return M
 
     
@@ -138,6 +138,7 @@ class GeneralTools:
                 while '$' not in lines[i+j]:
                     split_line = lines[i+j].strip().split()
                     occ = float(split_line[3])
+                    print(split_line, occ)
                     if abs(occ-round(occ)) > THRESHOLD:
                         new_lines[i+j] = ' %s       %s                                     ( %s )\n' %(split_line[0],split_line[1],str(round(occ)))
                     j += 1
@@ -146,6 +147,7 @@ class GeneralTools:
                 while '$' not in lines[i+j]:
                     split_line = lines[i+j].strip().split()
                     occ = float(split_line[3])
+                    print(split_line, occ)
                     if abs(occ-round(occ)) > THRESHOLD:
                         new_lines[i+j] = ' %s       %s                                     ( %s )\n' %(split_line[0],split_line[1],str(round(occ)))
                     j += 1
@@ -156,7 +158,51 @@ class GeneralTools:
         return
 
 
-    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot_DFT, fermi = True):
+    def for_c1_sym_change_multiplicity_by(self, N, nalpha, nbeta):
+        ''' Changes the multiplicity iby N, by changing the occupation of the alpha and beta electrons in the control file. 
+        '''
+        if N % 2 != 0:
+            print('Provide an even number.')
+        else:
+            control_path = os.path.join(self.path,'control')
+            if not os.path.isfile(control_path):
+                raise FileNotFoundError("There is no control file in the directory %s." % self.path)
+            lines = []
+            with open(control_path,'r') as control:
+                for i,line in enumerate(control):
+                    lines.append(line)
+                    if '$alpha shells' in line:
+                       line_alpha = i
+                    if '$beta shells' in line:
+                       line_beta  = i
+
+            if nalpha >= nbeta:
+                new_alpha = nalpha+N/2
+                new_beta  = nbeta-N/2
+            elif nalpha < nbeta:
+                new_alpha = nalpha-N/2
+                new_beta  = nbeta+N/2
+
+            new_lines = []
+            for i,line in enumerate(lines):
+                if '$alpha shells' in line:
+                    if new_alpha != 0:
+                        new_lines.append('$alpha shells\n')
+                        new_lines.append(' a       1-%d   ( 1 )\n' %(new_alpha))
+                if '$beta shells' in line:
+                    if new_beta != 0:
+                        new_lines.append('$beta shells\n')
+                        new_lines.append(' a       1-%d   ( 1 )\n' %(new_beta))
+                elif i not in [line_beta, line_alpha, line_beta+1, line_alpha+1]:
+                    new_lines.append(line)
+            os.remove(control_path)
+            with open(control_path,'w') as new_control:
+                for line in new_lines:
+                    new_control.write(line)
+        return
+
+
+    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot_DFT, fermi = True, nue = False):
         """Creates a tmole input called 'turbo.in' with c1 symmetry, unrestricted DFT, and RI-J approximation.
 
         Parameters
@@ -184,7 +230,10 @@ class GeneralTools:
         f.write("%add_control_commands\n")
         f.write("$disp3\n")
         if fermi:
-            f.write("$fermi tmstrt=300.00 tmend= 50.00 tmfac=0.900 hlcrt=1.0E-01 stop=1.0E-03\n")
+            if nue:
+                f.write("$fermi tmstrt=300.00 tmend= 50.00 tmfac=0.900 hlcrt=1.0E-01 stop=1.0E-03 nue=%d\n" %M)
+            else:
+                f.write("$fermi tmstrt=300.00 tmend= 50.00 tmfac=0.900 hlcrt=1.0E-01 stop=1.0E-03\n")
         f.write("ADD END\n")
         f.write("%end\n")
         f.close()
@@ -377,34 +426,35 @@ class GeometryTools:
 
 class Mol:
 
-    def __init__(self):
-        # The dictionary of number of electrons
-        self.nelectrons = {'H':1,'He':2, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10, 'S':16, 'Cl':17, 'Ar':18}
+    def __init__(self, mol):
+        self.mol = mol
         return
 
-    def count_number_of_electrons(self, mol, charge=0):
+    def count_number_of_electrons(self, charge=0):
         """ Counts the number of electrons. """
+        # The dictionary of number of electrons
+        nelectrons = {'H':1,'He':2, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10, 'S':16, 'Cl':17, 'Ar':18} 
         nel = 0
         ### count the number of electrons in the system ###
-        for t in set(mol.elems):
-           amount = mol.elems.count(t)
-           nel += self.nelectrons[t.capitalize()]*amount
+        for t in set(self.mol.elems):
+           amount = self.mol.elems.count(t)
+           nel += nelectrons[t.capitalize()]*amount
         ### account for the charge of the molecule ###
         nel -= charge
         return nel
 
-    def make_molecular_graph(self, mol, thresh = 0.2):
+    def make_molecular_graph(self, thresh = 0.2):
         # if the connectivity information not defined before, detect it.
-        if not any(mol.conn):
-            mol.detect_conn(thresh)
-        mol.addon("graph")
-        mol.graph.make_graph()
+        if not any(self.mol.conn):
+            self.mol.detect_conn(thresh)
+        self.mol.addon("graph")
+        self.mol.graph.make_graph()
         return
 
-    def separate_molecules(self, mol, thresh = 0.2):
+    def separate_molecules(self, thresh = 0.2):
        """Returns a dictionary of mol objects."""
-       self.make_molecular_graph(mol)
-       mg = mol.graph.molg
+       self.make_molecular_graph(self.mol)
+       mg = self.mol.graph.molg
        # label the components of the molecular graph to which each vertex in the the graph belongs
        from graph_tool.topology import label_components
        labels = label_components(mg)[0].a.tolist()
@@ -418,7 +468,7 @@ class Mol:
            counter = 0
            for j,label in enumerate(labels):
                if i == label:
-                   mol_str += '%s %5.10f %5.10f %5.10f' %(mol.elems[j], mol.xyz[j,0], mol.xyz[j,1], mol.xyz[j,2])
+                   mol_str += '%s %5.10f %5.10f %5.10f' %(self.mol.elems[j], self.mol.xyz[j,0], self.mol.xyz[j,1], self.mol.xyz[j,2])
                    counter += 1
                    if counter != n_atoms:
                        mol_str += '\n'
@@ -427,6 +477,25 @@ class Mol:
            mols.append(mol_tmp)
        return mols
 
+    def get_max_M(self):
+        """ Calculates the number of core + valence MOs (nMOs)
+        and from there calculates the maximum multiplicity that molecule possibly have.
+        """
+        # The dictionary of the minimal number of atomic orbitals
+        # i.e. core + valence shells
+        nAOs = {'H':1,'He':1, 'C':5, 'N':5, 'O':5, 'F':5, 'Ne':5, 'S':9, 'Cl':9, 'Ar':9}
+        nMOs = 0       
+        for t in set(self.mol.elems):
+           amount = self.mol.elems.count(t)
+           nMOs += nAOs[t.capitalize()]*amount
+        nel = self.count_number_of_electrons()
+        alphashells = nMOs
+        betashells = nel - nMOs
+        NumberofMaxUnpairedElectrons = alphashells - betashells
+        Max_M = NumberofMaxUnpairedElectrons + 1
+        return Max_M
+
+
  
 class OptimizationTools:
     """Methods for the optimization of QM species with ridft."""
@@ -434,16 +503,16 @@ class OptimizationTools:
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
         else:
-            self.path = path
+            self.path = os.path.abspath(path)
         return
 
     def freeze_atoms(self, active_atoms):
+        """ writes a new define file to fix active atoms in internal coordinates. """
         a_a = ''
         for i in active_atoms:
             a_a += str(i)
             if i != active_atoms[-1]:
                a_a += ',' 
-        """ writes a new define file to fix active atoms in internal coordinates. """
         define_in_path = os.path.join(self.path,'define.in')
         f = open(define_in_path, 'w')
         f.write(' \n')
@@ -550,9 +619,9 @@ class OptimizationTools:
         return
 
 
-    def common_workflow(self, fermi, M, active_atoms, max_mem, ref_struc_path, lot_DFT):
+    def common_workflow(self, TS, M, active_atoms, max_mem, ref_struc_path, lot_DFT):
         ''' Performs single point calculation, adds a noise within 0.1 Angstrom to the reference structure. 
-        fermi          : logical, to apply Fermi smearing or not
+        fermi          : for transition state or not?
         M              : in case of Fermi smearing, the initial spin multiplicity; otherwise, the multiplicity
         max_mem        : maximum memory per core
         ref_struc_path : the path to the reference structure; e.g. from ReaxFF
@@ -564,18 +633,7 @@ class OptimizationTools:
         new_xyz = GeometryTools.add_noise(mol, active_atoms)
         if mol.natoms == 1:
             atom = True
-        if fermi:
-            # Determine the orbital occupations through Fermi smearing.
-            if M == None:
-                # if the multiplicity is not defined already assign the following:
-                # M      : initial spin multiplicity
-                #        = 3 for systems with even number of electrons
-                #        = 2 for systems with odd number of electrons
-                nel = Mol().count_number_of_electrons(mol = mol, charge = 0)
-                if (nel % 2) == 0:
-                    M = 3
-                else:
-                    M = 2
+        if TS:
             GT.make_tmole_dft_input(
                     mol.elems, 
                     new_xyz, 
@@ -583,23 +641,88 @@ class OptimizationTools:
                     max_mem, 
                     ref_struc_path,
                     lot_DFT,
-                    True) # True for Fermi smearing
+                    True, # True for Fermi smearing
+                    True) # True to enforce a multiplicity in the Fermi smearing
+            GT.run_tmole()
+            # Remove the data group $fermi from the control file
+            GT.kdg("fermi")
+            energy = GT.ridft() 
+        else:
+            # Determine the orbital occupations through Fermi smearing.
+            # if the multiplicity is not defined already assign the following:
+            # M      : initial spin multiplicity
+            #        = 3 for systems with even number of electrons
+            #        = 2 for systems with odd number of electrons
+            nel = Mol(mol).count_number_of_electrons(charge = 0)
+            if (nel % 2) == 0:
+                M = 3
+            else:
+                M = 2
+            GT.make_tmole_dft_input(
+                    mol.elems,
+                    new_xyz,
+                    M,
+                    max_mem,
+                    ref_struc_path,
+                    lot_DFT,
+                    True,
+                    False)
             GT.run_tmole()
             # Remove the data group $fermi from the control file
             GT.kdg("fermi")
             # If there are partial occupations round them to integers
             GT.round_fractional_occupation()
-        else:
-            GT.make_tmole_dft_input(
-                    mol.elems, 
-                    new_xyz, 
-                    M, 
-                    max_mem, 
-                    ref_struc_path,
-                    lot_DFT,
-                    False) # No Fermi smearing
-            GT.run_tmole()
-        energy = GT.ridft()
+            energy = GT.ridft()
+            # Now calculate two lower spin multiplicities
+            nalpha, nbeta = GT.get_nalpha_and_nbeta_from_ridft_output()
+            M_fermi = GT.calculate_spin_multiplicity_from(nalpha, nbeta)
+            dict_energies = {energy:M_fermi}
+            curdir = os.getcwd()
+            os.chdir(self.path)
+            if nel > 1:
+                new_dirs = []
+                if M_fermi-2 > 0:
+                    m2_path = os.path.join(self.path,'M_%d' %(M_fermi-2))
+                    new_dirs.append(m2_path)
+                    os.system('cpc %s' %m2_path)
+                    os.chdir(m2_path)
+                    GT_m2 = GeneralTools(m2_path)
+                    GT_m2.for_c1_sym_change_multiplicity_by(-2, nalpha, nbeta)
+                    energy_m2 = GT_m2.ridft()
+                    dict_energies[energy_m2] = M_fermi-2
+                    os.chdir(self.path)
+                M_max = Mol(mol).get_max_M()
+                print(M_max)
+                if M_fermi < M_max:
+                    p2_path = os.path.join(self.path,'M_%d' %(M_fermi+2))
+                    new_dirs.append(p2_path)
+                    os.system('cpc %s' %p2_path)
+                    os.chdir(p2_path)
+                    GT_p2 = GeneralTools(p2_path)
+                    GT_p2.for_c1_sym_change_multiplicity_by(+2, nalpha, nbeta)
+                    energy_p2 = GT_p2.ridft()
+                    dict_energies[energy_p2] = M_fermi+2
+                    os.chdir(self.path)
+                M_final = dict_energies[min(dict_energies)]
+                if M_final != M_fermi:
+                    print('The multiplicity %d results in lower energy than %d!' %(M_final, M_fermi))
+                    # now remove everything under the path where the original Fermi smearing was done.
+                    path_min = os.path.join(self.path,'M_%d' %(M_final))
+                    files = os.listdir(self.path)
+                    for f in files:
+                        if os.path.isfile(f) and f not in ['turbo.in','submit.py','submit.out']:
+                            os.remove(f)
+                        elif os.path.isdir(f) and os.path.abspath(f) != path_min:
+                            shutil.rmtree(f)
+                    for f in os.listdir(path_min):
+                        shutil.move(os.path.join(path_min, f), self.path)
+                    shutil.rmtree(path_min)
+                    print('The calculations will proceed using multiplicity %d.' % M_final )
+                else:
+                    print(dict_energies)
+                    print('The multiplicity %d will be used.' %M_final)
+                    for d in new_dirs:
+                        shutil.rmtree(d)
         converged = GT.check_dscf_converged()
         if not converged:
             f = open(os.path.join(self.path,'NOTFOUND'),'a')
@@ -620,8 +743,9 @@ class OptimizationTools:
         mol_minus =  molsys.mol.from_file('%s/coord.xyz' %path_minus,'xyz')
         sub_path_minus = os.path.join(path_minus, 'minus')
         os.mkdir(sub_path_minus)
-        GeneralTools(sub_path_minus).make_tmole_dft_input(mol_minus.elems, mol_minus.xyz, M, max_mem, 'minus', lot_DFT, False)
+        GeneralTools(sub_path_minus).make_tmole_dft_input(mol_minus.elems, mol_minus.xyz, M, max_mem, 'minus', lot_DFT, True, True)
         GeneralTools(sub_path_minus).run_tmole()
+        GeneralTools(sub_path_minus).kdg("fermi")
         os.chdir(sub_path_minus)
         self.jobex()
         converged = self.check_geo_opt_converged()
@@ -630,7 +754,7 @@ class OptimizationTools:
         opt_mol_minus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_minus,'xyz')
         opt_mol_minus.detect_conn(thresh = 0.2)
 
-        mols_minus = Mol().separate_molecules(opt_mol_minus)
+        mols_minus = Mol(opt_mol_minus).separate_molecules()
 
         # PLUS
         path_plus  = os.path.join(self.path, 'displaced_plus')
@@ -641,8 +765,9 @@ class OptimizationTools:
 
         sub_path_plus = os.path.join(path_plus, 'plus')
         os.mkdir(sub_path_plus)
-        GeneralTools(sub_path_plus).make_tmole_dft_input(mol_plus.elems, mol_plus.xyz, M, max_mem, 'plus', lot_DFT, False)
+        GeneralTools(sub_path_plus).make_tmole_dft_input(mol_plus.elems, mol_plus.xyz, M, max_mem, 'plus', True, True)
         GeneralTools(sub_path_plus).run_tmole()
+        GeneralTools(sub_path_plus).kdg("fermi")
         os.chdir(sub_path_plus)
         self.jobex()
         converged = self.check_geo_opt_converged()
@@ -651,7 +776,7 @@ class OptimizationTools:
         opt_mol_plus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_plus,'xyz')
         opt_mol_plus.detect_conn(thresh = 0.2)
 
-        mols_plus = Mol().separate_molecules(opt_mol_plus)
+        mols_plus = Mol(opt_mol_plus).separate_molecules()
 
         os.chdir(maindir)
 
@@ -677,13 +802,13 @@ class OptimizationTools:
             educt_plus_is_similar = True
             for ed in path_ref_educts:
                 mol_ed   = molsys.mol.from_file(ed)
-                Mol().make_molecular_graph(mol_ed)
+                Mol(mol_ed).make_molecular_graph()
                 mg_ed = mol_ed.graph.molg
                 print(mg_ed.list_properties)
 
                 educt_minus_tmp = False
                 for mol_minus in mols_minus:
-                    Mol().make_molecular_graph(mol_minus)
+                    Mol(mol_minus).make_molecular_graph()
                     mg_minus = mol_minus.graph.molg
                     is_equal = molsys.addon.graph.is_equal(mg_ed, mg_minus, use_fast_check=False)[0]
                     if is_equal: 
@@ -694,7 +819,7 @@ class OptimizationTools:
 
                 educt_plus_tmp  = False
                 for mol_plus in mols_plus:
-                    Mol().make_molecular_graph(mol_plus)
+                    Mol(mol_plus).make_molecular_graph()
                     mg_plus = mol_plus.graph.molg
                     is_equal = molsys.addon.graph.is_equal(mg_ed, mg_plus, use_fast_check=False)[0]
                     if is_equal:
@@ -707,7 +832,7 @@ class OptimizationTools:
             prod_plus_is_similar = True                       
             for prod in path_ref_products:
                 mol_prod = molsys.mol.from_file(prod)
-                Mol().make_molecular_graph(mol_prod)
+                Mol(mol_prod).make_molecular_graph()
                 mg_prod = mol_prod.graph.molg
 
                 product_minus_tmp = False
@@ -845,8 +970,10 @@ class OptimizationTools:
         os.chdir(path)
         mol = molsys.mol.from_file(mfpx_complex)
         GT = GeneralTools(path)
-        GT.make_tmole_dft_input(elems = mol.elems, xyz = mol.xyz, M = M, max_mem = max_mem, title = mfpx_complex, lot_DFT = lot_DFT, fermi = False)
+        GT.make_tmole_dft_input(elems = mol.elems, xyz = mol.xyz, M = M, max_mem = max_mem, title = mfpx_complex, lot_DFT = lot_DFT, fermi = True, nue = True)
         GT.run_tmole()
+        GT.kdg("fermi")
+        GT.ridft()
         converged = GT.check_dscf_converged()
         if not converged:
             reason = 'The self consistent field calculation did not converge for the reactive complex.'
@@ -938,7 +1065,6 @@ class OptimizationTools:
     def minima_workflow(self):
         found = False
         reason = ""
-        os.system("cpc backup-Fermi")
         point_group_initial = GeometryTools.get_point_group_from_coord(self.path,'coord')
         print("point_group_initial", point_group_initial)
         self.jobex()
@@ -985,7 +1111,7 @@ class OptimizationTools:
         f.write("lot_DFT           = '%s'\n" % lot_DFT)
         if TS:
             f.write("M                 = %d\n" %M)
-            f.write("fermi             = False\n")
+            f.write("TS             = True\n")
             f.write("active_atoms      = %s\n" %str(active_atoms))
             f.write("unimolecular      = %s\n" %str(unimolecular))
             f.write("path_ref_educts   = %s\n" %str(path_ref_educts))
@@ -994,12 +1120,12 @@ class OptimizationTools:
             f.write("mfpx_prod_complex = '%s'\n\n" %mfpx_prod_complex)
         else:
             f.write("M                 = None\n")
-            f.write("fermi             = True\n")
+            f.write("TS             = False\n")
             f.write("active_atoms      = []\n\n")
         f.write("# Optimization Tools\n")
         f.write("ST = turbomole.OptimizationTools()\n\n")
         f.write("atom, converged, init_energy = ST.common_workflow(")
-        f.write("fermi = fermi,\n")
+        f.write("TS = TS,\n")
         f.write("                   M = M,\n")     
         f.write("        active_atoms = active_atoms,\n")
         f.write("             max_mem = max_mem,\n")

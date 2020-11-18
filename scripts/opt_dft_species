@@ -112,14 +112,14 @@ class turbomole_calculator:
               print("TS workflow is not implemented yet.")
               sys.exit(1)
               fermi = False
-              #atom, converged, init_energy = ST.common_workflow(fermi, M, active_atoms, self.params["maxmem"], ref_struc_path, self.params["lot"])
+              #atom, converged, init_energy = ST.common_workflow(TS, M, active_atoms, self.params["maxmem"], ref_struc_path, self.params["lot"])
               #found, reason = ST.transition_state_workflow(active_atoms, path_ref_educts, path_ref_products)
               #final_energy, zpe = turbomole.Harvest().get_energy()
  
           else:
               # Perform Fermi smearing to find the multiplicity of the equilibrium structures
               fermi = True
-              atom, converged, init_energy = ST.common_workflow(fermi, M, active_atoms, self.params["maxmem"], ref_struc_path, self.params["lot"])
+              atom, converged, init_energy = ST.common_workflow(TS, M, active_atoms, self.params["maxmem"], ref_struc_path, self.params["lot"])
               if atom:
                   found = converged
                   final_energy = init_energy
