@@ -64,6 +64,7 @@ class RDB:
             "b:uni",          # true if unimolecular
             "b:change",       # change in graph for educt and products (used for screening)
             "s:source",       # information on where this reactions comes from
+            "r:reactions:origin",    # 
         ]
 
         dbstruc["species"] = [
@@ -132,6 +133,7 @@ class RDB:
             "b:tracked",      # is tracked?
             "u:png",          # thumbnail
             "b:react_compl",  # is this a reactive complex
+            "li:atomids",     # list of atom indeces in the system
         ]
         dbstruc["rgraph"] = [
             "r:revent:from_rev",        # source reaction event ref
@@ -230,13 +232,21 @@ class RDB:
             id = row.id
         return id
     
-    def register_reaction(self, uni=False, change=True, source="fromMD"):
+    def register_reaction(self, uni=False, change=True, source="fromMD", origin=None):
 
-        reventID = self.db.reactions.insert(
-            uni        = uni,
-            change     = change,
-            source     = source,
-        )
+        if origin is None:
+            reventID = self.db.reactions.insert(
+                uni        = uni,
+                change     = change,
+                source     = source,
+            )
+        else:
+            reventID = self.db.reactions.insert(
+                uni        = uni,
+                change     = change,
+                source     = source,
+                origin     = origin.id
+            )
 
         if self.do_commit:
             self.db.commit()
@@ -264,7 +274,7 @@ class RDB:
         event = self.db(self.db.revent.frame == frame).select().first()
         return event
 
-    def add_md_species(self, reventID, mol, spec, foff, tracked=True, react_compl=False):
+    def add_md_species(self, reventID, mol, spec, foff, aids : list, tracked=True, react_compl=False):
         # generate smiles
         mol.addon("obabel")
         smiles = mol.obabel.cansmiles
@@ -273,6 +283,7 @@ class RDB:
         mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         # generate a filename
         fname = "%s_%d.mfpx" % (("ed", "ts", "pr")[foff+1], spec)
+        aids.sort()
         # register in the database
         specID = self.db.md_species.insert(
             reventID     = reventID.id,
@@ -282,7 +293,8 @@ class RDB:
             foffset     = foff,
             tracked     = tracked,
             mfpx        = self.db.md_species.mfpx.store(mfpxf, fname),
-            react_compl = react_compl
+            react_compl = react_compl,
+            atomids     = aids
         )
         if self.do_commit:
             self.db.commit()
@@ -451,7 +463,7 @@ class RDB:
 # reaction graph generation
 
 
-    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False, plot2d=False):
+    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False, plot2d=False, rlist = None):
         """ generate a reaction graph
 
         we use the current md (must be called before)
@@ -522,6 +534,11 @@ class RDB:
         for (i, cur_revent) in enumerate(revents[1:]):
             if (stop is not None) and (cur_revent.frame > stop):
                 break
+
+            if rlist is not None:
+                if not cur_revent.id in rlist:
+                    continue
+
             # make the nodes of the revent
             educ = []
             prod = []

@@ -32,8 +32,12 @@ from . import molsys_mpi
 from . import addon
 from .prop import Property
 
+from .util import reaxparam
+
 import random
 from collections import Counter
+
+import math
 
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
@@ -3101,5 +3105,63 @@ class mol(mpiobject):
         print("Properties:")
         self.list_atom_properties()
         self.list_bond_properties()
+        return
+
+    def calc_uncorrected_bond_order( self
+                               , iat : int
+                               , jat : int
+                               , bo_cut = 0.1
+                               ):
+        # Which elements do we have?
+        element_list = self.get_elems()
+        # sanity check(s)
+        eset = set(["c","h","o"])
+        assert eset == set(element_list), "Only C/H/O parameters"
+        # calculate distance of atoms i and j in Angstrom(?)
+        rij, rvec, closest =  self.get_distvec(iat, jat)
+        rij *= bohr 
+        # receive atom type
+        itype = reaxparam.atom_type_to_num[element_list[iat]]
+        jtype = reaxparam.atom_type_to_num[element_list[jat]]
+        # Get equilibrium bond distances
+        ro_s   = reaxparam.twbp_rs[itype][jtype]
+        ro_pi  = reaxparam.twbp_rpi[itype][jtype]
+        ro_pi2 = reaxparam.twbp_rpi2[itype][jtype]
+        # Calculate bond order
+        if reaxparam.r_s[itype] > 0.0 and reaxparam.r_s[jtype] > 0.0:
+          BO_s    = math.exp( reaxparam.pbo1[itype][jtype] * math.pow(rij/ro_s,   reaxparam.pbo2[itype][jtype]) )
+        else:
+          BO_s = 0.0
+        if reaxparam.r_pi[itype] > 0.0 and reaxparam.r_pi[jtype] > 0.0:
+          BO_pi   = math.exp( reaxparam.pbo3[itype][jtype] * math.pow(rij/ro_pi,  reaxparam.pbo4[itype][jtype]) )
+        else:
+          BO_pi = 0.0
+        if reaxparam.r_pi2[itype] > 0.0 and reaxparam.r_pi2[jtype] > 0.0:
+          BO_pi2  = math.exp( reaxparam.pbo5[itype][jtype] * math.pow(rij/ro_pi2, reaxparam.pbo6[itype][jtype]) )
+        else:
+          BO_pi2 = 0.0
+        BO = BO_s + BO_pi + BO_pi2
+        if BO >= bo_cut:
+            BO -= bo_cut
+
+        return BO
+
+
+    def detect_conn_by_bo(self):
+        conn = []
+        natoms = self.natoms
+        # if bond order is above 0.5 we consider the two atoms being bonded
+        for iat in range(natoms):
+           conn_local = []
+           for jat in range(natoms):
+              if iat != jat and self.calc_uncorrected_bond_order(iat,jat) > 0.5:
+                  conn_local.append(jat)
+           conn.append(conn_local)
+        self.set_conn(conn)
+        if self.use_pconn:
+            # we had a pconn and redid the conn --> need to reconstruct the pconn
+            self.add_pconn()
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
+        self.set_etab_from_tabs()
         return
 
