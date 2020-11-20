@@ -31,7 +31,8 @@ class GeneralTools:
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
         else:
-            self.path = path
+            self.path    = os.path.abspath(path)
+            self.maindir = os.getcwd()
         return
         
     def invoke_define(self, define_in_name='define.in', define_out_name = 'define.out', coord_name='coord'):
@@ -158,7 +159,7 @@ class GeneralTools:
         return
 
 
-    def for_c1_sym_change_multiplicity_by(self, N, nalpha, nbeta):
+    def for_c1_sym_change_multiplicity_in_control_by(self, N, nalpha, nbeta):
         ''' Changes the multiplicity iby N, by changing the occupation of the alpha and beta electrons in the control file. 
         '''
         if N % 2 != 0:
@@ -202,9 +203,8 @@ class GeneralTools:
         return
 
 
-    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot_DFT, fermi = True, nue = False):
-        """Creates a tmole input called 'turbo.in' with c1 symmetry, unrestricted DFT, and RI-J approximation.
-
+    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot, fermi = True, nue = False):
+        """Creates a tmole input called 'turbo.in' with c1 symmetry.
         Parameters
         ----------
         elems   : the list of elements
@@ -212,7 +212,7 @@ class GeneralTools:
         M       : the (initial) spin multiplicity
         max_mem : Maximum memory per core to use in the calculations.
         title   : title of the job
-        lot_DFT : DFT level of theory, must be string
+        lot     : The QM level of theory, must be string
         fermi   : Boolean for Fermi smearing
         """
         turbo_in_path = os.path.join(self.path,"turbo.in")
@@ -221,8 +221,8 @@ class GeneralTools:
         f.write("%title\n")
         f.write("%s\n" % title)
         f.write("%method\n")
-        f.write("ENRGY :: ri-u%s [gen_mult = %d, gen_symm = c1, scf_dsta = 1, scf_msil = 1000, scf_rico = %d, for_maxc = %d]\n" %
-                (lot_DFT, M, max_mem, max_mem))
+        f.write("ENRGY :: %s [gen_mult = %d, gen_symm = c1, scf_dsta = 1, scf_msil = 1000, scf_rico = %d, for_maxc = %d]\n" %
+                (lot, M, max_mem, max_mem))
         f.write("%coord\n")
         for i in range(len(elems)):
             f.write("  %19.14f %19.14f %19.14f   %-2s\n" %
@@ -240,10 +240,9 @@ class GeneralTools:
         return
 
     def run_tmole(self):
-        maindir = os.getcwd()
         os.chdir(self.path)
         os.system("tmole &>/dev/null")
-        os.chdir(maindir)
+        os.chdir(self.maindir)
         return
 
     def check_dscf_converged(self):
@@ -271,20 +270,18 @@ class GeneralTools:
         return SPE, ZPE
 
     def ridft(self):
-        maindir = os.getcwd()
         os.chdir(self.path)
         os.system("ridft > ridft.out")
         SPE =  self.get_energy_from_ridft_out()
-        os.chdir(maindir)
+        os.chdir(self.maindir)
         return SPE
 
 
     def kdg(self, dg_name=""):
         """Removes the data group named <dg_name>."""
-        maindir = os.getcwd()
         os.chdir(self.path)
         os.system("kdg %s" % dg_name)
-        os.chdir(maindir)
+        os.chdir(self.maindir)
         return
 
 class GeometryTools:
@@ -445,15 +442,15 @@ class Mol:
 
     def make_molecular_graph(self, thresh = 0.2):
         # if the connectivity information not defined before, detect it.
-        if not any(self.mol.conn):
-            self.mol.detect_conn(thresh)
+        #if not any(self.mol.conn):
+        self.mol.detect_conn(thresh = thresh)
         self.mol.addon("graph")
         self.mol.graph.make_graph()
         return
 
     def separate_molecules(self, thresh = 0.2):
        """Returns a dictionary of mol objects."""
-       self.make_molecular_graph(self.mol)
+       self.make_molecular_graph()
        mg = self.mol.graph.molg
        # label the components of the molecular graph to which each vertex in the the graph belongs
        from graph_tool.topology import label_components
@@ -504,6 +501,7 @@ class OptimizationTools:
             raise FileNotFoundError("The directory %s does not exist." % path)
         else:
             self.path = os.path.abspath(path)
+            self.maindir = os.getcwd()
         return
 
     def freeze_atoms(self, active_atoms):
@@ -575,15 +573,6 @@ class OptimizationTools:
         GeneralTools(self.path).invoke_define()
         return
 
-
-    def check_geo_opt_converged(self):
-        converged = False
-        f_path = os.path.join(self.path,"GEO_OPT_CONVERGED")
-        if os.path.isfile(f_path):
-                converged = True
-                os.remove(f_path)
-        return converged
-
     def check_imaginary_frequency(self):
         f_vibspec = os.path.join(self.path,"vibspectrum")
         with open(f_vibspec) as vibspec:
@@ -602,16 +591,25 @@ class OptimizationTools:
         #print('The number of imaginary frequencies is ', self.inum,'and they are/it is', self.imfreq)
         return inum, imfreq
 
-    def jobex(self, ts=False):
+    def jobex(self, ts=False, cycles=150, gcart=4):
+        converged = False
+        os.chdir(self.path)
         if ts:
-            os.system("jobex -ri -c 150 -trans -gcart 4 > jobex.out")
+            os.system("jobex -ri -c %d -trans -gcart %d > jobex.out" %(cycles,gcart))
         else:
-            os.system("jobex -ri -c 150 -gcart 4 > jobex.out")
-        return
+            os.system("jobex -ri -c %d -gcart %d > jobex.out" %(cycles,gcart))
+        f_path = os.path.join(self.path,"GEO_OPT_CONVERGED")
+        if os.path.isfile(f_path):
+                converged = True
+                os.remove(f_path)
+        os.chdir(self.maindir)
+        return converged
 
     def aoforce(self):
+        os.chdir(self.path)
         os.system("aoforce > aoforce.out")
         os.remove("dh")
+        os.chdir(self.maindir)
         return
 
     def IRC(self):
@@ -619,13 +617,13 @@ class OptimizationTools:
         return
 
 
-    def common_workflow(self, TS, M, active_atoms, max_mem, ref_struc_path, lot_DFT):
+    def common_workflow(self, ref_struc_path, lot, TS = False, M = None, active_atoms = [], max_mem = 500):
         ''' Performs single point calculation, adds a noise within 0.1 Angstrom to the reference structure. 
         fermi          : for transition state or not?
         M              : in case of Fermi smearing, the initial spin multiplicity; otherwise, the multiplicity
         max_mem        : maximum memory per core
         ref_struc_path : the path to the reference structure; e.g. from ReaxFF
-        lot_DFT        : string, e.g. tpss/SVP 
+        lot        : string, e.g. tpss/SVP 
         '''
         mol = molsys.mol.from_file(ref_struc_path)
         GT = GeneralTools(self.path)
@@ -640,7 +638,7 @@ class OptimizationTools:
                     M, 
                     max_mem, 
                     ref_struc_path,
-                    lot_DFT,
+                    lot,
                     True, # True for Fermi smearing
                     True) # True to enforce a multiplicity in the Fermi smearing
             GT.run_tmole()
@@ -664,7 +662,7 @@ class OptimizationTools:
                     M,
                     max_mem,
                     ref_struc_path,
-                    lot_DFT,
+                    lot,
                     True,
                     False)
             GT.run_tmole()
@@ -687,7 +685,7 @@ class OptimizationTools:
                     os.system('cpc %s' %m2_path)
                     os.chdir(m2_path)
                     GT_m2 = GeneralTools(m2_path)
-                    GT_m2.for_c1_sym_change_multiplicity_by(-2, nalpha, nbeta)
+                    GT_m2.for_c1_sym_change_multiplicity_in_control_by(-2, nalpha, nbeta)
                     energy_m2 = GT_m2.ridft()
                     dict_energies[energy_m2] = M_fermi-2
                     os.chdir(self.path)
@@ -699,30 +697,27 @@ class OptimizationTools:
                     os.system('cpc %s' %p2_path)
                     os.chdir(p2_path)
                     GT_p2 = GeneralTools(p2_path)
-                    GT_p2.for_c1_sym_change_multiplicity_by(+2, nalpha, nbeta)
+                    GT_p2.for_c1_sym_change_multiplicity_in_control_by(+2, nalpha, nbeta)
                     energy_p2 = GT_p2.ridft()
                     dict_energies[energy_p2] = M_fermi+2
                     os.chdir(self.path)
                 M_final = dict_energies[min(dict_energies)]
+                print(dict_energies)
                 if M_final != M_fermi:
                     print('The multiplicity %d results in lower energy than %d!' %(M_final, M_fermi))
                     # now remove everything under the path where the original Fermi smearing was done.
                     path_min = os.path.join(self.path,'M_%d' %(M_final))
+                    os.mkdir(os.path.join(self.path,'M_%d' %(M_fermi)))
                     files = os.listdir(self.path)
                     for f in files:
-                        if os.path.isfile(f) and f not in ['turbo.in','submit.py','submit.out']:
-                            os.remove(f)
-                        elif os.path.isdir(f) and os.path.abspath(f) != path_min:
-                            shutil.rmtree(f)
+                        if os.path.isfile(f) and f not in ['submit.py','submit.out']:
+                            os.move(f, os.path.join(self.path,'M_%d' %(M_fermi)))
                     for f in os.listdir(path_min):
                         shutil.move(os.path.join(path_min, f), self.path)
                     shutil.rmtree(path_min)
                     print('The calculations will proceed using multiplicity %d.' % M_final )
                 else:
-                    print(dict_energies)
                     print('The multiplicity %d will be used.' %M_final)
-                    for d in new_dirs:
-                        shutil.rmtree(d)
         converged = GT.check_dscf_converged()
         if not converged:
             f = open(os.path.join(self.path,'NOTFOUND'),'a')
@@ -733,9 +728,7 @@ class OptimizationTools:
         return atom, converged, energy
 
 
-    def find_end_points_from_IRC(self, M, max_mem, lot_DFT):
-        maindir = os.getcwd()
-
+    def find_end_points_from_IRC(self, M, max_mem, lot):
         # MINUS
         path_minus = os.path.join(self.path, 'displaced_minus')
  
@@ -743,12 +736,11 @@ class OptimizationTools:
         mol_minus =  molsys.mol.from_file('%s/coord.xyz' %path_minus,'xyz')
         sub_path_minus = os.path.join(path_minus, 'minus')
         os.mkdir(sub_path_minus)
-        GeneralTools(sub_path_minus).make_tmole_dft_input(mol_minus.elems, mol_minus.xyz, M, max_mem, 'minus', lot_DFT, True, True)
+        GeneralTools(sub_path_minus).make_tmole_dft_input(mol_minus.elems, mol_minus.xyz, M, max_mem, 'minus', lot, True, True)
         GeneralTools(sub_path_minus).run_tmole()
         GeneralTools(sub_path_minus).kdg("fermi")
         os.chdir(sub_path_minus)
-        self.jobex()
-        converged = self.check_geo_opt_converged()
+        converged = self.jobex()
         # TODO I should check if these are converged... 
         os.system("t2x %s/coord > %s/coord.xyz" %(sub_path_minus, sub_path_minus))
         opt_mol_minus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_minus,'xyz')
@@ -769,8 +761,7 @@ class OptimizationTools:
         GeneralTools(sub_path_plus).run_tmole()
         GeneralTools(sub_path_plus).kdg("fermi")
         os.chdir(sub_path_plus)
-        self.jobex()
-        converged = self.check_geo_opt_converged()
+        converged = self.jobex()
         # TODO I should check if these are converged... 
         os.system("t2x %s/coord > %s/coord.xyz" %(sub_path_plus, sub_path_plus))
         opt_mol_plus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_plus,'xyz')
@@ -778,7 +769,7 @@ class OptimizationTools:
 
         mols_plus = Mol(opt_mol_plus).separate_molecules()
 
-        os.chdir(maindir)
+        os.chdir(self.maindir)
 
         return mols_minus, mols_plus
 
@@ -893,7 +884,7 @@ class OptimizationTools:
             print('No woelfling calculations have been performed.')
         return max_struc
 
-    def woelfling_workflow(self, unimolecular, M, active_atoms, max_mem, lot_DFT, path_ref_ed = '', path_ref_prod = '', mfpx_ed_complex = '', mfpx_prod_complex = ''):
+    def woelfling_workflow(self, unimolecular, M, active_atoms, max_mem, lot, path_ref_ed = '', path_ref_prod = '', path_ed_complex = '', path_prod_complex = ''):
         '''workflow to perform a TS search using woelfling
         '''
         reason = ''
@@ -905,8 +896,8 @@ class OptimizationTools:
             # optimize the ReaxFF complex structures
             path_ref_ed   = os.path.join(woelfling_dir, 'educt_complex')
             path_ref_prod = os.path.join(woelfling_dir, 'product_complex')
-            converged_ed,   reason_ed   = self.optimize_rxn_complex(path_ref_ed,   mfpx_ed_complex,   M, max_mem, lot_DFT, active_atoms)
-            converged_prod, reason_prod = self.optimize_rxn_complex(path_ref_prod, mfpx_prod_complex, M, max_mem, lot_DFT, active_atoms)
+            converged_ed,   reason_ed   = self.optimize_rxn_complex(path_ref_ed,   path_ed_complex,   M, max_mem, lot, active_atoms)
+            converged_prod, reason_prod = self.optimize_rxn_complex(path_ref_prod, path_prod_complex, M, max_mem, lot, active_atoms)
         else:
             out = os.popen('similaritycheck %s %s' %(os.path.join(path_ref_ed,'coord.xyz'),os.path.join(path_ref_prod,'coord.xyz'))).read()
         os.chdir(path_ref_prod)
@@ -954,10 +945,10 @@ class OptimizationTools:
         os.system('define < define.in > define.out')
         os.system('ridft > ridft.out')
         self.aoforce()
-        os.chdir(maindir)
+        os.chdir(self.maindir)
         return
 
-    def optimize_rxn_complex(self, path, mfpx_complex, M, max_mem, lot_DFT, active_atoms):
+    def optimize_rxn_complex(self, path, mfpx_complex, M, max_mem, lot, active_atoms):
         ''' optimizes the reaction complex by constraining internal coordinates of the active atoms.
         path         : string  : the path to where the optimization should be made
         mfpx_complex : string  : the path to the mfpx structure of the complex
@@ -965,12 +956,11 @@ class OptimizationTools:
         '''
         converged = False
         reason = ''
-        maindir = os.getcwd()
         os.mkdir(path)
         os.chdir(path)
         mol = molsys.mol.from_file(mfpx_complex)
         GT = GeneralTools(path)
-        GT.make_tmole_dft_input(elems = mol.elems, xyz = mol.xyz, M = M, max_mem = max_mem, title = mfpx_complex, lot_DFT = lot_DFT, fermi = True, nue = True)
+        GT.make_tmole_dft_input(elems = mol.elems, xyz = mol.xyz, M = M, max_mem = max_mem, title = mfpx_complex, lot = lot, fermi = True, nue = True)
         GT.run_tmole()
         GT.kdg("fermi")
         GT.ridft()
@@ -979,8 +969,7 @@ class OptimizationTools:
             reason = 'The self consistent field calculation did not converge for the reactive complex.'
         else:
             OptimizationTools(path).freeze_atoms(active_atoms)
-            self.jobex()
-            converged = OptimizationTools(path).check_geo_opt_converged()
+            converged = OptimizationTools(path).jobex()
             if not converged:
                 reason = 'The geometry optimization did not converge for the reactive complex.' 
             else:
@@ -988,7 +977,7 @@ class OptimizationTools:
                 os.system('kdg redundant')
                 self.ired()
                 converged = True
-        os.chdir(maindir)
+        os.chdir(self.maindir)
         return converged, reason
 
 
@@ -1000,8 +989,8 @@ class OptimizationTools:
         # freeze the active atoms
         self.freeze_atoms(active_atoms)
         # pre-optimization
-        self.jobex()
-        if not self.check_geo_opt_converged():
+        converged = self.jobex()
+        if not converged:
             reason = 'Transition state pre-optimization did not converge.'
             print(reason)
         else:
@@ -1032,8 +1021,8 @@ class OptimizationTools:
                 reason += 'No imaginary frequency at the start structure.'
                 print(reason)
             elif inum == 1:
-                self.jobex(ts=True)
-                if not self.check_geo_opt_converged():
+                converged = self.jobex(ts=True)
+                if not converged:
                    reason += 'The transition state optimzation did not converge.'
                    print(reason)
                 else:
@@ -1046,8 +1035,8 @@ class OptimizationTools:
                       found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
             elif inum > 1:
                 print('There are more than one imaginary frequencies. But it will try to optimize.')
-                self.jobex(ts=True)
-                if not self.check_geo_opt_converged():
+                converged = self.jobex(ts=True)
+                if not converged:
                    reason += 'The transition state optimzation did not converge.'
                    print(reason)
                 else:
@@ -1067,8 +1056,8 @@ class OptimizationTools:
         reason = ""
         point_group_initial = GeometryTools.get_point_group_from_coord(self.path,'coord')
         print("point_group_initial", point_group_initial)
-        self.jobex()
-        if self.check_geo_opt_converged():
+        converged = self.jobex()
+        if converged:
             point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
             print("point_group_final", point_group_final)
             if point_group_final != "c1":
@@ -1078,8 +1067,8 @@ class OptimizationTools:
                 else:
                     print("The molecule has point group of %s. However, the abelian point group %s is assigned." % (point_group_final, point_group_assigned))
                 GeneralTools(self.path).ridft()
-                self.jobex()
-                if not self.check_geo_opt_converged():
+                converged = self.jobex()
+                if not converged:
                     reason += "The geometry optimization is failed."
             self.aoforce()
             inum, imfreq = self.check_imaginary_frequency()
@@ -1100,67 +1089,189 @@ class OptimizationTools:
             found = self.minima_workflow()
         return found
 
-    def write_submit_py(self, TS, M, active_atoms, max_mem, ref_struc_path, lot_DFT, unimolecular = False, path_ref_educts = [], path_ref_products = [],  mfpx_ed_complex = '',  mfpx_prod_complex = ''):
+    def get_mol(self):
+       os.system("t2x %s/coord > %s/coord.xyz" %(self.path, self.path))
+       mol = molsys.mol.from_file(os.path.join(self.path,"coord.xyz"))
+       return mol
+
+#    def increase_M_by_n(self, n, nalpha, nbeta, M):
+#        path_tmp = os.path.join(self.path,'M_%d' %(M+2))
+#        os.chdir(self.path)
+#        os.system('cpc %s' %path_tmp)
+#        os.chdir(path_tmp)
+#        GT = GeneralTools(path_tmp)
+#        GT.for_c1_sym_change_multiplicity_in_control_by(n, nalpha, nbeta)
+#        energy = GT.ridft()
+#        os.chdir(self.maindir)
+#        return path_tmp
+
+
+
+    def educts_and_products_workflow(self, paths_ref, lot, label = 'eq_spec'):
+        multiplicities = []
+        QM_paths       = []
+        for i, path_ref in enumerate(paths_ref):
+            QM_path = os.path.join(self.path, '%s_%d' %(label,i+1))
+            os.mkdir(QM_path)
+            OT = OptimizationTools(QM_path)
+            GT = GeneralTools(QM_path)
+
+            # Make mol object and molecular graph of the reference structure
+            mol_ini = molsys.mol.from_file(path_ref)
+            Mol(mol_ini).make_molecular_graph()
+            mg_ini = mol_ini.graph.molg            
+
+            # Perform the single point energy calculation
+            atom, converged, energy = OT.common_workflow(path_ref, lot)
+
+            # Perform the geometry optimization
+            converged = OT.jobex(gcart = 3)
+            if not converged:
+                print('The geometry optimization did not converge for %s_%d.' %(label,i+1))
+                exit()
+ 
+            # Get the multiplicity
+            nalpha, nbeta = GeneralTools(QM_path).get_nalpha_and_nbeta_from_ridft_output()
+            M = abs(nalpha-nbeta)+1
+
+            # The mol object after the geometry optimization
+            mol_fin = OT.get_mol()
+
+            # Check if the molecule stays as a single molecule, e.g., the awkward H-O-H-O-H-O complexes of ReaxFF...
+            mols =  Mol(mol_fin).separate_molecules()
+            if len(mols) != 1:
+                print('The optimised structure has more than a single molecule. This cannot be handled automatically.')
+                exit()
+
+            # Compare the graph of the initial and optimized structure 
+            Mol(mol_fin).make_molecular_graph()
+            mg_fin = mol_fin.graph.molg
+            equal = molsys.addon.graph.is_equal(mg_ini, mg_fin)[0]
+            if not equal:
+                print('The graph changes. The program will try multiplicity %d.' %(M+2))
+                path_tmp = os.path.join(QM_path, 'M_%d' %(M+2))
+                if os.path.isdir(path_tmp):
+                    OT_tmp = OptimizationTools(path_tmp)
+                    converged = OT_tmp.jobex(gcart = 3)
+                    if not converged:
+                        print('The geometry optimization with multiplicity %d has failed.' %(M+2))
+                        exit()
+                    mol_tmp = OT_tmp.get_mol()
+                    Mol(mol_tmp).make_molecular_graph()
+                    mg_tmp = mol_fin.graph.molg
+                    equal = molsys.addon.graph.is_equal(mg_ini, mg_tmp)[0]
+                    if not equal:
+                         print('The graph still changes with the multiplicity %d.' %(M+2))
+                         exit()
+                    else:
+                         files = os.listdir(path_QM)
+                         os.mkdir(os.path.join(path_QM,'M_%d' %M))
+                         for f in files:
+                             if os.path.isfile(f) and f not in ['submit.py','submit.out']:
+                                 os.move(os.path.join(path_QM,f),os.path.join(path_QM,'M_%d' %M))
+                         for f in os.listdir(path_tmp):
+                             shutil.move(os.path.join(path_tmp, f), path_QM)
+                         shutil.rmtree(path_tmp)
+                         M = M+2
+            multiplicities.append(M)
+            QM_paths.append(QM_path)
+        return multiplicities, QM_paths
+
+
+
+    def reaction_workflow(self, lot = '', rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', path_ed_complex = '', path_prod_complex = ''):
+        n_ed   = path_ref_educts
+        n_prod = path_ref_products
+
+        multiplicities_ed,   QM_paths_ed   = self.educts_and_products_workflow(path_ref_educts,   lot, 'educt')
+        multiplicities_prod, QM_paths_prod = self.educts_and_products_workflow(path_ref_products, lot, 'product')
+        return
+
+ 
+
+    def write_submit_py(self, lot = '', rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', path_ed_complex = '', path_prod_complex = ''):
         f_path = os.path.join(self.path,"submit.py")
         f = open(f_path,"a")
         f.write("import os\n")
         f.write("import molsys\n")
         f.write("from molsys.util import turbomole\n\n")
-        f.write("max_mem           = %d\n" % max_mem)
-        f.write("ref_struc_path    = '%s' \n" %ref_struc_path)
-        f.write("lot_DFT           = '%s'\n" % lot_DFT)
-        if TS:
-            f.write("M                 = %d\n" %M)
-            f.write("TS             = True\n")
-            f.write("active_atoms      = %s\n" %str(active_atoms))
-            f.write("unimolecular      = %s\n" %str(unimolecular))
-            f.write("path_ref_educts   = %s\n" %str(path_ref_educts))
-            f.write("path_ref_products = %s\n" %str(path_ref_products))
-            f.write("mfpx_ed_complex   = '%s'\n" %mfpx_ed_complex)
-            f.write("mfpx_prod_complex = '%s'\n\n" %mfpx_prod_complex)
-        else:
-            f.write("M                 = None\n")
-            f.write("TS             = False\n")
-            f.write("active_atoms      = []\n\n")
-        f.write("# Optimization Tools\n")
-        f.write("ST = turbomole.OptimizationTools()\n\n")
-        f.write("atom, converged, init_energy = ST.common_workflow(")
-        f.write("TS = TS,\n")
-        f.write("                   M = M,\n")     
-        f.write("        active_atoms = active_atoms,\n")
-        f.write("             max_mem = max_mem,\n")
-        f.write("      ref_struc_path = ref_struc_path,\n")
-        f.write("             lot_DFT = lot_DFT)\n\n")
-        f.write("if not converged:\n")
-        f.write("    f = open('NOTFOUND','a')\n")
-        f.write("    f.write('ridft did not converge.')\n")
-        f.write("    f.close()\n")
-        f.write("else:\n")
-        if TS:
-            f.write("    found, reason = ST.transition_state_workflow(active_atoms, path_ref_educts, path_ref_products)\n")
-            f.write("    if found:\n")
-            f.write("        os.system('touch FOUND')\n")
-            f.write("    else:\n")
-            f.write("        if unimolecular:\n")
-            f.write("            ST.woelfling_workflow(unimolecular = True,  M = M, active_atoms = active_atoms, max_mem = max_mem, lot_DFT = lot_DFT, path_ref_ed = path_ref_educts[0], path_ref_prod = path_ref_products[0])\n")
-            f.write("        else:\n")
-            f.write("            ST.woelfling_workflow(unimolecular = False, M = M, active_atoms = active_atoms, max_mem = max_mem, lot_DFT = lot_DFT, mfpx_ed_complex = mfpx_ed_complex, mfpx_prod_complex = mfpx_prod_complex)\n")
-            f.write("        f = open('NOTFOUND','a')\n")
-
-            f.write("        f.write('%s' %reason)\n")
-            f.write("        f.close()\n")
-        else:
-            f.write("    if not atom:\n")
-            f.write("        found, reason = ST.minima_workflow()\n")
-            f.write("        if found:\n")
-            f.write("            os.system('touch FOUND')\n")
-            f.write("        else:\n")
-            f.write("            f = open('NOTFOUND','a')\n")
-            f.write("            f.write('%s' %reason)\n")
-            f.write("            f.close()\n")
-            f.close()
+        f.write("lot               = '%s'\n" %lot)
+        f.write("rbonds            = %s\n"   %str(rbonds))
+        f.write("path_ref_educts   = %s\n"   %str(path_ref_educts))
+        f.write("path_ref_products = %s\n"   %str(path_ref_products))
+        f.write("path_ref_ts       = '%s'\n" %path_ref_ts)
+        f.write("path_ed_complex   = '%s'\n" %path_ed_complex)
+        f.write("path_prod_complex = '%s'\n" %path_prod_complex)
+        f.write("OT = turbomole.OptimizationTools()\n")
+        f.write("OT.reaction_workflow(lot, rbonds, path_ref_educts, path_ref_products, path_ref_ts, path_ed_complex, path_prod_complex)\n")
+        f.close()
         return
 
+
+
+
+
+#    def write_submit_py(self, TS, M, active_atoms, max_mem, ref_struc_path, lot, unimolecular = False, path_ref_educts = [], path_ref_products = [],  path_ed_complex = '',  path_prod_complex = ''):
+#        f_path = os.path.join(self.path,"submit.py")
+#        f = open(f_path,"a")
+#        f.write("import os\n")
+#        f.write("import molsys\n")
+#        f.write("from molsys.util import turbomole\n\n")
+#        f.write("max_mem           = %d\n" % max_mem)
+#        f.write("ref_struc_path    = '%s' \n" %ref_struc_path)
+#        f.write("lot           = '%s'\n" % lot)
+#        if TS:
+#            f.write("M                 = %d\n" %M)
+#            f.write("TS             = True\n")
+#            f.write("active_atoms      = %s\n" %str(active_atoms))
+#            f.write("unimolecular      = %s\n" %str(unimolecular))
+#            f.write("path_ref_educts   = %s\n" %str(path_ref_educts))
+#            f.write("path_ref_products = %s\n" %str(path_ref_products))
+#            f.write("path_ed_complex   = '%s'\n" %path_ed_complex)
+#            f.write("path_prod_complex = '%s'\n\n" %path_prod_complex)
+#        else:
+#            f.write("M                 = None\n")
+#            f.write("TS             = False\n")
+#            f.write("active_atoms      = []\n\n")
+#        f.write("# Optimization Tools\n")
+#        f.write("ST = turbomole.OptimizationTools()\n\n")
+#        f.write("atom, converged, init_energy = ST.common_workflow(")
+#        f.write("TS = TS,\n")
+#        f.write("                   M = M,\n")     
+#        f.write("        active_atoms = active_atoms,\n")
+#        f.write("             max_mem = max_mem,\n")
+#        f.write("      ref_struc_path = ref_struc_path,\n")
+#        f.write("             lot = lot)\n\n")
+#        f.write("if not converged:\n")
+#        f.write("    f = open('NOTFOUND','a')\n")
+#        f.write("    f.write('ridft did not converge.')\n")
+#        f.write("    f.close()\n")
+#        f.write("else:\n")
+#        if TS:
+#            f.write("    found, reason = ST.transition_state_workflow(active_atoms, path_ref_educts, path_ref_products)\n")
+#            f.write("    if found:\n")
+#            f.write("        os.system('touch FOUND')\n")
+#            f.write("    else:\n")
+#            f.write("        if unimolecular:\n")
+#            f.write("            ST.woelfling_workflow(unimolecular = True,  M = M, active_atoms = active_atoms, max_mem = max_mem, lot = lot, path_ref_ed = path_ref_educts[0], path_ref_prod = path_ref_products[0])\n")
+#            f.write("        else:\n")
+#            f.write("            ST.woelfling_workflow(unimolecular = False, M = M, active_atoms = active_atoms, max_mem = max_mem, lot = lot, path_ed_complex = path_ed_complex, path_prod_complex = path_prod_complex)\n")
+#            f.write("        f = open('NOTFOUND','a')\n")
+#
+#            f.write("        f.write('%s' %reason)\n")
+#            f.write("        f.close()\n")
+#        else:
+#            f.write("    if not atom:\n")
+#            f.write("        found, reason = ST.minima_workflow()\n")
+#            f.write("        if found:\n")
+#            f.write("            os.system('touch FOUND')\n")
+#            f.write("        else:\n")
+#            f.write("            f = open('NOTFOUND','a')\n")
+#            f.write("            f.write('%s' %reason)\n")
+#            f.write("            f.close()\n")
+#            f.close()
+#        return
+#
 
 
 class Slurm:

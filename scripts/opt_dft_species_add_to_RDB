@@ -50,7 +50,7 @@ if len(sys.argv) < 2:
     print ("usage:  add_dft_species_add_to_RDB <db_path> <dft_path>")
     exit()
 
-test = False
+test = True
 
 db_path   = os.path.abspath(sys.argv[1])
 dft_path  = os.path.abspath(sys.argv[2])
@@ -93,13 +93,13 @@ for dft_subdir_path in dft_subdir_paths:
     if test:
         mol_ini.detect_conn(thresh = 0.2)
         mol_ini.addon("graph")
-        mol_ini.graph.make_comp_graph()
+        mol_ini.graph.make_graph()
         molg_init = mol_ini.graph.molg
         os.system('t2x %s > %s' %(os.path.join(dft_subdir_path,"coord"),os.path.join(dft_subdir_path,"coord.xyz")))
         opt_mol = molsys.mol.from_file(os.path.join(dft_subdir_path,"coord.xyz"))
         opt_mol.detect_conn(thresh = 0.2)
         opt_mol.addon("graph")
-        opt_mol.graph.make_comp_graph()
+        opt_mol.graph.make_graph()
         molg_opt = opt_mol.graph.molg
         if not (len(mol_ini.conn) == len(opt_mol.conn) and all(i in mol_ini.conn for i in opt_mol.conn)):
              print('%s do not have the same connectivity as %s' %(os.path.join(dft_subdir_path,"coord.xyz"),ospec_mfpx_path))
@@ -168,5 +168,5 @@ for dft_subdir_path in dft_subdir_paths:
             except:
                 print('The expected NOTFOUND file does not exist under %s.' %dft_subdir_path)
 
-    elif not inDB:
+    elif inDB:
         print('Species %s with lot=%s is not added to the database. An entry for %s already is in the DB!' %(specID, lot_DFT, dft_subdir_path))
