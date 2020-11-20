@@ -14,6 +14,8 @@ from collections import OrderedDict
 
 import molsys
 
+import copy
+
 # DB typekeys
 typekeys = {
     "s" : "string",
@@ -62,6 +64,7 @@ class RDB:
             "b:uni",          # true if unimolecular
             "b:change",       # change in graph for educt and products (used for screening)
             "s:source",       # information on where this reactions comes from
+            "r:reactions:origin",    # 
         ]
 
         dbstruc["species"] = [
@@ -130,6 +133,7 @@ class RDB:
             "b:tracked",      # is tracked?
             "u:png",          # thumbnail
             "b:react_compl",  # is this a reactive complex
+            "li:atomids",     # list of atom indeces in the system
         ]
         dbstruc["rgraph"] = [
             "r:revent:from_rev",        # source reaction event ref
@@ -228,13 +232,21 @@ class RDB:
             id = row.id
         return id
     
-    def register_reaction(self, uni=False, change=True, source="fromMD"):
+    def register_reaction(self, uni=False, change=True, source="fromMD", origin=None):
 
-        reventID = self.db.reactions.insert(
-            uni        = uni,
-            change     = change,
-            source     = source,
-        )
+        if origin is None:
+            reventID = self.db.reactions.insert(
+                uni        = uni,
+                change     = change,
+                source     = source,
+            )
+        else:
+            reventID = self.db.reactions.insert(
+                uni        = uni,
+                change     = change,
+                source     = source,
+                origin     = origin.id
+            )
 
         if self.do_commit:
             self.db.commit()
@@ -262,7 +274,7 @@ class RDB:
         event = self.db(self.db.revent.frame == frame).select().first()
         return event
 
-    def add_md_species(self, reventID, mol, spec, foff, tracked=True, react_compl=False):
+    def add_md_species(self, reventID, mol, spec, foff, aids : list, tracked=True, react_compl=False):
         # generate smiles
         mol.addon("obabel")
         smiles = mol.obabel.cansmiles
@@ -271,6 +283,7 @@ class RDB:
         mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         # generate a filename
         fname = "%s_%d.mfpx" % (("ed", "ts", "pr")[foff+1], spec)
+        aids.sort()
         # register in the database
         specID = self.db.md_species.insert(
             reventID     = reventID.id,
@@ -280,7 +293,8 @@ class RDB:
             foffset     = foff,
             tracked     = tracked,
             mfpx        = self.db.md_species.mfpx.store(mfpxf, fname),
-            react_compl = react_compl
+            react_compl = react_compl,
+            atomids     = aids
         )
         if self.do_commit:
             self.db.commit()
@@ -289,12 +303,13 @@ class RDB:
     def add_species(self, mol, check_if_included=False, compare_type = "molg_from_mol"):
         is_new = True
         assert compare_type in ["molg_from_mol"], "Unknown comparison type"
+        
         mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         sumform = mol.get_sumformula()
-        if mol.graph is None:
+        if  mol.graph is None:
            mol.addon("graph")
         mol.graph.make_graph()
-        molg = mol.graph.molg
+        molg = copy.deepcopy(mol.graph.molg)
         if check_if_included:
            # get all species with same sumform
            specs = self.db((self.db.species.sumform == sumform)).select()
@@ -305,13 +320,15 @@ class RDB:
                  fname, mfpxf1 = self.db.species.compare_data.retrieve(sp.compare_data)
                  mfpxs = mfpxf1.read().decode('utf-8')
                  mfpxf1.close()
-                 mol1 = molsys.mol.from_string(mfpxs)
-                 mol1.addon("graph")
-                 mol1.graph.make_graph()
-                 is_equal, error_code = molsys.addon.graph.is_equal(mol1.graph.molg, molg, use_fast_check=False)
+                 moldb = molsys.mol.from_string(mfpxs)
+                 moldb.addon("graph")
+                 moldb.graph.make_graph()
+                 moldbg = moldb.graph.molg
+                 is_equal, error_code = molsys.addon.graph.is_equal(moldbg, molg, use_fast_check=False)
                  if is_equal:
                     is_new = False
                     specID = sp.id
+                    return specID, is_new
                     break
               else:
                  is_new = True
@@ -322,6 +339,7 @@ class RDB:
                compare_data  = self.db.species.compare_data.store(mfpxf, "mol4molg.mfpx") ,
                compare_type  = compare_type
            )
+        mfpxf.close()
         return specID, is_new
 
     def add_reac2spec(self, reactID, specID, itype):
@@ -445,7 +463,7 @@ class RDB:
 # reaction graph generation
 
 
-    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False):
+    def view_reaction_graph(self, start=None, stop=None, browser="firefox", only_unique_reactions=False, plot2d=False, rlist = None):
         """ generate a reaction graph
 
         we use the current md (must be called before)
@@ -458,6 +476,9 @@ class RDB:
             format (string, optional): format of the output (either png or svg), default = png
             start (int, optional) : first frmae to consider
             staop (int, optional) : last frame to consider
+            browser (string, optional) : browser for visualization
+            only_unique_reactions (bool, optional) : show only unqiue reactions
+            plot2d (bool, optional) : plot molecules as 2d structure
         """
         import pydot
         import tempfile
@@ -486,9 +507,23 @@ class RDB:
            
         for m in mds:
             frame = cur_revent.frame
+            if plot2d:
+                fname, mfpxf = self.db.md_species.mfpx.retrieve(m.mfpx)
+                mfpxs = mfpxf.read().decode('utf-8')
+                mfpxf.close()
+                mol = molsys.mol.from_string(mfpxs)
+                mol.addon("obabel")
+                fname = os.path.splitext(img_path+m.png)[0]
+                fimg = fname+".svg"
+                mol.obabel.plot_svg(fimg)  
+            else:
+                fimg = img_path+m.png
             new_node = pydot.Node("%d_pr_%d" % (frame, m.spec),
-                                       image = img_path+m.png,
+                                       image = fimg,
                                        label = "",
+                                       height = 2.5,
+                                       width  = 2.5,
+                                       imagescale=False,
                                        shape = "box")
             rgraph.add_node(new_node)
             rgnodes[m.id] = new_node
@@ -499,6 +534,11 @@ class RDB:
         for (i, cur_revent) in enumerate(revents[1:]):
             if (stop is not None) and (cur_revent.frame > stop):
                 break
+
+            if rlist is not None:
+                if not cur_revent.id in rlist:
+                    continue
+
             # make the nodes of the revent
             educ = []
             prod = []
@@ -519,18 +559,38 @@ class RDB:
             mds = self.db((self.db.md_species.reventID == cur_revent) & (self.db.md_species.react_compl == False)  ).select()
 
             for m in mds:
+
+                if plot2d:
+                    fname, mfpxf = self.db.md_species.mfpx.retrieve(m.mfpx)
+                    mfpxs = mfpxf.read().decode('utf-8')
+                    mfpxf.close()
+                    mol = molsys.mol.from_string(mfpxs)
+                    mol.addon("obabel")
+                    fname = os.path.splitext(img_path+m.png)[0]
+                    fimg = fname+".svg"
+                    mol.obabel.plot_svg(fimg)  
+                else:
+                    smiles = "\n"
+                    fimg = img_path+m.png
+
                 if m.foffset == -1:
                     new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
+                                       image = fimg,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        shape = "box")
                     educ.append(new_node)
                 elif m.foffset == 1:
                     new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
+                                       image = fimg,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        shape = "box")
                     prod.append(new_node)
                 else:
@@ -539,10 +599,13 @@ class RDB:
                     else:
                         label = "%10d" % cur_revent.frame
                     new_node = pydot.Node("%d_ts_%d" % (cur_revent.frame, m.spec),\
-                                       image = img_path+m.png,\
+                                       image = fimg,\
                                        label = label,\
                                        labelloc = "t",\
                                        shape = "box",\
+                                       height = 2.5, \
+                                       width  = 2.5, \
+                                       imagescale=False, \
                                        style = "rounded")
                     ts = new_node
                 rgraph.add_node(new_node)

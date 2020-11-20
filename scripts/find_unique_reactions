@@ -80,7 +80,7 @@ def compare_species(species,sumforms,moldata):
             break 
  
         is_equal, error_code = molsys.addon.graph.is_equal(mol.graph.molg, sp, use_fast_check=False)
- 
+
         if is_first:
             check = is_equal
             is_first = False
@@ -121,6 +121,7 @@ print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 
 db = rdb.db
 md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+#md = db((db.md.stage == stage)).select().first()
 revents = db((db.revent.mdID == md)).select()
 num_all = (len(revents))
 
@@ -180,9 +181,9 @@ for r in revents:
     mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False) ).select()
     if len(mdspec) > 0:
 
-        #
+        ##
         # extract ts, ed and pr for this reaction  
-        #  
+        ## 
 
         # Note: We have to sort the mdspecies to always match the same species in order
         #       to match them in the comparison
@@ -211,9 +212,37 @@ for r in revents:
                 pr_mol.append((mol,m))
 
 
-        #
+        ##
+        # analyze species to avoid artificats from ReaxFF
+        ##
+        for ed,m in ed_mol:
+            elems = ed.get_elems()
+            slist = elems
+            nelems = len(elems)
+            if nelems <= 3:
+                continue
+            slist = list(filter(("o").__ne__, slist)) 
+            slist = list(filter(("h").__ne__, slist)) 
+            if len(slist) == 0:
+                # we probably have a H-O-H-O- chain
+                supermol = copy.deepcopy(ed) 
+                for mol,mm in ed_mol:
+                    if mol != ed:
+                        supermol.add_mol(mol)
+                # detect the H and O closest to the other species 
+                hind = [i for i in range(nelems) if elems[i] == "h"] 
+                oind = [i for i in range(nelems) if elems[i] == "o"]
+                hdist = []
+                odist = []
+                for ih in hind:
+                   for idx in range(nelems,nall):
+                       d = supermol.get_distvec(ih,idx)
+                       hdist.append((d,ih))
+                # Remove 
+
+        ##
         # compare with elements in unique_reaction list
-        #
+        ##
         for ur in reversed(unique_reactions):
 
             urid = ur["reactionsID"] 
