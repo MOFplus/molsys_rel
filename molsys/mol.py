@@ -3117,9 +3117,8 @@ class mol(mpiobject):
         # sanity check(s)
         eset = set(["c","h","o"])
         assert eset == set(element_list), "Only C/H/O parameters"
-        # calculate distance of atoms i and j in Angstrom(?)
+        # calculate distance of atoms i and j 
         rij, rvec, closest =  self.get_distvec(iat, jat)
-        rij *= bohr 
         # receive atom type
         itype = reaxparam.atom_type_to_num[element_list[iat]]
         jtype = reaxparam.atom_type_to_num[element_list[jat]]
@@ -3147,14 +3146,14 @@ class mol(mpiobject):
         return BO
 
 
-    def detect_conn_by_bo(self):
+    def detect_conn_by_bo(self,bo_cut=0.1):
         conn = []
         natoms = self.natoms
         # if bond order is above 0.5 we consider the two atoms being bonded
         for iat in range(natoms):
            conn_local = []
            for jat in range(natoms):
-              if iat != jat and self.calc_uncorrected_bond_order(iat,jat) > 0.5:
+              if iat != jat and self.calc_uncorrected_bond_order(iat,jat,bo_cut) > 0.5:
                   conn_local.append(jat)
            conn.append(conn_local)
         self.set_conn(conn)
