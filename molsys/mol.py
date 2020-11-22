@@ -3144,72 +3144,69 @@ class mol(mpiobject):
             BO -= bo_cut
         else:
             BO = 0.0
-
         return BO
 
-
     def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5):
-        import molsys.util.elems as elems
 
         def f2(di,dj):
             lambda1 = 50.0
             return math.exp(-lambda1*di)+math.exp(-lambda1*dj)
         def f3(di,dj):
             lambda2 = 9.5469
-            return 1.0/lambda2 * math.log(0.5*(math.exp(-lambda2*di)+math.exp(-lambda2*dj))) 
+            return -1.0/lambda2 * math.log(0.5*(math.exp(-lambda2*di)+math.exp(-lambda2*dj))) 
         def f1(di,dj,vali,valj):
             return 0.5 * ( (vali + f2(di,dj))/(vali+f2(di,dj)+f3(di,dj)) + (valj+f2(di,dj)/(valj+f2(di,dj)+f3(di,dj))) ) 
-        def f4(di,bij):
-            lambda5 = -70.1292
-            lambda3 = 6.6630
-            lambda4 = 1.5105
+        def f4(di,bij,lambda3,lambda4,lambda5):
             return 1.0 / (1.0 + math.exp(-lambda3*(lambda4*bij*bij-di) + lambda5 ))
 
         element_list = self.get_elems()
         natoms = self.natoms
         #
-        # calculate bondtab
+        # calculate uncorrected bond order
         #
-        # compute an upper estimate of the maximum number of bonds in the system
-        nbondsmax = 0
-        for e in self.get_elems():
-           nbondsmax += elems.maxbond[e]
-        nbondsmax /= 2
-        nbondsmax = ( natoms * natoms + 1) / 2 
-        bondtab = np.zeros((int(nbondsmax),2))
         botab = np.zeros((natoms,natoms))
-        nbonds = 0
         for iat in range(natoms):
            for jat in range(0,iat+1):
               if iat != jat:
                   bo = self.calc_uncorrected_bond_order(iat,jat,bo_cut) 
-                  if bo > bo_thresh:
-                     bondtab[nbonds][0] = iat
-                     bondtab[nbonds][1] = jat
-                     botab[iat][jat] = bo
-                     botab[jat][iat] = bo    
-                     nbonds += 1
+                  botab[iat][jat] = bo
+                  botab[jat][iat] = bo   
         ## 
         # correct bond order 
         ## 
         delta = np.zeros(natoms)
+        delta_boc = np.zeros(natoms)
         for iat in range(natoms):
             total_bo = 0.0
             for jat in range(natoms):
-                if iat != jat and botab[iat][jat] > 0.5:
-                    total_bo += botab[iat][jat]
+                if iat != jat:
+                    total_bo += botab[iat][jat] 
             itype = reaxparam.atom_type_to_num[element_list[iat]]
             delta[iat] = total_bo - reaxparam.valency[itype]
-          
+            delta_boc[iat] = total_bo - reaxparam.valency_val[itype]
         for iat in range(natoms):
             itype = reaxparam.atom_type_to_num[element_list[iat]]
             vali = reaxparam.valency[itype]
+            di = delta[iat]
             for jat in range(natoms):
+                boij = botab[iat][jat]
                 jtype = reaxparam.atom_type_to_num[element_list[jat]]
                 valj = reaxparam.valency[jtype]
-                botab[iat][jat] = botab[iat][jat] * f1(delta[iat],delta[jat],vali,valj) * f4(delta[iat],botab[iat][jat]) * f4(delta[jat],botab[iat][jat])  
+                dj = delta[jat]
+                pboc3 = math.sqrt(reaxparam.pboc3[itype] * reaxparam.pboc3[jtype]) 
+                pboc4 = math.sqrt(reaxparam.pboc4[itype] * reaxparam.pboc4[jtype]) 
+                pboc5 = math.sqrt(reaxparam.pboc5[itype] * reaxparam.pboc5[jtype])
+                if reaxparam.v13cor[itype][jtype] >= 0.001:
+                    f4f5 = f4(delta_boc[iat],boij,pboc3,pboc4,pboc5) * f4(delta_boc[jat],boij,pboc3,pboc4,pboc5)
+                else: 
+                    f4f5 = 1.0
+                if reaxparam.ovc[itype][jtype] >= 0.001:
+                    f1val = f1(di,dj,vali,valj)
+                else:
+                    f1val = 1.0
+                botab[iat][jat] = boij * f1val * f4f5 
         conn = []
-        # if bond order is above 0.5 we consider the two atoms being bonded
+        # if bond order is above bo_thresh we consider the two atoms being bonded
         for iat in range(natoms):
            conn_local = []
            for jat in range(natoms):
