@@ -2569,7 +2569,8 @@ class mol(mpiobject):
         """
         returns the number of fragments in the actual system
         """
-        return self.nfrags
+        #return self.nfrags
+        return np.max(self.fragnumbers)+1
 
     def add_fragnumbers(self,fragnumbers):
         """
