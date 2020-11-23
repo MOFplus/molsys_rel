@@ -52,6 +52,7 @@ class graph(object):
         # now add vertices
         self.vert2atom = [] # this list maps vertex indices to the real atoms becasue we omit the hydrogens in the graph
         ig = 0
+        self.molg.clear() # allways start from a fresh graph
         for i in idx:
             if self._mol.elems[i] != "x":
                 self.molg.add_vertex()
@@ -90,6 +91,7 @@ class graph(object):
         # now add vertices
         self.vert2atom = []  
         ig = 0
+        self.molg.clear()  # allways start from a fresh graph
         for i in idx:
             if self._mol.elems[i] in elem_list:
                 self.molg.add_vertex()
@@ -926,17 +928,26 @@ class graph(object):
 
                 if e1.shape[0] > 0 and e2.shape[0] > 0:
 
-                    is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,vertex_inv1=molg1.vp.type, vertex_inv2=molg2.vp.type,isomap=True)
+                    # quick exist?
+                    vert1 = molg1.get_vertices()
+                    vert2 = molg2.get_vertices()
+
+                    if len(vert1) != len(vert2):
+                       is_equal = False
+                       return is_equal, error_code
+                   
+                    is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
+                    #is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,vertex_inv1=molg1.vp.type, vertex_inv2=molg2.vp.type,isomap=True)
 
                     ## Check if maping is correct
-                    if is_equal:
-                        for vi,vj in zip(isomap,molg2.vertices()):
-                            if vi < 0:
-                                is_equal = False
-                                break
-                            if molg1.vp.type[vi] != molg2.vp.type[vj]:
-                                is_equal = False
-                                break
+                    #if is_equal:
+                    #    for vi,vj in zip(isomap,molg2.vertices()):
+                    #        if vi < 0:
+                    #            is_equal = False
+                    #            break
+                    #        if molg1.vp.type[vi] != molg2.vp.type[vj]:
+                    #            is_equal = False
+                    #            break
                 else:
                     # We don't have any edges... 
 
@@ -944,10 +955,14 @@ class graph(object):
                     vert1 = molg1.get_vertices()
                     vert2 = molg2.get_vertices()
 
+                    if len(vert1) != len(vert2):
+                       is_equal = False
+                       return is_equal, error_code
+
                     is_equal = True
 
                     for v1, v2 in zip(vert1,vert2):
-                        if v1 != v2:
+                        if molg1.vp.type[v1] != molg2.vp.type[v2]:
                             is_equal = False
                             break
 

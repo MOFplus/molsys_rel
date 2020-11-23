@@ -32,8 +32,12 @@ from . import molsys_mpi
 from . import addon
 from .prop import Property
 
+from .util import reaxparam
+
 import random
 from collections import Counter
+
+import math
 
 # set up logging using a logger
 # note that this is module level because there is one logger for molsys
@@ -3102,5 +3106,136 @@ class mol(mpiobject):
         print("Properties:")
         self.list_atom_properties()
         self.list_bond_properties()
+        return
+
+    def calc_uncorrected_bond_order( self
+                               , iat : int
+                               , jat : int
+                               , bo_cut = 0.1
+                               ):
+        # Which elements do we have?
+        element_list = self.get_elems()
+        # sanity check(s)
+        eset = set(["c","h","o"])
+        assert eset == set(element_list), "Only C/H/O parameters"
+        # calculate distance of atoms i and j 
+        rij, rvec, closest =  self.get_distvec(iat, jat)
+        # receive atom type
+        itype = reaxparam.atom_type_to_num[element_list[iat]]
+        jtype = reaxparam.atom_type_to_num[element_list[jat]]
+        # Get equilibrium bond distances
+        ro_s   = 0.5 * ( reaxparam.r_s[itype]   + reaxparam.r_s[jtype] )   
+        ro_pi  = 0.5 * ( reaxparam.r_pi[itype]  + reaxparam.r_pi[jtype] )  
+        ro_pi2 = 0.5 * ( reaxparam.r_pi2[itype] + reaxparam.r_pi2[jtype] ) 
+        # Calculate bond order
+        if reaxparam.r_s[itype] > 0.0 and reaxparam.r_s[jtype] > 0.0:
+          BO_s    = (1.0 + bo_cut) * math.exp( reaxparam.pbo1[itype][jtype] * math.pow(rij/ro_s,   reaxparam.pbo2[itype][jtype]) )
+        else:
+          BO_s = 0.0
+        if reaxparam.r_pi[itype] > 0.0 and reaxparam.r_pi[jtype] > 0.0:
+          BO_pi   = math.exp( reaxparam.pbo3[itype][jtype] * math.pow(rij/ro_pi,  reaxparam.pbo4[itype][jtype]) )
+        else:
+          BO_pi = 0.0
+        if reaxparam.r_pi2[itype] > 0.0 and reaxparam.r_pi2[jtype] > 0.0:
+          BO_pi2  = math.exp( reaxparam.pbo5[itype][jtype] * math.pow(rij/ro_pi2, reaxparam.pbo6[itype][jtype]) )
+        else:
+          BO_pi2 = 0.0
+        BO = BO_s + BO_pi + BO_pi2
+        if BO >= bo_cut:
+            BO -= bo_cut
+        else:
+            BO = 0.0
+        return BO
+
+    def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5,dist_thresh=5.0,correct=True):
+
+        def f2(di,dj):
+            lambda1 = 50.0
+            return math.exp(-lambda1*di) + math.exp(-lambda1*dj)
+        def f3(di,dj):
+            lambda2 = 9.5469
+            expi = math.exp(-lambda2*di)
+            expj = math.exp(-lambda2*dj)
+            return -1.0/lambda2 * math.log(0.5*(expi+expj)) 
+        def f1(di,dj,vali,valj):
+            f2val = f2(di,dj)
+            f3val = f3(di,dj)
+            return 0.5 * ( (vali + f2val) / (vali + f2val + f3val) 
+                         + (valj + f2val) / (valj + f2val + f3val) 
+                         ) 
+
+        def f4(di,bij,lambda3,lambda4,lambda5):
+            exp_f4 = math.exp(-(lambda4*boij*boij-di)*lambda3 + lambda5)
+            return 1.0 / (1.0 + exp_f4 )
+
+        element_list = self.get_elems()
+        natoms = self.natoms
+        #
+        # calculate uncorrected bond order
+        #
+        botab = np.zeros((natoms,natoms))
+        for iat in range(natoms):
+           a = self.xyz - self.xyz[iat]
+           dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
+           for jat in range(0,iat+1):
+              if iat != jat and dist[jat] <= dist_thresh:
+                  bo = self.calc_uncorrected_bond_order(iat,jat,bo_cut) 
+                  botab[iat][jat] = bo
+                  botab[jat][iat] = bo   
+        ## 
+        # correct bond order 
+        ## 
+        if correct:
+            delta = np.zeros(natoms)
+            delta_boc = np.zeros(natoms)
+            for iat in range(natoms):
+                a = self.xyz - self.xyz[iat]
+                dist = np.sqrt((a*a).sum(axis=1)) 
+                total_bo = 0.0
+                for jat in range(natoms):
+                    #if iat != jat and dist[jat] <= dist_thresh and botab[iat][jat] > bo_thresh:
+                    if iat != jat and dist[jat] <= dist_thresh :
+                        total_bo += botab[iat][jat] 
+                itype = reaxparam.atom_type_to_num[element_list[iat]]
+                delta[iat] = total_bo - reaxparam.valency[itype]
+                delta_boc[iat] = total_bo - reaxparam.valency_val[itype]
+            for iat in range(natoms):
+                itype = reaxparam.atom_type_to_num[element_list[iat]]
+                vali = reaxparam.valency[itype]
+                di = delta[iat]
+                a = self.xyz - self.xyz[iat]
+                dist = np.sqrt((a*a).sum(axis=1)) 
+                for jat in range(0,iat+1):
+                    boij = botab[iat][jat]
+                    jtype = reaxparam.atom_type_to_num[element_list[jat]]
+                    valj = reaxparam.valency[jtype]
+                    dj = delta[jat]
+                    pboc3 = math.sqrt(reaxparam.pboc3[itype] * reaxparam.pboc3[jtype]) 
+                    pboc4 = math.sqrt(reaxparam.pboc4[itype] * reaxparam.pboc4[jtype]) 
+                    pboc5 = math.sqrt(reaxparam.pboc5[itype] * reaxparam.pboc5[jtype])
+                    if reaxparam.v13cor[itype][jtype] >= 0.001:
+                        f4f5 = f4(delta_boc[iat],boij,pboc3,pboc4,pboc5) * f4(delta_boc[jat],boij,pboc3,pboc4,pboc5)
+                    else: 
+                        f4f5 = 1.0
+                    if reaxparam.ovc[itype][jtype] >= 0.001:
+                        f1val = f1(di,dj,vali,valj)
+                    else:
+                        f1val = 1.0
+                    botab[iat][jat] = boij * f1val * f4f5 
+                    botab[jat][iat] = boij * f1val * f4f5
+        conn = []
+        # if bond order is above bo_thresh we consider the two atoms being bonded
+        for iat in range(natoms):
+           conn_local = []
+           for jat in range(natoms):
+              if iat != jat and botab[iat][jat] > bo_thresh :
+                  conn_local.append(jat)
+           conn.append(conn_local)
+        self.set_conn(conn)
+        if self.use_pconn:
+            # we had a pconn and redid the conn --> need to reconstruct the pconn
+            self.add_pconn()
+        self.set_ctab_from_conn(pconn_flag=self.use_pconn)
+        self.set_etab_from_tabs()
         return
 

@@ -5,7 +5,6 @@
 
 """
 
-import pylmps
 import molsys
 import sys
 import os
@@ -14,17 +13,6 @@ from molsys.util import RDB
 from molsys.util import print_progress
 
 import uuid
-
-####################################################################################
-#
-# TODO 
-#
-#  1) Make option to filter only reactions involving changes in the C-graph
-#      -> Do this by new make_graph (e.g. make_comp_graph) in molsys 
-#
-#  2) Needs more verification
-#
-####################################################################################
 
 
 ####################################################################################
@@ -67,7 +55,7 @@ def add_compare_data(comparer, mdspec):
 
     return
 
-def compare_species(species,sumforms,mol,check):
+def compare_species(species,sumforms,moldata):
     """
 
     Compare species in unique reaction list with mol object
@@ -75,20 +63,32 @@ def compare_species(species,sumforms,mol,check):
     Args:
         - species  : list of the species 
         - sumforms : list of thim sum formula of th species 
-        - mol      : mol object to compare
-        - check    : current status of check
+        - moldata  : list of (mol object, mdspecies) to compare
     """
 
-    for sp,sp_sumform in zip(species,sumforms):
+    check = False
+    is_first = True
+
+    mols = [m[0] for m in moldata]
+
+    for sp,sp_sumform,mol in zip(species,sumforms,mols):
     
         is_same = (  sp_sumform == mol.get_sumformula() ) 
     
         if not is_same:
+            check = False
             break 
  
         is_equal, error_code = molsys.addon.graph.is_equal(mol.graph.molg, sp, use_fast_check=False)
- 
-        check = check or is_equal
+
+        if is_first:
+            check = is_equal
+            is_first = False
+        else:
+            check = is_equal and check
+
+        if not check:
+            break
 
         if error_code != 0:
             myid = uuid.uuid4()
@@ -121,6 +121,7 @@ print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 
 db = rdb.db
 md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+#md = db((db.md.stage == stage)).select().first()
 revents = db((db.revent.mdID == md)).select()
 num_all = (len(revents))
 
@@ -134,19 +135,19 @@ num_unique = 0
 unique_reactions = []
 unique_cmp_data  = {}
 for r in revents:
-    if r["unique_reventID"] is not None:
+    if r["reactionsID"] is not None:
         unique_reactions.append(r)
-        unique_cmp_data[r["unique_reventID"]] = { "molgraph:ts" : []
-                                                , "sumform:ts"  : []
-                                                , "molgraph:ed" : []
-                                                , "sumform:ed"  : []
-                                                , "molgraph:pr" : []
-                                                , "sumform:pr"  : []
-                                                }
+        unique_cmp_data[r["reactionsID"]] = { "molgraph:ts" : []
+                                            , "sumform:ts"  : []
+                                            , "molgraph:ed" : []
+                                            , "sumform:ed"  : []
+                                            , "molgraph:pr" : []
+                                            , "sumform:pr"  : []
+                                            }
 
-        mdspec = db((db.md_species.reventID == r)).select()
+        mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
 
-        add_compare_data(unique_cmp_data[r["unique_reventID"]], mdspec)
+        add_compare_data(unique_cmp_data[r["reactionsID"]], mdspec)
 
 
 num_unique = len(unique_cmp_data)
@@ -163,22 +164,26 @@ for r in revents:
     print_progress.print_progress(count, num_all)
 
     # Check if revent has alredy record field unique_revent and skip in this case 
-    if r["unique_reventID"] is not None:
+    if r["reactionsID"] is not None:
         continue
     
 
-    is_unique  = True
-    same_ts    = False 
-    same_pr    = False 
-    same_ed    = False 
-    same_pr_ed = False 
-    same_ed_pr = False 
+    is_unique     = True
+    is_reversed   = False
+    same_reaction = False
+    back_reaction = False
 
-    is_reversed = False
+    ed_mol = [] 
+    pr_mol = [] 
+    ts_mol = [] 
 
     # get all md_species for this event
-    mdspec = db((db.md_species.reventID == r)).select()
+    mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False) ).select()
     if len(mdspec) > 0:
+
+        ##
+        # extract ts, ed and pr for this reaction  
+        ## 
 
         # Note: We have to sort the mdspecies to always match the same species in order
         #       to match them in the comparison
@@ -197,34 +202,68 @@ for r in revents:
             mol.addon("graph")
             mol.graph.make_comp_graph()
 
-            #
-            # compare with elements in unique_reaction list
-            #
+            if have_ts:
+                ts_mol.append((mol,m))
+             
+            if have_ed:
+                ed_mol.append((mol,m))
 
-            for ur in unique_reactions:
-
-                compare_data = unique_cmp_data[ur["unique_reventID"]]
-
-                if have_ts:
-                    same_ts = compare_species(compare_data["molgraph:ts"],compare_data["sumform:ts"],mol,same_ts)
-
-                if have_ed:
-                    same_ed = compare_species(compare_data["molgraph:ed"],compare_data["sumform:ed"],mol,same_ed)
-                    same_ed_pr = compare_species(compare_data["molgraph:pr"],compare_data["sumform:pr"],mol,same_ed_pr)
-
-                if have_pr:
-                    same_pr = compare_species(compare_data["molgraph:pr"],compare_data["sumform:pr"],mol,same_pr)
-                    same_pr_ed = compare_species(compare_data["molgraph:ed"],compare_data["sumform:ed"],mol,same_pr_ed)
+            if have_pr:
+                pr_mol.append((mol,m))
 
 
-    # many boolean operations, which are probably not fast in python
-    same_reaction = (same_ts and same_pr and same_ed) 
-    back_reaction = (same_ts and same_pr_ed and same_ed_pr)
+        ##
+        # analyze species to avoid artificats from ReaxFF
+        ##
+        for ed,m in ed_mol:
+            elems = ed.get_elems()
+            slist = elems
+            nelems = len(elems)
+            if nelems <= 3:
+                continue
+            slist = list(filter(("o").__ne__, slist)) 
+            slist = list(filter(("h").__ne__, slist)) 
+            if len(slist) == 0:
+                # we probably have a H-O-H-O- chain
+                supermol = copy.deepcopy(ed) 
+                for mol,mm in ed_mol:
+                    if mol != ed:
+                        supermol.add_mol(mol)
+                # detect the H and O closest to the other species 
+                hind = [i for i in range(nelems) if elems[i] == "h"] 
+                oind = [i for i in range(nelems) if elems[i] == "o"]
+                hdist = []
+                odist = []
+                for ih in hind:
+                   for idx in range(nelems,nall):
+                       d = supermol.get_distvec(ih,idx)
+                       hdist.append((d,ih))
+                # Remove 
 
-    is_reversed = back_reaction
+        ##
+        # compare with elements in unique_reaction list
+        ##
+        for ur in reversed(unique_reactions):
+
+            urid = ur["reactionsID"] 
+
+            compare_data = unique_cmp_data[urid]
+
+            same_ts    = compare_species(compare_data["molgraph:ts"],compare_data["sumform:ts"],ts_mol)
+            same_ed    = compare_species(compare_data["molgraph:ed"],compare_data["sumform:ed"],ed_mol)
+            same_ed_pr = compare_species(compare_data["molgraph:pr"],compare_data["sumform:pr"],ed_mol)
+            same_pr    = compare_species(compare_data["molgraph:pr"],compare_data["sumform:pr"],pr_mol)
+            same_pr_ed = compare_species(compare_data["molgraph:ed"],compare_data["sumform:ed"],pr_mol)
+
+            same_reaction = (same_ts and same_pr and same_ed) 
+            back_reaction = (same_ts and same_pr_ed and same_ed_pr)
+
+            if same_reaction or back_reaction:
+                break
 
     is_unique = not (same_reaction or back_reaction)
 
+    is_reversed = back_reaction
 
     if is_unique:
         unique_reactions.append(r)
@@ -239,7 +278,7 @@ for r in revents:
                    , "sumform:pr"  : []
                    }
 
-        mdspec = db((db.md_species.reventID == r)).select()
+        mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
 
         add_compare_data(cmp_data, mdspec)
 
@@ -256,29 +295,47 @@ for r in revents:
         # Add unique reaction entry to database. 
         #
 
-        revID = rdb.register_unique_revent(
-            r["frame"],
-            r["ed"],
-            r["ts"],
-            r["pr"],
-            r["tr_ed"],
-            r["tr_pr"],
+        reactID = rdb.register_reaction(
             r["uni"],
-            change_in_molgraph
+            change_in_molgraph,
+            "fromMD"
         )
 
         #
         # Update comparison data
         #
-        unique_cmp_data[revID] = cmp_data 
+        unique_cmp_data[reactID] = cmp_data 
 
+        #
+        # let species ref to reaction
+        #
+        rbonds = []
+        for ed,m in ed_mol:
+           specid, is_new = rdb.add_species(ed,True)
+           rdb.add_reac2spec(reactID,specid,-1)
+           if is_new:
+              rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
+        for pr,m in pr_mol:
+           specid, is_new = rdb.add_species(pr,True)
+           rdb.add_reac2spec(reactID,specid, 1) 
+           if is_new:
+              rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
+        for ts,m in ts_mol:
+           specid, is_new = rdb.add_species(ts,True)
+           rbonds = r["rbonds"]  
+           rdb.add_reac2spec(reactID,specid, 0) 
+           if is_new:
+              rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
 
         # Update reaction event
-        r.update_record(unique_reventID=revID)
+        r.update_record(reactionsID=reactID)
         r.update_record(reversed=is_reversed)
     else:
         # update reaction event
-        r.update_record(unique_reventID=ur["unique_reventID"])
+        r.update_record(reactionsID=ur["reactionsID"])
         r.update_record(reversed=is_reversed)
 
 
