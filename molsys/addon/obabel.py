@@ -156,5 +156,7 @@ class obabel:
             rgsys.append(aidx)
         return rgsys 
 
-
+    def plot_svg(self,fname):
+        self.pybmol.write(format="svg",filename=fname,overwrite=True) 
+        return
     

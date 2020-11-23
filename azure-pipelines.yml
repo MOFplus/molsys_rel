@@ -1,0 +1,23 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- master
+
+# later we can think of a different pool for molsys
+pool: pylmps 
+
+steps:
+
+- script: |
+    echo cd tests
+    echo "do something"
+  displayName: 'First molsys test'
+
+- script: |
+    source source_me 
+    cd tests/graph/comp_graph/
+    python3 test.py
+  displayName: 'testing molgraph comparison'

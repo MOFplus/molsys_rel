@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# Usage:
+#  $ source /path/to/source_me
+
+
+# Helper functions
+function __print()
+{
+   if [ "$SILENT" == "0" ]; then
+      echo $@
+   fi
+}
+
+function __usage()
+{
+   echo "His will set enviorment variables to make molsys accessible"
+   echo "Usage: source source_me"
+}
+
+# Settings
+SILENT=0
+
+# Process command line
+while [ "$1" != "" ]; do
+   case $1 in
+      --silent)
+         SILENT=1
+         ;;
+      -h | --help )
+         __usage
+         return 1
+         ;;
+      * )
+         __usage
+         return 1
+   esac
+   shift
+done
+
+#
+# Set paths
+#
+
+export MOLSYSPATH=`pwd`
+
+__print "Set PATH to molsys:"
+__print $MOLSYSPATH
+
+export PYTHONPATH=$MOLSYSPATH:$PYTHONPATH
+export PATH=$MOLSYSPATH/scripts:$PATH
+

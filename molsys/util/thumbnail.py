@@ -13,7 +13,7 @@ import tempfile
 import subprocess
 import os
 
-def thumbnail(mol, size=400, scale=1.3, transparent=True, fname=None, debug=False):
+def thumbnail(mol, size=200, scale=1.3, transparent=True, fname=None, debug=False,own_bonds=False):
     """
     generate a thumbnail from a mol object
     by default a png is returned.
@@ -40,6 +40,14 @@ def thumbnail(mol, size=400, scale=1.3, transparent=True, fname=None, debug=Fals
         mol modstyle 0 0 CPK 0.70000 0.300000 12.000000 12.000000
         scale by %f
         """ % scale
+
+        # should we use the bonding from the mol object?
+        if own_bonds:
+            vmd_settings += "\n" + 'mol color %s\nmol representation DynamicBonds %8.6f %8.6f 30.000000\n' % ('Name',2.0,0.2)
+            for i,c in enumerate(mol.ctab):
+                vmd_settings += 'mol selection index %i %i\nmol material Opaque\nmol addrep 0\n' % (c[0],c[1])
+
+
         # add additional stuff here ... optional
         f.write(vmd_settings)
         f.write("render TachyonInternal %s\n" % tgaf)

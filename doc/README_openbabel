@@ -1,11 +1,20 @@
 
 clone openbabel 3.0 from github
 
+dependencies:
+- cmake (apt)
+- swig (apt)
+
 within openbabel:
 
 mkdir build
 cd build
 cmake -DPYTHON_BINDINGS=ON -DRUN_SWIG=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 ..
+make 
+sudo make install
 
 add to .bahsrc:
-export PYTHONPATH=/usr/local/openbabel/lib/python3.5/site-packages:$PYTHONPATH
+export PYTHONPATH=/usr/local/lib/python[pythonversion]/dist-packages:$PYTHONPATH
+
+   where pythonversion is 3.5 or 3.6 ...
+   (just check output of make install)

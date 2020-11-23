@@ -53,6 +53,8 @@ nanometer = 1.0e-9*meter
 angstrom = 1.0e-10*meter
 picometer = 1.0e-12*meter
 
+bohr = 0.529177249 
+
 # *** Volume ***
 
 liter = decimeter**3

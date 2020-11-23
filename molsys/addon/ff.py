@@ -58,10 +58,12 @@ from molsys.addon import base
 import itertools
 import copy
 import string
-try:
-    import cPickle as Pickle
-except ImportError:
-    import _pickle as Pickle
+# try:
+#     import cPickle as Pickle
+# except ImportError:
+#     import _pickle as Pickle
+# replace serilization via Pickle by JSON (more safe and human readable)
+import json
 
 import logging
 logger = logging.getLogger("molsys.ff")
@@ -492,13 +494,13 @@ class ric:
         b2 = apex2-central2
         n1 = np.cross(b0,b1)
         n2 = np.cross(b1,b2)
-        try:
-            arg = -np.dot(n1,n2)/(np.linalg.norm(n1)*np.linalg.norm(n2))
-        except FloatingPointError as e:
-            if e.message == 'invalid value encountered in double_scalars':
-                arg = 0.0
-            else:
-                raise(e)
+        nn1 = np.linalg.norm(n1)
+        nn2 = np.linalg.norm(n2)
+        if (nn1 < 1.0e-13) or (nn2 < 1.0e-13):
+            arg = 0.0 
+            # TBI: this indicates a linear unit -> skip dihedral at al
+        else:
+            arg = -np.dot(n1,n2)/(nn1*nn2)
         if abs(1.0-arg) < 10**-14:
             arg = 1.0
         elif abs(1.0+arg) < 10**-14:
@@ -864,7 +866,7 @@ class ff(base):
             self.timer.start("fragment graph")
             self._mol.addon("fragments")
             self.fragments = self._mol.fragments
-            self.fragments.make_frag_graph()
+            self.fragments.make_frag_graph() 
             if plot:
                 self.fragments.plot_frag_graph(plot, ptype="png", vsize=20, fsize=20, size=1200)
             # create full atomistic graph
@@ -1185,7 +1187,7 @@ class ff(base):
             - ind(int): atom index
         """
         parind = self.parind["cha"]
-        fitdat = {"fixed":{}, "equivs": {}, "parnames": []}
+        fitdat = {"fixed":{}, "equivs": {}, "parnames": [], "qtot": 0.0}
         ### first gather already assigned charges and dump them to fitdat["fixed"]
         for i,p in enumerate(parind):
             fitdat["parnames"].append(p[0])
@@ -1210,7 +1212,8 @@ class ff(base):
             for i in v[1:]:
                 fitdat["equivs"][i] = v[0]
         ### dump fitdat to json file
-        with open("espfit.pickle", "wb") as f: Pickle.dump(fitdat, f)
+        with open("espfit.json", "w") as f:
+            f.write(json.dumps(fitdat, indent=4, sort_keys=True))
         return
 
     def varnames2par(self):
@@ -1281,17 +1284,17 @@ class ff(base):
                         self.vdwdata[types[i]+":"+types[j]] = par_ij
                         self.vdwdata[types[j]+":"+types[i]] = par_ij
                         continue
-                if "chapr" in self.par and len(self.par["chapr"].keys()) > 0:
-                    poti,refi,ti = self.split_parname(types[i])
-                    potj,refj,tj = self.split_parname(types[j])
-                    assert poti == potj
-                    assert refi == refj
-                    parname = self.build_parname("chapr", poti, refi, [ti[0],tj[0]])
-                    if parname in self.par["chapr"].keys():
-                        par_ij = self.par["chapr"][parname]
-                        self.chadata[types[i]+":"+types[j]] = par_ij
-                        self.chadata[types[j]+":"+types[i]] = par_ij
-                        continue
+                # if "chapr" in self.par and len(self.par["chapr"].keys()) > 0:
+                #     poti,refi,ti = self.split_parname(types[i])
+                #     potj,refj,tj = self.split_parname(types[j])
+                #     assert poti == potj
+                #     assert refi == refj
+                #     parname = self.build_parname("chapr", poti, refi, [ti[0],tj[0]])
+                #     if parname in self.par["chapr"].keys():
+                #         par_ij = self.par["chapr"][parname]
+                #         self.chadata[types[i]+":"+types[j]] = par_ij
+                #         self.chadata[types[j]+":"+types[i]] = par_ij
+                #         continue
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]
@@ -1331,12 +1334,12 @@ class ff(base):
                         raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
                     par_ij = (pot,[A,B,C])    
                 # all combinations are symmetric .. store pairs bith ways
-                self.vdwdata[types[i]+":"+types[j]] = par_ij
+                self.vdwdata[types[i]+":"+types[j]] = par_ij 
                 self.vdwdata[types[j]+":"+types[i]] = par_ij   
 
-                self.chadata[types[i]+":"+types[j]] = par_ij
-                self.chadata[types[j]+":"+types[i]] = par_ij  
-        #import pdb; pdb.set_trace()
+                # self.chadata[types[i]+":"+types[j]] = par_ij
+                # self.chadata[types[j]+":"+types[i]] = par_ij          
+                #import pdb; pdb.set_trace()
         self.pair_potentials_initalized = True
         return
 
@@ -1417,9 +1420,11 @@ class ff(base):
             if upgrades:
                 # if upgrades should be applied, also an active zone has to be present
                 assert ref_dic[ref][2] != None
+                subs_upgrade = []
                 for s,r in upgrades.items():
                     self.ref_systems[ref].fragments.upgrade(s, r)
-                    subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                    subs_upgrade += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                subs += subs_upgrade
             logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
             if len(subs) == 0:
                 # this ref system does not appear => discard
@@ -2069,6 +2074,8 @@ class ff(base):
         systems with variables can not be packed
 
         TODO: currently we only handle the ring attribute, needs to be more general if other attributes will be used in the future
+
+        TBI: we need to pack vdwpr and chapr
         """
         #assert not hasattr(self.par, 'variables'), "Can not pack force field data with variables"
         if hasattr(self.par, 'variables'): return {}
