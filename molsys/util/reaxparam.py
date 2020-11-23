@@ -1,7 +1,7 @@
 
 # The parameters were taken from the ReaxFF module in lammps:
 
-#! at1; at2;  De(sigma);   De(pi);   De(pipi);   p(be1);    p(bo5);  13corr;   n.u.;    p(bo6),  p(ovun1);  p(be2);  p(bo3);  p(bo4);   n.u.;  p(bo1);  p(bo2)
+#! at1; at2;  De(sigma);   De(pi);   De(pipi);   p(be1);    p(bo5);  13corr;   p(bo6),  p(ovun1);           p(be2);  p(bo3);  p(bo4);   n.u.;  p(bo1);  p(bo2)
 #  1     1   156.5953    100.0397     80.0000     -0.8157  -0.4591   1.0000  37.7369   0.4235               0.4527   -0.1000   9.2605   1.0000  -0.0750   6.8316   1.0000   0.0000
 #  1     2   170.2316      0.0000      0.0000     -0.5931   0.0000   1.0000   6.0000   0.7140               5.2267    1.0000   0.0000   1.0000  -0.0500   6.8315   0.0000   0.0000
 #  2     2   156.0973      0.0000      0.0000     -0.1377   0.0000   1.0000   6.0000   0.8240               2.9907    1.0000   0.0000   1.0000  -0.0593   4.8358   0.0000   0.0000
@@ -27,6 +27,9 @@ atom_type_to_num = {  "c" : 0
                    ,  "o" : 2 
                    } 
 
+#
+# Equilibrium distances for the atom types
+#
 r_s   = [1.3825,0.7853,1.2477]
 
 r_pi  = [1.1359,-0.1000,1.0863]
@@ -34,6 +37,9 @@ r_pi  = [1.1359,-0.1000,1.0863]
 r_pi2 = [1.2104,-0.1000,0.9088]
 
 
+#
+# Exponents etc. for calculating uncorrected bond order
+#
 pbo1 = [ [-0.0750,-0.0500,-0.1463]
        , [-0.0500,-0.0593,-0.0657]
        , [-0.1463,-0.0657,-0.1302]
@@ -63,19 +69,31 @@ pbo6 = [ [37.7369, 6.0000,10.8851]
        , [6.0000,  6.0000, 6.0000]
        , [10.8851, 6.0000,29.6439]
        ]
-  
+
+#
+# Valency of the atoms (needed to correct for over coordination)
+#  
 valency = [ 4.0, 1.0, 2.0 ]
 valency_val = [ 4.0, 1.0, 4.0 ]
  
+#
+# parameters to for over coordinaten correction
+#
 pboc4 = [8.6991, 1.9771, 20.4140]
 pboc3 = [34.7289, 3.3517, 3.3754]
 pboc5 = [13.3894, 0.7571, 0.2702]
 
+#
+# between which atoms the 1-3 over coordination should be corrected
+#
 v13cor = [ [1.0, 1.0, 1.0]
          , [1.0, 1.0, 1.0]
          , [1.0, 1.0, 1.0]
          ]
 
+#
+# between which atoms over coordination should be corrected
+#
 ovc   = [ [1.0, 0.0, 0.0]
         , [0.0, 0.0, 0.0]
         , [0.0, 0.0, 1.0]

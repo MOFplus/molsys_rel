@@ -3146,16 +3146,23 @@ class mol(mpiobject):
             BO = 0.0
         return BO
 
-    def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5,dist_thresh=5.0):
+    def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5,dist_thresh=5.0,correct=True):
 
         def f2(di,dj):
             lambda1 = 50.0
-            return math.exp(-lambda1*di)+math.exp(-lambda1*dj)
+            return math.exp(-lambda1*di) + math.exp(-lambda1*dj)
         def f3(di,dj):
             lambda2 = 9.5469
-            return -1.0/lambda2 * math.log(0.5*(math.exp(-lambda2*di)+math.exp(-lambda2*dj))) 
+            expi = math.exp(-lambda2*di)
+            expj = math.exp(-lambda2*dj)
+            return -1.0/lambda2 * math.log(0.5*(expi+expj)) 
         def f1(di,dj,vali,valj):
-            return 0.5 * ( (vali + f2(di,dj))/(vali+f2(di,dj)+f3(di,dj)) + (valj+f2(di,dj)/(valj+f2(di,dj)+f3(di,dj))) ) 
+            f2val = f2(di,dj)
+            f3val = f3(di,dj)
+            return 0.5 * ( (vali + f2val) / (vali + f2val + f3val) 
+                         + (valj + f2val) / (valj + f2val + f3val) 
+                         ) 
+
         def f4(di,bij,lambda3,lambda4,lambda5):
             exp_f4 = math.exp(-(lambda4*boij*boij-di)*lambda3 + lambda5)
             return 1.0 / (1.0 + exp_f4 )
@@ -3177,42 +3184,44 @@ class mol(mpiobject):
         ## 
         # correct bond order 
         ## 
-        delta = np.zeros(natoms)
-        delta_boc = np.zeros(natoms)
-        for iat in range(natoms):
-            a = self.xyz - self.xyz[iat]
-            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
-            total_bo = 0.0
-            for jat in range(natoms):
-                if iat != jat and dist[jat] <= dist_thresh :
-                    total_bo += botab[iat][jat] 
-            itype = reaxparam.atom_type_to_num[element_list[iat]]
-            delta[iat] = total_bo - reaxparam.valency[itype]
-            delta_boc[iat] = total_bo - reaxparam.valency_val[itype]
-        for iat in range(natoms):
-            itype = reaxparam.atom_type_to_num[element_list[iat]]
-            vali = reaxparam.valency[itype]
-            di = delta[iat]
-            a = self.xyz - self.xyz[iat]
-            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
-            for jat in range(0,iat+1):
-                boij = botab[iat][jat]
-                jtype = reaxparam.atom_type_to_num[element_list[jat]]
-                valj = reaxparam.valency[jtype]
-                dj = delta[jat]
-                pboc3 = math.sqrt(reaxparam.pboc3[itype] * reaxparam.pboc3[jtype]) 
-                pboc4 = math.sqrt(reaxparam.pboc4[itype] * reaxparam.pboc4[jtype]) 
-                pboc5 = math.sqrt(reaxparam.pboc5[itype] * reaxparam.pboc5[jtype])
-                if reaxparam.v13cor[itype][jtype] >= 0.001:
-                    f4f5 = f4(delta_boc[iat],boij,pboc3,pboc4,pboc5) * f4(delta_boc[jat],boij,pboc3,pboc4,pboc5)
-                else: 
-                    f4f5 = 1.0
-                if reaxparam.ovc[itype][jtype] >= 0.001:
-                    f1val = f1(di,dj,vali,valj)
-                else:
-                    f1val = 1.0
-                botab[iat][jat] = boij * f1val * f4f5 
-                botab[jat][iat] = boij * f1val * f4f5
+        if correct:
+            delta = np.zeros(natoms)
+            delta_boc = np.zeros(natoms)
+            for iat in range(natoms):
+                a = self.xyz - self.xyz[iat]
+                dist = np.sqrt((a*a).sum(axis=1)) 
+                total_bo = 0.0
+                for jat in range(natoms):
+                    #if iat != jat and dist[jat] <= dist_thresh and botab[iat][jat] > bo_thresh:
+                    if iat != jat and dist[jat] <= dist_thresh :
+                        total_bo += botab[iat][jat] 
+                itype = reaxparam.atom_type_to_num[element_list[iat]]
+                delta[iat] = total_bo - reaxparam.valency[itype]
+                delta_boc[iat] = total_bo - reaxparam.valency_val[itype]
+            for iat in range(natoms):
+                itype = reaxparam.atom_type_to_num[element_list[iat]]
+                vali = reaxparam.valency[itype]
+                di = delta[iat]
+                a = self.xyz - self.xyz[iat]
+                dist = np.sqrt((a*a).sum(axis=1)) 
+                for jat in range(0,iat+1):
+                    boij = botab[iat][jat]
+                    jtype = reaxparam.atom_type_to_num[element_list[jat]]
+                    valj = reaxparam.valency[jtype]
+                    dj = delta[jat]
+                    pboc3 = math.sqrt(reaxparam.pboc3[itype] * reaxparam.pboc3[jtype]) 
+                    pboc4 = math.sqrt(reaxparam.pboc4[itype] * reaxparam.pboc4[jtype]) 
+                    pboc5 = math.sqrt(reaxparam.pboc5[itype] * reaxparam.pboc5[jtype])
+                    if reaxparam.v13cor[itype][jtype] >= 0.001:
+                        f4f5 = f4(delta_boc[iat],boij,pboc3,pboc4,pboc5) * f4(delta_boc[jat],boij,pboc3,pboc4,pboc5)
+                    else: 
+                        f4f5 = 1.0
+                    if reaxparam.ovc[itype][jtype] >= 0.001:
+                        f1val = f1(di,dj,vali,valj)
+                    else:
+                        f1val = 1.0
+                    botab[iat][jat] = boij * f1val * f4f5 
+                    botab[jat][iat] = boij * f1val * f4f5
         conn = []
         # if bond order is above bo_thresh we consider the two atoms being bonded
         for iat in range(natoms):
