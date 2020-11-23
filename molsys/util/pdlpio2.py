@@ -372,6 +372,18 @@ class pdlpio2(mpiobject):
         else:
             return mol
 
+    def setup_molecules(self,mol):
+        mol.addon('molecules')
+        mm = mol.molecules
+        molnames = ['xyz']
+        for i,wm in enumerate(mm.whichmol):
+            if wm != 0:
+                if mol.fragtypes[i] not in molnames:
+                    molnames.append(mol.fragtypes[i])
+        mm.molnames = molnames
+        mm.moltypes = [0] + [i+1 for i in mm.moltypes[1:]]
+        return mol
+
     def add_stage(self, stage):
         """add a new stage 
         
@@ -399,6 +411,10 @@ class pdlpio2(mpiobject):
                 rgroup.require_dataset("cell",shape=(3,3), dtype="float64")
         OK = self.mpi_comm.bcast(OK)
         return OK
+
+    def has_stage(self,stagename):
+        return stagename in self.get_stages()
+               
 
     def get_stages(self):
         stagelist = list(self.h5file.keys())
