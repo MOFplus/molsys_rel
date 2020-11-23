@@ -374,6 +374,7 @@ while not stop:
             else:
                 tstep = None
             tral2 = tralyzer2.tralyzer2(pdiof, cur_stage, tstep=tstep)
+            molnames = tral2.molnames
             opts = {"com"   : "compute center of mass of a molecular species",\
                     "cav"   : "compute average cell params",\
                     "ela"   : "compute elastic constants from strain fluctuation" , \
