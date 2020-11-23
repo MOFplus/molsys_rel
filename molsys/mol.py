@@ -3123,9 +3123,9 @@ class mol(mpiobject):
         itype = reaxparam.atom_type_to_num[element_list[iat]]
         jtype = reaxparam.atom_type_to_num[element_list[jat]]
         # Get equilibrium bond distances
-        ro_s   = reaxparam.twbp_rs[itype][jtype]
-        ro_pi  = reaxparam.twbp_rpi[itype][jtype]
-        ro_pi2 = reaxparam.twbp_rpi2[itype][jtype]
+        ro_s   = 0.5 * ( reaxparam.r_s[itype]   + reaxparam.r_s[jtype] )   
+        ro_pi  = 0.5 * ( reaxparam.r_pi[itype]  + reaxparam.r_pi[jtype] )  
+        ro_pi2 = 0.5 * ( reaxparam.r_pi2[itype] + reaxparam.r_pi2[jtype] ) 
         # Calculate bond order
         if reaxparam.r_s[itype] > 0.0 and reaxparam.r_s[jtype] > 0.0:
           BO_s    = (1.0 + bo_cut) * math.exp( reaxparam.pbo1[itype][jtype] * math.pow(rij/ro_s,   reaxparam.pbo2[itype][jtype]) )
@@ -3146,7 +3146,7 @@ class mol(mpiobject):
             BO = 0.0
         return BO
 
-    def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5):
+    def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5,dist_thresh=5.0):
 
         def f2(di,dj):
             lambda1 = 50.0
@@ -3157,7 +3157,8 @@ class mol(mpiobject):
         def f1(di,dj,vali,valj):
             return 0.5 * ( (vali + f2(di,dj))/(vali+f2(di,dj)+f3(di,dj)) + (valj+f2(di,dj)/(valj+f2(di,dj)+f3(di,dj))) ) 
         def f4(di,bij,lambda3,lambda4,lambda5):
-            return 1.0 / (1.0 + math.exp(-lambda3*(lambda4*bij*bij-di) + lambda5 ))
+            exp_f4 = math.exp(-(lambda4*boij*boij-di)*lambda3 + lambda5)
+            return 1.0 / (1.0 + exp_f4 )
 
         element_list = self.get_elems()
         natoms = self.natoms
@@ -3166,8 +3167,10 @@ class mol(mpiobject):
         #
         botab = np.zeros((natoms,natoms))
         for iat in range(natoms):
+           a = self.xyz - self.xyz[iat]
+           dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
            for jat in range(0,iat+1):
-              if iat != jat:
+              if iat != jat and dist[jat] <= dist_thresh:
                   bo = self.calc_uncorrected_bond_order(iat,jat,bo_cut) 
                   botab[iat][jat] = bo
                   botab[jat][iat] = bo   
@@ -3177,9 +3180,11 @@ class mol(mpiobject):
         delta = np.zeros(natoms)
         delta_boc = np.zeros(natoms)
         for iat in range(natoms):
+            a = self.xyz - self.xyz[iat]
+            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
             total_bo = 0.0
             for jat in range(natoms):
-                if iat != jat:
+                if iat != jat and dist[jat] <= dist_thresh :
                     total_bo += botab[iat][jat] 
             itype = reaxparam.atom_type_to_num[element_list[iat]]
             delta[iat] = total_bo - reaxparam.valency[itype]
@@ -3188,7 +3193,9 @@ class mol(mpiobject):
             itype = reaxparam.atom_type_to_num[element_list[iat]]
             vali = reaxparam.valency[itype]
             di = delta[iat]
-            for jat in range(natoms):
+            a = self.xyz - self.xyz[iat]
+            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
+            for jat in range(0,iat+1):
                 boij = botab[iat][jat]
                 jtype = reaxparam.atom_type_to_num[element_list[jat]]
                 valj = reaxparam.valency[jtype]
@@ -3205,12 +3212,13 @@ class mol(mpiobject):
                 else:
                     f1val = 1.0
                 botab[iat][jat] = boij * f1val * f4f5 
+                botab[jat][iat] = boij * f1val * f4f5
         conn = []
         # if bond order is above bo_thresh we consider the two atoms being bonded
         for iat in range(natoms):
            conn_local = []
            for jat in range(natoms):
-              if iat != jat and botab[iat][jat] > bo_thresh:
+              if iat != jat and botab[iat][jat] > bo_thresh :
                   conn_local.append(jat)
            conn.append(conn_local)
         self.set_conn(conn)
