@@ -1284,17 +1284,17 @@ class ff(base):
                         self.vdwdata[types[i]+":"+types[j]] = par_ij
                         self.vdwdata[types[j]+":"+types[i]] = par_ij
                         continue
-                if "chapr" in self.par and len(self.par["chapr"].keys()) > 0:
-                    poti,refi,ti = self.split_parname(types[i])
-                    potj,refj,tj = self.split_parname(types[j])
-                    assert poti == potj
-                    assert refi == refj
-                    parname = self.build_parname("chapr", poti, refi, [ti[0],tj[0]])
-                    if parname in self.par["chapr"].keys():
-                        par_ij = self.par["chapr"][parname]
-                        self.chadata[types[i]+":"+types[j]] = par_ij
-                        self.chadata[types[j]+":"+types[i]] = par_ij
-                        continue
+                # if "chapr" in self.par and len(self.par["chapr"].keys()) > 0:
+                #     poti,refi,ti = self.split_parname(types[i])
+                #     potj,refj,tj = self.split_parname(types[j])
+                #     assert poti == potj
+                #     assert refi == refj
+                #     parname = self.build_parname("chapr", poti, refi, [ti[0],tj[0]])
+                #     if parname in self.par["chapr"].keys():
+                #         par_ij = self.par["chapr"][parname]
+                #         self.chadata[types[i]+":"+types[j]] = par_ij
+                #         self.chadata[types[j]+":"+types[i]] = par_ij
+                #         continue
                 par_i = self.par["vdw"][types[i]][1]
                 par_j = self.par["vdw"][types[j]][1]
                 pot_i =  self.par["vdw"][types[i]][0]
@@ -1337,8 +1337,8 @@ class ff(base):
                 self.vdwdata[types[i]+":"+types[j]] = par_ij 
                 self.vdwdata[types[j]+":"+types[i]] = par_ij   
 
-                self.chadata[types[i]+":"+types[j]] = par_ij
-                self.chadata[types[j]+":"+types[i]] = par_ij          
+                # self.chadata[types[i]+":"+types[j]] = par_ij
+                # self.chadata[types[j]+":"+types[i]] = par_ij          
                 #import pdb; pdb.set_trace()
         self.pair_potentials_initalized = True
         return
@@ -1420,9 +1420,11 @@ class ff(base):
             if upgrades:
                 # if upgrades should be applied, also an active zone has to be present
                 assert ref_dic[ref][2] != None
+                subs_upgrade = []
                 for s,r in upgrades.items():
                     self.ref_systems[ref].fragments.upgrade(s, r)
-                    subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                    subs_upgrade += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                subs += subs_upgrade
             logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
             if len(subs) == 0:
                 # this ref system does not appear => discard
