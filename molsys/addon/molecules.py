@@ -198,8 +198,13 @@ class molecules(base):
             # assume pydlpoly boundary conditions (orig in the center of box) -- this is what we get from MOF+ 
             cell = self._mol.get_cell().diagonal()
             cellh = (cell*0.5)-packbound
-            box = (-cellh).tolist()
-            box += cellh.tolist()
+            xyz = self._mol.get_xyz()
+            if xyz.min() > 0:
+                box = [packbound, packbound, packbound]
+                box += (cell-packbound).tolist()
+            else:
+                box = (-cellh).tolist()
+                box += cellh.tolist()
             # make a temp file and go there
             tmpd = tempfile.mkdtemp()
             cwd  = os.getcwd()
