@@ -711,7 +711,7 @@ class OptimizationTools:
                     files = os.listdir(self.path)
                     for f in files:
                         if os.path.isfile(f) and f not in ['submit.py','submit.out']:
-                            os.move(f, os.path.join(self.path,'M_%d' %(M_fermi)))
+                            shutil.move(f, os.path.join(self.path,'M_%d' %(M_fermi)))
                     for f in os.listdir(path_min):
                         shutil.move(os.path.join(path_min, f), self.path)
                     shutil.rmtree(path_min)
@@ -1158,19 +1158,20 @@ class OptimizationTools:
                         exit()
                     mol_tmp = OT_tmp.get_mol()
                     Mol(mol_tmp).make_molecular_graph()
-                    mg_tmp = mol_fin.graph.molg
+                    mg_tmp = mol_tmp.graph.molg
                     equal = molsys.addon.graph.is_equal(mg_ini, mg_tmp)[0]
                     if not equal:
                          print('The graph still changes with the multiplicity %d.' %(M+2))
                          exit()
                     else:
-                         files = os.listdir(path_QM)
-                         os.mkdir(os.path.join(path_QM,'M_%d' %M))
+                         files = os.listdir(QM_path)
+                         os.mkdir(os.path.join(QM_path,'M_%d' %M))
                          for f in files:
-                             if os.path.isfile(f) and f not in ['submit.py','submit.out']:
-                                 os.move(os.path.join(path_QM,f),os.path.join(path_QM,'M_%d' %M))
+                             f_to_move = os.path.join(QM_path,f)
+                             if os.path.isfile(f_to_move) and f not in ['submit.py','submit.out']:
+                                 shutil.move(f_to_move, os.path.join(QM_path,'M_%d' %M))
                          for f in os.listdir(path_tmp):
-                             shutil.move(os.path.join(path_tmp, f), path_QM)
+                             shutil.move(os.path.join(path_tmp, f), QM_path)
                          shutil.rmtree(path_tmp)
                          M = M+2
             multiplicities.append(M)
@@ -1185,6 +1186,22 @@ class OptimizationTools:
 
         multiplicities_ed,   QM_paths_ed   = self.educts_and_products_workflow(path_ref_educts,   lot, 'educt')
         multiplicities_prod, QM_paths_prod = self.educts_and_products_workflow(path_ref_products, lot, 'product')
+
+        unimolecular = False
+        if n_ed == n_prod: unimolecular = True
+
+        M_ed   = sum(multiplicities_ed)   - n_ed   + 1 
+        M_prod = sum(multiplicities_prod) - n_prod + 1
+
+        if unimolecular: 
+            if M_ed != M_prod:
+                print('The multiplicities of the educt and product is not the same. Not implemented yet!')
+                exit()
+            else:
+                M = M_ed
+        else:
+            M = min(M_ed, M_prod)
+        print(M)
         return
 
  
