@@ -2220,7 +2220,7 @@ class mol(mpiobject):
 
     ### DISTANCE MEASUREMENTS #######################
 
-    def get_distvec(self, i, j, thresh=SMALL_DIST):
+    def get_distvec(self, i, j, thresh=SMALL_DIST,return_all_r=False):
         """ vector from i to j
         This is a tricky bit, because it is needed also for distance detection in the blueprint
         where there can be small cell params wrt to the vertex distances.
@@ -2255,7 +2255,10 @@ class mol(mpiobject):
             r = rj-ri
             d = np.sqrt(np.sum(r*r))
             closest=[0]
-        return d, r, closest
+        if return_all_r is True and len(closest) > 1:
+            return d, all_r[closest], closest
+        else:
+            return d, r, closest
 
     def get_dist(self, ri, rj, thresh=SMALL_DIST):
         """ vector from i to j
@@ -2573,7 +2576,8 @@ class mol(mpiobject):
         """
         returns the number of fragments in the actual system
         """
-        return self.nfrags
+        #return self.nfrags
+        return np.max(self.fragnumbers)+1
 
     def add_fragnumbers(self,fragnumbers):
         """
