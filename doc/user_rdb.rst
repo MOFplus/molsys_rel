@@ -7,11 +7,11 @@ The steps to create a database and analyse a trajectory of HDF5 format (.pdlp)
 ------------------------------------------------------------------------------
 1) Initialize the database for a database named "rdb".
 
-init_RDB rdb
+    init_RDB rdb
 
 2) Find the reaction events and fill the database with the reactions from the MD simulations.
 
-python3 runRDB.py | tee runRDB.out
+    python3 runRDB.py | tee runRDB.out
 
 The runRDB.py for a trajectory named "reax.pdlp", with stage "sample", and database named "rdb" should look like this:
 
@@ -32,9 +32,9 @@ opt_md_species rdb reax.pdlp sample fromMD cmd.inp
 
 where the cmd.inp file should look like this:
 
-    { "calculator" : "reaxff"
-    , "lot"        : "ReaxFF"
-    }
+{ "calculator" : "reaxff"
+, "lot"        : "ReaxFF"
+}
 
 5) Run the density functional theory calculations (under progress https://github.com/oyonder/molsys) taking the reference structures from e.g., ReaxFF level of theory.
 
