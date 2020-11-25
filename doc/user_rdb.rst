@@ -24,7 +24,7 @@ The runRDB.py for a trajectory named "reax.pdlp", with stage "sample", and datab
 
 3) Find the unique reaction events.
 
-find_unique_reactions rdb reax.pdlp sample
+    find_unique_reactions rdb reax.pdlp sample
 
 4) Optimize the MD species, where the reference structures are those from the MD simulation and add them to the database.
 
@@ -32,13 +32,13 @@ opt_md_species rdb reax.pdlp sample fromMD cmd.inp
 
 where the cmd.inp file should look like this:
 
-{ "calculator" : "reaxff"
-, "lot"        : "ReaxFF"
-}
+    { "calculator" : "reaxff"
+    , "lot"        : "ReaxFF"
+    }
 
 5) Run the density functional theory calculations (under progress https://github.com/oyonder/molsys) taking the reference structures from e.g., ReaxFF level of theory.
 
-opt_dft_species rdb reax.pdlp sample ReaxFF cmd-DFT.inp
+    opt_dft_species rdb reax.pdlp sample ReaxFF cmd-DFT.inp
 
 where the cmd-DFT.inp file should look like this:
 
