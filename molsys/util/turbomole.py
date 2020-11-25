@@ -222,7 +222,7 @@ class GeneralTools:
         f.write("%s\n" % title)
         f.write("%method\n")
         f.write("ENRGY :: %s [gen_mult = %d, gen_symm = c1, scf_dsta = 1, scf_msil = 1000, scf_rico = %d, for_maxc = %d]\n" %
-                (lot, M, max_mem, max_mem))
+                (lot, M, 0.3*max_mem, 0.7*max_mem))
         f.write("%coord\n")
         for i in range(len(elems)):
             f.write("  %19.14f %19.14f %19.14f   %-2s\n" %
@@ -1108,6 +1108,10 @@ class OptimizationTools:
 
 
     def educts_and_products_workflow(self, paths_ref, lot, label = 'eq_spec'):
+    ''' This is meant to be called from the reaction_workflow method. But can also probably called separately.
+        paths_ref: list of strings : The path to the coordinate files of the reference structures.
+        lot      : string          : It should be given in accordance with the tmole manual.
+    '''
         multiplicities = []
         QM_paths       = []
         for i, path_ref in enumerate(paths_ref):
@@ -1181,6 +1185,13 @@ class OptimizationTools:
 
 
     def reaction_workflow(self, lot = '', rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', path_ed_complex = '', path_prod_complex = ''):
+    ''' This method considers the reaction event and optimizes the species accordingly.
+        All of the input variables are retrieved from the RDB database, but should also work if one would like to just provide some reference structures...
+        rbonds           : list of integers : The indices of the reactive bonds in the TS structure. The atom indexing is like in python, 0,1,2,...
+        path_ref_educts  : list of strings  : The list of paths to the reference educts cartesian coordinate files.
+        path_ref_products: list of strings  : The list of paths to the reference products cartesian coordinate files.
+        path_ref_ts      : string           : The path to the TS cartesian coordinate files.
+    '''
         n_ed   = path_ref_educts
         n_prod = path_ref_products
 
@@ -1207,6 +1218,9 @@ class OptimizationTools:
  
 
     def write_submit_py(self, lot = '', rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', path_ed_complex = '', path_prod_complex = ''):
+    ''' In order to write a script which will run the desired routine, in this case, the reaction_workflow. Therefore, it needs to be modified if some other task is needed.
+        This can later be used to submit jobs to the queuing system by writing a job submission script. See in the Slurm class the write_submission_script.
+    '''
         f_path = os.path.join(self.path,"submit.py")
         f = open(f_path,"a")
         f.write("import os\n")
@@ -1223,9 +1237,6 @@ class OptimizationTools:
         f.write("OT.reaction_workflow(lot, rbonds, path_ref_educts, path_ref_products, path_ref_ts, path_ed_complex, path_prod_complex)\n")
         f.close()
         return
-
-
-
 
 
 #    def write_submit_py(self, TS, M, active_atoms, max_mem, ref_struc_path, lot, unimolecular = False, path_ref_educts = [], path_ref_products = [],  path_ed_complex = '',  path_prod_complex = ''):
@@ -1294,6 +1305,8 @@ class OptimizationTools:
 class Slurm:
 
     def get_avail_nodes():
+        ''' Returns a list of available nodes.
+        '''
         sinfo = os.popen('sinfo --format="%n %t %c %m"').read()
         n_t_c_m = sinfo.split("\n")
         avail_nodes = []
@@ -1305,6 +1318,8 @@ class Slurm:
 
 
     def get_avail_nodes_of_(partition="normal"):
+        ''' Returns a list of available nodes under that partition.
+        '''
         sinfo = os.popen('sinfo --format="%n %t %P"').read()
         n_t_P = sinfo.split("\n")
         avail_nodes = []
@@ -1315,6 +1330,8 @@ class Slurm:
         return avail_nodes
 
     def get_partition_info(partition="normal"):
+        ''' Returns the number of CPUs and memory of a node which belongs to that partition.
+        '''
         sinfo = os.popen('sinfo --format="%P %c %m"').read()
         P_c_m = sinfo.split("\n")
         for lines in P_c_m:
@@ -1325,6 +1342,8 @@ class Slurm:
         return CPUS, MEM
 
     def write_submission_script(path=os.getcwd(), TURBODIR="", ntasks=8, partition="normal"):
+        ''' Writes a SLURM job submission script which will run whatever is written in submit.py. See write_submit_py under OptimizationTools.
+        '''
         s_script_path = os.path.join(path, "submit.sh")
         s_script = open(s_script_path,"w")
         s_script.write("#!/bin/bash\n")
