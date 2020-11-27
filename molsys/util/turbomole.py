@@ -139,7 +139,7 @@ class GeneralTools:
                 while '$' not in lines[i+j]:
                     split_line = lines[i+j].strip().split()
                     occ = float(split_line[3])
-                    print(split_line, occ)
+                    #print(split_line, occ)
                     if abs(occ-round(occ)) > THRESHOLD:
                         new_lines[i+j] = ' %s       %s                                     ( %s )\n' %(split_line[0],split_line[1],str(round(occ)))
                     j += 1
@@ -148,7 +148,7 @@ class GeneralTools:
                 while '$' not in lines[i+j]:
                     split_line = lines[i+j].strip().split()
                     occ = float(split_line[3])
-                    print(split_line, occ)
+                    #print(split_line, occ)
                     if abs(occ-round(occ)) > THRESHOLD:
                         new_lines[i+j] = ' %s       %s                                     ( %s )\n' %(split_line[0],split_line[1],str(round(occ)))
                     j += 1
@@ -203,7 +203,7 @@ class GeneralTools:
         return
 
 
-    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot, fermi = True, nue = False):
+    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot, scf_dsta = 1.0, fermi = True, nue = False):
         """Creates a tmole input called 'turbo.in' with c1 symmetry.
         Parameters
         ----------
@@ -212,6 +212,7 @@ class GeneralTools:
         M       : the (initial) spin multiplicity
         max_mem : Maximum memory per core to use in the calculations.
         title   : title of the job
+        scf_dsta: start value for the SCF damping.
         lot     : The QM level of theory, must be string
         fermi   : Boolean for Fermi smearing
         """
@@ -221,8 +222,8 @@ class GeneralTools:
         f.write("%title\n")
         f.write("%s\n" % title)
         f.write("%method\n")
-        f.write("ENRGY :: %s [gen_mult = %d, gen_symm = c1, scf_dsta = 1, scf_msil = 1000, scf_rico = %d, for_maxc = %d]\n" %
-                (lot, M, 0.3*max_mem, 0.7*max_mem))
+        f.write("ENRGY :: %s [gen_mult = %d, gen_symm = c1, scf_dsta = %f, scf_msil = 1000, scf_rico = %d, for_maxc = %d]\n" %
+                (lot, M, scf_dsta, 0.3*max_mem, 0.7*max_mem))
         f.write("%coord\n")
         for i in range(len(elems)):
             f.write("  %19.14f %19.14f %19.14f   %-2s\n" %
@@ -245,10 +246,12 @@ class GeneralTools:
         os.chdir(self.maindir)
         return
 
-    def check_dscf_converged(self):
+    def check_ridft_converged(self, ridft_out_name = 'ridft.out'):
         converged = True
-        if os.path.isfile(os.path.join(self.path,"dscf_problem")):
-             converged = False
+        ridftout = open(os.path.join(self.path, ridft_out_name),'r')
+        for line in ridftout:
+            if 'ATTENTION: ridft did not converge!' in line:
+                converged = False
         return converged
 
     def get_energy_from_ridft_out(self, ridft_out_name = 'ridft.out'):
@@ -276,29 +279,53 @@ class GeneralTools:
         os.chdir(self.maindir)
         return SPE
 
+    def change_dsta_to(self, dsta = 1.0):
+        ''' Changes the start value for SCF damping. 
+        '''
+        control_path = os.path.join(self.path,'control')
+        if not os.path.isfile(control_path):
+            raise FileNotFoundError("There is no control file in the directory %s." % self.path)
+    
+        newlines = []
+        with open(control_path,'r') as control:
+            for i,line in enumerate(control):
+                if '$scfdamp' in line:
+                    newline = line.split()[0]+' start=%f ' %dsta + " ".join(line.split()[2:])+'\n'
+                    newlines.append(newline)
+                else:
+                    newlines.append(line)
+    
+        os.remove(control_path)
+        with open(control_path,'w') as new_control:
+            for line in newlines:
+                new_control.write(line)
+        return
+
+
 
     def kdg(self, dg_name=""):
         """Removes the data group named <dg_name>."""
         os.chdir(self.path)
         os.system("kdg %s" % dg_name)
+        print("The data group %s is removed from the control file." %dg_name)
         os.chdir(self.maindir)
         return
 
 class GeometryTools:
 
-    def add_noise(mol, active_atoms = []):
+    def add_noise(mol, active_atoms = [], upto = 0.1):
         """ Returns xyz coordinates with a noise using a uniform distribution.
 
         First shifts the noise to the origin by subtracting 0.5,
-        then divides it by 10 to get a noise up to 0.1 Angstrom.
+        then divides it by 10 to get a noise up to 0.1 Angstrom ny default.
 
         No noise is added to the active atoms.
         """
         if active_atoms != []:
-            noise_ini = (numpy.random.rand(mol.natoms-len(active_atoms),3)-0.5)/10.0
+            noise_ini = (numpy.random.rand(mol.natoms-len(active_atoms),3)-0.5)*upto
             noise = GeometryTools._make_noise_without_active_atoms(mol, noise_ini, active_atoms) 
         else:
-            noise = (numpy.random.rand(mol.natoms,3)-0.5)/10.0
+            noise = (numpy.random.rand(mol.natoms,3)-0.5)*upto
         # add the noise array to the coordinates array
         new_xyz = mol.xyz + noise
         return new_xyz
@@ -412,7 +439,7 @@ class GeometryTools:
         ### write the define.in file ###
         GeometryTools._write_define_new_point_group(point_group_to_assign, path)
         ### invoke define ###
-        GeneralTools(path).invoke_define(define_out_name = "define-test.out")
+        GeneralTools(path).invoke_define(define_out_name = "define-sym.out")
         ### check if the number of atoms is still the same ###
         newnatoms = GeometryTools._get_natoms_from_control(path)
         if natoms != newnatoms:
@@ -526,7 +553,9 @@ class OptimizationTools:
         # exits define
         f.write('qq\n')
         f.close()
+        os.chdir(self.path)
         os.system('define < %s > %s' %(define_in_path, os.path.join(self.path,'define.out')))
+        os.chdir(self.maindir)
         return
 
     def ired_and_itvc_1(self):
@@ -534,6 +563,7 @@ class OptimizationTools:
            changes the itvc to 1 (for TS optimization), 
            and changes the coordinates to the redundant internal coordinates.
         """
+        os.chdir(self.path)
         define_in_path = os.path.join(self.path,'define.in')
         f = open(define_in_path, 'w')
         f.write(' \n')
@@ -552,6 +582,7 @@ class OptimizationTools:
         f.write('q\n')
         f.close()
         GeneralTools(self.path).invoke_define()
+        os.chdir(self.maindir)
         return
 
     def ired(self):
@@ -617,115 +648,219 @@ class OptimizationTools:
         return
 
 
-    def common_workflow(self, ref_struc_path, lot, TS = False, M = None, active_atoms = [], max_mem = 500):
+    def common_workflow(self, path_ref, lot, TS = False, M = None, active_atoms = [], max_mem = 500, fermi = True):
         ''' Performs single point calculation, adds a noise within 0.1 Angstrom to the reference structure. 
-        fermi          : for transition state or not?
-        M              : in case of Fermi smearing, the initial spin multiplicity; otherwise, the multiplicity
+        TS             : for transition state or not?
+        M              : the spin multiplicity
+        fermi          : apply Fermi smearing or not?
         max_mem        : maximum memory per core
-        ref_struc_path : the path to the reference structure; e.g. from ReaxFF
-        lot        : string, e.g. tpss/SVP 
+        path_ref       : the path to the reference structure; e.g. from ReaxFF
+        lot            : string, e.g. ri-utpss/SVP 
         '''
-        mol = molsys.mol.from_file(ref_struc_path)
+        mol = molsys.mol.from_file(path_ref)
         GT = GeneralTools(self.path)
         atom = False
-        new_xyz = GeometryTools.add_noise(mol, active_atoms)
+        new_xyz = GeometryTools.add_noise(mol, active_atoms = active_atoms, upto = 0.05)
+
         if mol.natoms == 1:
             atom = True
-        if TS:
-            GT.make_tmole_dft_input(
-                    mol.elems, 
-                    new_xyz, 
-                    M, 
-                    max_mem, 
-                    ref_struc_path,
-                    lot,
-                    True, # True for Fermi smearing
-                    True) # True to enforce a multiplicity in the Fermi smearing
-            GT.run_tmole()
-            # Remove the data group $fermi from the control file
-            GT.kdg("fermi")
-            energy = GT.ridft() 
-        else:
-            # Determine the orbital occupations through Fermi smearing.
-            # if the multiplicity is not defined already assign the following:
-            # M      : initial spin multiplicity
-            #        = 3 for systems with even number of electrons
-            #        = 2 for systems with odd number of electrons
-            nel = Mol(mol).count_number_of_electrons(charge = 0)
-            if (nel % 2) == 0:
-                M = 3
+
+        if fermi:
+
+            ### TS ###
+            if TS:
+                assert M != None, "You must provide a multiplicity for a TS!"
+                GT.make_tmole_dft_input(
+                        elems = mol.elems, 
+                        xyz = new_xyz, 
+                        M = M, 
+                        max_mem = max_mem, 
+                        title = path_ref, 
+                        lot = lot, 
+                        scf_dsta = 1.0, # SCF start damping
+                        fermi = True, # True for Fermi smearing 
+                        nue = False) # True to enforce a multiplicity in the Fermi smearing
+                GT.run_tmole()
+                converged = GT.check_ridft_converged()
+                # If SCF did not converge, increase the SCF start damping to 2.0 instead of 1.0.
+                if not converged:
+                    print('The SCF calculation for Fermi smearing with start damping 1.0 did not converge. Increasing it to 2.0.' )
+                    for f in self.path:
+                        os.remove(f)
+                    GT.make_tmole_dft_input(
+                            elems = mol.elems,  
+                            xyz = new_xyz,
+                            M = M,
+                            max_mem = max_mem,
+                            title = path_ref,
+                            lot = lot,
+                            scf_dsta = 2.0, # SCF start damping
+                            fermi = True, # True for Fermi smearing 
+                            nue = False) # True to enforce a multiplicity in the Fermi smearing
+                    GT.run_tmole()
+                    converged = GT.check_ridft_converged()
+                    if not converged:
+                        print('The SCF calculation with Fermi smearing did not converge also with start damping 2.0.')
+                        sys.exit()
+                    else:
+                        print('The SCF calculation converged with start damping 2.0. Decreasing it back to 1.0 and re-performing the SCF calculation.')
+                        GT.change_scf_dsta_to(1.0)
+                        energy = GT.ridft()
+                        converged = GT.check_ridft_converged()
+                        if not converged:
+                            print('The SCF calculation with start damping 1.0 did not converge.')
+                            sys.exit()
+                # Remove the data group $fermi from the control file
+                GT.kdg("fermi")
+                # If there are partial occupations round them to integers
+                GT.round_fractional_occupation()
+                energy = GT.ridft()
+                print("The energy of the structure is %f Hartree." %energy)
+                # Now get the spin multiplicity from Fermi
+                nalpha, nbeta = GT.get_nalpha_and_nbeta_from_ridft_output()
+                M_fermi = GT.calculate_spin_multiplicity_from(nalpha, nbeta)
+                # If the multiplicity changes in the Fermi smearing, change the multiplicity such that the desired multiplicity is used.
+                if M_fermi != M:
+                    print("The spin multiplicity has changed to %d during the Fermi smearing. It will be changed back to %d." %(M_fermi, M))
+                    GT.for_c1_sym_change_multiplicity_in_control_by(M-M_fermi, nalpha, nbeta)
+                    energy = GT.ridft()
+                    converged = GT.check_ridft_converged()
+                    if not converged:
+                        print('The SCF calculation did not converge starting with orbitals from Fermi and multiplicity %d.' %M)
+                        sys.exit()
+
+
+            ### Equilibrium Structure ###
             else:
-                M = 2
+                # Determine the orbital occupations through Fermi smearing.
+                # if the multiplicity is not defined already assign the following:
+                # M      : initial spin multiplicity
+                #        = 3 for systems with even number of electrons
+                #        = 2 for systems with odd number of electrons
+                nel = Mol(mol).count_number_of_electrons(charge = 0)
+                if (nel % 2) == 0:
+                    M = 3
+                else:
+                    M = 2
+                GT.make_tmole_dft_input(
+                        mol.elems,
+                        new_xyz,
+                        M,
+                        max_mem,
+                        path_ref,
+                        lot,
+                        True,
+                        False)
+                GT.run_tmole()
+                # Remove the data group $fermi from the control file
+                GT.kdg("fermi")
+                # If there are partial occupations round them to integers
+                GT.round_fractional_occupation()
+                energy = GT.ridft()
+                converged = GT.check_ridft_converged()
+                if not converged: print("The single point calculation with Fermi smearing did not converge!")
+                # Now calculate two lower spin multiplicities
+                nalpha, nbeta = GT.get_nalpha_and_nbeta_from_ridft_output()
+                M_fermi = GT.calculate_spin_multiplicity_from(nalpha, nbeta)
+                dict_energies = {energy:M_fermi}
+                curdir = os.getcwd()
+                os.chdir(self.path)
+                if nel > 1:
+                    new_dirs = []
+                    if M_fermi-2 > 0:
+                        m2_path = os.path.join(self.path,'M_%d' %(M_fermi-2))
+                        new_dirs.append(m2_path)
+                        os.system('cpc %s' %m2_path)
+                        os.chdir(m2_path)
+                        GT_m2 = GeneralTools(m2_path)
+                        GT_m2.for_c1_sym_change_multiplicity_in_control_by(-2, nalpha, nbeta)
+                        energy_m2 = GT_m2.ridft()
+                        dict_energies[energy_m2] = M_fermi-2
+                        os.chdir(self.path)
+                    # The maximum possible multiplicity that the molecule can have
+                    M_max = Mol(mol).get_max_M()
+                    if M_fermi < M_max:
+                        p2_path = os.path.join(self.path,'M_%d' %(M_fermi+2))
+                        new_dirs.append(p2_path)
+                        os.system('cpc %s' %p2_path)
+                        os.chdir(p2_path)
+                        GT_p2 = GeneralTools(p2_path)
+                        GT_p2.for_c1_sym_change_multiplicity_in_control_by(+2, nalpha, nbeta)
+                        energy_p2 = GT_p2.ridft()
+                        dict_energies[energy_p2] = M_fermi+2
+                        os.chdir(self.path)
+                    M_final = dict_energies[min(dict_energies)]
+                    print('The dictionary of energies and multiplicities:')
+                    print(dict_energies)
+                    if M_final != M_fermi:
+                        print('The multiplicity %d results in lower energy than %d.' %(M_final, M_fermi))
+                        # now remove everything under the path where the original Fermi smearing was done.
+                        path_min = os.path.join(self.path,'M_%d' %(M_final))
+                        os.mkdir(os.path.join(self.path,'M_%d' %(M_fermi)))
+                        files = os.listdir(self.path)
+                        for f in files:
+                            if os.path.isfile(f) and f not in ['submit.py','submit.out']:
+                                shutil.move(f, os.path.join(self.path,'M_%d' %M_fermi))
+                        for f in os.listdir(path_min):
+                            shutil.move(os.path.join(path_min, f), self.path)
+                        shutil.rmtree(path_min)
+                        print('The calculations will proceed using multiplicity %d.' % M_final )
+                    else:
+                        print('The multiplicity %d will be used.' %M_final)
+
+        # For cases without Fermi smearing starting from extented Hueckel Theory guess for a given multiplicity
+        else:
+            assert M != None, "You must provide a multiplicity without Fermi smearing!"
             GT.make_tmole_dft_input(
                     mol.elems,
                     new_xyz,
                     M,
                     max_mem,
-                    ref_struc_path,
+                    path_ref,
                     lot,
-                    True,
-                    False)
+                    False, # True for Fermi smearing
+                    False) # True to enforce a multiplicity in the Fermi smearing
             GT.run_tmole()
-            # Remove the data group $fermi from the control file
-            GT.kdg("fermi")
-            # If there are partial occupations round them to integers
-            GT.round_fractional_occupation()
-            energy = GT.ridft()
-            # Now calculate two lower spin multiplicities
-            nalpha, nbeta = GT.get_nalpha_and_nbeta_from_ridft_output()
-            M_fermi = GT.calculate_spin_multiplicity_from(nalpha, nbeta)
-            dict_energies = {energy:M_fermi}
-            curdir = os.getcwd()
-            os.chdir(self.path)
-            if nel > 1:
-                new_dirs = []
-                if M_fermi-2 > 0:
-                    m2_path = os.path.join(self.path,'M_%d' %(M_fermi-2))
-                    new_dirs.append(m2_path)
-                    os.system('cpc %s' %m2_path)
-                    os.chdir(m2_path)
-                    GT_m2 = GeneralTools(m2_path)
-                    GT_m2.for_c1_sym_change_multiplicity_in_control_by(-2, nalpha, nbeta)
-                    energy_m2 = GT_m2.ridft()
-                    dict_energies[energy_m2] = M_fermi-2
-                    os.chdir(self.path)
-                M_max = Mol(mol).get_max_M()
-                print(M_max)
-                if M_fermi < M_max:
-                    p2_path = os.path.join(self.path,'M_%d' %(M_fermi+2))
-                    new_dirs.append(p2_path)
-                    os.system('cpc %s' %p2_path)
-                    os.chdir(p2_path)
-                    GT_p2 = GeneralTools(p2_path)
-                    GT_p2.for_c1_sym_change_multiplicity_in_control_by(+2, nalpha, nbeta)
-                    energy_p2 = GT_p2.ridft()
-                    dict_energies[energy_p2] = M_fermi+2
-                    os.chdir(self.path)
-                M_final = dict_energies[min(dict_energies)]
-                print(dict_energies)
-                if M_final != M_fermi:
-                    print('The multiplicity %d results in lower energy than %d!' %(M_final, M_fermi))
-                    # now remove everything under the path where the original Fermi smearing was done.
-                    path_min = os.path.join(self.path,'M_%d' %(M_final))
-                    os.mkdir(os.path.join(self.path,'M_%d' %(M_fermi)))
-                    files = os.listdir(self.path)
-                    for f in files:
-                        if os.path.isfile(f) and f not in ['submit.py','submit.out']:
-                            shutil.move(f, os.path.join(self.path,'M_%d' %(M_fermi)))
-                    for f in os.listdir(path_min):
-                        shutil.move(os.path.join(path_min, f), self.path)
-                    shutil.rmtree(path_min)
-                    print('The calculations will proceed using multiplicity %d.' % M_final )
+            converged = GT.check_ridft_converged()
+            # If SCF did not converge, increase the SCF start damping to 2.0 instead of 1.0.
+            if not converged:
+                print('The SCF calculation with start damping 1.0 did not converge. Increasing it to 2.0.' )
+                for f in self.path:
+                    os.remove(f)
+                GT.make_tmole_dft_input(
+                        elems = mol.elems,
+                        xyz = new_xyz,
+                        M = M,
+                        max_mem = max_mem,
+                        title = path_ref,
+                        lot = lot,
+                        scf_dsta = 2.0, # SCF start damping
+                        fermi = False, # True for Fermi smearing 
+                        nue = False) # True to enforce a multiplicity in the Fermi smearing
+                GT.run_tmole()
+                converged = GT.check_ridft_converged()
+                if not converged:
+                    print('The SCF calculation did not converge also with start damping 2.0.')
+                    sys.exit()
                 else:
-                    print('The multiplicity %d will be used.' %M_final)
-        converged = GT.check_dscf_converged()
+                    print('The SCF calculation converged with start damping 2.0. Decreasing it back to 1.0 and re-performing the SCF calculation.')
+                    GT.change_scf_dsta_to(1.0)
+                    energy = GT.ridft()
+                    converged = GT.check_ridft_converged()
+                    if not converged:
+                        print('The SCF calculation with start damping 1.0 did not converge.')
+                        sys.exit()
+            energy = GT.get_energy_from_ridft_out()
+
+
+
+        converged = GT.check_ridft_converged()
         if not converged:
-            f = open(os.path.join(self.path,'NOTFOUND'),'a')
-            f.write('The ridft calculation did not converge.')
-            f.close()
+            print('The ridft calculation did not converge.')
+            sys.exit()
         elif atom:
             os.system('touch %s' %os.path.join(self.path,'FOUND'))
-        return atom, converged, energy
+        return atom, energy
 
 
     def find_end_points_from_IRC(self, M, max_mem, lot):
@@ -795,7 +930,6 @@ class OptimizationTools:
                 mol_ed   = molsys.mol.from_file(ed)
                 Mol(mol_ed).make_molecular_graph()
                 mg_ed = mol_ed.graph.molg
-                print(mg_ed.list_properties)
 
                 educt_minus_tmp = False
                 for mol_minus in mols_minus:
@@ -964,7 +1098,7 @@ class OptimizationTools:
         GT.run_tmole()
         GT.kdg("fermi")
         GT.ridft()
-        converged = GT.check_dscf_converged()
+        converged = GT.check_ridft_converged()
         if not converged:
             reason = 'The self consistent field calculation did not converge for the reactive complex.'
         else:
@@ -1090,28 +1224,42 @@ class OptimizationTools:
         return found
 
     def get_mol(self):
-       os.system("t2x %s/coord > %s/coord.xyz" %(self.path, self.path))
-       mol = molsys.mol.from_file(os.path.join(self.path,"coord.xyz"))
-       return mol
+        os.system("t2x %s/coord > %s/coord.xyz" %(self.path, self.path))
+        mol = molsys.mol.from_file(os.path.join(self.path,"coord.xyz"))
+        return mol
 
-#    def increase_M_by_n(self, n, nalpha, nbeta, M):
-#        path_tmp = os.path.join(self.path,'M_%d' %(M+2))
-#        os.chdir(self.path)
-#        os.system('cpc %s' %path_tmp)
-#        os.chdir(path_tmp)
-#        GT = GeneralTools(path_tmp)
-#        GT.for_c1_sym_change_multiplicity_in_control_by(n, nalpha, nbeta)
-#        energy = GT.ridft()
-#        os.chdir(self.maindir)
-#        return path_tmp
+    def ts_pre_optimization(self, path_ref, lot, M, rbonds):
+        # we only fix the internal coordinates between the atoms involved in bond-order change. So convert the bonds into atoms list.
+        # indexing of active_atoms goes as 1,2,3,... whereas that of rbonds goes as 0,1,2,...
+        active_atoms = []
+        for i in set(rbonds):
+            active_atoms.append(i+1)
+
+        # create a QM path for the pre-optimization
+        QM_path = os.path.join(self.path, 'ts_pre_opt')
+        os.mkdir(QM_path)
+        OT = OptimizationTools(QM_path)
+        GT = GeneralTools(QM_path)
+
+        # Add noise to the structure and perform the single point energy calculation
+        atom, energy = OT.common_workflow(path_ref = path_ref, lot = lot, TS = True, fermi = True, M = M, active_atoms = active_atoms)
+
+        # freeze the active atoms
+        OT.freeze_atoms(active_atoms)
+
+        # pre-optimization
+        converged = OT.jobex()
+        if not converged:
+           print("The transition state pre-optimization did not converge.")
+        return
 
 
 
     def educts_and_products_workflow(self, paths_ref, lot, label = 'eq_spec'):
-    ''' This is meant to be called from the reaction_workflow method. But can also probably called separately.
-        paths_ref: list of strings : The path to the coordinate files of the reference structures.
-        lot      : string          : It should be given in accordance with the tmole manual.
-    '''
+        ''' This is meant to be called from the reaction_workflow method. But can also probably called separately.
+            paths_ref: list of strings : The path to the coordinate files of the reference structures.
+            lot      : string          : It should be given in accordance with the tmole manual.
+        '''
         multiplicities = []
         QM_paths       = []
         for i, path_ref in enumerate(paths_ref):
@@ -1125,8 +1273,8 @@ class OptimizationTools:
             Mol(mol_ini).make_molecular_graph()
             mg_ini = mol_ini.graph.molg            
 
-            # Perform the single point energy calculation
-            atom, converged, energy = OT.common_workflow(path_ref, lot)
+            # Add noise to the structure and perform the single point energy calculation
+            atom, energy = OT.common_workflow(path_ref = path_ref, lot = lot)
 
             # Perform the geometry optimization
             converged = OT.jobex(gcart = 3)
@@ -1168,6 +1316,7 @@ class OptimizationTools:
                          print('The graph still changes with the multiplicity %d.' %(M+2))
                          exit()
                     else:
+                         print('The graph does not still change with the multiplicity %d.' %(M+2))
                          files = os.listdir(QM_path)
                          os.mkdir(os.path.join(QM_path,'M_%d' %M))
                          for f in files:
@@ -1183,17 +1332,16 @@ class OptimizationTools:
         return multiplicities, QM_paths
 
 
-
     def reaction_workflow(self, lot = '', rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', path_ed_complex = '', path_prod_complex = ''):
-    ''' This method considers the reaction event and optimizes the species accordingly.
-        All of the input variables are retrieved from the RDB database, but should also work if one would like to just provide some reference structures...
-        rbonds           : list of integers : The indices of the reactive bonds in the TS structure. The atom indexing is like in python, 0,1,2,...
-        path_ref_educts  : list of strings  : The list of paths to the reference educts cartesian coordinate files.
-        path_ref_products: list of strings  : The list of paths to the reference products cartesian coordinate files.
-        path_ref_ts      : string           : The path to the TS cartesian coordinate files.
-    '''
-        n_ed   = path_ref_educts
-        n_prod = path_ref_products
+        ''' This method considers the reaction event and optimizes the species accordingly.
+            All of the input variables are retrieved from the RDB database, but should also work if one would like to just provide some reference structures...
+            rbonds           : list of integers : The indices of the reactive bonds in the TS structure. The atom indexing is like in python, 0,1,2,...
+            path_ref_educts  : list of strings  : The list of paths to the reference educts cartesian coordinate files.
+            path_ref_products: list of strings  : The list of paths to the reference products cartesian coordinate files.
+            path_ref_ts      : string           : The path to the TS cartesian coordinate files.
+        '''
+        n_ed   = len(path_ref_educts)
+        n_prod = len(path_ref_products)
 
         multiplicities_ed,   QM_paths_ed   = self.educts_and_products_workflow(path_ref_educts,   lot, 'educt')
         multiplicities_prod, QM_paths_prod = self.educts_and_products_workflow(path_ref_products, lot, 'product')
@@ -1212,15 +1360,17 @@ class OptimizationTools:
                 M = M_ed
         else:
             M = min(M_ed, M_prod)
-        print(M)
+
+        print("The multiplicity of the reaction is assigned as %d." %M)
+        converged = self.ts_pre_optimization(path_ref_ts, lot, M, rbonds)
         return
 
  
 
     def write_submit_py(self, lot = '', rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', path_ed_complex = '', path_prod_complex = ''):
-    ''' In order to write a script which will run the desired routine, in this case, the reaction_workflow. Therefore, it needs to be modified if some other task is needed.
-        This can later be used to submit jobs to the queuing system by writing a job submission script. See in the Slurm class the write_submission_script.
-    '''
+        ''' In order to write a script which will run the desired routine, in this case, the reaction_workflow. Therefore, it needs to be modified if some other task is needed.
+            This can later be used to submit jobs to the queuing system by writing a job submission script. See in the Slurm class the write_submission_script.
+        '''
         f_path = os.path.join(self.path,"submit.py")
         f = open(f_path,"a")
         f.write("import os\n")
