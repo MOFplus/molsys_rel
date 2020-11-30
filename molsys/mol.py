@@ -3120,7 +3120,7 @@ class mol(mpiobject):
         element_list = self.get_elems()
         # sanity check(s)
         eset = set(["c","h","o"])
-        assert eset == set(element_list), "Only C/H/O parameters"
+        assert set(element_list).issubset(eset), "Only C/H/O parameters"
         # calculate distance of atoms i and j 
         rij, rvec, closest =  self.get_distvec(iat, jat)
         # receive atom type
