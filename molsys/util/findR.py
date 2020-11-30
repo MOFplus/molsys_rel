@@ -387,6 +387,7 @@ class findR(mpiobject):
                 m,
                 s_id,
                 1,            # PR
+                list(s.aids), 
                 tracked=True
             )
             # add to unconnected list
@@ -406,22 +407,26 @@ class findR(mpiobject):
         xyz_ts = np.array(self.f_xyz[revt.TS.fid])
         xyz_pr = np.array(self.f_xyz[revt.PR.fid])
         ED_mol = []
+        ED_aids = []
         ED_spec_tracked = []
         # ED/PR_spec are dicitionaries of species .. we need a sorted list of integers
         ED_spec_id = list(revt.ED_spec.keys())
         ED_spec_id.sort()
         for s in ED_spec_id:
             aids = list(revt.ED_spec[s].aids)
+            ED_aids.append(aids)
             m = revt.ED_spec[s].make_mol(xyz_ed[aids], self.mol)
             ED_mol.append(m)
             if revt.ED_spec[s].tracked:
                 ED_spec_tracked.append(s)
         PR_mol = []
+        PR_aids = []
         PR_spec_tracked = []
         PR_spec_id = list(revt.PR_spec.keys())
         PR_spec_id.sort()
         for s in PR_spec_id:
             aids = list(revt.PR_spec[s].aids)
+            PR_aids.append(aids)
             m = revt.PR_spec[s].make_mol(xyz_pr[aids], self.mol)
             PR_mol.append(m)
             if revt.PR_spec[s].tracked:
@@ -456,6 +461,7 @@ class findR(mpiobject):
                 ED_mol[i],
                 s,
                 -1,           # ED
+                ED_aids[i],
                 tracked= s in ED_spec_tracked
             )
         for i,s in enumerate(PR_spec_id):
@@ -464,19 +470,22 @@ class findR(mpiobject):
                 PR_mol[i],
                 s,
                 1,            # PR
+                PR_aids[i],
                 tracked= s in PR_spec_tracked
             )
         self.rdb.add_md_species(
             revID,
             TS_mol,
             TS_spec_id[0],    # species of TS are stored in revent, here only first
-            0
+            0,
+            TS_aids
         )
         self.rdb.add_md_species(
             revID,
             ED_react_compl,
             ED_spec_id[0],    
             -1,
+            ED_react_compl_aids,
             react_compl = True
         )
         self.rdb.add_md_species(
@@ -484,6 +493,7 @@ class findR(mpiobject):
             PR_react_compl,
             PR_spec_id[0],    
             1,
+            PR_react_compl_aids,
             react_compl = True
         )
         return
@@ -544,18 +554,21 @@ class findR(mpiobject):
             ED_mol,
             ED_spec_id,
             -1,   # ED
+            list(ED_spec.aids)
         )
         self.rdb.add_md_species(
             revID,
             PR_mol,
             PR_spec_id,
             1,            # PR
+            list(PR_spec.aids)
         )
         self.rdb.add_md_species(
             revID,
             TS_mol,
             TS_spec_id,  
-            0
+            0,
+            list(TS_spec.aids)
         )
         return
 

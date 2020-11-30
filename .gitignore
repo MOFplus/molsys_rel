@@ -3,6 +3,7 @@
 *.pyc
 *.log
 *.so
+*.o
 *.swp
 *.arc
 *.jar

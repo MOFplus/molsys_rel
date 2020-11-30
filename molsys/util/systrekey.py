@@ -126,7 +126,9 @@ def run_systrekey(edges, labels):
         el.append(int(e[1])+1)
         el.append(l)
         lqg.append(el)
-    json_lqg = json.dumps(lqg)
+    #import pdb; pdb.set_trace()
+    #json_lqg = json.dumps(str(lqg))
+    json_lqg = str(lqg)
 
     try:
         json_result = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", json_lqg, systre_path], stderr=subprocess.STDOUT).decode()
@@ -142,7 +144,7 @@ def run_systrekey(edges, labels):
     result = json.loads(json_result)
     key = result["key"]
     mapping = result["mapping"]
-    return key, mapping
+    return key, mapping, result
 
 
 if __name__=="__main__":

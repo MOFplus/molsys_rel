@@ -95,11 +95,16 @@ dependencies:
   - openbabel
   - xtb-python
   - packmol
+  - ase
+  - spglib
+  - pytest
+  - pycifrw
   - gcc_linux-64
   - gxx_linux-64
   - gfortran_linux-64
   - pip
   - pip:
      - pydal
+     - cma
 
 

@@ -199,8 +199,13 @@ class molecules(base):
             # assume pydlpoly boundary conditions (orig in the center of box) -- this is what we get from MOF+ 
             cell = self._mol.get_cell().diagonal()
             cellh = (cell*0.5)-packbound
-            box = (-cellh).tolist()
-            box += cellh.tolist()
+            xyz = self._mol.get_xyz()
+            if xyz.min() > 0:
+                box = [packbound, packbound, packbound]
+                box += (cell-packbound).tolist()
+            else:
+                box = (-cellh).tolist()
+                box += cellh.tolist()
             # make a temp file and go there
             tmpd = tempfile.mkdtemp()
             cwd  = os.getcwd()
@@ -284,7 +289,7 @@ class molecules(base):
                                 if (a != "used") and (a != "type"):
                                     new_ric.__dict__[a] = atrs[a]
                             self._mol.ff.ric_type[k] += [new_ric]
-                        self._mol.ff.parind[k] += newmol.ff.parind[k]
+                    self._mol.ff.parind[k] += newmol.ff.parind[k]
             ### molid has been updated using self._mol.add_mol => update the molid in ff
             self._mol.ff._mol = self._mol
             self._mol.ff.update_molid()

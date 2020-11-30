@@ -1,4 +1,4 @@
-#! /usr/bin/python3
+#! /usr/bin/env python3
 
 #
 #          PDLP 
@@ -108,7 +108,7 @@ def launch_vmd(filename):
 print("******************************************************************")
 print("")
 print("          PDLP file viewer and analyser") 
-print("            R. Schmid, RUB, 2014")
+print("            R. Schmid, J. Keupp, RUB, 2014-2020")
 print("")
 print("******************************************************************")
 
@@ -176,6 +176,7 @@ while not stop:
     print (" c - copy data to a new or existing pdlp file")
     print (" v - visualize restart geometry")
     print (" t - visualize the trajectory (or parts)")
+    print (" p - plot thermodynamic data")
     print (" a - analysis by using TRALYZER2")
     print (" x - analysis by using the external TRAVIS code (must be installed)")
     print (" q - quit")
@@ -183,7 +184,7 @@ while not stop:
     print ("\nWARNING: this script is under development for the conversion to molsys/pdlpio2 and python3")
     print   ("         a lot of these methods might not work, yet!!!")
 
-    opts = ["m", "q", "v", "c", "t", "a", "x"] + list(map(str, list(range(1,len(stages)+1))))
+    opts = ["m", "q", "v", "c", "p", "t", "a", "x"] + list(map(str, list(range(1,len(stages)+1))))
     inp = None 
     while not inp in opts:
         inp = input("\nChoose stage or other option form the list above\n>> ")
@@ -363,6 +364,37 @@ while not stop:
         pdiof2.close()
         ############### end of copy data here                ###################################
 
+    ############### start plotting  here                     ###################################
+    if (inp == "p"):
+        if "thermo" in cur_tdata:
+            print("\n******************************************************************")
+            print("Plotting Thermodynmic Data of stage %s" % cur_stage)
+            data = pdiof.h5file[cur_stage]["traj"]["thermo"]
+            labels = data.attrs["labels"].split()
+            print("The follwoing lables can be plotted:")
+            print(" ".join(labels[1:]))
+            inp = input("\nType all labels you want to plot (separated by a whitespace)\n>>")
+            inpl = inp.split()
+            toplot = []
+            for i in inpl:
+                if i in labels:
+                    toplot.append((i, labels.index(i)))
+            if len(toplot) > 0:
+                fig = plt.figure()
+                ax = plt.subplot(111)
+                for elem in toplot:
+                    name = elem[0]
+                    ind = elem[1]
+                    ax.plot(data[:,0], data[:,ind], label = r"$\rm %s" % name)
+                ax.set_xlabel(r'step')
+                ax.set_ylabel(r'property')
+                ax.legend()
+                plt.tight_layout()
+                plt.show()
+        else:
+            print("No thermodynmic data in this stage")
+    ############### end plotting  here                     ###################################
+
     elif (inp == "a"):
         ############### start analysis here                  ###################################
         if cur_tdata:
@@ -374,6 +406,7 @@ while not stop:
             else:
                 tstep = None
             tral2 = tralyzer2.tralyzer2(pdiof, cur_stage, tstep=tstep)
+            molnames = tral2.molnames
             opts = {"com"   : "compute center of mass of a molecular species",\
                     "cav"   : "compute average cell params",\
                     "ela"   : "compute elastic constants from strain fluctuation" , \

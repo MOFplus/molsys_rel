@@ -67,7 +67,7 @@ class progressrep:
 
 
 class tralyzer2:
-    
+
     def __init__(self, pdpf, stage, tstep=None):
         """ pdlpf is already open
             keep MPI stuff from tralyzer .. in case we ever need it """
@@ -79,15 +79,16 @@ class tralyzer2:
         self.version = 1.0
         if "version" in list(self.pdpf.h5file.attrs.keys()):
             self.version = self.pdpf.h5file.attrs["version"]
-        self.elems, self.types, self.boundarycond, ctab = self.pdpf.get_system()
-        self.natoms = len(self.elems)
+        # JK: it seems that tralyzer has its own data structure, redundant with the new mol
+        # data structure. I'll use a mol and only link the attributes.
+        self.mol = self.pdpf.get_mol_from_system()
+        self.elems = self.mol.elems
+        self.types = self.mol.atypes
+        self.boundarycond = self.mol.bcond
+        ctab = self.mol.get_ctab()
+        self.natoms = self.mol.natoms
         # recover connectivity from ctab
-        self.cnct = []
-        for i in range(self.natoms): self.cnct.append([])
-        for c in ctab:
-            i,j = c
-            self.cnct[i].append(j)
-            self.cnct[j].append(i)
+        self.cnct = self.mol.conn
         # register types
         self.typedata = {}
         for t in self.types:
@@ -95,8 +96,11 @@ class tralyzer2:
         self.ntypes = len(list(self.typedata.keys()))
         # molecule info - note that only a nonredundant set of info is in pdlp and the
         # rest needs to be recovered
-        self.whichmol, self.moltypes, self.molnames = self.pdpf.get_molecules()
-        self.nmols = len(self.moltypes)
+        self.pdpf.setup_molecules(self.mol)
+        self.whichmol = self.mol.molecules.whichmol
+        self.moltypes = self.mol.molecules.moltypes
+        self.molnames = self.mol.molecules.molnames
+        self.nmols = len(self.moltypes) 
         self.mols = []
         for i in range(self.nmols) : self.mols.append([])
         for i, m in enumerate(self.whichmol): self.mols[m].append(i)
@@ -117,8 +121,8 @@ class tralyzer2:
             nstep = self.traj.attrs["nstep"]
             if not np.isscalar(nstep):
                 nstep = nstep.max()
-            if "nstep" in list(self.traj["xyz"].attrs.keys()):
-                nstep = self.traj["xyz"].attrs["nstep"]
+#            if "nstep" in list(self.traj["xyz"].attrs.keys()):
+#                nstep = self.traj["xyz"].attrs["nstep"]
         self.dt = timestep*nstep
         # self.nframes = self.xyz.shape[0]
         self.nframes = self.traj["xyz"].shape[0]
@@ -145,7 +149,7 @@ class tralyzer2:
             self.vel = None
         self.pprint("\n TRALYZER2 started up")
         return
-                 
+           
     def pprint(self, string):
         if self.node_id==0:
             print(string)

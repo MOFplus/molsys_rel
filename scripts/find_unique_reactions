@@ -13,7 +13,7 @@ from molsys.util import RDB
 from molsys.util import print_progress
 
 import uuid
-
+import copy
 
 ####################################################################################
 # Helper functions
@@ -80,7 +80,7 @@ def compare_species(species,sumforms,moldata):
             break 
  
         is_equal, error_code = molsys.addon.graph.is_equal(mol.graph.molg, sp, use_fast_check=False)
- 
+
         if is_first:
             check = is_equal
             is_first = False
@@ -121,6 +121,8 @@ print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 
 db = rdb.db
 md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+#rdb.set_md_run(pdlp_path,stage)
+#md = db((db.md.stage == stage)).select().first()
 revents = db((db.revent.mdID == md)).select()
 num_all = (len(revents))
 
@@ -158,12 +160,13 @@ count = 0
 
 for r in revents:
 
+    cur_r = r
     count += 1
 
     print_progress.print_progress(count, num_all)
 
     # Check if revent has alredy record field unique_revent and skip in this case 
-    if r["reactionsID"] is not None:
+    if cur_r["reactionsID"] is not None:
         continue
     
 
@@ -177,12 +180,12 @@ for r in revents:
     ts_mol = [] 
 
     # get all md_species for this event
-    mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False) ).select()
+    mdspec = db((db.md_species.reventID == cur_r) & (db.md_species.react_compl == False) ).select()
     if len(mdspec) > 0:
 
-        #
+        ##
         # extract ts, ed and pr for this reaction  
-        #  
+        ## 
 
         # Note: We have to sort the mdspecies to always match the same species in order
         #       to match them in the comparison
@@ -211,9 +214,44 @@ for r in revents:
                 pr_mol.append((mol,m))
 
 
-        #
+        ##
+        # analyze species to avoid artificats from ReaxFF
+        ##
+        new_revent = False
+        remove_aids = set([])
+        for ed,m in ed_mol:
+            elems = ed.get_elems()
+            slist = elems
+            nelems = len(elems)
+            if nelems <= 3:
+                continue
+            slist = list(filter(("o").__ne__, slist)) 
+            slist = list(filter(("h").__ne__, slist)) 
+            if len(slist) == 0:
+                # we probably have a H-O-H-O- chain
+                aids = set(m.atomids)
+                # add to remove list 
+                remove_aids = remove_aids.union(aids)
+                new_revent = True
+
+       # #
+       # # remove aids which are artifacts from ReaxFF       
+       # #
+       # if new_revent:
+       #     # TODO
+       #     # We need to register a new (fake) reaction event
+       #     newr = rdb.register_revent(cur_r.frame,cur_r["ed"],cur_r["ts"],cur_r["pr"],cur_r["tr_ed"],cur_r["tr_pr"],cur_r["rbonds"],cur_r["uni"])  
+       #     for ed,m in ed_mol:
+       #         rdb.add_md_species(newr,ed,m["spec"],-1,m["atomids"],m["tracked"],False)
+       #     for pr,m in pr_mol:
+       #         rdb.add_md_species(newr,pr,m["spec"],1,m["atomids"],m["tracked"],False)
+       #     for ts,m in ts_mol:
+       #         rdb.add_md_species(newr,ts,m["spec"],0,m["atomids"],m["tracked"],False)
+       #     cur_r = db((db.revent.id == newr)).select().first()
+
+        ##
         # compare with elements in unique_reaction list
-        #
+        ##
         for ur in reversed(unique_reactions):
 
             urid = ur["reactionsID"] 
@@ -237,7 +275,7 @@ for r in revents:
     is_reversed = back_reaction
 
     if is_unique:
-        unique_reactions.append(r)
+        unique_reactions.append(cur_r)
         num_unique += 1
 
         # create comparison data structure 
@@ -249,7 +287,7 @@ for r in revents:
                    , "sumform:pr"  : []
                    }
 
-        mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
+        mdspec = db((db.md_species.reventID == cur_r) & (db.md_species.react_compl == False)  ).select()
 
         add_compare_data(cmp_data, mdspec)
 
@@ -265,9 +303,8 @@ for r in revents:
         #
         # Add unique reaction entry to database. 
         #
-
         reactID = rdb.register_reaction(
-            r["uni"],
+            cur_r["uni"],
             change_in_molgraph,
             "fromMD"
         )
@@ -282,29 +319,32 @@ for r in revents:
         #
         rbonds = []
         for ed,m in ed_mol:
-           specid = rdb.add_species(ed)
+           specid, is_new = rdb.add_species(ed,True)
            rdb.add_reac2spec(reactID,specid,-1)
-           rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-           m.update_record(speciesID=specid)
+           if is_new:
+              rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
         for pr,m in pr_mol:
-           specid = rdb.add_species(pr)
+           specid, is_new = rdb.add_species(pr,True)
            rdb.add_reac2spec(reactID,specid, 1) 
-           rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-           m.update_record(speciesID=specid)
+           if is_new:
+              rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
         for ts,m in ts_mol:
-           specid = rdb.add_species(ts)
+           specid, is_new = rdb.add_species(ts,True)
            rbonds = r["rbonds"]  
            rdb.add_reac2spec(reactID,specid, 0) 
-           rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-           m.update_record(speciesID=specid)
+           if is_new:
+              rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+              m.update_record(speciesID=specid)
 
         # Update reaction event
-        r.update_record(reactionsID=reactID)
-        r.update_record(reversed=is_reversed)
+        cur_r.update_record(reactionsID=reactID)
+        cur_r.update_record(reversed=is_reversed)
     else:
         # update reaction event
-        r.update_record(reactionsID=ur["reactionsID"])
-        r.update_record(reversed=is_reversed)
+        cur_r.update_record(reactionsID=ur["reactionsID"])
+        cur_r.update_record(reversed=is_reversed)
 
 
 num_non_unique = num_all - num_unique
