@@ -115,6 +115,11 @@ class lqg(object):
         skey = systrekey.run_systrekey(self.edges, self.labels)
         return skey
 
+#    def lqg_from_systrekey(self,skey):
+#        skeys = skey.split()
+#        n = int(skeys[0])
+#        verts = [[int(x) for x in skeys[i:i+5]] for i in range(1,len(skeys),5)
+
     def build_lqg(self):
         self.nbasevec = self.nedges - self.nvertices + 1
         self.molg = Graph(directed=True)

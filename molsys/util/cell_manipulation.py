@@ -10,12 +10,12 @@ def unwrap(mol):
     while not done:
         counter += 1
         if counter >= 500: 
-            print 'maxiter reached'
+            print('maxiter reached')
             break
         for i,cc in enumerate(m.conn):
             for ic,c in enumerate(cc):
                 d,v,imgi = m.get_distvec(i,c)
-                print i,c,d,v,imgi
+                print((i,c,d,v,imgi))
                 if imgi != 13:
                     if wrapped.count(c) != 0:
                         continue
@@ -33,7 +33,7 @@ def rec_unwrap(m,idx=0,doneidx=[]):
             continue
         d,v,imgi = m.get_distvec(idx, ci)
         if imgi[0] != [13]:
-            print d,v,imgi[0]
+            print((d,v,imgi[0]))
             m.xyz[ci] = m.get_image(m.xyz[ci],imgi[0])
         doneidx.append(idx)
         rec_unwrap(m,ci,doneidx=doneidx)
