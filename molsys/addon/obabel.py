@@ -159,4 +159,19 @@ class obabel:
     def plot_svg(self,fname):
         self.pybmol.write(format="svg",filename=fname,overwrite=True) 
         return
-    
+   
+    def check_chirality(self):
+        centers = []
+        is_chiral = False
+        m = self.pybmol.OBMol 
+        facade = ob.OBStereoFacade(m)
+        for iat in range(1,m.NumAtoms()+1):
+            tetstereo = facade.GetTetrahedralStereo(m.GetAtom(iat).GetId())
+            if tetstereo is not None:
+                config = tetstereo.GetConfig()
+            local_check = m.GetAtom(iat).IsChiral()
+            centers.append(local_check)
+            is_chiral = is_chiral or (local_check)
+        return is_chiral, centers 
+
+

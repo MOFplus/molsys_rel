@@ -173,7 +173,7 @@ class molecules(base):
         except:
             return getattr(self.mgroups[self.default_mgroup],name)
 
-    def add_molecule(self, newmol, nmols=1, pack=False, packbound=0.5,ff=None):
+    def add_molecule(self, newmol, nmols=1, pack=False, packbound=0.5,ff=None,custom_pack=False):
         """Adds a molecule to the parent mol object
 
         A molecules is a sub mol object that can be added to the parent system many times
@@ -183,6 +183,7 @@ class molecules(base):
             - pack (boolean): defaults to False: if True use packmol to pack (needs to be installed and in the path)
             - packbound (float): defaults to 0.5: distance in Angstrom to reduce the box for packmol filling
             - ff (None):  dummy variable added for legacy reasons
+            - custom_pack (string, optional): if given, use this string to define the box of interest
         """
         
         # temporary hook to get legacy scripts running (JK)
@@ -198,8 +199,13 @@ class molecules(base):
             # assume pydlpoly boundary conditions (orig in the center of box) -- this is what we get from MOF+ 
             cell = self._mol.get_cell().diagonal()
             cellh = (cell*0.5)-packbound
-            box = (-cellh).tolist()
-            box += cellh.tolist()
+            xyz = self._mol.get_xyz()
+            if xyz.min() > 0:
+                box = [packbound, packbound, packbound]
+                box += (cell-packbound).tolist()
+            else:
+                box = (-cellh).tolist()
+                box += cellh.tolist()
             # make a temp file and go there
             tmpd = tempfile.mkdtemp()
             cwd  = os.getcwd()
@@ -208,6 +214,10 @@ class molecules(base):
             self._mol.write("self.xyz")
             # write to be added mol
             newmol.write("newmol.xyz")
+            if custom_pack == False:
+                custom_pack = ''
+            else:
+                custom_pack = '\n                    '+custom_pack+'\n'
             packmolf = """
                 tolerance 2.0
                 output final.xyz
@@ -223,9 +233,9 @@ class molecules(base):
                 structure newmol.xyz
                     filetype xyz
                     number %d
-                    inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f
+                    inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f %s
                 end structure
-            """ % tuple([nmols]+box)
+            """ % (tuple([nmols]+box)+(custom_pack,))
             with open("pack.inp", "w") as packf:
                 packf.write(packmolf)
             # now try to execute packmol
@@ -236,9 +246,10 @@ class molecules(base):
                 pack_xyz = tempm.get_xyz()
                 del(tempm)
                 remove_files = ["self.xyz", "newmol.xyz", "pack.inp", "pack.out", "final.xyz"]
-                for f in remove_files:
-                    os.remove(tmpd+"/"+f)
-                os.rmdir(tmpd)
+                #for f in remove_files:
+                 #   os.remove(tmpd+"/"+f)
+                #os.rmdir(tmpd)
+                print(tmpd)
                 logger.info("Molecules packed with packmol")
             else:
                 self._mol.pprint("packing with packmol failed. Temporary files at %s" % tmpd)

@@ -12,12 +12,13 @@ pool: pylmps
 steps:
 
 - script: |
-    echo cd tests
-    echo "do something"
-  displayName: 'First molsys test'
-
-- script: |
     source source_me 
     cd tests/graph/comp_graph/
     python3 test.py
   displayName: 'testing molgraph comparison'
+
+- script: |
+    source source_me 
+    cd tests/obabel/
+    python3 test.py
+  displayName: 'testing openbabel integration'

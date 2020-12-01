@@ -308,8 +308,11 @@ class RDB:
         sumform = mol.get_sumformula()
         if  mol.graph is None:
            mol.addon("graph")
+        mol.addon("obabel")
         mol.graph.make_graph()
         molg = copy.deepcopy(mol.graph.molg)
+        is_chiral, centers = mol.obabel.check_chirality()
+        smiles = mol.obabel.cansmiles
         if check_if_included:
            # get all species with same sumform
            specs = self.db((self.db.species.sumform == sumform)).select()
@@ -326,6 +329,12 @@ class RDB:
                  moldbg = moldb.graph.molg
                  is_equal, error_code = molsys.addon.graph.is_equal(moldbg, molg, use_fast_check=False)
                  if is_equal:
+                    if is_chiral:
+                        # We have a chiral center -> perform additionally a geo check.
+                        moldb.addon("obabel")
+                        smilesdb = moldb.obabel.cansmiles
+                        if smiles != smilesdb:
+                            continue
                     is_new = False
                     specID = sp.id
                     return specID, is_new
