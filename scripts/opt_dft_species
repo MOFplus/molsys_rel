@@ -265,17 +265,17 @@ for r in reactions:
         # transition state
         ts_ref =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
         path_ref_ts = get_opt_spec_path(ts_ref)
-        # 2) For non-unimolecular reactions get the structures of reactive complex as taken from the MD simulation
-        #    This is in case, we want to perform a woelfling calculation.
-        if not unimolecular:
-            revent    = db( db.revent.reactionsID == r.id ).select().first()
-            ed_comp   = db((db.md_species.reventID == revent.id) & (db.md_species.react_compl == True) & (db.md_species.foffset == -1)).select().first()
-            prod_comp = db((db.md_species.reventID == revent.id) & (db.md_species.react_compl == True) & (db.md_species.foffset ==  1)).select().first()
-            path_ed_complex   = get_md_spec_mfpx(ed_comp)
-            path_prod_complex = get_md_spec_mfpx(prod_comp)
-        else:
-            path_ed_complex   = ''
-            path_prod_complex = ''
+        # store the indices as of from MD simulation to extract the atoms which belong to educts or products from the TS structure
+        # this is needed if woelfling calculation is necessary
+        revent    = db( db.revent.reactionsID == r.id ).select().first()
+        md_ed_species   = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == -1)& (db.md_species.react_compl == False)).select()
+        md_prod_species = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 1)& (db.md_species.react_compl == False)).select()
+        md_ts = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 0)).select().first()
+        atom_ids_dict = {'ts':md_ts.atomids}
+        for i,spec in enumerate(md_ed_species):
+            atom_ids_dict['ed_%d' %(i+1)] = spec.atomids
+        for i,spec in enumerate(md_prod_species):
+            atom_ids_dict['prod_%d' %(i+1)] = spec.atomids
 
         # Get the information on reactive bonds
         rbonds = ts_ref["rbonds"]
@@ -291,7 +291,7 @@ for r in reactions:
  
                 dft_subdir_path, exists = calculator.make_dft_subdir(r.id, db_path)
                 if not exists:
-                    jobid = calculator.optimize(r.id, dft_subdir_path, rbonds, path_ref_educts, path_ref_products, path_ref_ts, path_ed_complex, path_prod_complex)
+                    jobid = calculator.optimize(r.id, dft_subdir_path, rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
                     jobids.append(jobid)
                 elif exists:
                     print('The directory %s already exists. Please, check if the directory contains the results and if so add it to the database; otherwise, remove the directory.' %dft_subdir_path)
