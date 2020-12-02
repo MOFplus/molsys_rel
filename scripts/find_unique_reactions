@@ -331,7 +331,7 @@ for r in revents:
               rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
               m.update_record(speciesID=specid)
         for ts,m in ts_mol:
-           specid, is_new = rdb.add_species(ts,True)
+           specid, is_new = rdb.add_species(ts,False) # For the moment the transisiton state is always unique
            rbonds = r["rbonds"]  
            rdb.add_reac2spec(reactID,specid, 0) 
            if is_new:
