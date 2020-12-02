@@ -67,7 +67,7 @@ class turbomole_calculator:
            MEM_per_CPU = MEM/CPUS
            params["maxmem"] = 0.8*MEM_per_CPU
            njobs_per_node = CPUS/params["ntasks"]
-           self.max_njobs = params["maxnodes"]*njobs_per_node
+           self.max_njobs = int(params["maxnodes"]*njobs_per_node)
        self.params = params
        return
 
@@ -80,18 +80,18 @@ class turbomole_calculator:
        return dft_subdir_path, exists
 
 
-    def optimize(self, reactionID, dft_subdir_path, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '',  path_ed_complex = '',  path_prod_complex = ''):
+    def optimize(self, reactionID, dft_subdir_path, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '',  atom_ids_dict = {}):
        # initialize the OptimizationTools class from the turbomole module under molsys/util/turbomole.py
 
        OT = turbomole.OptimizationTools(dft_subdir_path)
 
        if self.params["submit"] == False:
-           OT.reaction_workflow(self.params["lot"], rbonds, path_ref_educts, path_ref_products, path_ref_ts, path_ed_complex, path_prod_complex)
+           OT.reaction_workflow(self.params["lot"], rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
        else:
-           OT.write_submit_py(self.params["lot"], rbonds, path_ref_educts, path_ref_products, path_ref_ts, path_ed_complex, path_prod_complex)
+           OT.write_submit_py(self.params["lot"], rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
            #submit the job to the SLURM queuing system and get the assigned job id
            os.chdir(dft_subdir_path)
-           sbatchout = os.popen("sbatch --reservation=oyoender_7 -J r.%d %s" %(reactionID, os.path.join(self.dft_path,"submit.sh"))).read()
+           sbatchout = os.popen("sbatch -J r.%d %s" %(reactionID, os.path.join(self.dft_path,"submit.sh"))).read()
            jobid = sbatchout.split()[3]
            os.chdir(self.maindir)
        return jobid
@@ -273,9 +273,9 @@ for r in reactions:
         md_ts = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 0)).select().first()
         atom_ids_dict = {'ts':md_ts.atomids}
         for i,spec in enumerate(md_ed_species):
-            atom_ids_dict['ed_%d' %(i+1)] = spec.atomids
+            atom_ids_dict['educt_%d' %(i+1)] = spec.atomids
         for i,spec in enumerate(md_prod_species):
-            atom_ids_dict['prod_%d' %(i+1)] = spec.atomids
+            atom_ids_dict['product_%d' %(i+1)] = spec.atomids
 
         # Get the information on reactive bonds
         rbonds = ts_ref["rbonds"]
@@ -283,6 +283,7 @@ for r in reactions:
         if params["calculator"] == "turbomole":
             if params["submit"]:
                 # submit the jobs to the specifies number of total cores.
+                print(ncurjobs, calculator.max_njobs)
                 while ncurjobs == calculator.max_njobs:
                     print("Maximum number of jobs running at the same time is reached. Waiting for the jobs %s to finish." %str(list(curjobids)))
                     time.sleep(30)
@@ -294,7 +295,7 @@ for r in reactions:
                     jobid = calculator.optimize(r.id, dft_subdir_path, rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
                     jobids.append(jobid)
                 elif exists:
-                    print('The directory %s already exists. Please, check if the directory contains the results and if so add it to the database; otherwise, remove the directory.' %dft_subdir_path)
+                    print('The directory %s already exists. Please, check if the directory contains the results.' %dft_subdir_path)
                 ncurjobs, curjobids = get_ncurjobs(jobids)
             else:
                 print("Not implemented yet.")
