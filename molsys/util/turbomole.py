@@ -12,6 +12,7 @@ from   molsys.util.units import angstrom
 import matplotlib.pyplot as plt
 from molsys.addon import zmat
 import graph_tool
+from graph_tool import Graph, GraphView
 
 class DefineEndedAbnormallyError(Exception):
     def __init__(self, message=None, errors=None):
@@ -55,8 +56,8 @@ class GeneralTools:
                     os.remove(err_path)
         return
 
-    def write_coord_from_mol(self, mol):
-        coord_path = os.path.join(self.path,'coord')
+    def write_coord_from_mol(self, mol, coord_name = 'coord'):
+        coord_path = os.path.join(self.path,coord_name)
         f=open(coord_path,'w')
         f.write('$coord\n')
         c = mol.xyz*angstrom
@@ -469,15 +470,15 @@ class Mol:
         nel -= charge
         return nel
 
-    def make_molecular_graph(self, thresh = 0.2):
+    def make_molecular_graph(self):
         # if the connectivity information not defined before, detect it.
         #if not any(self.mol.conn):
-        self.mol.detect_conn(thresh = thresh)
+        self.mol.detect_conn_by_bo()
         self.mol.addon("graph")
         self.mol.graph.make_graph()
         return
 
-    def separate_molecules(self, thresh = 0.2):
+    def separate_molecules(self):
        """Returns a dictionary of mol objects."""
        self.make_molecular_graph()
        mg = self.mol.graph.molg
@@ -499,7 +500,7 @@ class Mol:
                    if counter != n_atoms:
                        mol_str += '\n'
            mol_tmp = molsys.mol.from_string(mol_str, 'xyz')
-           mol_tmp.detect_conn(thresh)
+           mol_tmp.detect_conn_by_bo()
            mols.append(mol_tmp)
        return mols
 
@@ -648,7 +649,6 @@ class OptimizationTools:
     def IRC(self):
         os.system("DRC -i -c 150 > IRC.out")
         return
-
 
     def common_workflow(self, path_ref, lot, TS = False, M = None, active_atoms = [], max_mem = 500, fermi = True):
         ''' Performs single point calculation, adds a noise within 0.1 Angstrom to the reference structure. 
@@ -850,7 +850,6 @@ class OptimizationTools:
             os.system('touch %s' %os.path.join(self.path,'FOUND'))
         return atom, energy
 
-
     def find_end_points_from_IRC(self):
         ### MINUS
         path_minus = os.path.join(self.path, 'displaced_minus')
@@ -870,7 +869,7 @@ class OptimizationTools:
         # get the molecules at the end points
         os.system("t2x %s/coord > %s/coord.xyz" %(sub_path_minus, sub_path_minus))
         opt_mol_minus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_minus,'xyz')
-        opt_mol_minus.detect_conn()
+        opt_mol_minus.detect_conn_by_bo()
 
         mols_minus = Mol(opt_mol_minus).separate_molecules()
 
@@ -892,13 +891,12 @@ class OptimizationTools:
         # get the molecules at the end points
         os.system("t2x %s/coord > %s/coord.xyz" %(sub_path_plus, sub_path_plus))
         opt_mol_plus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_plus,'xyz')
-        opt_mol_plus.detect_conn()
+        opt_mol_plus.detect_conn_by_bo()
         mols_plus = Mol(opt_mol_plus).separate_molecules()
 
         # go to the main directory
         os.chdir(self.maindir)
         return mols_minus, mols_plus
-
 
     def check_end_points(self, mols_minus, mols_plus, path_ref_educts, path_ref_products):
         """
@@ -976,7 +974,6 @@ class OptimizationTools:
                 reason = 'This transition state do not connect the reference educts and products.'
                 print(reason)
         return is_similar, reason
-
 
     def getthemaxenergystruc(self, path, plot):
         '''get the max energy structure
@@ -1073,16 +1070,7 @@ class OptimizationTools:
         os.chdir(self.maindir)
         return
 
-
-    def make_rxn_complex(self, rbonds, atom_ids_dict, label, n_eq, QM_path, ts_path, distance = 3.0):
-        ''' This method adds the 2nd species based on the internal coordinates of the reference TS; e.g. ReaxFF optimized TS,
-            at a distance (3.0 Angstrom by default) to the 1st species.
-        '''
-        if n_eq > 3:
-            print('Cannot handle more than two species. Exiting...')
-            sys.exit()
-
-        # 1. Convert the rbonds to a list of lists
+    def list_of_list_rbonds(self, rbonds):
         bonds = []
         bond_tmp = []
         for i, index in enumerate(rbonds):
@@ -1092,156 +1080,213 @@ class OptimizationTools:
                bond_tmp.append(index)
                bonds.append(sorted(bond_tmp))
                bond_tmp = []
-        rbonds = bonds
+        return bonds
+
+    def match_wrt_ts(self, mol_spec, mol_ts, label, n, rbonds, atom_ids_dict):
+        ''' This method matches the indices of the mol_spec (an equilibrium species) with that of the mol_ts. 
+            atoms_ids_dict   : The dictionary which holds the list of atom_ids from the ReaxFF trajectory
+                               The keys of the dictionary should be as "label_n"; 
+                               e.g. label = "educt", n = 1 => The corresponding key is "educt_1"
+            mol_spec, mol_ts : The mol objects, with detected connectivities
+            rbonds           : 
+            The indices cannot be directly used to re-order the species, because they are not always written to
+            the opt_species table in the database, to avoid the redundant species. Therefore, the indices of the
+            species should be mapped on an the indices of an "extracted species" from the transition state
+            structure.
+        '''
+        # 1. Convert the rbonds to a list of lists
+        rbonds = self.list_of_list_rbonds(rbonds)
+
+        # 2. Extract the "equilibrium" species from the TS structure and create a mol object
+        counter = 0
+        natoms = len(mol_spec.elems)
+        mol_str = '%d\n\n' %natoms
+        ReaxFF2match = {} # dictionary to match the indices of the ReaxFF optimized TS with the DFT optimized equilibrium species.
+        match2ReaxFF = {}           
+        # Loop over the indices of the ReaxFF optimized TS and its atom indices from the MD simulation
+        for i_ReaxFF, i_fromMD in enumerate(atom_ids_dict['ts']):
+            # Loop over the indices of the "equilibrium" species from the MD simulation
+            for j in atom_ids_dict['%s_%d' %(label,n)]:
+
+                # Match the indices of TS from MD simulation to those of the "equilibrium" species from MD simulation
+                if i_fromMD == j:
+                    # Mapping of the ReaxFF optimized TS indices to the extracted equilibrium structure
+                    ReaxFF2match[i_ReaxFF] = counter
+                    match2ReaxFF[counter] = i_ReaxFF
+                    mol_str += '%s %5.10f %5.10f %5.10f\n' %(mol_ts.elems[i_ReaxFF], mol_ts.xyz[i_ReaxFF,0], mol_ts.xyz[i_ReaxFF,1], mol_ts.xyz[i_ReaxFF,2])
+                    counter += 1
+
+        # 3. Create a mol object for the extracted equilibrium structure from the TS structure.
+        mol_match = molsys.mol.from_string(mol_str, 'xyz')
+        mol_match.detect_conn_by_bo()
+
+        # 4. Check if a reactive bond is within the extracted species
+        # As the "equilibrium" species is extracted from the TS, the bond might not be connected.
+        # This will cause a non-isomorphism; and therefore, the matching of the indices will fail.
+        # To avoid this, assure that the reactive bonds are artificially connected.
         ratom = None
+        rbond_btw = []
+        for rb in rbonds:
+            if rb[0] not in mol_ts.conn[rb[1]]:
+                mol_ts.conn[rb[0]].append(rb[1])
+                mol_ts.conn[rb[1]].append(rb[0])
+            if set(ReaxFF2match).intersection(rb) == set(rb):
+                print('The reactive bond %d---%d belongs to the %s_%d.' %(rb[0]+1,rb[1]+1,label,n))
+                i0 = ReaxFF2match[rb[0]]
+                i1 = ReaxFF2match[rb[1]]
+                if i0 not in mol_match.conn[i1]:
+                    mol_match.conn[i0].append(i1)
+                    mol_match.conn[i1].append(i0)
+            elif set(ReaxFF2match).intersection(rb) != set():
+                 ratom = list(set(ReaxFF2match).intersection(rb))[0]
+                 rbond_btw = rb
+                 print('The reactive bond %d---%d is between the two %ss and %d belongs to the %s_%d.' %(rb[0]+1,rb[1]+1,label,ratom+1,label,n))
+        if n==2 and ratom == None:
+            print('There is no reactive bond between the two molecules! Exiting...')
+            sys.exit()
+
+        # 5. Make molecular graphs of the DFT opt species and extracted one
+        mol_spec.addon("graph")
+        mol_spec.graph.make_graph()
+        mg_spec = mol_spec.graph.molg
+        mol_spec.graph.plot_graph('mg_%s_%d'  %(label, n))
+        mol_spec.write("mol_%s_%d.xyz" %(label, n))
+
+        mol_match.addon("graph")
+        mol_match.graph.make_graph()
+        mg_match = mol_match.graph.molg
+        mol_match.graph.plot_graph('mg_match')
+        mol_match.write("mol_match.xyz")
+
+        # 6. Now compare the molecular graphs of the DFT optimized species and the "extracted" equilibrium structure to get the matching indices.
+        # a) compare the graph
+        # isomorphism is buggy ---> first indices are mapped ---> then vertex types are compared => prone to fail
+        #is_equal, isomap = graph_tool.topology.isomorphism(mg_spec,mg_match, vertex_inv1=mg_spec.vp.type, vertex_inv2=mg_match.vp.type, isomap=True)
+        # Therefore, as a workaround use subgraph_isomorphism...
+        masterg = Graph(mg_match)
+        masterg.add_vertex()
+        vertex_maps = graph_tool.topology.subgraph_isomorphism(mg_spec, masterg, max_n=0, vertex_label=(mg_spec.vp.type,masterg.vp.type), edge_label=None, induced=False, subgraph=True, generator=False) 
+        is_equal = len(vertex_maps) > 0
+        if is_equal == False:
+            print('The graph of the %s_%d is not isomorphic to the graph of the fragment of %s_%d in the transition state. Exiting...' %(label,n,label,n))
+            sys.exit()
+        isomap = vertex_maps[0]
+        # b) get matching indices
+        vts2vspec = {}
+        print("------------------")
+        print(" Matching indices")
+        print("------------------")
+        print("  spec   |   ts   ")
+        print("------------------")
+        for vspec, vmatch in zip(mg_spec.vertices(), isomap):
+            vts = match2ReaxFF[vmatch]
+            print("  %2s%3d  |  %2s%3d " %(mol_spec.elems[int(vspec)].capitalize(), int(vspec)+1, mol_ts.elems[vts].capitalize(), vts+1))
+            vts2vspec[vts]  = int(vspec)
+        return ratom, rbond_btw, vts2vspec
+
+    def reorder_wrt_ts(self, QM_path, ts_path, label, n, rbonds, atom_ids_dict):
+        # 1. Make a mol object for the species
+        path_spec = os.path.join(os.path.join(QM_path,"%s_%d" %(label,n)),'coord.xyz')
+        mol_spec = molsys.mol.from_file(path_spec)
+        mol_spec.detect_conn_by_bo()
 
         # 2. Make a mol object for the TS
         mol_ts = molsys.mol.from_file(ts_path)
-        mol_ts.detect_conn()
+        mol_ts.detect_conn_by_bo()
 
-        # 3. Loop over the equilibrium species
-        for n in range(n_eq):
-           print('%s_%d' %(label,n+1))
-        
+        # 3. Get the matching indices
+        ratom, rbond_btw, vts2vspec = self.match_wrt_ts(mol_spec, mol_ts, label, n, rbonds, atom_ids_dict)
+
+        # 4. Order the species wrt TS
+        mol_str = '%d\n\n' %mol_ts.natoms
+        for vts in vts2vspec:
+            vspec = vts2vspec[vts]
+            atom = mol_spec.elems[vspec]
+            x = mol_spec.xyz[vspec][0]
+            y = mol_spec.xyz[vspec][1]
+            z = mol_spec.xyz[vspec][2]
+            mol_str += '%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z)
+        mol_ordered = molsys.mol.from_string(mol_str,'xyz')
+
+        return mol_ordered
+
+
+    def make_rxn_complex(self, rbonds, atom_ids_dict, label, n_eq, QM_path, ts_path, distance = 3.0):
+        ''' This method adds the 2nd species based on the internal coordinates of the reference TS; e.g. ReaxFF optimized TS,
+            at a distance (3.0 Angstrom by default) to the 1st species.
+        '''
+        if n_eq > 3:
+            print('Cannot handle more than two species. Exiting...')
+            sys.exit()
+
+        # 1. Make a mol object for the TS
+        mol_ts = molsys.mol.from_file(ts_path)
+        mol_ts.detect_conn_by_bo()
+
+        # 2. Loop over the equilibrium species
+        for n in range(1, n_eq+1):
+           print('\n================')
+           print('    %s_%d' %(label,n))
+           print('================')
            # a) Create a mol object of the DFT optimized species
-           path_opt = os.path.join(os.path.join(QM_path,"%s_%d" %(label,n+1)),'coord.xyz')
+           path_opt = os.path.join(os.path.join(QM_path,"%s_%d" %(label,n)),'coord.xyz')
            mol_opt = molsys.mol.from_file(path_opt)
-           mol_opt.detect_conn()
-        
-           # b) Extract the "equilibrium" species from the TS structure and create a mol object
-           counter = 0
-           natoms = len(atom_ids_dict['%s_%d' %(label,n+1)])
-           if n == 0: natoms_1 = len(atom_ids_dict['%s_%d' %(label,n+1)])
-           mol_str = '%d\n\n' %natoms
-           ReaxFF_match = {} # dictionary to match the indices of the ReaxFF optimized TS with the DFT optimized equilibrium species.
-           # Loop over the indices of the ReaxFF optimized TS and its atom indices from the MD simulation
-           for i_ReaxFF, i_fromMD in enumerate(atom_ids_dict['ts']):
-               # Loop over the indices of the "equilibrium" species from the MD simulation
-               for j in atom_ids_dict['%s_%d' %(label,n+1)]:
+           mol_opt.detect_conn_by_bo()
+           natoms = len(mol_opt.elems)
 
-                   # c) Match the indices of TS from MD simulation to those of the "equilibrium" species from MD simulation
-                   if i_fromMD == j:
-                       # Mapping of the ReaxFF optimized TS indices to the extracted equilibrium structure
-                       ReaxFF_match[i_ReaxFF] = counter
-                       mol_str += '%s %5.10f %5.10f %5.10f\n' %(mol_ts.elems[i_ReaxFF], mol_ts.xyz[i_ReaxFF,0], mol_ts.xyz[i_ReaxFF,1], mol_ts.xyz[i_ReaxFF,2])
-                       counter += 1
-
-           # d) Create a mol object for the extracted equilibrium structure from the TS structure.
-           mol_match = molsys.mol.from_string(mol_str, 'xyz')
-           mol_match.detect_conn()
-
-           # 4. Check if a reactive bond is within the extracted species
-           # As the "equilibrium" species is extracted from the TS, the bond might not be connected.
-           # This will cause a non-isomorphism; and therefore, the matching of the indices will fail.
-           # To avoid this, assure that the reactive bonds are artificially connected.
-           for rb in rbonds:
-               if set(ReaxFF_match).intersection(rb) == set(rb):
-                   print('The reactive bond %s belongs to the %s_%d.' %(str(rb),label,n+1))
-                   i0 = ReaxFF_match[rb[0]]
-                   i1 = ReaxFF_match[rb[1]]
-                   if i0 not in mol_match.conn[i1]:
-                       mol_match.conn[i0].append(i1)
-                       mol_match.conn[i1].append(i0)
-               elif set(ReaxFF_match).intersection(rb) != set():
-                    ratom = list(set(ReaxFF_match).intersection(rb))[0]
-                    rbond_btw = rb
-                    print('The reactive bond %s is between the two %ss and %d belongs to the %s_%d.' %(str(rb),label,ratom,label,n+1))
-        
-           if n==1 and ratom == None:
-               print('There is no reactive bond between the two molecules! Exiting...')
-               sys.exit()
-
-           # 5. Make molecular graphs of the DFT opt species and extracted one
-           mol_opt.addon("graph")
-           mol_opt.graph.make_graph()
-           mg_opt = mol_opt.graph.molg
-           mol_match.addon("graph")
-           mol_match.graph.make_graph()
-           mg_match = mol_match.graph.molg
-        
-           # 6. Now compare the molecular graphs of the DFT optimized species and the "extracted" equilibrium structure to get the matching indices.
-           # a) compare the graph
-           is_equal, isomap = graph_tool.topology.isomorphism(mg_opt,mg_match,isomap=True)
-           if is_equal == False:
-               print('The graph of the %s_%d is not isomorphic to the graph of the fragment of %s_%d in the transition state. Exiting...' %(label,n+1,label,n+1))
-               sys.exit()
-           # b) get matching indices
-           vts2vopt = {}
+           # 3. Get the matching indices
+           ratom, rbond_btw, vts2vopt = self.match_wrt_ts(mol_opt, mol_ts, label, n, rbonds, atom_ids_dict)
            iopt2its = {}
            vopt2vts = {}
-           for vopt, vmatch, vts in zip(isomap, mg_opt.vertices(), ReaxFF_match):
-               vts2vopt[vts]  = vopt
-               iopt2its[vopt+1] = vts+1
+           for vts in vts2vopt:
+               vopt = vts2vopt[vts]
                vopt2vts[vopt] = vts
-               if n == 0: vts2vopt_1 = vts2vopt
+               iopt2its[vopt+1] = vts+1
 
-           # 7. Make sure that the ordering of the DFT optimized species are proper for forming a Z-matrix for the TS
-   
-           #    2nd species
-           if n == 1 and vts2vopt[ratom] != 0:
-               print('The second %s should start with the atom which belongs to the breaking/forming bond.' %label)
-               print('A new re-ordered mol object will be created.')
-               mol_str = '%d\n\n' %natoms
-               # a) first add the reacting atom
-               mol_str += '%s %5.10f %5.10f %5.10f\n' %(mol_opt.elems[vts2vopt[ratom]], mol_opt.xyz[vts2vopt[ratom],0], mol_opt.xyz[vts2vopt[ratom],1], mol_opt.xyz[vts2vopt[ratom],2])
-               added = [vts2vopt[ratom]]
-               print('The reactive atom %d is connected to the atoms %s.' %(vts2vopt[ratom], str(mol_opt.conn[vts2vopt[ratom]])))
-               # b) then add the connected atoms
-               for i in mol_opt.conn[vts2vopt[ratom]]:
-                    added.append(i)
-                    mol_str += '%s %5.10f %5.10f %5.10f\n' %(mol_opt.elems[i], mol_opt.xyz[i,0], mol_opt.xyz[i,1], mol_opt.xyz[i,2])
-               # c) then add the rest
-               for i in set(range(natoms))-set(added):
-                    added.append(i)
-                    mol_str += '%s %5.10f %5.10f %5.10f\n' %(mol_opt.elems[i], mol_opt.xyz[i,0], mol_opt.xyz[i,1], mol_opt.xyz[i,2])
-               # d) create the new mol object
-               mol_opt_new = molsys.mol.from_string(mol_str, 'xyz')
-               mol_opt_new.detect_conn()
-               mol_opt_new.addon("graph")
-               mol_opt_new.graph.make_graph()
-               mol_opt = mol_opt_new
-               mg_opt_new = mol_opt.graph.molg
-               # e) once more, compare the molecular graphs of the DFT optimized species and the "extracted" equilibrium structure to get the matching indices.
-               is_equal, isomap = graph_tool.topology.isomorphism(mg_opt_new,mg_match,isomap=True)
-               vts2vopt = {}
-               vopt2vts = {}
-               iopt2its = {}
-               for vopt, vmatch, vts in zip(isomap, mg_opt_new.vertices(), ReaxFF_match):
-                   vts2vopt[vts]  = vopt
-                   vopt2vts[vopt] = vts
-                   iopt2its[vopt+1] = vts + 1
-               # f) if with the new index matching the ratom is not the first one (which might happen for, e.g., O2, H2O), then replace the two
-               if vts2vopt[ratom] != 0:
-                   print('Symmetric molecule... Graph tool could not differentiate the two equivalent vertices.')
-                   vts2vopt[vopt2vts[0]] = vts2vopt[ratom]
-                   iopt2its[vts2vopt[ratom]+1] = vopt2vts[0]+1
-                   vopt2vts[vts2vopt[ratom]] = vopt2vts[0]
-                   vts2vopt[ratom] = 0
-                   iopt2its[1] = ratom+1
-                   vopt2vts[0] = ratom
+           if n == 1: vts2vopt_1 = vts2vopt
 
-           # 8. Make the Z-matrix of the optimized species
+           # 4. Make the Z-matrix of the optimized species
            # 1st species
-           if n == 0:
-               # 9. a) Build construction table for the 1st species and change indices to that of the TS using iopt2its dictionary
+           if n == 1:
+               # 5.a) Build construction table for the 1st species
                xyz_1 = zmat(mol_opt).to_Cartesian()
+               # b) Form the Z-matrix of the 1st species (to replace the internal coordinates later)
                zmat_opt_1 = xyz_1.get_zmat()
+               # c) Change indices to that of the TS using iopt2its dictionary
                const_table_1 = xyz_1.get_construction_table()
                const_table_1 = const_table_1.replace(iopt2its)
                new_index = [iopt2its[iopt] for iopt in const_table_1.index]
                const_table_1.index = new_index
 
            #  2nd species
-           elif n == 1:
-               # 9. b) Build construction table for the 2nd species and change indices to that of the TS using iopt2its dictionary
+           elif n == 2:
+               # 5.a) Build the construction table for the 2nd species
                xyz_2 = zmat(mol_opt).to_Cartesian()
-               zmat_opt_2 = xyz_2.get_zmat()
                const_table_2 = xyz_2.get_construction_table()
+               # b) Make sure that the Z-matrix of the 2nd species starts with the reacting atom on the 2nd species
+               first_atom_idx = const_table_2.index[0]
+               ratom_idx = vts2vopt[ratom]+1
+               if first_atom_idx != ratom_idx:
+                   print('The Z-matrix will be modified to have the reacting atom %d on %s_%d as the first.' %(ratom+1,label,n))
+                   for i, idx in enumerate(const_table_2.index):
+                       if idx == ratom_idx:
+                          ratom_pos = i
+                   new_index = list(const_table_2.index)
+                   new_index[0] = ratom_idx
+                   new_index[ratom_pos] = first_atom_idx
+                   idx2newidx = {}
+                   for i, idx in enumerate(new_index):
+                       idx2newidx[const_table_2.index[i]] = idx
+                   const_table_2.index = new_index
+                   const_table_2 = const_table_2.replace(idx2newidx)
+               # c) Form the Z-matrix of the 2nd species (to replace the internal coordinates later)
+               zmat_opt_2 = xyz_2.get_zmat(const_table_2)
+               # d) Change indices to that of the TS
                const_table_2 = const_table_2.replace(iopt2its)
                new_index = [iopt2its[iopt] for iopt in const_table_2.index]
                const_table_2.index = new_index
 
-               # 10. Build the construction table of the transition state
+               # 6. Build the construction table of the complex/transition state
 
                # a) Append the construction table of the 2nd species to that of the 1st species.
                const_table = const_table_1.append(const_table_2)
@@ -1249,202 +1294,186 @@ class OptimizationTools:
                # b) Replace the empty references based on the connectivity of the TS structure.
 
                # 1st atom of the 2nd molecule
-               for i in mol_ts.conn[rbond_btw[0]]:
-                    if i != rbond_btw[0] and i != ratom: a = i
+               ratom_on_mol1 = list(set(rbond_btw)-{ratom})[0]
+               for i in mol_ts.conn[ratom_on_mol1]:
+                    if i != ratom_on_mol1  and i != ratom and mol_ts.elems[i] == 'c': a = i
                for i in mol_ts.conn[a]:
-                    if i != rbond_btw[0] and i != ratom and i != a: d = i
-               const_table.loc[ratom+1,'b'] = rbond_btw[0]+1
+                    if i != ratom_on_mol1 and i != ratom and i != a: d = i
+               const_table.loc[ratom+1,'b'] = ratom_on_mol1+1
                const_table.loc[ratom+1,'a'] = a + 1
                const_table.loc[ratom+1,'d'] = d + 1
 
                # 2nd atom of the 2nd molecule
                if natoms >= 2:
-                   const_table.loc[vopt2vts[1]+1,'a'] = a + 1
-                   const_table.loc[vopt2vts[1]+1,'d'] = d + 1
+                   idx = const_table_2.index[1]
+                   const_table.loc[idx,'a'] = a + 1
+                   const_table.loc[idx,'d'] = d + 1
 
                # 3rd atom of the 2nd molecule
-               elif natoms >= 3:
-                   const_table.loc[vopt2vts[2]+1,'d'] = d + 1
+               if natoms >= 3:
+                   idx = const_table_2.index[2]
+                   const_table.loc[idx,'d'] = d + 1
 
-               # 11. Construct the Z-matrix of the TS using the construction table created
+               # 7. Construct the Z-matrix of the TS using the construction table created
                xyz_ts = zmat(mol_ts).to_Cartesian()
                zmat_complex = xyz_ts.get_zmat(const_table)
 
-               # 12. Replace all of the coordinates for the 1st molecule
+               # 8. Replace all of the coordinates for the 1st molecule
                for i in const_table_1.index:
+                   if zmat_complex.loc[i,'atom'] != zmat_opt_1.loc[vts2vopt_1[i-1]+1,'atom']:
+                      print('Something went wrong with matching the atom indices. Exiting...')
+                      sys.exit()
+                   #zmat_complex.safe_loc[i,'atom'] = zmat_opt_1.loc[vts2vopt_1[i-1]+1,'atom']
                    zmat_complex.safe_loc[i,'bond'] = zmat_opt_1.loc[vts2vopt_1[i-1]+1,'bond']
                    zmat_complex.safe_loc[i,'angle'] = zmat_opt_1.loc[vts2vopt_1[i-1]+1,'angle']
-                   zmat_complex.safe_loc[i,'dihedral'] = zmat_opt_1.safe_loc[vts2vopt_1[i-1]+1,'dihedral']
-               # 13. Replace the coordinates independent coordinates of the 2nd molecule
+                   zmat_complex.safe_loc[i,'dihedral'] = zmat_opt_1.loc[vts2vopt_1[i-1]+1,'dihedral']
+               # 9. Replace the coordinates independent coordinates of the 2nd molecule
                for i in const_table_2.index:
-                   if i == ratom+1:
+                   if zmat_complex.safe_loc[i,'atom'] != zmat_opt_2.loc[vts2vopt[i-1]+1,'atom']:
+                      print('Something went wrong with matching the atom indices. Exiting...')
+                      sys.exit()
+                   # first atom
+                   if i == const_table_2.index[0]:
                        zmat_complex.safe_loc[i,'bond'] = distance
-                   elif i == vopt2vts[1]+1:
-                       zmat_complex.safe_loc[i,'bond'] = zmat_opt_2.safe_loc[vts2vopt[i-1]+1,'bond']
-                   elif i == vopt2vts[2]+1:
-                       zmat_complex.safe_loc[i,'bond'] = zmat_opt_2.safe_loc[vts2vopt[i-1]+1,'bond']
-                       zmat_complex.safe_loc[i,'angle'] = zmat_opt_2.safe_loc[vts2vopt[i-1]+1,'angle']
+                   # second atom
+                   elif i == const_table_2.index[1]:
+                       zmat_complex.safe_loc[i,'bond'] = zmat_opt_2.loc[vts2vopt[i-1]+1,'bond']
+                   # third atom
+                   elif i == const_table_2.index[2]:
+                       zmat_complex.safe_loc[i,'bond'] = zmat_opt_2.loc[vts2vopt[i-1]+1,'bond']
+                       zmat_complex.safe_loc[i,'angle'] = zmat_opt_2.loc[vts2vopt[i-1]+1,'angle']
+                   # rest of the 2nd molecule
                    else:
-                       zmat_complex.safe_loc[i,'bond'] = zmat_opt_2.safe_loc[vts2vopt[i-1]+1,'bond']
-                       zmat_complex.safe_loc[i,'angle'] = zmat_opt_2.safe_loc[vts2vopt[i-1]+1,'angle']
-                       zmat_complex.safe_loc[i,'dihedral'] = zmat_opt_2.safe_loc[vts2vopt[i-1]+1,'dihedral']
+                       zmat_complex.safe_loc[i,'bond'] = zmat_opt_2.loc[vts2vopt[i-1]+1,'bond']
+                       zmat_complex.safe_loc[i,'angle'] = zmat_opt_2.loc[vts2vopt[i-1]+1,'angle']
+                       zmat_complex.safe_loc[i,'dihedral'] = zmat_opt_2.loc[vts2vopt[i-1]+1,'dihedral']
 
-               # 14. Convert the Z-matrix of the complex back to the carte
+               # 10. Convert the Z-matrix of the complex back to the carte
                xyz_complex = zmat_complex.get_cartesian()
-
-        return xyz_complex
-
-
-
-
-
-
-    def optimize_rxn_complex(self, path, mfpx_complex, M, max_mem, lot, active_atoms):
-        ''' optimizes the reaction complex by constraining internal coordinates of the active atoms.
-        path         : string  : the path to where the optimization should be made
-        mfpx_complex : string  : the path to the mfpx structure of the complex
-        M            : integer : the multiplicity as determined based on that of educts and products
-        '''
-        converged = False
-        reason = ''
-        os.mkdir(path)
-        os.chdir(path)
-        mol = molsys.mol.from_file(mfpx_complex)
-        GT = GeneralTools(path)
-        GT.make_tmole_dft_input(elems = mol.elems, xyz = mol.xyz, M = M, max_mem = max_mem, title = mfpx_complex, lot = lot, fermi = True, nue = True)
-        GT.run_tmole()
-        GT.kdg("fermi")
-        GT.ridft()
-        converged = GT.check_ridft_converged()
-        if not converged:
-            reason = 'The self consistent field calculation did not converge for the reactive complex.'
-        else:
-            OptimizationTools(path).freeze_atoms(active_atoms)
-            converged = OptimizationTools(path).jobex()
-            if not converged:
-                reason = 'The geometry optimization did not converge for the reactive complex.' 
-            else:
-                os.system('kdg intdef')
-                os.system('kdg redundant')
-                self.ired()
-                converged = True
-        os.chdir(self.maindir)
-        return converged, reason
+               print('The complex is succesfully created.')
+               mol_str = '%d\n\n' %mol_ts.natoms
+               for i in range(mol_ts.natoms):
+                   atom = xyz_complex.loc[i+1, 'atom']
+                   x = xyz_complex.loc[i+1, 'x']
+                   y = xyz_complex.loc[i+1, 'y']
+                   z = xyz_complex.loc[i+1, 'z']
+                   mol_str += '%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z)
+               mol_complex = molsys.mol.from_string(mol_str,'xyz')
+        return mol_complex 
 
 
-    def transition_state_workflow(self, active_atoms, path_ref_educts, path_ref_products):
-        found = False
-        reason = ""    
-        n_ed = len(path_ref_educts)
-        n_prod = len(path_ref_products)
-        # freeze the active atoms
-        self.freeze_atoms(active_atoms)
-        # pre-optimization
-        converged = self.jobex()
-        if not converged:
-            reason = 'Transition state pre-optimization did not converge.'
-            print(reason)
-        else:
-            # remove the gradient left from the previous calculation.
-            os.remove('gradient')
-
-            # define internal coordinates without constraints and set itvc to 1.
-            os.system('kdg intdef')
-            os.system('kdg redundant')
-            self.ired_and_itvc_1()
-
-            # assign symmetry
-            point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
-            print("point_group_final", point_group_final)
-            if point_group_final != "c1":
-                point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
-                if point_group_assigned == point_group_final:
-                    print("The point group is changed to %s." % point_group_final)
-                else:
-                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % ( point_group_final, point_group_assigned))
-
-            # perform aoforce calculation     
-            self.aoforce()
-            
-            # check the number of imaginary frequencies
-            inum, imfreq = self.check_imaginary_frequency()
-            if inum == 0:        
-                reason += 'No imaginary frequency at the start structure.'
-                print(reason)
-            elif inum == 1:
-                converged = self.jobex(ts=True)
-                if not converged:
-                   reason += 'The transition state optimzation did not converge.'
-                   print(reason)
-                else:
-                   self.aoforce()
-                   inum, imfreq = self.check_imaginary_frequency()
-                   if inum == 1: 
-                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
-                      self.IRC()
-                      mols_minus, mols_plus = self.find_end_points_from_IRC()
-                      found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
-            elif inum > 1:
-                print('There are more than one imaginary frequencies. But it will try to optimize.')
-                converged = self.jobex(ts=True)
-                if not converged:
-                   reason += 'The transition state optimzation did not converge.'
-                   print(reason)
-                else:
-                   self.aoforce()
-                   inum, imfreq = self.check_imaginary_frequency()
-                   if inum == 1:
-                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
-                      self.IRC()
-                      mols_minus, mols_plus = self.find_end_points_from_IRC()
-                      found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
-                   else:
-                      reason += 'The final number of imaginary frequency is not 1.'
-        return found, reason
-
-    def minima_workflow(self):
-        found = False
-        reason = ""
-        point_group_initial = GeometryTools.get_point_group_from_coord(self.path,'coord')
-        print("point_group_initial", point_group_initial)
-        converged = self.jobex()
-        if converged:
-            point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
-            print("point_group_final", point_group_final)
-            if point_group_final != "c1":
-                point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
-                if point_group_assigned == point_group_final:
-                    print("The point group is changed to %s." % point_group_final)
-                else:
-                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % (point_group_final, point_group_assigned))
-                GeneralTools(self.path).ridft()
-                converged = self.jobex()
-                if not converged:
-                    reason += "The geometry optimization is failed."
-            self.aoforce()
-            inum, imfreq = self.check_imaginary_frequency()
-            if inum == 0:
-                found = True
-                print("The equilibrium structure is found succesfully!")
-            else:
-                reason += "There are imaginary frequencies. This is not an equilibrium structure."
-                print(reason)
-        else:
-            reason += "The geometry optimization is failed."
-        return found, reason
-
-    def submit(self, foffset, active_atoms):
-        if foffset == 0:
-            found = self.transition_state_workflow(active_atoms)
-        else:
-            found = self.minima_workflow()
-        return found
+#    def transition_state_workflow(self, active_atoms, path_ref_educts, path_ref_products):
+#        found = False
+#        reason = ""    
+#        n_ed = len(path_ref_educts)
+#        n_prod = len(path_ref_products)
+#        # freeze the active atoms
+#        self.freeze_atoms(active_atoms)
+#        # pre-optimization
+#        converged = self.jobex()
+#        if not converged:
+#            reason = 'Transition state pre-optimization did not converge.'
+#            print(reason)
+#        else:
+#            # remove the gradient left from the previous calculation.
+#            os.remove('gradient')
+#
+#            # define internal coordinates without constraints and set itvc to 1.
+#            os.system('kdg intdef')
+#            os.system('kdg redundant')
+#            self.ired_and_itvc_1()
+#
+#            # assign symmetry
+#            point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
+#            print("point_group_final", point_group_final)
+#            if point_group_final != "c1":
+#                point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
+#                if point_group_assigned == point_group_final:
+#                    print("The point group is changed to %s." % point_group_final)
+#                else:
+#                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % (point_group_final, point_group_assigned))
+#
+#            # perform aoforce calculation     
+#            self.aoforce()
+#            
+#            # check the number of imaginary frequencies
+#            inum, imfreq = self.check_imaginary_frequency()
+#            if inum == 0:        
+#                reason += 'No imaginary frequency at the start structure.'
+#                print(reason)
+#            elif inum == 1:
+#                converged = self.jobex(ts=True)
+#                if not converged:
+#                   reason += 'The transition state optimzation did not converge.'
+#                   print(reason)
+#                else:
+#                   self.aoforce()
+#                   inum, imfreq = self.check_imaginary_frequency()
+#                   if inum == 1: 
+#                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
+#                      self.IRC()
+#                      mols_minus, mols_plus = self.find_end_points_from_IRC()
+#                      found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+#            elif inum > 1:
+#                print('There are more than one imaginary frequencies. But it will try to optimize.')
+#                converged = self.jobex(ts=True)
+#                if not converged:
+#                   reason += 'The transition state optimzation did not converge.'
+#                   print(reason)
+#                else:
+#                   self.aoforce()
+#                   inum, imfreq = self.check_imaginary_frequency()
+#                   if inum == 1:
+#                      print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
+#                      self.IRC()
+#                      mols_minus, mols_plus = self.find_end_points_from_IRC()
+#                      found, reason = self.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+#                   else:
+#                      reason += 'The final number of imaginary frequency is not 1.'
+#        return found, reason
+#
+#    def minima_workflow(self):
+#        found = False
+#        reason = ""
+#        point_group_initial = GeometryTools.get_point_group_from_coord(self.path,'coord')
+#        print("point_group_initial", point_group_initial)
+#        converged = self.jobex()
+#        if converged:
+#            point_group_final = GeometryTools.get_point_group_from_coord(self.path,'coord')
+#            print("point_group_final", point_group_final)
+#            if point_group_final != "c1":
+#                point_group_assigned = GeometryTools.change_point_group(self.path, point_group_final)
+#                if point_group_assigned == point_group_final:
+#                    print("The point group is changed to %s." % point_group_final)
+#                else:
+#                    print("The molecule has point group of %s. However, the abelian point group %s is assigned." % (point_group_final, point_group_assigned))
+#                GeneralTools(self.path).ridft()
+#                converged = self.jobex()
+#                if not converged:
+#                    reason += "The geometry optimization is failed."
+#            self.aoforce()
+#            inum, imfreq = self.check_imaginary_frequency()
+#            if inum == 0:
+#                found = True
+#                print("The equilibrium structure is found succesfully!")
+#            else:
+#                reason += "There are imaginary frequencies. This is not an equilibrium structure."
+#                print(reason)
+#        else:
+#            reason += "The geometry optimization is failed."
+#        return found, reason
+#
+#    def submit(self, foffset, active_atoms):
+#        if foffset == 0:
+#            found = self.transition_state_workflow(active_atoms)
+#        else:
+#            found = self.minima_workflow()
+#        return found
 
     def get_mol(self):
         os.system("t2x %s/coord > %s/coord.xyz" %(self.path, self.path))
         mol = molsys.mol.from_file(os.path.join(self.path,"coord.xyz"))
         return mol
-
 
     def ts_pre_optimization(self, path_ref, lot, M, rbonds):
         # we only fix the internal coordinates between the atoms involved in bond-order change. So convert the bonds into atoms list.
@@ -1621,6 +1650,10 @@ class OptimizationTools:
             path_ref_products: list of strings  : The list of paths to the reference products cartesian coordinate files.
             path_ref_ts      : string           : The path to the TS cartesian coordinate files.
         '''
+        QM_path = self.path
+
+        GT = GeneralTools(QM_path)
+
         n_ed   = len(path_ref_educts)
         n_prod = len(path_ref_products)
 
@@ -1655,18 +1688,30 @@ class OptimizationTools:
                 try_woelfling = True
 
         if try_woelfling:
-            if not unimolecular:
-                if n_ed > 1 and n_prod == 1:
-                    xyz_ed_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'educt', n_ed, self.path, path_ref_ts)
-                    print(xyz_ed_complex)
-                elif n_ed > 1 and n_prod > 1:
-                    xyz_ed_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'educt', n_ed, self.path, path_ref_ts)
-                    xyz_prod_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'product', n_prod, self.path, path_ref_ts)
-                    print(xyz_ed_complex)
-                    print(xyz_prod_complex)
-                elif n_ed == 1 and n_prod > 1:
-                    xyz_prod_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'product', n_prod, self.path, path_ref_ts)
-                    print(xyz_prod_complex)
+            woelfling_path = os.path.join(self.path,'woelfling')
+            os.mkdir(woelfling_path)
+            coord_ini = os.path.join(woelfling_path,'ini')
+            coord_fin = os.path.join(woelfling_path,'fin')
+            if unimolecular:
+                mol_ed = self.reorder_wrt_ts(QM_path, path_ref_ts, 'educt', 1, rbonds, atom_ids_dict)
+                mol_prod = self.reorder_wrt_ts(QM_path, path_ref_ts, 'product', 1, rbonds, atom_ids_dict)
+                GT.write_coord_from_mol(mol_ed, coord_ini)
+                GT.write_coord_from_mol(mol_prod, coord_fin)
+            elif n_ed > 1 and n_prod == 1:
+                mol_ed_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'educt', n_ed, self.path, path_ref_ts)
+                mol_prod = self.reorder_wrt_ts(QM_path, path_ref_ts, 'product', 1, rbonds, atom_ids_dict)
+                GT.write_coord_from_mol(mol_ed_complex, coord_ini)
+                GT.write_coord_from_mol(mol_prod, coord_fin)
+            elif n_ed > 1 and n_prod > 1:
+                mol_ed_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'educt', n_ed, self.path, path_ref_ts)
+                mol_prod_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'product', n_prod, self.path, path_ref_ts)
+                GT.write_coord_from_mol(mol_ed_complex, coord_ini)
+                GT.write_coord_from_mol(mol_prod_complex, coord_fin)
+            elif n_ed == 1 and n_prod > 1:
+                mol_ed = self.reorder_wrt_ts(QM_path, path_ref_ts, 'educt', 1, rbonds, atom_ids_dict)
+                mol_prod_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'product', n_prod, self.path, path_ref_ts)
+                GT.write_coord_from_mol(mol_ed, coord_ini)
+                GT.write_coord_from_mol(mol_prod_complex, coord_fin)
         return
 
  
