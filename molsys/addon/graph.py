@@ -936,18 +936,19 @@ class graph(object):
                        is_equal = False
                        return is_equal, error_code
                    
-                    is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,isomap=True)
-                    #is_equal, isomap = graph_tool.topology.isomorphism(molg1,molg2,vertex_inv1=molg1.vp.type, vertex_inv2=molg2.vp.type,isomap=True)
+                    masterg = Graph(molg2)
+                    masterg.add_vertex() 
 
-                    ## Check if maping is correct
-                    #if is_equal:
-                    #    for vi,vj in zip(isomap,molg2.vertices()):
-                    #        if vi < 0:
-                    #            is_equal = False
-                    #            break
-                    #        if molg1.vp.type[vi] != molg2.vp.type[vj]:
-                    #            is_equal = False
-                    #            break
+                    vertex_maps = graph_tool.topology.subgraph_isomorphism(molg1, masterg, max_n=0, vertex_label=(molg1.vp.type,masterg.vp.type), edge_label=None, induced=False, subgraph=True, generator=False)
+
+                    is_equal = len(vertex_maps) > 0
+
+                    if is_equal:
+                       for vi,vj in zip(molg1.vertices(),vertex_maps[0]):
+                           if molg1.vp.type[vi] != molg2.vp.type[vj]:
+                               is_equal = False
+                               break
+
                 else:
                     # We don't have any edges... 
 
