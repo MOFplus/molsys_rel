@@ -534,6 +534,15 @@ class OptimizationTools:
             self.maindir = os.getcwd()
         return
 
+    def get_mol(self, path = ''):
+        if path == '': path = self.path
+        coord = os.path.join(path, 'coord')
+        xyz   = os.path.join(path, 'coord.xyz')
+        os.system("t2x %s > %s" %(coord, xyz))
+        mol =  molsys.mol.from_file(xyz,'xyz')
+        mol.detect_conn_by_bo()
+        return mol
+
     def freeze_atoms(self, active_atoms):
         """ writes a new define file to fix active atoms in internal coordinates. """
         a_a = ''
@@ -647,7 +656,9 @@ class OptimizationTools:
         return
 
     def IRC(self):
+        os.chdir(self.path)
         os.system("DRC -i -c 150 > IRC.out")
+        os.chdir(self.maindir)
         return
 
     def common_workflow(self, path_ref, lot, TS = False, M = None, active_atoms = [], max_mem = 500, fermi = True):
@@ -851,72 +862,73 @@ class OptimizationTools:
         return atom, energy
 
     def find_end_points_from_IRC(self):
+        """ Optimizes the end points of IRC as found in the directories 'displaced_minus' and
+            'displaced_plus'. Separates the molecules and returns the corresponding mol objects.
+        """
         ### MINUS
         path_minus = os.path.join(self.path, 'displaced_minus')
         os.chdir(path_minus)
         os.system('cpc minus')
         sub_path_minus = os.path.join(path_minus, 'minus')
-        os.chdir(sub_path_minus)
         # remove the gradient
-        os.remove('gradient')
+        os.remove(os.path.join(sub_path_minus,'gradient'))
+        # OT for the minus
+        OT_min = OptimizationTools(sub_path_minus)
         # define internal coordinates
-        self.ired()
+        OT_min.ired()
         # optimize the geometry
-        converged = self.jobex()
+        converged = OT_min.jobex()
         # TODO I should check if these are converged... 
         if not converged:
             print('The geometry optimization of the end point of IRC has failed.')
         # get the molecules at the end points
-        os.system("t2x %s/coord > %s/coord.xyz" %(sub_path_minus, sub_path_minus))
-        opt_mol_minus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_minus,'xyz')
-        opt_mol_minus.detect_conn_by_bo()
-
-        mols_minus = Mol(opt_mol_minus).separate_molecules()
+        mol_minus = OT_min.get_mol()
+        mols_minus = Mol(mol_minus).separate_molecules()
 
         ### PLUS
         path_plus  = os.path.join(self.path, 'displaced_plus')
         os.chdir(path_plus)
         os.system('cpc plus')
         sub_path_plus = os.path.join(path_plus, 'plus')
-        os.chdir(sub_path_plus)
         # remove the gradient
-        os.remove('gradient')
+        os.remove(os.path.join(sub_path_plus,'gradient'))
+        # OT for the plus
+        OT_plus = OptimizationTools(sub_path_plus)
         # define internal coordinates
-        self.ired()
+        OT_plus.ired()
         # optimize the geometry
-        converged = self.jobex()
+        converged = OT_plus.jobex()
         # TODO I should check if these are converged... 
         if not converged:
             print('The geometry optimization of the end point of IRC has failed.')
         # get the molecules at the end points
-        os.system("t2x %s/coord > %s/coord.xyz" %(sub_path_plus, sub_path_plus))
-        opt_mol_plus =  molsys.mol.from_file('%s/coord.xyz' %sub_path_plus,'xyz')
-        opt_mol_plus.detect_conn_by_bo()
-        mols_plus = Mol(opt_mol_plus).separate_molecules()
+        mol_plus = OT_plus.get_mol()
+        mols_plus = Mol(mol_plus).separate_molecules()
 
         # go to the main directory
         os.chdir(self.maindir)
         return mols_minus, mols_plus
 
-    def check_end_points(self, mols_minus, mols_plus, path_ref_educts, path_ref_products):
+
+
+    def check_end_points(self, mols_minus, mols_plus, mols_ed, mols_prod):
         """
         Compares the molecular graphs of the output of the IRC calculation to those of reference structures.
-        mols_minus        : List of mol objects created by separating the molecules from IRC output, displaced_minus
-        mols_plus         : List of mol objects created by separating the molecules from IRC output, displaced_plus
-        path_ref_educts   : List of path of the reference educts   (e.g. from ReaxFF optimized structures)
-        path_ref_products : List of path of the reference products (e.g. from ReaxFF optimized structures)
+        mols_minus    : List of mol objects created by separating the molecules from IRC output, displaced_minus
+        mols_plus     : List of mol objects created by separating the molecules from IRC output, displaced_plus
+        mols_ed       : List of mol objects of the reference educts   (e.g. from ReaxFF optimized structures)
+        mols_prod     : List of mol objects of the reference products (e.g. from ReaxFF optimized structures)
         """
         is_similar = False
         reason = ''
         n_mol_minus  = len(mols_minus)
         n_mol_plus   = len(mols_plus)
-        n_mol_educts = len(path_ref_educts)
-        n_mol_products = len(path_ref_products)
+        n_mol_educts = len(mols_ed)
+        n_mol_products = len(mols_prod)
         if (n_mol_minus == n_mol_educts and n_mol_plus == n_mol_products) or (n_mol_minus == n_mol_products and n_mol_plus == n_mol_educts):
             educt_minus_is_similar = True
             educt_plus_is_similar = True
-            for ed in path_ref_educts:
-                mol_ed   = molsys.mol.from_file(ed)
+            for mol_ed in mols_ed:
                 Mol(mol_ed).make_molecular_graph()
                 mg_ed = mol_ed.graph.molg
 
@@ -944,8 +956,7 @@ class OptimizationTools:
 
             prod_minus_is_similar = True
             prod_plus_is_similar = True                       
-            for prod in path_ref_products:
-                mol_prod = molsys.mol.from_file(prod)
+            for mol_prod in mols_prod:
                 Mol(mol_prod).make_molecular_graph()
                 mg_prod = mol_prod.graph.molg
 
@@ -1470,10 +1481,6 @@ class OptimizationTools:
 #            found = self.minima_workflow()
 #        return found
 
-    def get_mol(self):
-        os.system("t2x %s/coord > %s/coord.xyz" %(self.path, self.path))
-        mol = molsys.mol.from_file(os.path.join(self.path,"coord.xyz"))
-        return mol
 
     def ts_pre_optimization(self, path_ref, lot, M, rbonds):
         # we only fix the internal coordinates between the atoms involved in bond-order change. So convert the bonds into atoms list.
@@ -1508,10 +1515,20 @@ class OptimizationTools:
 
         return converged, QM_path
 
-    def ts_eigenvector_following(self, QM_path, path_ref_educts, path_ref_products):
+    def ts_eigenvector_following(self, QM_path_ts, QM_paths_ed, QM_paths_prod):
         found = False
         reason = ''
-        OT = OptimizationTools(QM_path)
+        OT = OptimizationTools(QM_path_ts)
+
+        mols_ed = []
+        for path_ed in QM_paths_ed:
+            mol_ed = self.get_mol(path_ed)
+            mols_ed.append(mol_ed)
+
+        mols_prod = []
+        for path_prod in QM_paths_prod:
+            mol_prod = self.get_mol(path_prod)
+            mols_prod.append(mol_prod)
 
         # 1) perform aoforce calculation     
         OT.aoforce()
@@ -1535,7 +1552,7 @@ class OptimizationTools:
                   print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
                   OT.IRC()
                   mols_minus, mols_plus = OT.find_end_points_from_IRC()
-                  found, reason_comparison = OT.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+                  found, reason_comparison = OT.check_end_points(mols_minus, mols_plus, mols_ed, mols_prod)
                   reason += reason_comparison
 
         # case 3:
@@ -1552,7 +1569,7 @@ class OptimizationTools:
                   print('There is only one imaginary frequency. The intrinsic reaction coordinate is being calculated.')
                   OT.IRC()
                   mols_minus, mols_plus = OT.find_end_points_from_IRC()
-                  found, reason_comparison = OT.check_end_points(mols_minus, mols_plus, path_ref_educts, path_ref_products)
+                  found, reason_comparison = OT.check_end_points(mols_minus, mols_plus, mols_ed, mols_prod)
                   reason += reason_comparison
                else:
                   reason += 'The final number of imaginary frequency is not 1.'
