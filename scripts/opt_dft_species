@@ -76,7 +76,8 @@ class turbomole_calculator:
        subdir_name = 'from_reaction_%05d' % reactionID
        dft_subdir_path = os.path.abspath(os.path.join(self.dft_path, subdir_name))
        exists = os.path.isdir(dft_subdir_path)
-       os.mkdir(dft_subdir_path)          
+       if not exists:
+           os.mkdir(dft_subdir_path)          
        return dft_subdir_path, exists
 
 
@@ -92,6 +93,7 @@ class turbomole_calculator:
            #submit the job to the SLURM queuing system and get the assigned job id
            os.chdir(dft_subdir_path)
            sbatchout = os.popen("sbatch -J r.%d %s" %(reactionID, os.path.join(self.dft_path,"submit.sh"))).read()
+#           sbatchout = os.popen("sbatch -J r.%d --reservation oyoender_7 %s" %(reactionID, os.path.join(self.dft_path,"submit.sh"))).read()
            jobid = sbatchout.split()[3]
            os.chdir(self.maindir)
        return jobid

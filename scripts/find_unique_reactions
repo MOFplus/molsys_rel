@@ -103,8 +103,8 @@ def compare_species(species,sumforms,moldata):
 
 
 
-if len(sys.argv) < 2:
-    print ("usage:  find_unique_reactions <db_path> <pdlp_file> <stage>")
+if len(sys.argv) < 5:
+    print ("usage:  find_unique_reactions <db_path> <pdlp_file> <stage> <add redundant?>")
     exit()
     
 #
@@ -114,6 +114,13 @@ db_path   = sys.argv[1]
 pdlp_path = sys.argv[2]
 pdlp_path = os.path.abspath(pdlp_path)
 stage     = sys.argv[3]
+try:
+    check_if_included = True
+    if sys.argv[4].lower() in ['y','yes','t','true','1']:
+        check_if_included = False
+except:
+    check_if_included = True
+
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
@@ -319,13 +326,13 @@ for r in revents:
         #
         rbonds = []
         for ed,m in ed_mol:
-           specid, is_new = rdb.add_species(ed,True)
+           specid, is_new = rdb.add_species(ed,check_if_included)
            rdb.add_reac2spec(reactID,specid,-1)
            if is_new:
               rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
               m.update_record(speciesID=specid)
         for pr,m in pr_mol:
-           specid, is_new = rdb.add_species(pr,True)
+           specid, is_new = rdb.add_species(pr,check_if_included)
            rdb.add_reac2spec(reactID,specid, 1) 
            if is_new:
               rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
