@@ -50,8 +50,8 @@ class turbomole_calculator:
        # default parameters
        if "turbodir" not in params:
            params["turbodir"] = os.popen("echo $TURBODIR").read() 
-       elif "maxmem" not in params:
-           params["maxmem"] = 3000
+       elif "max_mem" not in params:
+           params["max_mem"] = 500
 
        # default parameters for job submission and set the other variables
        if params["submit"]:
@@ -65,7 +65,7 @@ class turbomole_calculator:
            turbomole.Slurm.write_submission_script(self.dft_path, params["turbodir"], params["ntasks"], params["partition"])
            CPUS, MEM = turbomole.Slurm.get_partition_info(params["partition"])
            MEM_per_CPU = MEM/CPUS
-           params["maxmem"] = 0.8*MEM_per_CPU
+           params["max_mem"] = 0.8*MEM_per_CPU
            njobs_per_node = CPUS/params["ntasks"]
            self.max_njobs = int(params["maxnodes"]*njobs_per_node)
        self.params = params
@@ -84,12 +84,12 @@ class turbomole_calculator:
     def optimize(self, reactionID, dft_subdir_path, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '',  atom_ids_dict = {}):
        # initialize the OptimizationTools class from the turbomole module under molsys/util/turbomole.py
 
-       OT = turbomole.OptimizationTools(dft_subdir_path)
+       OT = turbomole.OptimizationTools(path = dft_subdir_path, lot = self.params["lot"], max_mem = self.params["max_mem"])
 
        if self.params["submit"] == False:
-           OT.reaction_workflow(self.params["lot"], rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
+           OT.reaction_workflow(rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
        else:
-           OT.write_submit_py(self.params["lot"], rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
+           OT.write_submit_py(rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
            #submit the job to the SLURM queuing system and get the assigned job id
            os.chdir(dft_subdir_path)
            sbatchout = os.popen("sbatch -J r.%d %s" %(reactionID, os.path.join(self.dft_path,"submit.sh"))).read()
@@ -198,8 +198,8 @@ start_lotID = rdb.get_lot(start_lot)
 # DFT could look like
 #params = { "calculator"        : "turbomole"
 #         , "data_storage_path' : "/home/oyoender/DATA/"
-#         , "lot"               : "u-ritpss/SVP"
-#         , "maxmem"            : 3000
+#         , "lot"               : "ri-utpss/SVP"
+#         , "max_mem"           : 3000
 #         , "submit"            : True
 #         , "turbodir"          : "/opt/software/user-soft/turbomole/75"
 #         , "ntasks"            : 8
