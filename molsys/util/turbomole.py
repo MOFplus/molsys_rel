@@ -577,7 +577,8 @@ class OptimizationTools:
             self.maindir = os.getcwd()
             self.lot = lot # e.g. ri-utpss/SVP
             self.max_mem = max_mem
-            self.QM_paths = {}
+            self.QM_paths_dict = {}
+            self.mols_opt_dict = {}
         return
 
     def get_mol_from_coord(self, path = ''):
@@ -930,8 +931,6 @@ class OptimizationTools:
         if not converged:
             print('The ridft calculation did not converge.')
             sys.exit()
-        elif atom:
-            os.system('touch %s' %os.path.join(self.path,'FOUND'))
         return atom, energy
 
     def list_of_list_rbonds(self, rbonds):
@@ -1165,13 +1164,17 @@ class OptimizationTools:
                const_table.loc[ratom+1,'b'] = ratom_on_mol1+1 
                
                # ANGLE:
+               print(ratom, ratom_on_mol1, mol_ts.conn[ratom_on_mol1])
                for i in mol_ts.conn[ratom_on_mol1]:
-                    if i != ratom_on_mol1  and i != ratom and mol_ts.elems[i] == 'c': 
+                    # check if the connected one is a terminal atom, because if so, assigning the atom which will define the dihedral is difficult...
+                    terminal_atom = False
+                    if len(mol_ts.conn[i]) == 1: terminal_atom = True 
+                    if i != ratom_on_mol1  and i != ratom and not terminal_atom: 
                         a = i
                try:
                    const_table.loc[ratom+1,'a'] = a + 1
                except:
-                    print('The connected atom to the reacting atom %d different than the other reacting atom %d could not be assigned.' %(ratom_on_mol1, ratom))
+                    print('The connected atom to the reacting atom %d different than the other reacting atom %d, and which is not a terminal atom could not be assigned.' %(ratom_on_mol1, ratom))
                     sys.exit()
               
                # DIHEDRAL:
@@ -1346,27 +1349,27 @@ class OptimizationTools:
         if (n_mol_minus == n_mol_educts and n_mol_plus == n_mol_products) or (n_mol_minus == n_mol_products and n_mol_plus == n_mol_educts):
 
             # 1. Compare the educts with minus and plus from IRC
-            educt_minus_is_similar, index_dict_ed_minus  = self.compare_mols(mols_ed, mols_minus, mode = mode)
-            educt_plus_is_similar , index_dict_ed_plus   = self.compare_mols(mols_ed, mols_plus, mode = mode)
+            minus_ed_is_similar, index_dict_minus_ed  = self.compare_mols(mols_minus, mols_ed, mode = mode)
+            plus_ed_is_similar , index_dict_plus_ed   = self.compare_mols(mols_plus,  mols_ed, mode = mode)
 
             # 2. Compare the products with minus and plus from IRC
-            prod_minus_is_similar, index_dict_prod_minus = self.compare_mols(mols_prod, mols_minus, mode = mode)
-            prod_plus_is_similar , index_dict_prod_plus  = self.compare_mols(mols_prod, mols_plus, mode = mode)
+            minus_prod_is_similar, index_dict_minus_prod = self.compare_mols(mols_minus, mols_prod, mode = mode)
+            plus_prod_is_similar , index_dict_plus_prod  = self.compare_mols(mols_plus,  mols_prod, mode = mode)
 
-            if (educt_minus_is_similar and prod_plus_is_similar):
+            if (minus_ed_is_similar and plus_prod_is_similar):
                 is_similar = True
-                match['educt']        = 'minus'
-                index_dict['educt']   =  index_dict_ed_minus
-                match['product']      = 'plus'
-                index_dict['product'] =  index_dict_prod_plus
-            elif (educt_plus_is_similar and prod_minus_is_similar):
+                match['minus']      = 'educt'
+                index_dict['minus'] =  index_dict_minus_ed
+                match['plus']       = 'product'
+                index_dict['plus']  =  index_dict_plus_prod
+            elif (plus_ed_is_similar and minus_prod_is_similar):
                 is_similar = True
-                match['educt']        = 'plus'
-                index_dict['educt']   =  index_dict_ed_plus
-                match['product']      = 'minus'
-                index_dict['product'] =  index_dict_prod_minus
+                match['minus']      = 'product'
+                index_dict['minus'] =  index_dict_minus_prod
+                match['plus']       = 'educt'
+                index_dict['plus']  =  index_dict_plus_ed
             else:
-                reason = 'This transition state do not connect the reference educts and products.'
+                reason = 'This transition state does not connect the reference educts and products.'
                 print(reason)
         return is_similar, match, index_dict, reason
 
@@ -1507,45 +1510,61 @@ class OptimizationTools:
 
         return converged, QM_path
 
-    def optimize_irc_end_points(self, M, label = '', mols_QM_ref = [], match = {}, index_dict = {}, irc_mols = {}, irc_path = {}, gcart = 4, is_similar = False):
-        displaced   = match['%s' %label]   # 'minus' path or 'plus' path
-        mols        = irc_mols[displaced]  # the separated educt mol objects from the irc end points, those we want to optimize now
-        path       = irc_path[displaced] # the pathway to the .../displaced_minus or .../displaced_plus directories 
-        QM_ref2irc  = index_dict['%s' %label] # dictionary which matches of e.g., QM_reference educts to the corresponding IRC species
-        for i, mol_QM_ref   in enumerate(mols_QM_ref):
-            # 1. Get the corresponding mol and directory of the IRC calculation
-            irc_mol  = mols[QM_ref2irc[i]]
+    def optimize_irc_end_points(self, M, displaced = '', mols_QM_ref = [], match = {}, index_dict = {}, irc_mols = {}, irc_path = {}, gcart = 4, is_similar = False):
+        if is_similar:
+            label = match['%s' %displaced]   # 'educt' or 'product'
+            irc2ref  = index_dict['%s' %displaced] # dictionary which matches of e.g., QM_reference educts to the corresponding IRC species
+        else:
+            if displaced == 'minus':
+                label = 'educt'
+            elif displaced == 'plus':
+                label = 'product'
+        # Get the mols and the path to the end points
+        mols      = irc_mols[displaced]  # the separated educt mol objects from the irc end points, those we want to optimize now
+        path      = irc_path[displaced] # the pathway to the .../displaced_minus/minus or .../displaced_plus/plus directories 
 
-            M_QM_ref = mol_QM_ref.multiplicity # Multiplicity of the QM reference structure
+        OT = OptimizationTools(path, lot = self.lot, max_mem = self.max_mem)
 
-            # 2. If there is only one molecule and the multiplicity matches with the ref QM species, 
-            if len(mols) == 1 and M_QM_ref == M:
-                OT = OptimizationTools(path, lot = self.lot, max_mem = self.max_mem)
-                OT.aoforce()
-                inum, imfreq = OT.check_imaginary_frequency()
-                if inum != 0:
-                    print("This is not a minimum!")
-                    sys.exit()
-                else:
-                    self.QM_paths['%s_%d' %(label, i)] = irc_path
+        # If there is only one molecule just calculate just the Hessian 
+        if len(mols) == 1:
+            mol_opt = mols[0]
+            mol_opt.multiplicity = M # The multiplicity is the same as the TS, as the same orbitals are used with constant occupations
+            multiplicities = [M]
+            OT.aoforce()
+            inum, imfreq = OT.check_imaginary_frequency()
+            if inum != 0:
+                print("This is not a minimum!")
+                sys.exit()
             else:
-                print("The multiplicity of the educt and the irc end point does not match or the number of molecules is not 1...")
-                path_i = os.path.join(path, '%s_%d'  %(label, i))
-                os.mkdir(path_i)
-                OT = OptimizationTools(path_i, lot = self.lot, max_mem = self.max_mem)
-                # Optimize the end points
-                multiplicities, QM_paths, mols_opt = OT.educts_and_products_workflow(mols = irc_mol, add_noise = False, label = label, gcart = gcart)
-                M_spec = multiplicities[0]
-                OT_opt = OptimizationTools(QM_paths[0], lot = self.lot, max_mem = self.max_mem)
+                key = '%s_1' %(label)
+                self.QM_paths_dict[key] = path
+                self.mols_opt_dict[key] = mol_opt 
+
+        # If there is more than one, then optimize them separately starting only from the coordinates.
+        else:
+            print("The number of molecules is not 1...")
+            multiplicities, QM_paths, mols_opt = OT.educts_and_products_workflow(mols = mols, add_noise = False, label = label, gcart = gcart)
+            for i, QM_path in enumerate(QM_paths):
+                OT_opt = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
                 OT_opt.aoforce()
                 inum, imfreq = OT_opt.check_imaginary_frequency()
                 if inum != 0:
                     print("This is not a minimum!")
                     sys.exit()
-                self.QM_paths['%s_%d' %(label, i)] = QM_paths[0]
-                if M_QM_ref != M_spec:
-                    print('The multiplicity of the reference QM %s %d does not match with the re-optimized IRC end point.' %(label, i))
-        return
+                else:
+                    key = '%s_%d' %(label, i)
+                    self.QM_paths_dict[key] = QM_path
+                    self.mols_opt_dict[key] = mols_opt[i]
+
+        # Check if the multiplicities match
+        if is_similar:
+            for i, key in enumerate(mols_opt_dict):
+                i_ref = irc2ref[i]
+                mol_QM_ref = mols_QM_ref[i_ref]
+                mol_opt = self.mols_opt_dict[key]
+                if mol_QM_ref.multiplicity != mol_opt.multiplicity:
+                    print('The multiplicity of the QM reference %s_%d does not match with the re-optimized IRC end point, which is under %s.' %(label, i_ref, self.QM_paths_dict[key]))
+        return multiplicities
 
 
     def ts_workflow(self, QM_path_ts, mols_ed_QM_ref, mols_prod_QM_ref, gcart = 4, M = None, mode = 'mg'):
@@ -1595,8 +1614,8 @@ class OptimizationTools:
                   reason += reason_comparison
 
                   # 8. If the molecular graphs are similar, then optimize the end points.
-                  self.optimize_irc_end_points(M = M, label = 'educt',   mols_QM_ref = mols_ed_QM_ref,   match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
-                  self.optimize_irc_end_points(M = M, label = 'product', mols_QM_ref = mols_prod_QM_ref, match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
+                  self.optimize_irc_end_points(M = M, displaced = 'minus', mols_QM_ref = mols_ed_QM_ref,   match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
+                  self.optimize_irc_end_points(M = M, displaced = 'plus',  mols_QM_ref = mols_prod_QM_ref, match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
 
         return converged, is_similar, reason
 
@@ -1629,7 +1648,9 @@ class OptimizationTools:
             nalpha, nbeta = GeneralTools(QM_path).get_nalpha_and_nbeta_from_ridft_output()
             M = abs(nalpha-nbeta)+1
 
-            if not atom:
+            if atom:
+                mol_opt = OT.get_mol_from_coord()
+            else:
                 # 4. Perform the geometry optimization
                 converged = OT.jobex(gcart = gcart)
                 if not converged:
@@ -1778,15 +1799,16 @@ class OptimizationTools:
             if not converged:
                 try_woelfling = True
             else:
+                # TODO: Add to the database.
                 if is_similar:
-                    print('The TS connecting the minima is found.')
-                    print('The TS is under:', QM_path_ts)
-                    print('The educts are under:', self.QM_path_ed)
-                    print('The products are under:', self.QM_path_prod)
-                    # TODO: Add to the database.
-                else: 
-                    try_woelfling = True
+                    print('The TS connecting the reference minima is found.')
+                else:
                     print('A TS is found but does not connect the original minima.')
+                    try_woelfling = True
+                print('The TS is under:', QM_path_ts)
+                print('The equilibrium species are under:')
+                for eq_spec in self.QM_paths_dict:
+                    print(self.QM_paths_dict[eq_spec])
 
         # 5. Perform the woelfling calculation
         if try_woelfling:
@@ -1814,7 +1836,6 @@ class OptimizationTools:
                 mol_prod_complex = self.make_rxn_complex(rbonds, atom_ids_dict, 'product', n_prod, self.path, path_ref_ts)
                 self.write_coords(coords_path, mol_ed, mol_prod_complex)
             barrierless, ts_path = self.woelfling_workflow(woelfling_path)
-            print(barrierless, ts_path)
             if barrierless:
                 print('The reaction is barrierless.')
                 # TODO: Add to the database
@@ -1826,14 +1847,14 @@ class OptimizationTools:
                     print('The TS guess from woelfling calculation did not converge.')
                 else:
                     if is_similar:
-                        print('The TS connecting the minima is found.')
-                        print('The TS is under:', QM_path_ts)
-                        print('The equilibrium species:')
-                        for eq_spec in self.QM_paths:
-                            print(self.QM_paths[eq_spec])
-                        # TODO: Add to the database.
+                        print('The TS connecting the reference minima is found.')
                     else:
                         print('A TS is found but does not connect the original minima.')
+                    print('The TS is under:', ts_path)
+                    print('The equilibrium species are under:')
+                    for eq_spec in self.QM_paths_dict:
+                        print(self.QM_paths_dict[eq_spec])
+                    # TODO: Add to the database.
                 
         else:
             shutil.rmtree(woelfling_path)
