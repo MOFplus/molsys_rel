@@ -50,17 +50,20 @@ class turbomole_calculator:
        # default parameters
        if "turbodir" not in params:
            params["turbodir"] = os.popen("echo $TURBODIR").read() 
-       elif "max_mem" not in params:
+       if "max_mem" not in params:
            params["max_mem"] = 500
+       if "gcart" not in params:
+           params["gcart"] = 3
 
        # default parameters for job submission and set the other variables
        if params["submit"]:
            if "ntasks" not in params:
                params["ntasks"] = 8
-           elif "partition" not in params:
+           if "partition" not in params:
                params["partition"] = "normal" 
-           elif "maxnodes" not in params:
+           if "maxnodes" not in params:
                params["maxnodes"] = 4
+
            # write the SLURM job submission script 'submit.sh' to the QM calculation home directory 
            turbomole.Slurm.write_submission_script(self.dft_path, params["turbodir"], params["ntasks"], params["partition"])
            CPUS, MEM = turbomole.Slurm.get_partition_info(params["partition"])
@@ -69,6 +72,7 @@ class turbomole_calculator:
            njobs_per_node = CPUS/params["ntasks"]
            self.max_njobs = int(params["maxnodes"]*njobs_per_node)
        self.params = params
+       print(self.params)
        return
 
     def make_dft_subdir(self, reactionID, db_path):
@@ -81,15 +85,31 @@ class turbomole_calculator:
        return dft_subdir_path, exists
 
 
-    def optimize(self, reactionID, dft_subdir_path, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '',  atom_ids_dict = {}):
+    def optimize(self, reactionID, dft_subdir_path, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '',  atom_ids_dict = {}, start_lot = ''):
        # initialize the OptimizationTools class from the turbomole module under molsys/util/turbomole.py
-
-       OT = turbomole.OptimizationTools(path = dft_subdir_path, lot = self.params["lot"], max_mem = self.params["max_mem"])
+       OT = turbomole.OptimizationTools(path = dft_subdir_path, 
+                                        lot = self.params["lot"], 
+                                        max_mem = self.params["max_mem"])
 
        if self.params["submit"] == False:
-           OT.reaction_workflow(rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
+           OT.reaction_workflow(rbonds = rbonds, 
+                                path_ref_educts = path_ref_educts, 
+                                path_ref_products = path_ref_products, 
+                                path_ref_ts = path_ref_ts, 
+                                atom_ids_dict = atom_ids_dict,
+                                gcart = self.params["gcart"],
+                                start_lot = start_lot,
+                                reactionID = reactionID
+                                )
        else:
-           OT.write_submit_py(rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
+           OT.write_submit_py(rbonds = rbonds, 
+                              path_ref_educts = path_ref_educts, 
+                              path_ref_products = path_ref_products, 
+                              path_ref_ts = path_ref_ts, 
+                              atom_ids_dict = atom_ids_dict, 
+                              gcart = self.params["gcart"], 
+                              start_lot = start_lot, 
+                              reactionID = reactionID)
            #submit the job to the SLURM queuing system and get the assigned job id
            os.chdir(dft_subdir_path)
            sbatchout = os.popen("sbatch -J r.%d %s" %(reactionID, os.path.join(self.dft_path,"submit.sh"))).read()
@@ -205,6 +225,7 @@ start_lotID = rdb.get_lot(start_lot)
 #         , "ntasks"            : 8
 #         , "maxnodes"          : 4
 #         , "partition"         : "normal"
+#         , "gcart"             : 4
 #         }
 
 file = open(cmd_file, "r")
@@ -291,10 +312,16 @@ for r in reactions:
                     time.sleep(30)
                     ncurjobs, curjobids = get_ncurjobs(jobids)
                 # submit the job to the queue and get the job id from the queing system
- 
                 dft_subdir_path, exists = calculator.make_dft_subdir(r.id, db_path)
                 if not exists:
-                    jobid = calculator.optimize(r.id, dft_subdir_path, rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict)
+                    jobid = calculator.optimize(reactionID        = r.id,
+                                                dft_subdir_path   = dft_subdir_path,
+                                                rbonds            = rbonds, 
+                                                path_ref_educts   = path_ref_educts, 
+                                                path_ref_products = path_ref_products, 
+                                                path_ref_ts       = path_ref_ts,  
+                                                atom_ids_dict     = atom_ids_dict, 
+                                                start_lot         = start_lot )
                     jobids.append(jobid)
                 elif exists:
                     print('The directory %s already exists. Please, check if the directory contains the results.' %dft_subdir_path)
