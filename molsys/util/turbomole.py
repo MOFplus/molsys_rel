@@ -569,7 +569,8 @@ class Mol:
         # 1) Detect the connectivity information by bond order
         self.mol.detect_conn_by_bo()
         # 2) Make the molecular graph
-        self.mol.addon("graph")
+        if  not hasattr(self.mol, "graph"):
+            self.mol.addon("graph")
         self.mol.graph.make_graph()
         mg = self.mol.graph.molg
         return mg
@@ -1062,13 +1063,15 @@ class OptimizationTools:
             sys.exit()
 
         # 5. Make molecular graphs of the DFT opt species and extracted one
-        mol_spec.addon("graph")
+        if not hasattr(mol_spec, "graph"):
+            mol_spec.addon("graph")
         mol_spec.graph.make_graph()
         mg_spec = mol_spec.graph.molg
         mol_spec.graph.plot_graph('mg_%s_%d'  %(label, n))
         mol_spec.write("mol_%s_%d.xyz" %(label, n))
 
-        mol_match.addon("graph")
+        if  not hasattr(mol_match, "graph"):
+            mol_match.addon("graph")
         mol_match.graph.make_graph()
         mg_match = mol_match.graph.molg
         mol_match.graph.plot_graph('mg_match')
