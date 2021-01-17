@@ -306,7 +306,7 @@ class RDB:
         
         mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         sumform = mol.get_sumformula()
-        if  mol.graph is None:
+        if  not hasattr(mol, "graph"):
            mol.addon("graph")
         mol.addon("obabel")
         mol.graph.make_graph()
