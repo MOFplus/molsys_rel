@@ -263,14 +263,14 @@ for r in reactions:
         n_ed = len(reac2educt_spec)
         n_prod = len(reac2prod_spec)
     
-        # Check if the reaction is unimolecular or not.
-        if n_ed == 1 and n_prod == 1:
-            unimolecular = True
-            uni_equal = molsys.addon.graph.is_equal(mol_ed_ref.graph.molg, mol_prod_ref.graph.molg)
-            if uni_equal[0]:
-                 print('The graph of the initial and final structure of the reaction %d at level of theory %s is the same.' %(r.id, start_lot))
-        else:
-            unimolecular = False
+        ### Check if the reaction is unimolecular or not.
+        ##if n_ed == 1 and n_prod == 1:
+        ##    unimolecular = True
+        ##    uni_equal = molsys.addon.graph.is_equal(mol_ed_ref.graph.molg, mol_prod_ref.graph.molg)
+        ##    if uni_equal[0]:
+        ##         print('The graph of the initial and final structure of the reaction %d at level of theory %s is the same.' %(r.id, start_lot))
+        ##else:
+        ##    unimolecular = False
 
         # 1) Get the reference structures from the startLOT for the further optimizations
         # educts

@@ -135,7 +135,7 @@ class GeneralTools:
 
     def calculate_spin_multiplicity_from(self, nalpha, nbeta):
         """ Calculate the spin multiplicity from the number of alpha and beta electrons:
-            M = 2S+1 = 2*(nalpha-nbeta)*(1/2)+1 = (nalpha-nbeta)+1
+            M = 2ms+1 = 2*(nalpha-nbeta)*(1/2)+1 = (nalpha-nbeta)+1
         """
         M = abs(nalpha-nbeta)+1
         return M
@@ -413,11 +413,11 @@ class GeneralTools:
 
 class GeometryTools:
 
-    def add_noise(mol, active_atoms = [], upto = 0.1):
+    def add_noise(mol, active_atoms = [], upto = 0.05):
         """ Returns xyz coordinates with a noise using a uniform distribution.
 
         First shifts the noise to the origin by subtracting 0.5,
-        then divides it by 10 to get a noise up to 0.1 Angstrom by default.
+        then divides it by 10 to get a noise up to 0.05 Angstrom by default.
 
         No noise is added to the active atoms.
         """
@@ -785,8 +785,8 @@ class OptimizationTools:
         os.chdir(self.maindir)
         return
 
-    def common_workflow(self, mol, title = '', add_noise = True, TS = False, M = None, active_atoms = [], fermi = True):
-        ''' Adds a noise within 0.1 Angstrom to the reference structure and performs single point calculation
+    def common_workflow(self, mol, title = '', add_noise = True, upto = 0.05, pre_defined_M = False, M = None, lowest_energy_M = False,  active_atoms = [], fermi = True):
+        ''' Adds a noise within 0.05 Angstrom to the reference structure and performs single point calculation
         M              : the spin multiplicity
         fermi          : apply Fermi smearing or not?
         '''
@@ -794,7 +794,7 @@ class OptimizationTools:
         GT = GeneralTools(self.path)
         atom = False
         if add_noise:
-            xyz = GeometryTools.add_noise(mol, active_atoms = active_atoms, upto = 0.05)
+            xyz = GeometryTools.add_noise(mol, active_atoms = active_atoms, upto = upto)
         else:
             xyz = mol.xyz
 
@@ -869,7 +869,7 @@ class OptimizationTools:
             M_fermi = GT.calculate_spin_multiplicity_from(nalpha, nbeta)
 
             ### TS ###
-            if TS:
+            if pre_defined_M:
                 assert M != None, "You must provide a multiplicity for a TS!"
  
                 # 7. If the multiplicity changes in the Fermi smearing, change the multiplicity such that the desired multiplicity is used.
@@ -883,7 +883,7 @@ class OptimizationTools:
                         sys.exit()
 
             ### Equilibrium Structure ###
-            else:
+            if lowest_energy_M:
                 # 7. Now calculate two lower spin multiplicities
                 dict_energies = {energy:M_fermi}
                 if nel > 1:
@@ -1314,7 +1314,7 @@ class OptimizationTools:
         os.system('cpc %s' %displaced)
         QM_path = os.path.join(path, displaced)
 
-        # 2. Remove the gradient
+        # 2. Remove the gradient to not to use the TS
         os.remove(os.path.join(QM_path,'gradient'))
 
         # 3. Define the internal coordinates
@@ -1540,7 +1540,7 @@ class OptimizationTools:
         return barrierless, ts_paths
 
 
-    def ts_pre_optimization(self, mol, M, rbonds, gcart = 3, add_noise = True):
+    def ts_pre_optimization(self, mol, M, rbonds, gcart = 3, add_noise = True, upto = 0.05):
         # we only fix the internal coordinates between the atoms involved in bond-order change. So convert the bonds into atoms list.
         # indexing of active_atoms goes as 1,2,3,... whereas that of rbonds goes as 0,1,2,...
         active_atoms = []
@@ -1554,7 +1554,7 @@ class OptimizationTools:
         GT = GeneralTools(QM_path)
 
         # Add noise to the structure and perform the single point energy calculation
-        atom, energy = OT.common_workflow(mol = mol, TS = True, fermi = True, M = M, active_atoms = active_atoms, add_noise = add_noise)
+        atom, energy = OT.common_workflow(mol = mol, pre_defined_M = True, fermi = True, M = M, active_atoms = active_atoms, add_noise = add_noise, upto = 0.05)
 
         # freeze the active atoms
         OT.freeze_atoms(active_atoms)
@@ -1629,7 +1629,7 @@ class OptimizationTools:
                 mol_opt = mols_opt_dict[key]
                 if mol_QM_ref.multiplicity != mol_opt.multiplicity:
                     print('The multiplicity of the QM reference %s_%d does not match with the re-optimized IRC end point, which is under %s.' %(label, i_ref, QM_paths_dict[key]))
-        return QM_paths_dict
+        return multiplicities, QM_paths_dict
 
 
     def ts_workflow(self, QM_path_ts, mols_ed_QM_ref, mols_prod_QM_ref, gcart = 4, M = None, mode = 'mg'):
@@ -1680,11 +1680,16 @@ class OptimizationTools:
                   reason += reason_comparison
 
                   # 8. If the molecular graphs are similar, then optimize the end points.
-                  QM_paths_dict_min = self.optimize_irc_end_points(M = M, displaced = 'minus', mols_QM_ref = mols_ed_QM_ref,   match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
-                  QM_paths_dict_plus = self.optimize_irc_end_points(M = M, displaced = 'plus',  mols_QM_ref = mols_prod_QM_ref, match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
+                  M_min, QM_paths_dict_min = self.optimize_irc_end_points(M = M, displaced = 'minus', mols_QM_ref = mols_ed_QM_ref,   match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
+                  M_plus, QM_paths_dict_plus = self.optimize_irc_end_points(M = M, displaced = 'plus',  mols_QM_ref = mols_prod_QM_ref, match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
 
                   QM_paths_dict = {**QM_paths_dict_min, **QM_paths_dict_plus}
                   QM_paths_dict['ts'] = QM_path_ts
+
+                  spin_not_conserved, M_list = self.determine_multiplicity(M_min, M_plus)
+                  if spin_not_conserved:
+                      converged = False
+                      reason += 'Spin forbidden!'
                elif inum == 0:
                   converged = False
                   reason += 'There are no imaginary frequencies.'
@@ -1694,11 +1699,11 @@ class OptimizationTools:
         return converged, is_similar, QM_paths_dict, reason
 
 
-    def educts_and_products_workflow(self, mols, add_noise = True, up_to = 0.1, label = 'eq_spec', gcart = 4):
+    def educts_and_products_workflow(self, mols, add_noise = True, upto = 0.05, label = 'eq_spec', gcart = 4):
         ''' This is meant to be called from the reaction_workflow method. But can also probably called separately.
             mols     : The mol objects of the structures to be optimised.
             add_noise: Should a noise be added to the structures?
-            up_to    : How much maximum noise should be added to the structures? (in Angstrom)
+            upto    : How much maximum noise should be added to the structures? (in Angstrom)
             label    : Label to name the directories; e.g., 'product', 'educt', etc...
             gcart    : Threshold for geometry optimization, converge maximum norm of cartesian gradient up to 10^(-gcart) atomic units.
         '''
@@ -1716,7 +1721,7 @@ class OptimizationTools:
             mg_ini = mol_ini.graph.molg            
 
             # 2. Add noise to the structure and perform the single point energy calculation
-            atom, energy = OT.common_workflow(mol = mol_ini, add_noise = add_noise)
+            atom, energy = OT.common_workflow(mol = mol_ini, add_noise = add_noise, upto = upto, lowest_energy_M = True)
 
             # 3. Get the multiplicity
             nalpha, nbeta = GeneralTools(QM_path).get_nalpha_and_nbeta_from_ridft_output()
@@ -1835,6 +1840,77 @@ class OptimizationTools:
         f_json.close()
         return
 
+    def get_M_range(self, M):
+        assert len(M) == 2, "This function can only couple two spins"
+        # ms = (n_alpha-n_beta)*(1/2): minor spin quantum number, which is the z-component of the spin angular momentum
+        #
+        # When the spins couple:
+        # ms total = (ms_1-ms_2), (ms_1-ms_2)+1, ..., ms_1+ms_2
+        #
+        # e.g., |O + O -> O2
+        #    ---------------
+        #    m_s|1   1    1
+        #       
+        # ms_1 = 1, ms_2 = 1 => ms_total = 2,1,0
+        #
+        # M = 2*ms+1 (The minimal multiplicity that the system can have)
+        # ms_1 = (M_1 - 1)/2
+        # ms_2 = (M_2 - 1)/2
+        # M = 2*((ms_1-ms_2)+1, 2*((ms_1-ms_2)+1)+1, ..., 2*(ms_1+ms_2+1)+1
+        # M = (M_1-M_2)+1, (M_1-M_2+2)+1, ..., (M_1+M_2-2)+1
+        # M = M_1-M_2+1, M_1-M_2+3, ..., M_1+M_2-1
+        #     \_______/                  \_______/
+        #       M_min                      M_max
+        #
+        M_max = int(    M[0] + M[1] -  1)
+        M_min = int(abs(M[0] - M[1]) + 1)
+        M_range = range(M_min, M_max+2, 2)
+        return M_range
+
+    def determine_multiplicity(self, M_ed, M_prod):
+        n_ed = len(M_ed)
+        n_prod = len(M_prod)
+        spin_not_conserved = False
+        M_list = []
+        if n_ed == 1 and n_prod == 1:
+            if M_ed[0] != M_prod[0]:
+                spin_not_conserved = True
+                M_list = [M_ed[0], M_prod[0]]
+            else:
+                M_list = M_ed
+        elif n_ed == 2 and n_prod == 1:
+            M_ed_range = self.get_M_range(M_ed)
+            M_int = list(set.intersection(set(M_prod),set(M_ed_range)))
+            M_uni = list(set.union(set(M_prod),set(M_ed_range)))
+            if M_int == []:
+                spin_not_conserved = True
+                M_list = M_uni
+            else:
+                M_list = M_int
+        elif n_prod == 2 and n_ed == 1:
+            M_prod_range = self.get_M_range(M_prod)
+            M_int = list(set.intersection(set(M_ed),set(M_prod_range)))
+            M_uni = list(set.union(set(M_ed),set(M_prod_range)))
+            if M_int == []:
+                spin_not_conserved = True
+                M_list = M_uni
+            else:
+                M_list = M_int
+        elif n_prod == 2 and n_ed == 2:
+            M_ed_range = self.get_M_range(M_ed)
+            M_prod_range = self.get_M_range(M_prod)
+            M_int = list(set.intersection(set(M_prod_range),set(M_ed_range)))
+            M_uni = list(set.union(set(M_prod_range),set(M_ed_range)))
+            if M_int == []:
+                spin_not_conserved = True
+                M_list = M_uni
+            else:
+                M_list = M_int
+        else:
+            print("This function cannot coupled more than two spins.")
+            sys.exit()
+        return spin_not_conserved, M_list
+
 
 
     def reaction_workflow(self, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', atom_ids_dict = {}, gcart = 4, start_lot = '', reactionID = 0):
@@ -1866,24 +1942,16 @@ class OptimizationTools:
             mol_ini = molsys.mol.from_file(path_ref)
             mol_ini.detect_conn_by_bo()
             mols_ini_prod.append(mol_ini)
-        multiplicities_ed,   QM_paths_ed  , mols_opt_ed    = self.educts_and_products_workflow(mols = mols_ini_ed,   label = 'educt', add_noise = True, gcart = gcart)
-        multiplicities_prod, QM_paths_prod, mols_opt_prod  = self.educts_and_products_workflow(mols = mols_ini_prod, label = 'product',  add_noise = True, gcart = gcart)
+        M_ed,   QM_paths_ed  , mols_opt_ed    = self.educts_and_products_workflow(mols = mols_ini_ed,   label = 'educt', add_noise = True, gcart = gcart)
+        M_prod, QM_paths_prod, mols_opt_prod  = self.educts_and_products_workflow(mols = mols_ini_prod, label = 'product',  add_noise = True, gcart = gcart)
 
         uni = False
         if n_ed == 1 and n_prod == 1: uni = True
 
         # 2. Determine the multiplicity of the reaction
-        M_ed   = sum(multiplicities_ed)   - n_ed   + 1 
-        M_prod = sum(multiplicities_prod) - n_prod + 1
-
-        if uni:
-            if M_ed != M_prod:
-                M_list = [M_ed, M_prod]
-            else:
-                M_list = [M_ed]
-        else:
-            M_list = [min(M_ed, M_prod)]
-
+        spin_not_conserved, M_list = self.determine_multiplicity(M_ed, M_prod)
+        skip_woelfling = False
+        if spin_not_conserved : skip_woelfling = True
 
         print("=========== TS BY ONLY EIGENVECTOR FOLLOWING ============")
         # 3. Pre-optimize the TS contraining the atoms of the reactive bonds
@@ -1928,7 +1996,7 @@ class OptimizationTools:
                         try_woelfling = True
 
             # 5. Perform the woelfling calculation
-            if try_woelfling:
+            if try_woelfling and not skip_woelfling:
                 print("============ WOELFLING CALCULATION =============")
                 # the coords file
                 coords_path = os.path.join(woelfling_path,'coords')
