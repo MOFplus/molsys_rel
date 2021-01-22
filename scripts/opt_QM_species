@@ -193,7 +193,7 @@ def get_ncurjobs(jobids):
 # Start of main program 
 #
 if len(sys.argv) < 6:
-    print ("usage:  opt_md_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
+    print ("usage:  opt_QM_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
     exit()
     
 
@@ -222,7 +222,7 @@ start_lotID = rdb.get_lot(start_lot)
 # ------------------------------
 # DFT could look like
 #params = { "calculator"        : "turbomole"
-#         , "stage"             : "level1:DFT" (or "level2:DFT" or "level3:PNO-CCSD")
+#         , "level"             : "level1:DFT" (or "level2:DFT" or "level3:PNO-CCSD")
 #         , "lot"               : "ri-utpss/SVP"
 #         , "max_mem"           : 3000
 #         , "submit"            : True
@@ -240,7 +240,7 @@ params = ast.literal_eval(content)
 # sanity check(s)
 assert "calculator" in params, "Calculator defined"
 assert "lot" in params, "Level of theory is given for the calculator"
-assert "stage" in params, "The stage of calculation is defined: level1:dft, level2:dft, level3:pno-ccsd"
+assert "level" in params, "The level of calculation is defined: level1:dft, level2:dft, level3:pno-ccsd"
 
 
 if params["calculator"] == "turbomole":
@@ -283,7 +283,7 @@ for r in reactions:
             ##########################################################
             #   LEVEL 1: DFT calculations from ReaxFF/xTB strutures  #
             ##########################################################
-            if params["stage"].lower() == "level1:dft":
+            if params["level"].lower() == "level1:dft":
 
                 # 1) Get the reference structures from the startLOT for the further optimizations
 
@@ -340,7 +340,7 @@ for r in reactions:
             ########################################################
             #             LEVEL 2: DFT Re-optimization             #
             ########################################################
-            elif params["stage"].lower() == "level2:dft":
+            elif params["level"].lower() == "level2:dft":
                 for r2s in reac2spec:
                     specID = r2s["speciesID"]
                     ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()

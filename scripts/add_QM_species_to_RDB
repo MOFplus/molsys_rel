@@ -11,14 +11,16 @@ from molsys.util import turbomole
 
 
 # input
-if len(sys.argv) < 2:
-    print ("usage:  add_dft_species_add_to_RDB <db_path> <dft_path>")
+if len(sys.argv) < 3:
+    print ("usage:  add_QM_species_to_RDB <db_path> <dft_path> <level>")
     exit()
 
 test = True
 
-db_path   = os.path.abspath(sys.argv[1])
-dft_path  = os.path.abspath(sys.argv[2])
+db_path  = os.path.abspath(sys.argv[1])
+dft_path = os.path.abspath(sys.argv[2])
+level    = os.path.abspath(sys.argv[3])
+
 rdb = RDB.RDB(db_path)
 db = rdb.db
  
@@ -31,38 +33,63 @@ for path in os.listdir(dft_path):
 
 #TODO Check if the data is already added beforehand...
 for dft_subdir_path in dft_subdir_paths:
-    f_json = os.path.join(dft_subdir_path,'r.json')
-    if os.path.isfile(f_json):
-         with open(f_json) as f:
-             data = json.load(f)
-             
-             for rxn in data:
-                 r  = data[rxn]['reaction']
 
-                 # Register a new reaction
-                 origin = db(db.reactions.id == r['origin']).select().first()
-                 print(origin.id, r['origin'])
-                 reactID = rdb.register_reaction(uni = r['uni'], change = r['change'], source = r['source'], origin = origin)
-                 opt_spec = data[rxn]['opt_spec']
-                 for i in opt_spec:
-                     spec_info = opt_spec[i]
-                     abs_path = os.path.abspath(os.path.join(dft_subdir_path,spec_info['path']))
-                     rel_path = os.path.relpath(abs_path, db_path)
-                     print(rel_path)
-                     OT = turbomole.OptimizationTools(abs_path)
-                     mol = OT.get_mol_from_coord()
-                     # Add to the species table
-                     specID, is_new = rdb.add_species(mol = mol)
-                     # Add to the reac2spec table
-                     reac2specID = rdb.add_reac2spec(reactID = reactID, specID = specID, itype = spec_info['itype'])
-                     # Add to the opt_species table
-                     rdb.add_opt_species(mol         = mol,
-                                         specID      = specID, 
-                                         lot         = spec_info['lot'], 
-                                         energy      = spec_info['energy'], 
-                                         path        = rel_path,
-                                         change_molg = r['change'],
-                                         rbonds      = None,
-                                         info        = spec_info['info'])
-    else:
-        print("%s does not exist." %f_json)
+
+    if 'level1' in level.lower():
+        f_json = os.path.join(dft_subdir_path,'r.json')
+        if os.path.isfile(f_json):
+             with open(f_json) as f:
+                 data = json.load(f)
+                 
+                 for rxn in data:
+                     r  = data[rxn]['reaction']
+
+                     # Register a new reaction
+                     origin = db(db.reactions.id == r['origin']).select().first()
+                     print(origin.id, r['origin'])
+                     reactID = rdb.register_reaction(uni = r['uni'], change = r['change'], source = r['source'], origin = origin)
+                     opt_spec = data[rxn]['opt_spec']
+                     for i in opt_spec:
+                         spec_info = opt_spec[i]
+                         abs_path = os.path.abspath(os.path.join(dft_subdir_path,spec_info['path']))
+                         rel_path = os.path.relpath(abs_path, db_path)
+                         print(rel_path)
+                         OT = turbomole.OptimizationTools(abs_path)
+                         mol = OT.get_mol_from_coord()
+                         # Add to the species table
+                         specID, is_new = rdb.add_species(mol = mol)
+                         # Add to the reac2spec table
+                         reac2specID = rdb.add_reac2spec(reactID = reactID, specID = specID, itype = spec_info['itype'])
+                         # Add to the opt_species table
+                         rdb.add_opt_species(mol         = mol,
+                                             specID      = specID, 
+                                             lot         = spec_info['lot'], 
+                                             energy      = spec_info['energy'], 
+                                             path        = rel_path,
+                                             change_molg = r['change'],
+                                             rbonds      = None,
+                                             info        = spec_info['info'])
+        else:
+            print("%s does not exist." %f_json)
+
+    elif 'level2' in level.lower():
+        f_json = os.path.join(dft_subdir_path,'optspec.json')
+        if os.path.isfile(f_json):
+             with open(f_json) as f:
+                 data = json.load(f)
+                 OT = turbomole.OptimizationTools(dft_subdir_path)
+                 mol = OT.get_mol_from_coord()
+                 rel_path = os.path.relpath(dft_subdir_path, db_path)
+                 # Add to the opt_species table
+                 rdb.add_opt_species(mol         = mol,
+                                     specID      = data['specID'],
+                                     lot         = data['lot'],
+                                     energy      = data['energy'],
+                                     path        = rel_path,
+                                     change_molg = data['change_molg'],
+                                     rbonds      = None,
+                                     info        = data['info'])
+
+        else:
+            print("%s does not exist." %f_json)
+
