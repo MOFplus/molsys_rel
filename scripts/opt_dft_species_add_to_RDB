@@ -29,7 +29,7 @@ for path in os.listdir(dft_path):
    if os.path.isdir(dft_subdir_path):
        dft_subdir_paths.append(dft_subdir_path)
 
-
+#TODO Check if the data is already added beforehand...
 for dft_subdir_path in dft_subdir_paths:
     f_json = os.path.join(dft_subdir_path,'r.json')
     if os.path.isfile(f_json):
@@ -60,7 +60,7 @@ for dft_subdir_path in dft_subdir_paths:
                                          specID      = specID, 
                                          lot         = spec_info['lot'], 
                                          energy      = spec_info['energy'], 
-                                         path        = spec_info['path'],
+                                         path        = rel_path,
                                          change_molg = r['change'],
                                          rbonds      = None,
                                          info        = spec_info['info'])

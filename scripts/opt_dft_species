@@ -21,7 +21,7 @@ from molsys.util import turbomole
 #
 class turbomole_calculator:
 
-    def __init__(self, params : dict):
+    def __init__(self, params : dict, db_path = ""):
        # sanity checks
        assert "submit" in params, "To submit or not to submit? That is the queuing question."
 
@@ -36,14 +36,15 @@ class turbomole_calculator:
        # get the current working directory
        self.maindir = os.getcwd()
 
-       # if a path for the data is not assigned, set the current working directory for that
-       self.data_dir = params["data_storage_path"]
+       # data is stored under the database storage directory
+       self.data_dir = os.path.join(db_path, "storage")
 
        # create a DFT folder with the name of the method
        dft_functional = lot_DFT.split("/")[0]
        basis_set = lot_DFT.split("/")[1]
        dft_dir_name = "-".join([dft_functional,basis_set])
        self.dft_path = os.path.join(self.data_dir, dft_dir_name)
+       print(self.dft_path)
        if not os.path.isdir(self.dft_path):
            os.mkdir(self.dft_path)
 
@@ -72,12 +73,11 @@ class turbomole_calculator:
            njobs_per_node = CPUS/params["ntasks"]
            self.max_njobs = int(params["maxnodes"]*njobs_per_node)
        self.params = params
-       print(self.params)
        return
 
-    def make_dft_subdir(self, reactionID, db_path):
+    def make_dft_subdir(self, ID, ID_type = "reaction"):
        # Create the subdirectory for the DFT calculation
-       subdir_name = 'from_reaction_%05d' % reactionID
+       subdir_name = 'from_%s_%05d' % (ID_type,ID)
        dft_subdir_path = os.path.abspath(os.path.join(self.dft_path, subdir_name))
        exists = os.path.isdir(dft_subdir_path)
        if not exists:
@@ -85,11 +85,12 @@ class turbomole_calculator:
        return dft_subdir_path, exists
 
 
-    def optimize(self, reactionID, dft_subdir_path, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '',  atom_ids_dict = {}, start_lot = ''):
+    def optimize_level1(self, reactionID, dft_subdir_path, start_lot = '', path_ref_educts = [], path_ref_products = [], path_ref_ts = '',  rbonds = [], atom_ids_dict = {}):
        # initialize the OptimizationTools class from the turbomole module under molsys/util/turbomole.py
        OT = turbomole.OptimizationTools(path = dft_subdir_path, 
                                         lot = self.params["lot"], 
-                                        max_mem = self.params["max_mem"])
+                                        max_mem = self.params["max_mem"],
+                                        gcart = self.params["gcart"])
 
        if self.params["submit"] == False:
            OT.reaction_workflow(rbonds = rbonds, 
@@ -97,19 +98,19 @@ class turbomole_calculator:
                                 path_ref_products = path_ref_products, 
                                 path_ref_ts = path_ref_ts, 
                                 atom_ids_dict = atom_ids_dict,
-                                gcart = self.params["gcart"],
                                 start_lot = start_lot,
                                 reactionID = reactionID
                                 )
        else:
-           OT.write_submit_py(rbonds = rbonds, 
+           OT.write_submit_py_level1(
                               path_ref_educts = path_ref_educts, 
                               path_ref_products = path_ref_products, 
                               path_ref_ts = path_ref_ts, 
                               atom_ids_dict = atom_ids_dict, 
-                              gcart = self.params["gcart"], 
                               start_lot = start_lot, 
-                              reactionID = reactionID)
+                              reactionID = reactionID,
+                              rbonds = rbonds
+                              )
            #submit the job to the SLURM queuing system and get the assigned job id
            os.chdir(dft_subdir_path)
            sbatchout = os.popen("sbatch -J r.%d %s" %(reactionID, os.path.join(self.dft_path,"submit.sh"))).read()
@@ -118,30 +119,34 @@ class turbomole_calculator:
            os.chdir(self.maindir)
        return jobid
 
-    def get_multiplicity(dft_subdir_path):
-       """ Calculate the spin multiplicity from the ridft output.
-       """
-       GT = turbomole.GeneralTools(dft_subdir_path)
-       nalpha, nbeta = GT.get_nalpha_and_nbeta_from_ridft_output()
-       M = GT.calculate_spin_multiplicity_from(nalpha, nbeta) 
-       return M
+    def optimize_level2(self, specID, dft_subdir_path, path_ref = '', ts = False):
+       OT = turbomole.OptimizationTools(path = dft_subdir_path,
+                                        lot = self.params["lot"],
+                                        max_mem = self.params["max_mem"],
+                                        gcart = self.params["gcart"])
 
-    def get_energy(dft_subdir_path, atom):       
-       """ Read the energy from the aoforce output (or from the ridft output for atoms).
-       SPE: float : Single point energy
-       ZPE: float : Zero point vibrational energy
-       """
-       GT = turbomole.GeneralTools(dft_subdir_path)
-       if atom:
-           SPE = GT.get_energy_from_ridft_out()
-           ZPE = 0.0
+       if self.params["submit"] == False:
+           OT.dft_re_optimization(specID = specID,
+                                  path_ref = path_ref,
+                                  ts = ts
+                                  )
        else:
-           SPE, ZPE = GT.get_energy_from_aoforce_out() 
-       return  SPE, ZPE
+           OT.write_submit_py_level2(specID = specID,
+                                     path_ref = path_ref,
+                                     ts = ts
+                                     )
+           #submit the job to the SLURM queuing system and get the assigned job id
+           os.chdir(dft_subdir_path)
+           sbatchout = os.popen("sbatch -J spec%d %s" %(specID, os.path.join(self.dft_path,"submit.sh"))).read()
+#           sbatchout = os.popen("sbatch -J r.%d --reservation oyoender_7 %s" %(reactionID, os.path.join(self.dft_path,"submit.sh"))).read()
+           jobid = sbatchout.split()[3]
+           os.chdir(self.maindir)
+       return jobid
 
-    def get_mol(dft_subdir_path):
-       os.system("t2x %s/coord > %s/coord.xyz" %(dft_subdir_path, dft_subdir_path))
-       mol = molsys.mol.from_file(os.path.join(dft_subdir_path,"coord.xyz"))
+
+    def get_mol(subdir_path):
+       os.system("t2x %s/coord > %s/coord.xyz" %(subdir_path, subdir_path))
+       mol = molsys.mol.from_file(os.path.join(subdir_path,"coord.xyz"))
        return mol
 
 
@@ -192,7 +197,7 @@ if len(sys.argv) < 6:
     exit()
     
 
-db_path   = sys.argv[1]
+db_path   = os.path.abspath(sys.argv[1])
 pdlp_path = sys.argv[2]
 pdlp_path = os.path.abspath(pdlp_path)
 stage     = sys.argv[3]
@@ -217,7 +222,7 @@ start_lotID = rdb.get_lot(start_lot)
 # ------------------------------
 # DFT could look like
 #params = { "calculator"        : "turbomole"
-#         , "data_storage_path' : "/home/oyoender/DATA/"
+#         , "stage"             : "level1:DFT" (or "level2:DFT" or "level3:PNO-CCSD")
 #         , "lot"               : "ri-utpss/SVP"
 #         , "max_mem"           : 3000
 #         , "submit"            : True
@@ -235,10 +240,11 @@ params = ast.literal_eval(content)
 # sanity check(s)
 assert "calculator" in params, "Calculator defined"
 assert "lot" in params, "Level of theory is given for the calculator"
-assert "data_storage_path" in params, "The path to where to store the data is given"
+assert "stage" in params, "The stage of calculation is defined: level1:dft, level2:dft, level3:pno-ccsd"
+
 
 if params["calculator"] == "turbomole":
-    calculator = turbomole_calculator(params)
+    calculator = turbomole_calculator(params = params, db_path = db_path)
 
 lotID = rdb.get_lot(params["lot"])
 
@@ -260,72 +266,102 @@ for r in reactions:
         reac2ts_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  0)).select().first()
         reac2educt_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label == -1)).select()
         reac2prod_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  1)).select()
+        reac2spec = db((db.reac2spec.reactionsID == r)).select()
+
+
         n_ed = len(reac2educt_spec)
         n_prod = len(reac2prod_spec)
-    
-        ### Check if the reaction is unimolecular or not.
-        ##if n_ed == 1 and n_prod == 1:
-        ##    unimolecular = True
-        ##    uni_equal = molsys.addon.graph.is_equal(mol_ed_ref.graph.molg, mol_prod_ref.graph.molg)
-        ##    if uni_equal[0]:
-        ##         print('The graph of the initial and final structure of the reaction %d at level of theory %s is the same.' %(r.id, start_lot))
-        ##else:
-        ##    unimolecular = False
-
-        # 1) Get the reference structures from the startLOT for the further optimizations
-        # educts
-        path_ref_educts = []
-        for i,ed in enumerate(reac2educt_spec):
-            ed_ref = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
-            mol_ed_ref = get_mol_from_opt_spec(ed_ref)
-            path_ref_educts.append(get_opt_spec_path(ed_ref))    
-        # products
-        path_ref_products = []
-        for i,prod in enumerate(reac2prod_spec):
-            prod_ref = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
-            mol_prod_ref = get_mol_from_opt_spec(prod_ref)
-            path_ref_products.append(get_opt_spec_path(prod_ref))
-        # transition state
-        ts_ref =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
-        path_ref_ts = get_opt_spec_path(ts_ref)
-        # store the indices as of from MD simulation to extract the atoms which belong to educts or products from the TS structure
-        # this is needed if woelfling calculation is necessary
-        revent    = db( db.revent.reactionsID == r.id ).select().first()
-        md_ed_species   = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == -1)& (db.md_species.react_compl == False)).select()
-        md_prod_species = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 1)& (db.md_species.react_compl == False)).select()
-        md_ts = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 0)).select().first()
-        atom_ids_dict = {'ts':md_ts.atomids}
-        for i,spec in enumerate(md_ed_species):
-            atom_ids_dict['educt_%d' %(i+1)] = spec.atomids
-        for i,spec in enumerate(md_prod_species):
-            atom_ids_dict['product_%d' %(i+1)] = spec.atomids
-
-        # Get the information on reactive bonds
-        rbonds = ts_ref["rbonds"]
-        
-        if params["calculator"] == "turbomole":
-            if params["submit"]:
-                # submit the jobs to the specifies number of total cores.
-                print(ncurjobs, calculator.max_njobs)
-                while ncurjobs == calculator.max_njobs:
-                    print("Maximum number of jobs running at the same time is reached. Waiting for the jobs %s to finish." %str(list(curjobids)))
-                    time.sleep(30)
-                    ncurjobs, curjobids = get_ncurjobs(jobids)
-                # submit the job to the queue and get the job id from the queing system
-                dft_subdir_path, exists = calculator.make_dft_subdir(r.id, db_path)
-                if not exists:
-                    jobid = calculator.optimize(reactionID        = r.id,
-                                                dft_subdir_path   = dft_subdir_path,
-                                                rbonds            = rbonds, 
-                                                path_ref_educts   = path_ref_educts, 
-                                                path_ref_products = path_ref_products, 
-                                                path_ref_ts       = path_ref_ts,  
-                                                atom_ids_dict     = atom_ids_dict, 
-                                                start_lot         = start_lot )
-                    jobids.append(jobid)
-                elif exists:
-                    print('The directory %s already exists. Please, check if the directory contains the results.' %dft_subdir_path)
+ 
+        if params["submit"]:
+            # submit the jobs to the specifies number of total cores.
+            print(ncurjobs, calculator.max_njobs)
+            while ncurjobs == calculator.max_njobs:
+                print("Maximum number of jobs running at the same time is reached. Waiting for the jobs %s to finish." %str(list(curjobids)))
+                time.sleep(30)
                 ncurjobs, curjobids = get_ncurjobs(jobids)
-            else:
-                print("Not implemented yet.")
-                exit()
+
+            ##########################################################
+            #   LEVEL 1: DFT calculations from ReaxFF/xTB strutures  #
+            ##########################################################
+            if params["stage"].lower() == "level1:dft":
+
+                # 1) Get the reference structures from the startLOT for the further optimizations
+
+                # educts
+                path_ref_educts = []
+                for i,ed in enumerate(reac2educt_spec):
+                    ed_ref = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
+                    mol_ed_ref = get_mol_from_opt_spec(ed_ref)
+                    path_ref_educts.append(get_opt_spec_path(ed_ref))    
+
+                # products
+                path_ref_products = []
+                for i,prod in enumerate(reac2prod_spec):
+                    prod_ref = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
+                    mol_prod_ref = get_mol_from_opt_spec(prod_ref)
+                    path_ref_products.append(get_opt_spec_path(prod_ref))
+
+                # transition state
+                ts_ref =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
+                path_ref_ts = get_opt_spec_path(ts_ref)
+
+                # store the indices as of from MD simulation to extract the atoms which belong to educts or products from the TS structure
+                # this is needed if woelfling calculation is necessary
+                revent    = db( db.revent.reactionsID == r.id ).select().first()
+                md_ed_species   = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == -1)& (db.md_species.react_compl == False)).select()
+                md_prod_species = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 1)& (db.md_species.react_compl == False)).select()
+                md_ts = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 0)).select().first()
+                atom_ids_dict = {'ts':md_ts.atomids}
+                for i,spec in enumerate(md_ed_species):
+                    atom_ids_dict['educt_%d' %(i+1)] = spec.atomids
+                for i,spec in enumerate(md_prod_species):
+                    atom_ids_dict['product_%d' %(i+1)] = spec.atomids
+
+                # Get the information on reactive bonds
+                rbonds = ts_ref["rbonds"]
+            
+                if params["calculator"] == "turbomole":
+                    # submit the job to the queue and get the job id from the queing system
+                    dft_subdir_path, exists = calculator.make_dft_subdir(ID = r.id, ID_type = "reaction")
+                    if not exists:
+                        jobid = calculator.optimize_level1(reactionID        = r.id,
+                                                           start_lot         = start_lot,
+                                                           dft_subdir_path   = dft_subdir_path,
+                                                           path_ref_educts   = path_ref_educts, 
+                                                           path_ref_products = path_ref_products, 
+                                                           path_ref_ts       = path_ref_ts,  
+                                                           rbonds            = rbonds, 
+                                                           atom_ids_dict     = atom_ids_dict) 
+                        jobids.append(jobid)
+                    elif exists:
+                        print('The directory %s already exists. Please, check if the directory contains the results.' %dft_subdir_path)
+ 
+
+            ########################################################
+            #             LEVEL 2: DFT Re-optimization             #
+            ########################################################
+            elif params["stage"].lower() == "level2:dft":
+                for r2s in reac2spec:
+                    specID = r2s["speciesID"]
+                    ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
+
+                    if ospec == None:
+                        print("The species %d is not optimized with lot=%s" %(specID,start_lot))
+                    else:
+                        if params["calculator"] == "turbomole":
+
+                            dft_subdir_path, exists = calculator.make_dft_subdir(ID = ospec.id, ID_type = "opt_species")
+                            if not exists:
+                                jobid = calculator.optimize_level2(specID          = specID,
+                                                                   dft_subdir_path = dft_subdir_path,
+                                                                   path_ref        = os.path.join(db_path, ospec.path),
+                                                                   ts              = (r2s["label"] == 0)
+                                                                   )
+                                jobids.append(jobid)
+                            elif exists:
+                                print('The directory %s already exists. Please, check if the directory contains the results.' %dft_subdir_path)
+
+            ncurjobs, curjobids = get_ncurjobs(jobids)
+        else:
+            print("Not implemented yet.")
+            exit()

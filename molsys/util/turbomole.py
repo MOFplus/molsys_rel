@@ -83,15 +83,95 @@ class GeneralTools:
         coord_str += '$end'
         return coord_str
 
+    def coord_to_xyz(self, coord_name="coord"):
+        coord_path = os.path.join(self.path,coord_name)
+        if not os.path.isfile(coord_path):
+            raise FileNotFoundError("Please provide a coord file.")
+        coord = open(coord_path, 'r')
+        str_tmp = ""
+        lines = coord.readlines()
+        natoms = 0
+        for i,line in enumerate(lines):
+            if '$coord' in line:
+                j = 1
+                while '$' not in lines[i+j]:
+                    c = lines[i+j].strip().split()
+                    j += 1
+                    natoms += 1
+                    str_tmp += "%s %19.14f %19.14f %19.14f\n" %(c[3].upper(), float(c[0])/angstrom, float(c[1])/angstrom, float(c[2])/angstrom)
+        
+        str_tmp = "%d\n\n" %natoms+str_tmp
+        return str_tmp
+
+
     def coord_to_mol(self, coord_name="coord"):
         coord_path = os.path.join(self.path,coord_name)
         if not os.path.isfile(coord_path):
             raise FileNotFoundError("Please provide a coord file for invoking define.")
-        coord_xyz_path = os.path.join(self.path,"coord.xyz")
-        os.system("t2x %s > %s" % (coord_path, coord_xyz_path))
-        mol = molsys.mol.from_file(coord_xyz_path, "xyz")
-        os.remove(coord_xyz_path)
+        xyz = self.coord_to_xyz()
+        mol = molsys.mol.from_string(xyz, "xyz")
         return mol
+
+
+    def change_basis_set(self, basis_set, blow_up = True, ref_control_file = "../control",  title = "", ri = True):
+        """
+        Args:
+            blow_up : True  -> Express molecular orbitals of a previous calculation in the new basis
+                      False -> TODO $atomdens to generate start MOs
+            ref_control_file : Path to the control file of the reference calculation
+            ri               : Was the resolution of identity approximation used?
+        """
+        mol = self.coord_to_mol()
+        n_el_type = len(set(mol.elems))
+        define_in_path = os.path.join(self.path,'define.in')
+        f=open(define_in_path,'w')
+        f.write('%s\n' %title)
+        f.write('n\n') # do not change geometry data
+        f.write('y\n') # yes, we want to change ATOMIC ATTRIBUTE DATA (BASES,CHARGES,MASSES,ECPS)
+        f.write('bb all %s\n' %basis_set)
+        f.write('*\n') # terminate this section and write data to control
+        if ri:
+            for i in range(n_el_type):
+                f.write('d\n') # delete the old auxiliary basis set for each atom type
+        if blow_up:
+            f.write('use %s\n' %ref_control_file) #  SUPPLY MO INFORMATION USING DATA FROM <ref_control_file>
+        else:
+            print('Not implemented yet.')
+            sys.exit()
+        control_path = os.path.join(self.path,"control")
+        control = open(control_path,'r')
+        lines = control.readlines()
+        f.write('n\n') # DO YOU WANT TO DELETE DATA GROUPS LIKE
+        f.write('n\n') # we do not want to write natural orbitals
+        if ri:
+            f.write('ri\n')
+            for i in range(n_el_type):
+                f.write('y\n')
+            f.write('q\n') 
+        f.write('q')
+        f.close() 
+        self.invoke_define()
+        return
+
+    def change_dft_functional(self, functional, title = ""):
+        define_in_path = os.path.join(self.path,'define.in')
+        f=open(define_in_path,'w')
+        f.write("%s\n" %title)
+        f.write('n\n') # do not change geometry data
+        f.write('n\n') # do not change atomic attribute data
+        f.write('n\n') # do not change molecular orbital data
+        f.write('n\n') # DO YOU WANT TO DELETE DATA GROUPS LIKE
+        f.write('n\n') # we do not want to write natural orbitals 
+        f.write('dft\n')
+        f.write('func %s\n' %functional)
+        f.write('q\n')
+        f.write('q')
+        f.close()
+        self.invoke_define()
+        return
+ 
+
+
 
     def read_charge_from_control(self):
         c = None
@@ -118,7 +198,15 @@ class GeneralTools:
   
 
     def get_nalpha_and_nbeta_from_ridft_output(self, ridft_out_name='ridft.out'):
-        """ Read the number of alpha and beta electrons from the ridft output file. """
+        """ Read the number of alpha and beta electrons from the ridft output file. 
+            
+            Args:
+                ridft_out_name: the name of the ridft output file.
+
+            Returns:
+                nalpha: Number of occupied alpha shells
+                nbeta: Number of occupied beta shells
+        """
         ridft_path = os.path.join(self.path, ridft_out_name)
         if not os.path.isfile(ridft_path):
             raise FileNotFoundError("There is no ridft output file named %s in the directory %s." %(ridft_out_name, self.path))
@@ -134,14 +222,30 @@ class GeneralTools:
 
 
     def calculate_spin_multiplicity_from(self, nalpha, nbeta):
-        """ Calculate the spin multiplicity from the number of alpha and beta electrons:
-            M = 2ms+1 = 2*(nalpha-nbeta)*(1/2)+1 = (nalpha-nbeta)+1
+        """ Calculate the spin multiplicity from the number of alpha and beta electrons
+
+            Args:
+                nalpha: Number of occupied alpha shells
+                nbeta: Number of occupied beta shells
+
+            Returns
+                M: The minimum possible multiplicity that the system can get
+                   M = 2ms+1 = 2*(nalpha-nbeta)*(1/2)+1 = (nalpha-nbeta)+1
         """
         M = abs(nalpha-nbeta)+1
         return M
 
 
     def _get_n_mos(self, split_line):
+        """ Reads the total number of occupied electrons in a line under the data group
+            $alpha shells or $beta shells
+
+            Args:
+                split_line: list of strings: The striped and split line under $alpha shells or $beta shells data group
+
+            Returns:
+                n_mos: The total number of occupied electrons
+        """
         #  a   1-65       ( 1 )
         if '-' in split_line[1] and ',' not in split_line[1]:
             mos = split_line[1].split('-')
@@ -165,13 +269,18 @@ class GeneralTools:
         return n_mos
 
     def get_M_from_control(self):
+        """ Reads the control file and calculates M
+
+            Returns
+                M: The minimum possible multiplicity that the system can get
+                   M = 2ms+1 = 2*(nalpha-nbeta)*(1/2)+1 = (nalpha-nbeta)+1
+        """
         control_path = os.path.join(self.path,"control")
         lines = []
         with open(control_path,'r') as control:
             for line in control:
                 lines.append(line)
     
-        # 2. If the difference between the occupation and the rounded occupation is less than the threshold, round the occupation number
         nalpha = 0
         nbeta  = 0
         for i,line in enumerate(lines):
@@ -193,9 +302,16 @@ class GeneralTools:
                     j += 1
         M = abs(nalpha-nbeta)+1
         return M
+
     
     def round_fractional_occupation(self, THRESHOLD = 1.0E-7):
-        """ Rounds the occupations and writes a new control file. """
+        """ Rounds the fractional occupations in the control file under $alpha shells and $beta shells
+            and writes a new control file. 
+ 
+            Args:
+                THRESHOLD: The threshold for rounding the occupation of the molecular orbitals
+
+        """
         control_path = os.path.join(self.path,'control')
         if not os.path.isfile(control_path):
             raise FileNotFoundError("There is no control file in the directory %s." % self.path)
@@ -235,8 +351,13 @@ class GeneralTools:
 
 
     def for_c1_sym_change_multiplicity_in_control_by(self, N, nalpha, nbeta):
-        ''' Changes the multiplicity iby N, by changing the occupation of the alpha and beta electrons in the control file. 
-        '''
+        """ Changes the multiplicity by N, by changing the occupation of the alpha and beta electrons in the control file. 
+
+            Args:
+                N: How much lower of higher the multiplicity wants to be changed
+                nalpha: Number of occupied alpha shells
+                nbeta: Number of occupied beta shells
+        """
         if N % 2 != 0:
             print('Provide an even number.')
         else:
@@ -280,17 +401,18 @@ class GeneralTools:
 
     def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot, genprep = 0, scf_dsta = 1.0, fermi = True, nue = False):
         """Creates a tmole input called 'turbo.in' with c1 symmetry.
-        Parameters
-        ----------
-        elems   : the list of elements
-        xyz     : numpy array of shape (len(elems),3)
-        M       : the (initial) spin multiplicity
-        max_mem : Maximum memory per core to use in the calculations.
-        title   : title of the job
-        scf_dsta: start value for the SCF damping.
-        lot     : The QM level of theory, must be string, and according to Tmole manual
-        genprep : 0 -> perform calculation, 1 -> only prepare the input
-        fermi   : Boolean for Fermi smearing
+
+        Args:
+            elems   : the list of elements
+            xyz     : numpy array of shape (len(elems),3)
+            M       : the (initial) spin multiplicity
+            max_mem : Maximum memory per core to use in the calculations.
+            title   : title of the job
+            lot     : The QM level of theory, must be string, and according to Tmole manual
+            genprep : 0 -> perform calculation, 1 -> only prepare the input
+            scf_dsta: start value for the SCF damping.
+            fermi   : Boolean for Fermi smearing
+            nue     : To perform Fermi smearing with a restricted multiplicity, look at the Turbomole manual for further details
         """
         turbo_in_path = os.path.join(self.path,"turbo.in")
         c = xyz*angstrom
@@ -316,21 +438,41 @@ class GeneralTools:
         f.close()
         return
 
+
     def run_tmole(self):
         os.chdir(self.path)
         os.system("tmole &>/dev/null")
         os.chdir(self.maindir)
         return
 
+
     def check_ridft_converged(self, ridft_out_name = 'ridft.out'):
+        """ Reads the ridft output and checks if ridft converged.
+
+            Returns
+                converged: True/False 
+        """
         converged = True
         ridftout = open(os.path.join(self.path, ridft_out_name),'r')
         for line in ridftout:
             if 'ATTENTION: ridft did not converge!' in line:
                 converged = False
+        lst = os.listdir(self.path)
+        for f in lst:
+            f_path = os.path.join(self.path, f)
+            if "diff_dft_oper" in f: os.remove(f_path)
+            if "diff_densmat"  in f: os.remove(f_path)
+            if "diff_fockmat"  in f: os.remove(f_path)
+            if "diff_errvec"   in f: os.remove(f_path)
         return converged
 
+
     def get_energy_from_ridft_out(self, ridft_out_name = 'ridft.out'):
+        """ Reads the ridft output and checks if ridft converged.
+
+            Returns
+                SPE: Single point energy in Hartree
+        """
         ridftout = open(os.path.join(self.path, ridft_out_name),'r')
         for line in ridftout:
            l = line.split()
@@ -338,7 +480,14 @@ class GeneralTools:
                SPE = float(l[4])
         return SPE
 
+
     def get_energy_from_aoforce_out(self, aoforce_out_name = 'aoforce.out'):
+        """ Reads the aoforce output and reads the energy.
+
+            Returns
+                SPE: Single point energy in Hartree
+                ZPE: Zero point vibrational energy in Hartree
+        """
         aoforce_path = os.path.join(self.path, aoforce_out_name)
         with open(aoforce_path) as aoforce:
             for line in aoforce:
@@ -356,9 +505,13 @@ class GeneralTools:
         os.chdir(self.maindir)
         return SPE
 
+
     def change_dsta_to(self, dsta = 1.0):
-        ''' Changes the start value for SCF damping. 
-        '''
+        """ Changes the start value for SCF damping. 
+            
+            Args:
+                dsta: The start value for SCF damping
+        """
         control_path = os.path.join(self.path,'control')
         if not os.path.isfile(control_path):
             raise FileNotFoundError("There is no control file in the directory %s." % self.path)
@@ -371,7 +524,7 @@ class GeneralTools:
                     newlines.append(newline)
                 else:
                     newlines.append(line)
-    
+   
         os.remove(control_path)
         with open(control_path,'w') as new_control:
             for line in newlines:
@@ -380,7 +533,12 @@ class GeneralTools:
 
 
     def kdg(self, dg_name=""):
-        """Removes the data group named <dg_name>."""
+        """ Removes the data group named <dg_name>.
+         
+            Args:
+                dg_name: The data group to be removed in the control file. 
+                         e.g. $rij --> dg_name = "rij"
+        """
         os.chdir(self.path)
         os.system("kdg %s" % dg_name)
         print("The data group %s is removed from the control file." %dg_name)
@@ -389,6 +547,14 @@ class GeneralTools:
 
 
     def similaritycheck_from_mol(self, mol_1, mol_2):
+         """ Runs the fortran script similaritycheck and compares similarity of the two structures.
+
+             Args:
+                 mol_1, mol_2: Mol objects to be compared
+
+             Returns:
+                 is_similar: True/False
+         """
          xyz_1 = os.path.join(self.path,'mol_1.xyz')
          mol_1.write(xyz_1)
          xyz_2 = os.path.join(self.path,'mol_2.xyz')
@@ -400,6 +566,14 @@ class GeneralTools:
 
 
     def similaritycheck_from_xyz(self, xyz_1, xyz_2):
+        """ Runs the fortran script similaritycheck and compares similarity of the two structures.
+
+            Args:
+                xyz_1, xyz_2: The xyz paths of the molecules to be compared
+
+            Returns:
+                is_similar: True/False
+        """
         out = os.popen('''echo "'%s' '%s'" | similaritycheck''' %(xyz_1, xyz_2)).read()
         is_similar = False
         if out.split()[-1] == 'T':
@@ -414,12 +588,21 @@ class GeneralTools:
 class GeometryTools:
 
     def add_noise(mol, active_atoms = [], upto = 0.05):
-        """ Returns xyz coordinates with a noise using a uniform distribution.
+        """ Adds a noise to the structure using a uniform distribution.
 
         First shifts the noise to the origin by subtracting 0.5,
         then divides it by 10 to get a noise up to 0.05 Angstrom by default.
 
         No noise is added to the active atoms.
+
+        Args:
+            mol         : mol object to whom the noise will be added
+            active_atoms: List of atoms to whom the noise will not be added
+                          Note! indexing is 1,2,3,... instead of 0,1,2,...
+            upto        : The maximum noise added to each coordinate in Angstrom
+
+        Returns:
+            xyz : Numpy array of the noise added coordinates (units in Angstrom)
         """
         if active_atoms != []:
             noise_ini = (numpy.random.rand(mol.natoms-len(active_atoms),3)-0.5)*upto
@@ -433,6 +616,14 @@ class GeometryTools:
     def _make_noise_without_active_atoms(mol, noise_ini, active_atoms):
         """ For the case of active atoms (in transition states), makes 
         sure that there is no noise added to the coordinates of these atoms.
+
+        Args:
+            noise_ini: The numpy array which includes noise for all of the atoms of the molecule
+            active_atoms: List of indices of atoms to whom the noise will not be added
+                          Note! indexing is 1,2,3,... instead of 0,1,2,...
+
+        Returns:
+            noise: The numpy array which includes zeros for the active_atoms and the values from noise_ini for the rest                        
         """
         noise_list = noise_ini.tolist()
         noise_to_add = []
@@ -447,8 +638,13 @@ class GeometryTools:
         return noise
 
     def get_point_group_from_mol(mol):
-        """
-        invokes define in a temporary folder to get the assigned symmetry.
+        """ Invokes define in a temporary folder to get the assigned symmetry.
+
+        Args:
+            mol: Mol object
+
+        Returns:
+            point_group: string of the detected point group
         """
         # 1. Create a tmp directory
         curdir = os.getcwd()
@@ -468,6 +664,14 @@ class GeometryTools:
         return point_group
 
     def get_point_group_from_coord(path=os.getcwd(), coord_name='coord'):
+        """ Invokes define in a temporary folder to get the assigned symmetry.
+        Args:
+            path: directory where coord file is located
+            coord_name: Name of the coord file
+
+        Returns:
+            point_group: string of the detected point group
+        """
         mol = GeneralTools(path).coord_to_mol(coord_name)
         point_group = GeometryTools.get_point_group_from_mol(mol)
         return point_group
@@ -481,7 +685,13 @@ class GeometryTools:
         return
     
     def get_point_group_from_control(path=os.getcwd()):
-        """ Reads the point group from control file. """
+        """ Reads the point group from control file. 
+        Args:
+            path: directory where contol file is located
+
+        Returns:
+            point_group: string of the point group  read from control file
+        """
         with open(os.path.join(path,'control')) as control:
              for lines in control:
                  if 'symmetry' in lines:
@@ -513,6 +723,7 @@ class GeometryTools:
         f.close()
         return
 
+
     def _get_natoms_from_control(path=os.getcwd()):
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
@@ -522,7 +733,19 @@ class GeometryTools:
                     natoms = int(lines.strip().split('=')[-1])
         return natoms
 
+
     def change_point_group(path=os.getcwd(), point_group='c1'):
+        """ Invokes define to assign a point group. 
+            Note! If an abelian point group is given, it assigns an abelian subgroup to avoid degenaricies as this needs manual assignment.
+
+        Args:
+            path: the directory where the Turbomole input files are located
+            point_group: The desired point group to be assigned
+
+        Returns:
+            assigned_point_group: The assigned point group
+
+        """
         non_abelian_point_groups = {  'o':'d2',  'oh':'d2h',  'td':'c2v',  'th':'s6',    't':'d2',
                                 'd2d':'c2v','d3d':'s6',  'd4d':'s8',  'd5d':'s10', 'd6d':'s12','d7d':'s14','d8d':'s16',
                                 'd3h':'c2v','d4h':'c4h', 'd5h':'c2v', 'd6h':'c2h', 'd7h':'c2v', 'd8h':'c2h',
@@ -542,7 +765,8 @@ class GeometryTools:
         newnatoms = GeometryTools._get_natoms_from_control(path)
         if natoms != newnatoms:
             raise SymmetryAssignmentChangedtheStructureError("The structure is does not follow the  point group %s symmetry operations. Therefore, while trying to change the symmetry group, new atoms are added to enforce it." % new_point_group)
-        return point_group_to_assign
+        assigned_point_group = point_group_to_assign
+        return assigned_point_group
 
         
 
@@ -553,7 +777,14 @@ class Mol:
         return
 
     def count_number_of_electrons(self, charge=0):
-        """ Counts the number of electrons. """
+        """ Counts the number of electrons. 
+
+        Args:
+            charge: charge of the molecule
+            
+        Returns:
+            nel: number of electrons
+        """
         # The dictionary of number of electrons
         nelectrons = {'H':1,'He':2, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10, 'S':16, 'Cl':17, 'Ar':18} 
         nel = 0
@@ -567,6 +798,7 @@ class Mol:
 
     def make_molecular_graph(self):
         # 1) Detect the connectivity information by bond order
+        #if not any(mol.conn):
         self.mol.detect_conn_by_bo()
         # 2) Make the molecular graph
         if  not hasattr(self.mol, "graph"):
@@ -576,7 +808,11 @@ class Mol:
         return mg
 
     def separate_molecules(self):
-       """Returns a dictionary of mol objects."""
+       """ Separates the molecules according to their molecular graph.
+
+       Returns:
+           mol: a dictionary of mol objects of the separated molecules
+       """
        self.make_molecular_graph()
        mg = self.mol.graph.molg
        # 1) Label the components of the molecular graph to which each vertex in the the graph belongs
@@ -606,6 +842,9 @@ class Mol:
     def get_max_M(self):
         """ Calculates the number of core + valence MOs (nMOs)
         and from there calculates the maximum multiplicity that molecule possibly have.
+
+        Returns:
+            Max_M: the maximum multiplicity that molecule can possibly have
         """
         # The dictionary of the minimal number of atomic orbitals
         # i.e. core + valence shells
@@ -624,15 +863,25 @@ class Mol:
 
  
 class OptimizationTools:
-    """Methods for the optimization of QM species with ridft."""
-    def __init__(self, path=os.getcwd(), lot = 'ri-utpss/SVP', max_mem = 500):
+    """Methods for the optimization of QM species with ridft.
+    
+    Args:
+        path    : the directory where the QM calculations will be performed
+        lot     : level of theory
+                  for DFT: "ri-u<DFT functional>/<Basis Set>
+                  Note! Only unrestricted DFT and with rij approximation is implemented.
+        max_mem : Maximum memory to be used on each processor in MB
+        gcart            : converge maximum norm of cartesian gradient up to 10^-<gcart> atomic units
+    """
+    def __init__(self, path=os.getcwd(), lot = 'ri-utpss/SVP', max_mem = 500, gcart = 3):
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
         else:
             self.path = os.path.abspath(path)
             self.maindir = os.getcwd()
-            self.lot = lot # e.g. ri-utpss/SVP
+            self.lot = lot # e.g. ri-utpss/SVP, ri-utpssh/TZVP
             self.max_mem = max_mem
+            self.gcart = gcart
         return
 
     def get_mol_from_coord(self, path = ''):
@@ -676,6 +925,10 @@ class OptimizationTools:
         """writes a new define file to define internal redundant coordinates,
            changes the itvc to 1 (for TS optimization), 
            and changes the coordinates to the redundant internal coordinates.
+
+        Args:
+            rmax: Maximum thrust radius
+            path: the directory where the Turbomole input files are located
         """
         if path == '': path = self.path
         define_in_path = os.path.join(path,'define.in')
@@ -699,7 +952,12 @@ class OptimizationTools:
         return
 
     def change_rmax(self, rmax = 3e-2, path = ''):
-        " to change the maximum thrust radius for the geometry optimizations. "
+        """ to change the maximum thrust radius for the geometry optimizations. 
+
+        Args:
+            rmax: Maximum thrust radius
+            path: the directory where the Turbomole input files are located
+        """
         if path == '': path = self.path
         define_in_path = os.path.join(path,'define.in')
         f = open(define_in_path, 'w')
@@ -757,7 +1015,18 @@ class OptimizationTools:
         if verbose: print('The number of imaginary frequencies is ', inum,'and they are/it is', imfreq)
         return inum, imfreq
 
-    def jobex(self, ts=False, cycles=150, gcart=4):
+    def jobex(self, ts=False, cycles=150, gcart=None):
+        """ Runs jobex.
+
+        Args:
+           ts    : Eigenvector following? 
+           cycles: Maximum number of iterations
+           gcart : Threshold for convergence, larger -> tighter
+
+        Returns:
+           converged: Did the geometry optimization converge?
+        """
+        if gcart == None: gcart = self.gcart
         converged = False
         os.chdir(self.path)
         if ts:
@@ -771,6 +1040,7 @@ class OptimizationTools:
         os.chdir(self.maindir)
         return converged
 
+
     def aoforce(self):
         os.chdir(self.path)
         os.system("aoforce > aoforce.out")
@@ -779,18 +1049,35 @@ class OptimizationTools:
         os.chdir(self.maindir)
         return
 
+
     def IRC(self):
         os.chdir(self.path)
         os.system("DRC -i -c 150 > IRC.out")
         os.chdir(self.maindir)
         return
 
-    def common_workflow(self, mol, title = '', add_noise = True, upto = 0.05, pre_defined_M = False, M = None, lowest_energy_M = False,  active_atoms = [], fermi = True):
-        ''' Adds a noise within 0.05 Angstrom to the reference structure and performs single point calculation
-        M              : the spin multiplicity
-        fermi          : apply Fermi smearing or not?
-        '''
-        # mol = molsys.mol.from_file(path_ref)
+
+    def generate_MOs(self, mol, title = '', add_noise = True, upto = 0.05, active_atoms = [], fermi = True, pre_defined_M = False, lowest_energy_M = False, M = None) :
+        """ To generate molecular orbitals
+     
+        Args:
+            mol             : Mol object
+            title           : Title of the calculation
+            add_noise       : Do you want to add a noise within <upto> Angstrom?
+            upto            : The maximum limit of the noise in Angstrom
+            active_atoms    : List of atoms where the noise should not be applied 
+                              Note! with atom indicing starting with 1) --> 1,2,3,...
+            fermi           : True  -> You want to apply Fermi smearing to obtain the ground state multiplicity.
+                                       It will start with M = 2 for the systems with even number of electrons
+                                                          M = 3 for the systems with off number of electrons
+                              False -> You want start with extended Hückel theory. -> You must specify an <M>.
+            pre_define_M    : True  -> It will apply Fermi smearing but then will modify occupations according to the value <M> provided.
+            lowest_energy_M : True  -> Apply Fermi smearing and look at multiplicities which are +-2 different than the value obtained from Fermi smearing.
+            M               : |2 ms + 1| = |(nalpha-nbeta) + 1|
+
+        Returns:
+            energy          : The energy of the optimized MOs, in Hartree
+        """
         GT = GeneralTools(self.path)
         atom = False
         if add_noise:
@@ -985,9 +1272,17 @@ class OptimizationTools:
         if not converged:
             print('The ridft calculation did not converge.')
             sys.exit()
-        return atom, energy
+        return energy
+
 
     def list_of_list_rbonds(self, rbonds):
+        """ findR returns the reactive bonds as a list, this returns them into a list of list
+        Args:
+            rbonds: list of reactive bonds; e.g. [0,2,5,7]
+
+        Returns:
+            bonds: list of list of reactive bonds; e.g. [[0,2],[5,7]]
+        """
         bonds = []
         bond_tmp = []
         for i, index in enumerate(rbonds):
@@ -999,18 +1294,28 @@ class OptimizationTools:
                bond_tmp = []
         return bonds
 
-    def match_wrt_ts(self, mol_spec, mol_ts, label, n, rbonds, atom_ids_dict):
-        ''' This method matches the indices of the mol_spec (an equilibrium species) with that of the mol_ts. 
+    def _match_wrt_ts(self, mol_spec, mol_ts, label, n, rbonds, atom_ids_dict):
+        """ This method matches the indices of the mol_spec (an equilibrium species) with that of the mol_ts.
+ 
+            The redundant species are written to the database => The indices in the atom_ids_dict cannot be 
+            directly used to re-order the species. Therefore, the indices of the species should be mapped on 
+            the indices of an "extracted species" from the transition state structure by using molecular graph isomorphism.
+        
+        Args:
+            mol_spec, mol_ts : The mol objects, with detected connectivities
+            label            : 'educt' or 'product'
+            n                : index which shows which educt/product it is
             atoms_ids_dict   : The dictionary which holds the list of atom_ids from the ReaxFF trajectory
                                The keys of the dictionary should be as "label_n"; 
                                e.g. label = "educt", n = 1 => The corresponding key is "educt_1"
-            mol_spec, mol_ts : The mol objects, with detected connectivities
-            rbonds           : 
-            The indices cannot be directly used to re-order the species, because they are not always written to
-            the opt_species table in the database, to avoid the redundant species. Therefore, the indices of the
-            species should be mapped on an the indices of an "extracted species" from the transition state
-            structure.
-        '''
+            rbonds           : list of reactive bonds; e.g. [0,2,5,7]
+            
+        Returns:
+            ratom     : The index of the reactive atom on the species
+            rbond_btw : The reactive bond which is between the two "educts" or between the two "products".
+            vts2vspec : The dictionary to map from transition state structure to the species indices.
+
+        """
         # 1. Convert the rbonds to a list of lists
         rbonds = self.list_of_list_rbonds(rbonds)
 
@@ -1103,7 +1408,27 @@ class OptimizationTools:
             vts2vspec[vts]  = int(vspec)
         return ratom, rbond_btw, vts2vspec
 
+
     def reorder_wrt_ts(self, QM_path, ts_path, label, n, rbonds, atom_ids_dict):
+        """ Re-orders by reading xyz files of the optimized molecules under the directories educt_1, educt_2, ..., product_1, product_2, ...,
+            according to the order of the transition state.
+            
+            TODO Generalise this method: probably instead of creating the mol object here, it could make more sense to 
+                 give mol objects as an argument, and instead of creating the key of the dictionary as "<label>_<n>"
+                 one can give as an argument the keys of the atom_ids_dict dictionary.
+
+        Args:
+            QM_path          : Where the calculations are being performed. Actually, this is the same as self.path. 
+                               I don't know why I wrote it like this. 
+            ts_path          : The path to the xyz file of the transition state.
+            label            : 'educt' or 'product'
+            n                : index which shows which educt/product it is
+            rbonds           : list of reactive bonds; e.g. [0,2,5,7]
+            atoms_ids_dict   : The dictionary which holds the list of atom_ids from the ReaxFF trajectory
+
+        Returns:
+            mol_ordered      : Mol object of the re-ordered molecule
+        """
         # 1. Make a mol object for the species
         path_spec = os.path.join(os.path.join(QM_path,"%s_%d" %(label,n)),'coord.xyz')
         mol_spec = molsys.mol.from_file(path_spec)
@@ -1114,7 +1439,7 @@ class OptimizationTools:
         mol_ts.detect_conn_by_bo()
 
         # 3. Get the matching indices
-        ratom, rbond_btw, vts2vspec = self.match_wrt_ts(mol_spec, mol_ts, label, n, rbonds, atom_ids_dict)
+        ratom, rbond_btw, vts2vspec = self._match_wrt_ts(mol_spec, mol_ts, label, n, rbonds, atom_ids_dict)
 
         # 4. Order the species wrt TS
         mol_str = '%d\n\n' %mol_ts.natoms
@@ -1131,11 +1456,34 @@ class OptimizationTools:
 
 
     def make_rxn_complex(self, rbonds, atom_ids_dict, label, n_eq, QM_path, ts_path, distance = 3.0):
-        ''' This method adds the 2nd species based on the internal coordinates of the reference TS; e.g. ReaxFF optimized TS,
-            at a distance (3.0 Angstrom by default) to the 1st species.
-        '''
+        """ This method adds the 2nd species based on the internal coordinates of the reference TS; e.g. ReaxFF optimized TS,
+            at a distance (3.0 Angstrom by default) to the 1st species using Z-matrices.
+            
+            TODO Again, probably giving the mol objects as an input might be a good idea. Maybe also as a dictionary with
+                 the same keys as in atoms_ids_dict. 
+                 n_eq is an unnecessary argument.
+                 There is space for improvement.
+
+        Args:
+            rbonds           : list of reactive bonds; e.g. [0,2,5,7]
+            atoms_ids_dict   : The dictionary which holds the list of atom_ids from the ReaxFF trajectory
+            label            : 'educt' or 'product'
+            n_eq             : the number of equilibrium species with the <label> 
+                               -> This is kind of a stupid argument, it can only handle n_eq = 2, where was my mind?...
+            QM_path          : Where the calculations are being performed. Actually, this is the same as self.path. 
+                               I don't know why I wrote it like this. 
+            ts_path          : The path to the xyz file of the transition state.
+            distance         : The distance between the 1st and 2nd species
+
+        Returns:
+            mol_complex      : Mol object of the created reaction complex
+
+        """
         if n_eq > 3:
             print('Cannot handle more than two species. Exiting...')
+            sys.exit()
+        elif n_eq < 2:
+            print('You cannot create a complex with a single molecule. Exiting...')
             sys.exit()
 
         # 1. Make a mol object for the TS
@@ -1154,7 +1502,7 @@ class OptimizationTools:
            natoms = len(mol_opt.elems)
 
            # 3. Get the matching indices
-           ratom, rbond_btw, vts2vopt = self.match_wrt_ts(mol_opt, mol_ts, label, n, rbonds, atom_ids_dict)
+           ratom, rbond_btw, vts2vopt = self._match_wrt_ts(mol_opt, mol_ts, label, n, rbonds, atom_ids_dict)
            iopt2its = {}
            vopt2vts = {}
            for vts in vts2vopt:
@@ -1302,9 +1650,20 @@ class OptimizationTools:
         return mol_complex 
 
 
-    def find_end_points_from_IRC(self, IRC_path = '', displaced = 'minus', gcart = 4):
-        """ Optimizes the end points of IRC as found in the directories 'displaced_minus' and
-            'displaced_plus'. Separates the molecules and returns the corresponding mol objects.
+    def find_end_point_from_IRC(self, IRC_path = '', displaced = 'minus'):
+        """ Optimizes the end points of intrinsic reaction coordinates (IRC) as found in the directories 
+        'displaced_minus' and 'displaced_plus', then separates the molecules and returns the 
+        corresponding mol objects.
+        
+        Args:
+            IRC_path  : The path to the directory where the results from the IRC calculation is.
+            displaced : Which side do you want to optimize, plus or minus?
+            gcart     : converge maximum norm of cartesian gradient up to 10^-<gcart> atomic units
+
+        Returns:
+            mols      : The list of mol objects from the geometry optimized end point (which are not individually optimized)
+            QM_path   : The path to the directory where this calculation is performed
+
         """
         if IRC_path == '': IRC_path = self.path
 
@@ -1314,15 +1673,19 @@ class OptimizationTools:
         os.system('cpc %s' %displaced)
         QM_path = os.path.join(path, displaced)
 
+        OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
+        GT = GeneralTools(QM_path)
+
         # 2. Remove the gradient to not to use the TS
-        os.remove(os.path.join(QM_path,'gradient'))
+        GT.kdg('grad')
+        grad_file = os.path.join(QM_path,'gradient')
+        if os.path.isfile(grad_file): os.remove(grad_file)
 
         # 3. Define the internal coordinates
-        OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
         OT.ired()
 
         # 4. Optimize the geometry
-        converged = OT.jobex(gcart = gcart)
+        converged = OT.jobex()
         if not converged:
             print('The geometry optimization of the end point of IRC has failed.')
             sys.exit()
@@ -1338,8 +1701,25 @@ class OptimizationTools:
 
 
     def compare_mols(self, mols_1, mols_2, mode = 'mg'):
-        ''' Compares the list of reference molecules (mols_1) with the list of molecules to compare (mols_2).
-        '''
+        """ Compares the list of reference molecules (mols_1) with the list of molecules to compare (mols_2).
+        
+        Args:
+             mols_1, mols_2: List of mol objects of the molecules to be compared
+             mode          : Comparison mode:
+                             'mg' -> Compare using molecular graph isomorphism
+                             'similaritycheck' -> Compare based on RMSD distances (https://doi.org/10.1002/jcc.21925)
+
+        Returns:
+             mols_similar: True/False
+             index_dict  : If they are similar, the mapping of the similar molecules.
+                           e.g.,
+                           mols_1  mols_2
+                           ---------------
+                             0 ----> 1
+                             1 ----> 2
+                             2 ----> 0
+                           index_dict = {0:1,1:2,2:0}
+        """
         mols_similar = True # similarity of the list of molecules
         index_dict = {}
         n_mols_1 = len(mols_1)
@@ -1380,22 +1760,32 @@ class OptimizationTools:
         return mols_similar, index_dict
 
 
-    def check_end_points(self, mols_minus, mols_plus, mols_ed, mols_prod, mode = 'mg'):
+    def _check_end_points(self, mols_minus, mols_plus, mols_ed, mols_prod, mode = 'mg'):
         """
         Compares the molecular graphs of the output of the IRC calculation to those of reference structures.
-        mols_minus    : List of mol objects created by separating the molecules from IRC output, displaced_minus
-        mols_plus     : List of mol objects created by separating the molecules from IRC output, displaced_plus
-        mols_ed       : List of mol objects of the reference educts   (e.g. from ReaxFF optimized structures)
-        mols_prod     : List of mol objects of the reference products (e.g. from ReaxFF optimized structures)
-        mode          : The comparison method: 
-                        -> 'mg' molecular graph, 
-                        -> 'similaritycheck' mapping the structures in 3D
-                           as described in https://doi.org/10.1002/jcc.21925
+        Basically this is used to check if the molecular graph of the reaction has changed or not.
+
+        Args:
+            mols_minus    : List of mol objects created by separating the molecules from IRC output, displaced_minus
+            mols_plus     : List of mol objects created by separating the molecules from IRC output, displaced_plus
+            mols_ed       : List of mol objects of the reference educts   (e.g. from ReaxFF optimized structures)
+            mols_prod     : List of mol objects of the reference products (e.g. from ReaxFF optimized structures)
+            mode          : The comparison mode: 
+                            'mg'              -> molecular graph, 
+                            'similaritycheck' -> mapping the structures in 3D and calculating RMSD (https://doi.org/10.1002/jcc.21925)
+
+        Returns:
+            is_similar    : True/False 
+                            mode = 'mg' -> Did the reaction graph change? 
+                            mode = 'similaritycheck' -> Are the structures the same at the end points of the reaction?
+            match         : if is_similar: the mapping of plus and minus paths to the educts and products
+                            e.g., match = {'minus':'educt', 'plus':'product'}
+            index_dict    : the mapping of the molecules on the irc end points to the reference educts and products
+                            e.g., index_dict = {'minus':{0:1,1:0}, 'plus':{0:0,1:1}}
         """
         is_similar = False
         match = {}
         index_dict = {}
-        reason = ''
         n_mol_minus  = len(mols_minus)
         n_mol_plus   = len(mols_plus)
         n_mol_educts = len(mols_ed)
@@ -1422,17 +1812,22 @@ class OptimizationTools:
                 index_dict['minus'] =  index_dict_minus_prod
                 match['plus']       = 'educt'
                 index_dict['plus']  =  index_dict_plus_ed
-            else:
-                reason = 'This transition state does not connect the reference educts and products.'
-                print(reason)
-        return is_similar, match, index_dict, reason
+        return is_similar, match, index_dict
 
 
     def get_peaks(self, path, plot = False):
-        '''get the max energy structure
-        path : string  : The path to where the woelfling calculation have been performed.
-        plot : boolean : True if you want to plot the energy profile
-        '''
+        """Gets the peaks from the woelfling output
+
+        Args:
+            path : string  : The path to where the woelfling calculation have been performed.
+            plot : boolean : True if you want to plot the energy profile
+        
+        Returns:
+            peaks_woelf : List of peaks based on indexing -> 1,2,3,...
+                          so that one can directly go into directory 'rechnung_<peak>' for further calculations
+            barrierless : True/False
+
+        """
         barrierless = False
 
         f_woelfling_out = os.path.join(path,"woelfling_current.out")
@@ -1458,33 +1853,31 @@ class OptimizationTools:
                 plt.ylabel('Energy Profile (Hartree)')
                 plt.savefig(os.path.join(path,'energy_profile.pdf'), format='pdf')
 
-            # This function takes a 1-D array and finds all local maxima by simple comparison of neighboring values. 
+
             from scipy.signal import find_peaks
-            peaks, _ = find_peaks(y)
-            print(y,x)
-            peaks_new = []
-            max_struc = None
+            peaks, _ = find_peaks(y) # This function takes a 1-D array and finds all local maxima by simple comparison of neighboring values. 
+            peaks_woelf = []
             if len(peaks) == 0:
                 barrierless = True
             elif len(peaks) >  1: 
-                print('WARNING!!! There are multiple local maxima! Only the highest one will be considered.') 
+                print('WARNING!!! There are multiple local maxima!') 
                 print('The local maxima:')
-                en_peaks = []
-                en2peak = {}
                 for peak in peaks:
-                    peaks_new.append(peak+1)
-                    en = energy_profile[peak+1]
-                    en_peaks.append(en)
-                    en2peak[en] = peak
-                max_en = max(en_peaks)
-                max_struc = en2peak[max_en] + 1
+                    print(peak+1)
+                    peaks_woelf.append(peak+1)
             else:
-                peaks_new.append(peaks[0]+1)
-                max_struc = peaks[0] + 1
+                peaks_woelf.append(peaks[0]+1)
 
-        return peaks_new, max_struc, barrierless
+        return peaks_woelf, barrierless
 
     def add_woelfling_to_control(self, control_path = 'control', ninter = 24, ncoord = 2, maxit = 40):
+        """
+        Args:
+            control_path : the path to the control file
+            ninter       : the number of structures to be used for discretization of the path
+            ncoord       : the number of input structures provided
+            maxit        : the number of cycles to run
+        """
         newlines = ''
         with open(control_path) as control:
            for line in control:
@@ -1498,8 +1891,18 @@ class OptimizationTools:
         return
 
     def woelfling_workflow(self, woelfling_path = '', ninter = 24, ncoord = 2, maxit = 40):
-        '''workflow to perform a TS search using woelfling
-        '''
+        """workflow to perform a TS search using woelfling
+        Args:
+            woelfling_path : the path to the directory of where the woelfling calculation will be performed
+            ninter         : the number of structures to be used for discretization of the path
+            ncoord         : the number of input structures provided
+            maxit          : the number of cycles to run
+ 
+        Returns:
+            barrierless : True/False barrierless reaction?
+            ts_paths    : The list of paths to the directories where the input for the further calculations
+                          to find the transition state structures (ts_workflow: aoforce, jobex -trans, aoforce, IRC, ...) are.
+        """
         if woelfling_path == '': woelfling_path = self.path
         assert os.path.isfile(os.path.join(woelfling_path,'coords')), 'Please provide coords file!'
         control_path = os.path.join(woelfling_path,'control')
@@ -1509,19 +1912,22 @@ class OptimizationTools:
         self.add_woelfling_to_control(control_path = control_path, ninter = ninter, ncoord = ncoord, maxit = maxit)
 
         # 2. Perform the woelfling calculation
+        if not os.path.isdir(woelfling_path):
+            os.mkdir(woelfling_path)
         os.chdir(woelfling_path)
         os.system('woelfling-job -ri > woelfling.out')
         with open('woelfling.out') as out:
             for line in out:
                 if 'dscf_problem' in line:
-                    print('The SCF did not converge in one of the structures. Exiting...')
+                    self._clean_woelfling(woelfling_path)
+                    print('The SCF did not converge in one of the structures of woelfling calculation. Exiting...')
                     sys.exit()
 
-        # 3. If exists, get the highest energy local maxima as a TS start guess
+        # 3. If exists, get the peaks on the woelfling energy profile to use later as a TS start guess
         try:
-            peaks, max_struc, barrierless = self.get_peaks(path = woelfling_path, plot = True)
+            peaks, barrierless = self.get_peaks(path = woelfling_path, plot = True)
         except:
-            peaks, max_struc, barrierless = self.get_peaks(path = woelfling_path, plot = False)
+            peaks, barrierless = self.get_peaks(path = woelfling_path, plot = False)
 
         ts_paths = []
         if not barrierless:
@@ -1535,13 +1941,45 @@ class OptimizationTools:
                 ts_paths.append(ts_path)
                 os.chdir(self.maindir)
 
-        # TODO Clean the mos from the rechnung-* directories
+        # Clean the directories 
+        self._clean_woelfling(woelfling_path)
 
         return barrierless, ts_paths
 
 
+    def _clean_woelfling(self, woelfling_path):
+        """ Clean the mos from the woelfling and rechnung-* directories """
+        lst = os.listdir(woelfling_path)
+        for f in lst:
+            f_path = os.path.join(woelfling_path, f)
+            if f in ["alpha", "beta", "mos", "wherefrom","statistics"]:
+                os.remove(f_path)
+            if "rechnung" in f:
+                lst_rechnung_X = os.listdir(f_path)
+                for f_rechnung_X in lst_rechnung_X:
+                    if f_rechnung_X in ["alpha", "beta", "mos", "wherefrom","statistics"]:
+                        os.remove(os.path.join(f_path, f_rechnung_X))
+        return
+
+
     def ts_pre_optimization(self, mol, M, rbonds, gcart = 3, add_noise = True, upto = 0.05):
-        # we only fix the internal coordinates between the atoms involved in bond-order change. So convert the bonds into atoms list.
+        """ Generates MOs by applying Fermi smearing and changing the occupations to the assigned multiplicity. 
+            Then fixes the the internal coordinates between the atoms involved in bond-order change and optimizes the structure.
+            Sets the itvc = 1 after the pre-optimization.
+
+        Args:
+            mol       : the mol object of the structure to be pre-optimized
+            M         : the multiplicity of the TS/reaction
+            rbonds    : the list of reactive bonds; e.g. [0,1,3,7]
+            gcart     : converge maximum norm of cartesian gradient up to 10^-<gcart> in a.u.
+            add_noise : Do you want to add a noise to the structure before the optimization?
+            upto      : The maximum noise to be added to the structure in Angstrom
+
+        Returns:
+            converged : True/False: Did the geometry optimization converge?
+            QM_path   : The path to the directory where the pre-optimization is performed.
+
+        """
         # indexing of active_atoms goes as 1,2,3,... whereas that of rbonds goes as 0,1,2,...
         active_atoms = []
         for i in set(rbonds):
@@ -1554,7 +1992,7 @@ class OptimizationTools:
         GT = GeneralTools(QM_path)
 
         # Add noise to the structure and perform the single point energy calculation
-        atom, energy = OT.common_workflow(mol = mol, pre_defined_M = True, fermi = True, M = M, active_atoms = active_atoms, add_noise = add_noise, upto = 0.05)
+        energy = OT.generate_MOs(mol = mol, pre_defined_M = True, fermi = True, M = M, active_atoms = active_atoms, add_noise = add_noise, upto = 0.05)
 
         # freeze the active atoms
         OT.freeze_atoms(active_atoms)
@@ -1564,7 +2002,10 @@ class OptimizationTools:
 
         if converged:
             # remove the gradient left from pre-optimization
-            os.remove(os.path.join(QM_path, 'gradient'))
+            GT.kdg('grad')
+            grad_file = os.path.join(QM_path, 'gradient')
+            if os.path.isfile(grad_file):  os.remove(grad_file)
+
 
         # define internal coordinates without constraints and set itvc to 1.
         GT.kdg('intdef')
@@ -1573,9 +2014,33 @@ class OptimizationTools:
 
         return converged, QM_path
 
-    def optimize_irc_end_points(self, M, displaced = '', mols_QM_ref = [], match = {}, index_dict = {}, irc_mols = {}, irc_path = {}, gcart = 4, is_similar = False):
+
+    def _optimize_irc_end_points(self, M, displaced = '', mols_QM_ref = [], match = {}, index_dict = {}, irc_mols = {}, irc_path = {}, is_similar = False):
+        """ Optimizes the end points of the IRC calculation
+
+        Args:
+            M              : Multiplicity of the reaction/transition state
+            displaced      : 'minus' or 'plus'?
+            mols_QM_ref    : the list of mols objects of the reference QM species: used to compare multiplicities, because at the 
+                             educts_and_products workflow, multiplicity attribute is added to the mol object.
+                             -> If reaction graph is similar; then the multiplicity of the reference species 
+                                and the optimised species are compared. If the multiplicities differ, then this is printed.
+            match          : the mapping of plus and minus paths to the educts and products
+                             e.g., match = {'minus':'educt', 'plus':'product'}
+            index_dict     : the mapping of the molecules on the irc end points to the reference educts and products
+                             e.g., index_dict = {'minus':{0:1,1:0}, 'plus':{0:0,1:1}}
+            irc_mols       : the list of (separated) mol objects from the irc end points
+            irc_path       : the path to the directory where the irc calculation has been performed
+            gcart          : Threshold for geometry optimization, converge maximum norm of cartesian gradient up to 10^(-gcart) atomic units.
+            is_similar     : True/False 
+                             mode = 'mg' -> Did the reaction graph change? 
+                             mode = 'similaritycheck' -> Are the structures the same at the end points of the reaction?
+
+        Returns:
+            QM_paths_dict  : Dictionary of the path to the directories where the optimized end points are.
+
+        """
         QM_paths_dict = {}
-        mols_opt_dict = {}
         if is_similar:
             label = match['%s' %displaced]   # 'educt' or 'product'
             irc2ref  = index_dict['%s' %displaced] # dictionary which matches of e.g., QM_reference educts to the corresponding IRC species
@@ -1594,7 +2059,6 @@ class OptimizationTools:
         if len(mols) == 1:
             mol_opt = mols[0]
             mol_opt.multiplicity = M # The multiplicity is the same as the TS, as the same orbitals are used with constant occupations
-            multiplicities = [M]
             OT.aoforce()
             inum, imfreq = OT.check_imaginary_frequency()
             if inum != 0:
@@ -1603,12 +2067,11 @@ class OptimizationTools:
             else:
                 key = '%s_1' %(label)
                 QM_paths_dict[key] = path
-                mols_opt_dict[key] = mol_opt 
 
         # If there is more than one, then optimize them separately starting only from the coordinates.
         else:
             print("The number of molecules is not 1...")
-            multiplicities, QM_paths, mols_opt = OT.educts_and_products_workflow(mols = mols, add_noise = False, label = label, gcart = gcart)
+            multiplicities, QM_paths, mols_opt = OT.educts_and_products_workflow(mols = mols, add_noise = False, label = label)
             for i, QM_path in enumerate(QM_paths):
                 OT_opt = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
                 OT_opt.aoforce()
@@ -1617,22 +2080,32 @@ class OptimizationTools:
                     print("This is not a minimum!")
                     sys.exit()
                 else:
-                    key = '%s_%d' %(label, i)
+                    key = '%s_%d' %(label, i+1)
                     QM_paths_dict[key] = QM_path
-                    mols_opt_dict[key] = mols_opt[i]
 
-        # Check if the multiplicities match
-        if is_similar:
-            for i, key in enumerate(mols_opt_dict):
-                i_ref = irc2ref[i]
-                mol_QM_ref = mols_QM_ref[i_ref]
-                mol_opt = mols_opt_dict[key]
-                if mol_QM_ref.multiplicity != mol_opt.multiplicity:
-                    print('The multiplicity of the QM reference %s_%d does not match with the re-optimized IRC end point, which is under %s.' %(label, i_ref, QM_paths_dict[key]))
-        return multiplicities, QM_paths_dict
+        return QM_paths_dict
 
 
-    def ts_workflow(self, QM_path_ts, mols_ed_QM_ref, mols_prod_QM_ref, gcart = 4, M = None, mode = 'mg'):
+    def ts_workflow(self, QM_path_ts, mols_ed_QM_ref, mols_prod_QM_ref, M = None, mode = 'mg'):
+        """ The workflow for the TS. 
+
+            NOTE! under data group $statpt in the control file, itrvec should be set to 1 before using this method!
+
+        Args:
+            QM_path_ts       : the path to the directory where the transition state calculation will be performed
+            mols_ed_QM_ref   : the list of mol objects of the reference educts (should have multiplicity as an attribute)
+            mols_prod_QM_ref : the list of mol objects of the reference products (should have multiplicity as an attribute)
+            M                : multiplicity of the transition state
+            mode             : Comparison mode to compare the reaction graph
+                               'mg' -> Compare using molecular graph isomorphism
+                               'similaritycheck' -> Compare based on RMSD distances (https://doi.org/10.1002/jcc.21925)
+
+        Returns:
+            converged        : True/False: Did the geometry optimization converge and there is only one imaginary frequency?
+            is_similar       : True/False: Did the reaction graph change?
+            QM_paths_dict    : the dictionary of paths to the species connecting the educts and the products
+            reason           : string : Why it did not converge?
+        """
         QM_paths_dict  = {}
         converged = False
         is_similar = False
@@ -1653,7 +2126,7 @@ class OptimizationTools:
                 print(reason)
 
             # 3. Optimize the TS with eigenvector following
-            converged = OT.jobex(ts=True, gcart = gcart)
+            converged = OT.jobex(ts=True)
  
             if not converged:
                reason += 'The transition state optimization did not converge.'
@@ -1671,42 +2144,53 @@ class OptimizationTools:
                   irc_mols = {}
                   irc_path = {}
 
-                  # 6. Optimize the end points
-                  irc_mols['minus'], irc_path['minus'] = OT.find_end_points_from_IRC(displaced = 'minus')
-                  irc_mols['plus' ], irc_path['plus' ] = OT.find_end_points_from_IRC(displaced = 'plus') 
+                  # 6. Optimize the end points (without separating the molecules)
+                  irc_mols['minus'], irc_path['minus'] = OT.find_end_point_from_IRC(displaced = 'minus')
+                  irc_mols['plus' ], irc_path['plus' ] = OT.find_end_point_from_IRC(displaced = 'plus') 
 
                   # 7. Compare the end points with the educts and products
-                  is_similar, match, index_dict, reason_comparison = OT.check_end_points(irc_mols['minus'], irc_mols['plus'], mols_ed_QM_ref, mols_prod_QM_ref, mode = mode)
-                  reason += reason_comparison
+                  is_similar, match, index_dict = OT._check_end_points(irc_mols['minus'], irc_mols['plus'], mols_ed_QM_ref, mols_prod_QM_ref, mode = mode)
 
-                  # 8. If the molecular graphs are similar, then optimize the end points.
-                  M_min, QM_paths_dict_min = self.optimize_irc_end_points(M = M, displaced = 'minus', mols_QM_ref = mols_ed_QM_ref,   match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
-                  M_plus, QM_paths_dict_plus = self.optimize_irc_end_points(M = M, displaced = 'plus',  mols_QM_ref = mols_prod_QM_ref, match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, gcart = gcart, is_similar = is_similar)
+                  if not is_similar: reason += "This transition state does not connect the reference educts and products."
+
+                  # 8. Optimize the end points of the separated molecules
+                  QM_paths_dict_min = self._optimize_irc_end_points(M = M, displaced = 'minus', mols_QM_ref = mols_ed_QM_ref,   match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, is_similar = is_similar)
+                  QM_paths_dict_plus = self._optimize_irc_end_points(M = M, displaced = 'plus',  mols_QM_ref = mols_prod_QM_ref, match = match, index_dict = index_dict, irc_mols = irc_mols, irc_path = irc_path, is_similar = is_similar)
 
                   QM_paths_dict = {**QM_paths_dict_min, **QM_paths_dict_plus}
                   QM_paths_dict['ts'] = QM_path_ts
 
-                  spin_not_conserved, M_list = self.determine_multiplicity(M_min, M_plus)
-                  if spin_not_conserved:
-                      converged = False
-                      reason += 'Spin forbidden!'
                elif inum == 0:
                   converged = False
                   reason += 'There are no imaginary frequencies.'
+
                elif inum > 1:
                   converged = False
                   reason += 'There are still more than one imaginary frequencies.'
+
         return converged, is_similar, QM_paths_dict, reason
 
 
-    def educts_and_products_workflow(self, mols, add_noise = True, upto = 0.05, label = 'eq_spec', gcart = 4):
-        ''' This is meant to be called from the reaction_workflow method. But can also probably called separately.
-            mols     : The mol objects of the structures to be optimised.
-            add_noise: Should a noise be added to the structures?
-            upto    : How much maximum noise should be added to the structures? (in Angstrom)
-            label    : Label to name the directories; e.g., 'product', 'educt', etc...
-            gcart    : Threshold for geometry optimization, converge maximum norm of cartesian gradient up to 10^(-gcart) atomic units.
-        '''
+
+    def educts_and_products_workflow(self, mols, add_noise = True, upto = 0.05, label = 'eq_spec'):
+        """ Optimizes the equilibrium species by first determining the ground state multiplicity through comparison of energies by {M_Fermi, M_Fermi+-2}.
+            
+            This method is meant to be called from the reaction_workflow method. But can also be called separately.
+
+            TODO 1: Add an option to start with eht orbitals.
+            TODO 2: Add an option to start with superposition of atomic densities.
+
+            Args:
+                mols      : The mol objects of the structures to be optimised.
+                add_noise : True/False: Should a noise be added to the structures?
+                upto      : How much maximum noise should be added to the structures? (in Angstrom)
+                label     : Label to name the directories; e.g., 'product', 'educt', etc...
+
+            Returns:
+                multiplicities : the list of multiplicities of the optimised species
+                QM_paths       : the list of paths to the directories of where the calculations are done
+                mols_opt       : the mol objects of the optimised species
+        """
         multiplicities = []
         QM_paths       = []
         mols_opt        = []
@@ -1715,13 +2199,15 @@ class OptimizationTools:
             os.mkdir(QM_path)
             OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
             GT = GeneralTools(QM_path)
+            atom = False
+            if mol_ini.natoms == 1: atom = True
 
             # 1. Make molecular graph of the reference structure
             Mol(mol_ini).make_molecular_graph()
             mg_ini = mol_ini.graph.molg            
 
             # 2. Add noise to the structure and perform the single point energy calculation
-            atom, energy = OT.common_workflow(mol = mol_ini, add_noise = add_noise, upto = upto, lowest_energy_M = True)
+            energy = OT.generate_MOs(mol = mol_ini, add_noise = add_noise, upto = upto, lowest_energy_M = True)
 
             # 3. Get the multiplicity
             nalpha, nbeta = GeneralTools(QM_path).get_nalpha_and_nbeta_from_ridft_output()
@@ -1731,7 +2217,7 @@ class OptimizationTools:
                 mol_opt = OT.get_mol_from_coord()
             else:
                 # 4. Perform the geometry optimization
-                converged = OT.jobex(gcart = gcart)
+                converged = OT.jobex()
                 if not converged:
                     print('The geometry optimization did not converge for %s_%d.' %(label,i+1))
                     exit()
@@ -1756,7 +2242,7 @@ class OptimizationTools:
                     path_tmp = os.path.join(QM_path, 'M_%d' %(M+2))
                     if os.path.isdir(path_tmp):
                         OT_tmp = OptimizationTools(path_tmp, lot = self.lot, max_mem = self.max_mem)
-                        converged = OT_tmp.jobex(gcart = gcart)
+                        converged = OT_tmp.jobex()
                         if not converged:
                             print('The geometry optimization with multiplicity %d has failed.' %(M+2))
                             exit()
@@ -1790,6 +2276,7 @@ class OptimizationTools:
         return multiplicities, QM_paths, mols_opt
 
     def write_coords(self, coords_path, mol_ini, mol_fin):
+        """ Writes a coords file which includes concatanated coord files of the two mol objects."""
         coords = open(coords_path,'w')
         GT = GeneralTools()
         coords.write(GT.mol_to_coord(mol_ini))
@@ -1798,76 +2285,59 @@ class OptimizationTools:
         coords.close()
         return
 
-    def make_r_info_dict(self, QM_paths_dict, uni, change, source, origin = None, barrierless = False):
-        info = {}
-        info['reaction'] = {}
-        info['opt_spec'] = {}
-
-        info['reaction']['uni']    = uni # unimolecular?
-        info['reaction']['change'] = change # did the reaction graph change?
-        info['reaction']['source'] = source # e.g. woelfling/ReaxFF/?...
-        info['reaction']['origin'] = origin # reactionID of the reference reaction
-        info['reaction']['barrierless'] = barrierless
-
-        for i,spec in enumerate(QM_paths_dict):
-            info['opt_spec'][i] = {}
-            spec_info = info['opt_spec'][i]
-            path = QM_paths_dict[spec]
-            spec_info['path'] = os.path.relpath(path, self.path) # Relative path; otherwise, e.g., '/scratch/oyoender_120981/etc'
-            if 'educt' in spec: 
-                spec_info['itype'] = -1
-            if 'ts' in spec: 
-                spec_info['itype'] =  0
-            if 'product' in spec: 
-                spec_info['itype'] =  1
-            GT = GeneralTools(path)
-            mol = self.get_mol_from_coord(path)
-            spec_info['info'] = ''
-            if mol.natoms == 1:
-                spec_info['energy'] = GT.get_energy_from_ridft_out()
-                spec_info['info'] += 'ZPE = 0.0;'
-            else:
-                spec_info['energy'], ZPE = GT.get_energy_from_aoforce_out()
-                spec_info['info'] += 'ZPE = %3.7f;' %ZPE
-            spec_info['lot']  = self.lot
-            spec_info['info'] += 'M = %d;' %GT.get_M_from_control()
-            spec_info['info'] += 'ssquare = %3.3f;' %GT.read_ssquare_from_control()
-        return info
-            
-    def write_json(self, info_dict):
-        f_json = open(os.path.join(self.path, 'r.json'), 'w')
-        f_json.write(json.dumps(info_dict, indent = 2))
-        f_json.close()
-        return
 
     def get_M_range(self, M):
+        """ Returns range of minimal multiplicities correcponding to the coupling of two spins.
+
+         Derivation/Explanation
+        -----------------------------------------------------------------------------------------------------
+         ms = (n_alpha-n_beta)*(1/2): minor spin quantum number, which is the z-component of the spin angular momentum
+        
+         When the spins couple:
+         ms total = (ms_1-ms_2), (ms_1-ms_2)+1, ..., ms_1+ms_2
+        
+         e.g., |O + O -> O2
+            ---------------
+            m_s|1   1    1
+               
+         ms_1 = 1, ms_2 = 1 => ms_total = 2,1,0
+        
+         M = 2*ms+1 (The minimal multiplicity that the system can have)
+         ms_1 = (M_1 - 1)/2
+         ms_2 = (M_2 - 1)/2
+         M = 2*((ms_1-ms_2)+1, 2*((ms_1-ms_2)+1)+1, ..., 2*(ms_1+ms_2+1)+1
+         M = (M_1-M_2)+1, (M_1-M_2+2)+1, ..., (M_1+M_2-2)+1
+         M = M_1-M_2+1, M_1-M_2+3, ..., M_1+M_2-1
+             \_______/                  \_______/
+               M_min                      M_max
+        -----------------------------------------------------------------------------------------------------
+
+        Args:
+            M: list of multiplicities of the two molecules whose spins will couple
+               e.g., [3,5]
+        Returns: 
+            M_range: e.g., [3,5,7]
+
+        """        
         assert len(M) == 2, "This function can only couple two spins"
-        # ms = (n_alpha-n_beta)*(1/2): minor spin quantum number, which is the z-component of the spin angular momentum
-        #
-        # When the spins couple:
-        # ms total = (ms_1-ms_2), (ms_1-ms_2)+1, ..., ms_1+ms_2
-        #
-        # e.g., |O + O -> O2
-        #    ---------------
-        #    m_s|1   1    1
-        #       
-        # ms_1 = 1, ms_2 = 1 => ms_total = 2,1,0
-        #
-        # M = 2*ms+1 (The minimal multiplicity that the system can have)
-        # ms_1 = (M_1 - 1)/2
-        # ms_2 = (M_2 - 1)/2
-        # M = 2*((ms_1-ms_2)+1, 2*((ms_1-ms_2)+1)+1, ..., 2*(ms_1+ms_2+1)+1
-        # M = (M_1-M_2)+1, (M_1-M_2+2)+1, ..., (M_1+M_2-2)+1
-        # M = M_1-M_2+1, M_1-M_2+3, ..., M_1+M_2-1
-        #     \_______/                  \_______/
-        #       M_min                      M_max
-        #
+
         M_max = int(    M[0] + M[1] -  1)
         M_min = int(abs(M[0] - M[1]) + 1)
         M_range = range(M_min, M_max+2, 2)
         return M_range
 
-    def determine_multiplicity(self, M_ed, M_prod):
+    def reaction_multiplicity(self, M_ed, M_prod):
+        """ Determines the multiplicity of the reaction
+
+        Args:
+            M_ed   : list of multiplicities of educts
+            M_prod : list of multiplciities of products
+
+        Returns:
+            spin_not_conserved : True/False : Do the multiplicities of educts and products do not violate for the conservation of spin? 
+            M_list : If the multiplicity of the educts and products would result in a spin forbidden reaction returns the union of set of multiplicities.
+                     Otherwise, returns their intersection.
+        """
         n_ed = len(M_ed)
         n_prod = len(M_prod)
         spin_not_conserved = False
@@ -1913,14 +2383,79 @@ class OptimizationTools:
 
 
 
-    def reaction_workflow(self, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', atom_ids_dict = {}, gcart = 4, start_lot = '', reactionID = 0):
-        ''' This method considers the reaction event and optimizes the species accordingly.
-            All of the input variables are retrieved from the RDB database, but should also work if one would like to just provide some reference structures...
+    def make_r_info_dict(self, QM_paths_dict, uni, change, source, origin = None, barrierless = False):
+        info = {}
+        info['reaction'] = {}
+        info['opt_spec'] = {}
+
+        info['reaction']['uni']    = uni # unimolecular?
+        info['reaction']['change'] = change # did the reaction graph change?
+        info['reaction']['source'] = source # e.g. woelfling/ReaxFF/?...
+        info['reaction']['origin'] = origin # reactionID of the reference reaction
+        info['reaction']['barrierless'] = barrierless
+
+        M_ed = []
+        M_prod = []
+        for i,spec in enumerate(QM_paths_dict):
+            info['opt_spec'][i] = {}
+            spec_info = info['opt_spec'][i]
+            path = QM_paths_dict[spec]
+            relpath = os.path.relpath(path, self.path) # Relative path; otherwise, e.g., '/scratch/oyoender_120981/etc'
+            spec_info['path'] = relpath
+            GT = GeneralTools(path)
+            M = GT.get_M_from_control()
+            if 'educt' in spec:
+                M_ed.append(M)
+                spec_info['itype'] = -1
+            if 'ts' in spec:
+                M_ts = M 
+                spec_info['itype'] =  0
+            if 'product' in spec: 
+                M_prod.append(M)
+                spec_info['itype'] =  1
+            mol = self.get_mol_from_coord(path)
+            spec_info['info'] = ''
+            if mol.natoms == 1:
+                spec_info['energy'] = GT.get_energy_from_ridft_out()
+                spec_info['info'] += 'ZPE = 0.0;'
+            else:
+                spec_info['energy'], ZPE = GT.get_energy_from_aoforce_out()
+                spec_info['info'] += 'ZPE = %3.7f;' %ZPE
+            spec_info['lot']  = self.lot
+            spec_info['info'] += 'M = %d;' %M
+            spec_info['info'] += 'ssquare = %3.3f;' %GT.read_ssquare_from_control()
+
+        spin_not_conserved, M_list = self.reaction_multiplicity(M_ed, M_prod)
+        if not barrierless:
+            if list(set.intersection(set(M_list),{M_ts})) == []: spin_not_conserved = True
+        if spin_not_conserved:
+            info['reaction']['origin'] += ':failed'
+        return info
+            
+    def write_json(self, info_dict, name = 'r'):
+        f_json = open(os.path.join(self.path, '%s.json' %name), 'w')
+        f_json.write(json.dumps(info_dict, indent = 2))
+        f_json.close()
+        return
+
+
+
+    def reaction_workflow(self, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', atom_ids_dict = {}, start_lot = '', reactionID = 0):
+        """ This method considers the reaction event and optimizes the species accordingly.
+        All of the input variables are retrieved from the RDB database, but should also work if one would like to just provide some reference structures...
+
+        Args:
             rbonds           : list of integers : The indices of the reactive bonds in the TS structure. The atom indexing is like in python, 0,1,2,...
             path_ref_educts  : list of strings  : The list of paths to the reference educts cartesian coordinate files.
             path_ref_products: list of strings  : The list of paths to the reference products cartesian coordinate files.
             path_ref_ts      : string           : The path to the TS cartesian coordinate files.
-        '''
+            atom_ids_dict    : dictionary which holds the atom ids matching the ReaxFF optimized structures to that of the trajectory.
+            start_lot        : the level of theory of the reference structures; e.g. ReaxFF
+            reactionID       : the reactionID of the reference reaction in the database
+
+        Returns:
+            Nothing, but writes the "r.json" file which contains information of the reactions for which a TS and connecting minima could be found.
+        """
         info_dict = {} # dictionary which holds the information about reaction, this will be dumped into a json file
         counter = 0    # counter for the succesfully assigned rxns 
 
@@ -1942,14 +2477,14 @@ class OptimizationTools:
             mol_ini = molsys.mol.from_file(path_ref)
             mol_ini.detect_conn_by_bo()
             mols_ini_prod.append(mol_ini)
-        M_ed,   QM_paths_ed  , mols_opt_ed    = self.educts_and_products_workflow(mols = mols_ini_ed,   label = 'educt', add_noise = True, gcart = gcart)
-        M_prod, QM_paths_prod, mols_opt_prod  = self.educts_and_products_workflow(mols = mols_ini_prod, label = 'product',  add_noise = True, gcart = gcart)
+        M_ed,   QM_paths_ed  , mols_opt_ed    = self.educts_and_products_workflow(mols = mols_ini_ed,   label = 'educt', add_noise = True)
+        M_prod, QM_paths_prod, mols_opt_prod  = self.educts_and_products_workflow(mols = mols_ini_prod, label = 'product',  add_noise = True)
 
         uni = False
         if n_ed == 1 and n_prod == 1: uni = True
 
         # 2. Determine the multiplicity of the reaction
-        spin_not_conserved, M_list = self.determine_multiplicity(M_ed, M_prod)
+        spin_not_conserved, M_list = self.reaction_multiplicity(M_ed, M_prod)
         skip_woelfling = False
         if spin_not_conserved : skip_woelfling = True
 
@@ -1980,7 +2515,7 @@ class OptimizationTools:
                 # * Compare the end points with from the IRC with the educts end products under QM_paths_ed and QM_paths_prod
                 #    NOTE: This could also be done as described in  https://doi.org/10.1002/jcc.21925
                 #          but at the moment done based on the comparison of the molecular graph
-                converged, is_similar, QM_paths_dict, reason = self.ts_workflow(QM_path_ts = QM_path_ts, mols_ed_QM_ref = mols_opt_ed, mols_prod_QM_ref = mols_opt_prod, M = M, gcart = gcart, mode = 'mg')
+                converged, is_similar, QM_paths_dict, reason = self.ts_workflow(QM_path_ts = QM_path_ts, mols_ed_QM_ref = mols_opt_ed, mols_prod_QM_ref = mols_opt_prod, M = M, mode = 'mg')
                 print(reason)
                 # * If not converged then set up a woelfling calculation.
                 if not converged:
@@ -2051,7 +2586,7 @@ class OptimizationTools:
 
                 else:
                     for ts_path in ts_paths:
-                        converged, is_similar, QM_paths_dict, reason = self.ts_workflow(QM_path_ts = ts_path, mols_ed_QM_ref = mols_opt_ed, mols_prod_QM_ref = mols_opt_prod, gcart = gcart, M = M, mode = 'mg')
+                        converged, is_similar, QM_paths_dict, reason = self.ts_workflow(QM_path_ts = ts_path, mols_ed_QM_ref = mols_opt_ed, mols_prod_QM_ref = mols_opt_prod, M = M, mode = 'mg')
                         print(reason)
                         if not converged:
                             print('The TS guess from woelfling calculation did not converge.')
@@ -2065,12 +2600,116 @@ class OptimizationTools:
                 shutil.rmtree(woelfling_path)
         return
 
+
+
+    def dft_re_optimization(self, specID, path_ref, ts = False):
+        """ This method re-optimizes the structures of previous DFT calculations with the new functional and basis set.
+
+        Args:
+            opt_speciesID: the opt_species id of the reference reaction from the database
+            path_ref     : the path to the directory of the reference calculation 
+            ts           : is it a ts or not?
+        """
+        change_molg = False 
+        optspec_info = {}
+ 
+        os.chdir(path_ref)
+        os.system("cpc %s" %self.path)
+        os.chdir(self.path)
+
+        # Make a symbolic link to the old calculation
+        path_ref_link = os.path.join(self.path,'old')
+        os.system("ln -s %s %s" %(path_ref,path_ref_link))
+
+        # Get the functional and basis set from level of theory
+        if "ri-u" in self.lot:
+            functional = self.lot.split("ri-u")[-1].split("/")[0]
+            basis_set = self.lot.split("ri-u")[-1].split("/")[1]
+        else:
+            functional = self.lot.split("/")[0]
+            basis_set = self.lot.split("/")[1]
  
 
-    def write_submit_py(self, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', atom_ids_dict = {}, gcart = 4, start_lot = '', reactionID = 0):
-        ''' In order to write a script which will run the desired routine, in this case, the reaction_workflow. Therefore, it needs to be modified if some other task is needed.
-            This can later be used to submit jobs to the queuing system by writing a job submission script. See in the Slurm class the write_submission_script.
-        '''
+        # 1. Make molecular graph of the reference structure
+        GT = GeneralTools(self.path)
+        mol_ini = GT.coord_to_mol()
+        mg_ini = Mol(mol_ini).make_molecular_graph()
+
+
+        # 2. Change the functional
+        GT.change_dft_functional(functional=functional, title = path_ref)
+
+        # 3. Change the basis set
+        GT.change_basis_set(basis_set=basis_set, ref_control_file = os.path.join(path_ref_link, 'control'),  title = "")
+
+        # 4. Remove energy and gradient left from the previous calculation
+        GT.kdg('energy')
+        en_file = os.path.join(self.path,'energy')
+        if os.path.isfile(en_file): os.remove(en_file)
+        GT.kdg('grad')
+        grad_file = os.path.join(self.path,'gradient')
+        if os.path.isfile(grad_file): os.remove(grad_file)
+
+        # 5. Single point calculation
+        energy = GT.ridft()
+        converged = GT.check_ridft_converged()
+        if not converged:
+            print("ridft did not converge.")
+            sys.exit()
+
+        if mol_ini.natoms != 1:
+
+            # 6. Geometry optimization
+            converged = self.jobex(ts=ts)
+            mol_opt = GT.coord_to_mol()
+            mg_opt = Mol(mol_opt).make_molecular_graph()
+            change_molg = not molsys.addon.graph.is_equal(mg_ini, mg_opt, use_fast_check=False)[0]
+
+            if not converged:
+                print("Geometry optimization did not converge.")
+
+            # 7. Calculate the Hessian
+            self.aoforce()
+            energy, ZPE = GT.get_energy_from_aoforce_out()
+
+            inum, imfreq = self.check_imaginary_frequency()
+            if ts:
+                if inum != 1:
+                    print("This is not a saddle point.")
+                    sys.exit()
+            else:
+                if inum != 0:
+                    print("This is not a minimum.")
+                    sys.exit()
+        else: # atom
+            ZPE = 0 
+
+        wherefrom  = os.path.join(self.path,'wherefrom')
+        statistics = os.path.join(self.path,'statistics')
+        if os.path.isfile(wherefrom): os.path.remove(wherefrom)
+        if os.path.isfile(statistics): os.path.remove(statistics)
+
+        optspec_info['lot']    = self.lot
+        optspec_info['energy'] = energy
+        optspec_info['specID'] = specID
+        optspec_info['info']   = 'ZPE = %3.7f;M = %d;ssquare = %3.3f;' %(ZPE,GT.get_M_from_control(),GT.read_ssquare_from_control())
+        optspec_info['change_molg'] = change_molg
+        self.write_json(info_dict = optspec_info, name = 'optspec')
+        return
+
+
+    def write_submit_py_level1(self, path_ref_educts = [], path_ref_products = [], path_ref_ts = '', start_lot = '', reactionID = 0, rbonds = [], atom_ids_dict = {}):
+        """ 
+            This method writes a script which can later be used to submit jobs to a queuing system by writing a job submission script. 
+            See in the Slurm class the write_submission_script.
+
+        Args: 
+            path_ref_X : the path to the mfpx or xyz structure files of the xTB or ReaxFF optimized structures
+            start_lot  : the start level of theory; e.g. ReaxFF/xTB
+            reactionID : the reference reactionID from the database
+            rbonds       : the list of reactive bonds
+            atom_ids_dict: dictionary which holds the atom ids matching the ReaxFF optimized structures to that of the trajectory.
+        """
         f_path = os.path.join(self.path,"submit.py")
         f = open(f_path,"a")
         f.write("import os\n")
@@ -2078,25 +2717,47 @@ class OptimizationTools:
         f.write("from molsys.util import turbomole\n\n")
         f.write("lot               = '%s'\n" %self.lot)
         f.write("max_mem           = %d\n"   %self.max_mem)
+        f.write("gcart             = %d\n"   %self.gcart)
         f.write("rbonds            = %s\n"   %str(rbonds))
         f.write("path_ref_educts   = %s\n"   %str(path_ref_educts))
         f.write("path_ref_products = %s\n"   %str(path_ref_products))
         f.write("path_ref_ts       = '%s'\n" %path_ref_ts)
         f.write("atom_ids_dict     = %s\n"   %str(atom_ids_dict))
-        f.write("gcart             = %d\n"   %gcart)
         f.write("start_lot         = '%s'\n" %start_lot)
         f.write("reactionID        = %d\n"   %reactionID)
 
-        f.write("OT = turbomole.OptimizationTools(lot = lot, max_mem = max_mem)\n")
-        f.write("OT.reaction_workflow(rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict, gcart, start_lot, reactionID)\n")
+        f.write("OT = turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart)\n")
+        f.write("OT.reaction_workflow(rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict, start_lot, reactionID)\n")
         f.close()
         return
+
+    def write_submit_py_level2(self, specID, path_ref, ts):
+        """ writes a script to submit the jobs for the DFT calculations starting from another DFT calculation        
+        """
+        f_path = os.path.join(self.path,"submit.py")
+        f = open(f_path,"a")
+        f.write("import os\n")
+        f.write("import molsys\n")
+        f.write("from molsys.util import turbomole\n\n")
+        f.write("lot               = '%s'\n" %self.lot)
+        f.write("max_mem           = %d\n"   %self.max_mem)
+        f.write("gcart             = %d\n"   %self.gcart)
+        f.write("path_ref          = '%s'\n" %path_ref)
+        f.write("specID            = %d\n"   %specID)
+        f.write("OT = turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart)\n")
+        if ts:
+            f.write("OT.dft_re_optimization(specID=specID, path_ref=path_ref, ts=True)\n")
+        else:
+            f.write("OT.dft_re_optimization(specID=specID, path_ref=path_ref, ts=False)\n")
+        f.close()
+        return
+
 
 class Slurm:
 
     def get_avail_nodes():
-        ''' Returns a list of available nodes.
-        '''
+        """ Returns a list of available nodes.
+        """
         sinfo = os.popen('sinfo --format="%n %t %c %m"').read()
         n_t_c_m = sinfo.split("\n")
         avail_nodes = []
@@ -2108,8 +2769,8 @@ class Slurm:
 
 
     def get_avail_nodes_of_(partition="normal"):
-        ''' Returns a list of available nodes under that partition.
-        '''
+        """ Returns a list of available nodes under that partition.
+        """
         sinfo = os.popen('sinfo --format="%n %t %P"').read()
         n_t_P = sinfo.split("\n")
         avail_nodes = []
@@ -2120,8 +2781,8 @@ class Slurm:
         return avail_nodes
 
     def get_partition_info(partition="normal"):
-        ''' Returns the number of CPUs and memory of a node which belongs to that partition.
-        '''
+        """ Returns the number of CPUs and memory of a node which belongs to that partition.
+        """
         sinfo = os.popen('sinfo --format="%P %c %m"').read()
         P_c_m = sinfo.split("\n")
         for lines in P_c_m:
@@ -2132,8 +2793,8 @@ class Slurm:
         return CPUS, MEM
 
     def write_submission_script(path=os.getcwd(), TURBODIR="", ntasks=8, partition="normal"):
-        ''' Writes a SLURM job submission script which will run whatever is written in submit.py. See write_submit_py under OptimizationTools.
-        '''
+        """ Writes a SLURM job submission script which will run whatever is written in submit.py. See write_submit_py under OptimizationTools.
+        """
         s_script_path = os.path.join(path, "submit.sh")
         s_script = open(s_script_path,"w")
         s_script.write("#!/bin/bash\n")
