@@ -3,7 +3,6 @@
 Molsys is the library used to read, write and manipulate atomistic models.
 It can be used in python programs and features also lots of scripts to run on the command line to transform structure files.
 
-
 ### Installing
 
 In order to install molsys, clone this repository into the destination of your choosing (we always use /home/%USER/sandbox/, also the installation instructions below use this path)
