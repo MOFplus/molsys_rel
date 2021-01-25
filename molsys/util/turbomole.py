@@ -2853,7 +2853,7 @@ class OptimizationTools:
         info_dict = {}
         info_dict["ospecID"] = ospecID
         info_dict["info"] = "E(%s)=%5.10f;" %(self.lot, energy)
-        self.write_json(self, info_dict, name = 'pnoccsd.json')
+        self.write_json(info_dict, name = 'pnoccsd')
         return         
 
 
