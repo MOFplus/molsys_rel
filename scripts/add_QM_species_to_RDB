@@ -93,3 +93,15 @@ for dft_subdir_path in dft_subdir_paths:
         else:
             print("%s does not exist." %f_json)
 
+    elif 'level3' in level.lower():
+        pnoccsd_path = os.path.join(dft_subdir_path,'PNO-CCSD')
+        f_json = os.path.join(pnoccsd_path,'pnoccsd.json')
+        if os.path.isfile(f_json):
+             with open(f_json) as f:
+                 data = json.load(f)
+                 ospec = db(db.opt_species.id == data['ospecID']).select().first()
+                 ospec.info += data['info']
+                 ospec.update_record()
+        else:
+            print("%s does not exist." %f_json)
+

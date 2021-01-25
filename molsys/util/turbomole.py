@@ -3,6 +3,7 @@ This module contains Turbomole related tools.
 """
 import sys
 import os
+import re
 import numpy
 import tempfile
 import time
@@ -87,7 +88,7 @@ class GeneralTools:
         coord_path = os.path.join(self.path,coord_name)
         if not os.path.isfile(coord_path):
             raise FileNotFoundError("Please provide a coord file.")
-        coord = open(coord_path, 'r')
+        coord = open(coord_path, "r")
         str_tmp = ""
         lines = coord.readlines()
         natoms = 0
@@ -171,6 +172,45 @@ class GeneralTools:
         return
  
 
+    def define_pnoccsd(self, pnoccsd, max_mem=500, F12=True, title='', ):
+        define_in_path = os.path.join(self.path,'define.in')
+        f=open(define_in_path,'w')
+        f.write("%s\n" %title)
+        f.write('n\n') # do not change geometry data
+        f.write('n\n') # do not change atomic attribute data
+        f.write('n\n') # do not change molecular orbital data
+        f.write('n\n') # DO YOU WANT TO DELETE DATA GROUPS LIKE
+        f.write('n\n') # we do not want to write natural orbitals 
+        f.write('pnocc\n')
+        f.write('freeze\n') # set frozen occupied/virtual orbital options
+        f.write('*\n')
+        f.write('cbas\n') # assign auxiliary basis sets
+        f.write('*\n')
+        f.write('memory %f\n' %max_mem) # set maximum core memory per_core
+        if F12:
+            f.write('f12\n') # F12 approximation
+            f.write('*\n')
+            f.write('cabs\n') # complementary auxiliary basis set
+            f.write('*\n')
+            f.write('jkbas\n') # auxiliary basis for Fock matrices
+            f.write('*\n')
+        f.write('*\n')
+        f.write('q\n')
+        f.close()
+        self.invoke_define()
+        # Now add pnoccd to the control file
+        newlines = ''
+        control_path = os.path.join(self.path,'control')
+        with open(control_path) as control:
+           for line in control:
+               if '$end' in line:
+                   newlines += '$pnoccsd\n%s\n$end'%pnoccsd
+               else:
+                   newlines += line
+        f = open(control_path,'w')
+        f.write(newlines)
+        f.close()
+        return
 
 
     def read_charge_from_control(self):
@@ -446,17 +486,21 @@ class GeneralTools:
         return
 
 
-    def check_ridft_converged(self, ridft_out_name = 'ridft.out'):
-        """ Reads the ridft output and checks if ridft converged.
+    def check_scf_converged(self, scf_out_name = 'ridft.out'):
+        """ Reads the ridft/dscf output and checks if ridft/dscf converged.
 
             Returns
                 converged: True/False 
         """
         converged = True
-        ridftout = open(os.path.join(self.path, ridft_out_name),'r')
-        for line in ridftout:
-            if 'ATTENTION: ridft did not converge!' in line:
-                converged = False
+        scfout = open(os.path.join(self.path, scf_out_name),'r')
+        for line in scfout:
+            if 'ridft' in scf_out_name:
+                if 'ATTENTION: ridft did not converge!' in line:
+                    converged = False
+            elif 'dscf' in scf_out_name:
+                if 'ATTENTION: dscf did not converge!' in line:
+                    converged = False
         lst = os.listdir(self.path)
         for f in lst:
             f_path = os.path.join(self.path, f)
@@ -467,19 +511,54 @@ class GeneralTools:
         return converged
 
 
-    def get_energy_from_ridft_out(self, ridft_out_name = 'ridft.out'):
-        """ Reads the ridft output and checks if ridft converged.
+    def get_energy_from_scf_out(self, scf_out_name = 'ridft.out'):
+        """ Reads the ridft/dscf output and checks if ridft/dscf converged.
 
             Returns
                 SPE: Single point energy in Hartree
         """
-        ridftout = open(os.path.join(self.path, ridft_out_name),'r')
-        for line in ridftout:
+        scfout = open(os.path.join(self.path, scf_out_name),'r')
+        for line in scfout:
            l = line.split()
            if  'total' in l and 'energy' in l and '=' in l:
                SPE = float(l[4])
         return SPE
 
+    def get_ccsd_energy(self, F12=True, model='ccsd(t)', ccsd_out_name="pnoccsd.out", nel=3):
+       ccsdout = open(os.path.join(self.path, ccsd_out_name),'r')
+       for line in ccsdout:
+          if F12:
+              if 'Final CCSD(F12*) energy                 :' in line:
+                  CCSDenergy = float(line.rstrip('\n').split()[5])
+              elif 'Final CCSD(F12*)(T0) energy             :' in line:
+                  CCSDT0energy = float(line.rstrip('\n').split()[5])
+              elif 'Final CCSD(F12*)(T) energy              :' in line:
+                  CCSDTenergy = float(line.rstrip('\n').split()[5])
+          else:
+              if 'Final CCSD energy                 :' in line:
+                  CCSDenergy = float(line.rstrip('\n').split()[5])
+              elif 'Final CCSD(T0) energy             :' in line:
+                  CCSDT0energy = float(line.rstrip('\n').split()[5])
+              elif 'Final CCSD(T) energy              :' in line:
+                  CCSDTenergy = float(line.rstrip('\n').split()[5])
+
+       if model == 'ccsd':
+           return CCSDenergy
+
+       elif model == 'ccsd(t0)':
+           if nel == 2:
+               return CCSDenergy
+           else:
+               return CCSDT0energy
+
+       elif model == 'ccsd(t)':
+           if nel == 2:
+               return CCSDenergy
+           else:
+               return CCSDTenergy
+
+       else:
+           return None
 
     def get_energy_from_aoforce_out(self, aoforce_out_name = 'aoforce.out'):
         """ Reads the aoforce output and reads the energy.
@@ -501,7 +580,14 @@ class GeneralTools:
     def ridft(self):
         os.chdir(self.path)
         os.system("ridft > ridft.out")
-        SPE =  self.get_energy_from_ridft_out()
+        SPE =  self.get_energy_from_scf_out("ridft.out")
+        os.chdir(self.maindir)
+        return SPE
+
+    def dscf(self):
+        os.chdir(self.path)
+        os.system("dscf > dscf.out")
+        SPE =  self.get_energy_from_scf_out("dscf.out")
         os.chdir(self.maindir)
         return SPE
 
@@ -759,7 +845,7 @@ class GeometryTools:
         natoms = GeometryTools._get_natoms_from_control(path)
         # 2. Write the define.in file
         GeometryTools._write_define_new_point_group(point_group_to_assign, path)
-        # 3. Invoke define
+        # 3.  define
         GeneralTools(path).invoke_define(define_out_name = "define-sym.out")
         # 4. Check if the number of atoms is still the same
         newnatoms = GeometryTools._get_natoms_from_control(path)
@@ -884,14 +970,6 @@ class OptimizationTools:
             self.gcart = gcart
         return
 
-    def get_mol_from_coord(self, path = ''):
-        if path == '': path = self.path
-        os.chdir(path)
-        os.system("t2x coord > coord.xyz")
-        mol =  molsys.mol.from_file('coord.xyz','xyz')
-        mol.detect_conn_by_bo()
-        os.chdir(self.maindir)
-        return mol
 
     def freeze_atoms(self, active_atoms, path = ''):
         """ writes a new define file to fix active atoms in internal coordinates. """
@@ -1050,11 +1128,28 @@ class OptimizationTools:
         return
 
 
-    def IRC(self):
+    def IRC(self, cycle = 150):
         os.chdir(self.path)
-        os.system("DRC -i -c 150 > IRC.out")
+        os.system("DRC -i -c %d > IRC.out" %cycle)
         os.chdir(self.maindir)
         return
+
+
+    def pnoccsd(self):
+        os.chdir(self.path)
+        os.system("pnoccsd > pnoccsd.out")
+        os.chdir(self.maindir)
+        return
+
+    def _clean_pnoccsd(self, pnoccsd_path):
+        lst = os.listdir(pnoccsd_path)
+        for f in lst:
+            f_path = os.path.join(pnoccsd_path, f)
+            if f in ["wherefrom","statistics"] or f.startswith("PNO") or f.startswith("CCB") or f.startswith("CCY")  or f.startswith("CCH") or f.startswith("CCK") or f.startswith("CCI") or f.startswith("CCJ") or f.startswith("CCV")  or f.startswith("CC_") or f.startswith("CC3") or f.startswith("RIR12"):
+                os.remove(f_path)
+        return
+
+
 
 
     def generate_MOs(self, mol, title = '', add_noise = True, upto = 0.05, active_atoms = [], fermi = True, pre_defined_M = False, lowest_energy_M = False, M = None) :
@@ -1112,7 +1207,7 @@ class OptimizationTools:
                     fermi = True, # True for Fermi smearing 
                     nue = False) # True to enforce a multiplicity in the Fermi smearing
             GT.run_tmole()
-            converged = GT.check_ridft_converged()
+            converged = GT.check_scf_converged()
 
             # 3. If SCF did not converge, increase the SCF start damping to 2.0 instead of 1.0.
             if not converged:
@@ -1130,7 +1225,7 @@ class OptimizationTools:
                         fermi = True, # True for Fermi smearing 
                         nue = False) # True to enforce a multiplicity in the Fermi smearing
                 GT.run_tmole()
-                converged = GT.check_ridft_converged()
+                converged = GT.check_scf_converged()
                 if not converged:
                     print('The SCF calculation with Fermi smearing did not converge also with start damping 2.0.')
                     sys.exit()
@@ -1138,7 +1233,7 @@ class OptimizationTools:
                     print('The SCF calculation converged with start damping 2.0. Decreasing it back to 1.0 and re-performing the SCF calculation.')
                     GT.change_dsta_to(1.0)
                     energy = GT.ridft()
-                    converged = GT.check_ridft_converged()
+                    converged = GT.check_scf_converged()
                     if not converged:
                         print('The SCF calculation with start damping 1.0 did not converge.')
                         sys.exit()
@@ -1164,7 +1259,7 @@ class OptimizationTools:
                     print("The spin multiplicity after Fermi smearing is %d, it will be changed to %d." %(M_fermi, M))
                     GT.for_c1_sym_change_multiplicity_in_control_by(M-M_fermi, nalpha, nbeta)
                     energy = GT.ridft()
-                    converged = GT.check_ridft_converged()
+                    converged = GT.check_scf_converged()
                     if not converged:
                         print('The SCF calculation did not converge starting with orbitals from Fermi and multiplicity %d.' %M)
                         sys.exit()
@@ -1237,7 +1332,7 @@ class OptimizationTools:
                     fermi   = False, # True for Fermi smearing
                     nue     = False) # True to enforce a multiplicity in the Fermi smearing
             GT.run_tmole()
-            converged = GT.check_ridft_converged()
+            converged = GT.check_scf_converged()
             # If SCF did not converge, increase the SCF start damping to 2.0 instead of 1.0.
             if not converged:
                 print('The SCF calculation with start damping 1.0 did not converge. Increasing it to 2.0.' )
@@ -1254,7 +1349,7 @@ class OptimizationTools:
                         fermi = False, # True for Fermi smearing 
                         nue = False) # True to enforce a multiplicity in the Fermi smearing
                 GT.run_tmole()
-                converged = GT.check_ridft_converged()
+                converged = GT.check_scf_converged()
                 if not converged:
                     print('The SCF calculation did not converge also with start damping 2.0.')
                     sys.exit()
@@ -1262,13 +1357,13 @@ class OptimizationTools:
                     print('The SCF calculation converged with start damping 2.0. Decreasing it back to 1.0 and re-performing the SCF calculation.')
                     GT.change_dsta_to(1.0)
                     energy = GT.ridft()
-                    converged = GT.check_ridft_converged()
+                    converged = GT.check_scf_converged()
                     if not converged:
                         print('The SCF calculation with start damping 1.0 did not converge.')
                         sys.exit()
-            energy = GT.get_energy_from_ridft_out()
+            energy = GT.get_energy_from_scf_out("ridft.out")
 
-        converged = GT.check_ridft_converged()
+        converged = GT.check_scf_converged()
         if not converged:
             print('The ridft calculation did not converge.')
             sys.exit()
@@ -1691,7 +1786,7 @@ class OptimizationTools:
             sys.exit()
 
         # 5. Get the molecules at the end points
-        mol = OT.get_mol_from_coord()
+        mol = GT.coord_to_mol()
         mols = Mol(mol).separate_molecules()
 
         # 6. Go to the main directory
@@ -2214,7 +2309,7 @@ class OptimizationTools:
             M = abs(nalpha-nbeta)+1
 
             if atom:
-                mol_opt = OT.get_mol_from_coord()
+                mol_opt = GT.coord_to_mol()
             else:
                 # 4. Perform the geometry optimization
                 converged = OT.jobex()
@@ -2223,7 +2318,7 @@ class OptimizationTools:
                     exit()
  
                 # 5. Make mol object after the geometry optimization
-                mol_opt = OT.get_mol_from_coord()
+                mol_opt = GT.coord_to_mol()
 
                 # 6. Check if the molecule stays as a single molecule, e.g., the awkward H-O-H-O-H-O complexes of ReaxFF...
                 mols =  Mol(mol_opt).separate_molecules()
@@ -2242,11 +2337,13 @@ class OptimizationTools:
                     path_tmp = os.path.join(QM_path, 'M_%d' %(M+2))
                     if os.path.isdir(path_tmp):
                         OT_tmp = OptimizationTools(path_tmp, lot = self.lot, max_mem = self.max_mem)
+                        GT_tmp = GeneralTools(path_tmp)
                         converged = OT_tmp.jobex()
                         if not converged:
                             print('The geometry optimization with multiplicity %d has failed.' %(M+2))
                             exit()
-                        mol_tmp = OT_tmp.get_mol_from_coord()
+                        mol_tmp = GT_tmp.coord_to_mol()
+
                         Mol(mol_tmp).make_molecular_graph()
                         mg_tmp = mol_tmp.graph.molg
                         equal = molsys.addon.graph.is_equal(mg_ini, mg_tmp)[0]
@@ -2413,10 +2510,10 @@ class OptimizationTools:
             if 'product' in spec: 
                 M_prod.append(M)
                 spec_info['itype'] =  1
-            mol = self.get_mol_from_coord(path)
+            mol = GT.coord_to_mol()
             spec_info['info'] = ''
             if mol.natoms == 1:
-                spec_info['energy'] = GT.get_energy_from_ridft_out()
+                spec_info['energy'] = GT.get_energy_from_scf_out("ridft.out")
                 spec_info['info'] += 'ZPE = 0.0;'
             else:
                 spec_info['energy'], ZPE = GT.get_energy_from_aoforce_out()
@@ -2611,7 +2708,7 @@ class OptimizationTools:
             ts           : is it a ts or not?
         """
         change_molg = False 
-        optspec_info = {}
+        ospec_info = {}
  
         os.chdir(path_ref)
         os.system("cpc %s" %self.path)
@@ -2652,7 +2749,7 @@ class OptimizationTools:
 
         # 5. Single point calculation
         energy = GT.ridft()
-        converged = GT.check_ridft_converged()
+        converged = GT.check_scf_converged()
         if not converged:
             print("ridft did not converge.")
             sys.exit()
@@ -2689,13 +2786,76 @@ class OptimizationTools:
         if os.path.isfile(wherefrom): os.path.remove(wherefrom)
         if os.path.isfile(statistics): os.path.remove(statistics)
 
-        optspec_info['lot']    = self.lot
-        optspec_info['energy'] = energy
-        optspec_info['specID'] = specID
-        optspec_info['info']   = 'ZPE = %3.7f;M = %d;ssquare = %3.3f;' %(ZPE,GT.get_M_from_control(),GT.read_ssquare_from_control())
-        optspec_info['change_molg'] = change_molg
-        self.write_json(info_dict = optspec_info, name = 'optspec')
+        ospec_info['lot']    = self.lot
+        ospec_info['energy'] = energy
+        ospec_info['specID'] = specID
+        ospec_info['info']   = 'ZPE = %3.7f;M = %d;ssquare = %3.3f;' %(ZPE,GT.get_M_from_control(),GT.read_ssquare_from_control())
+        ospec_info['change_molg'] = change_molg
+        self.write_json(info_dict = ospec_info, name = 'ospec')
         return
+
+
+    def refine_pnoccsd(self, ospecID, pnoccsd):
+        # Get the model and basis set from level of theory
+        if "pno-" in self.lot.lower():
+            model_basis_set = re.split("pno-", self.lot, flags=re.IGNORECASE)[-1]
+            basis_set = model_basis_set.split("/")[-1]
+            model_tmp = model_basis_set.split("/")[0]
+            if "(f12*)" in model_basis_set.lower():
+                F12 = True
+                model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower()
+            elif "f12" in model_basis_set.lower():
+                print("Only the submission of the calculations with CCSD(F12*) approximation is automated. For other F12 approximations, you need to modify the code.")
+                sys.exit()
+            else:
+                print("No F12 approximation will be used.")
+                F12 = False
+                model = model_tmp.lower()
+        else:
+            print("Only the submission of the calculations with pair natural orbitals (PNOs) is automated. If you want to use PNOs, use 'PNO-' in front of the 'lot' option.")
+            sys.exit()
+
+        assert model in [s.strip() for s in pnoccsd.split('\n')], "The model %s specified in the level of theory (lot) should be consistent with that specified in the pnoccsd option:" %model + pnoccsd
+
+        # cpc to a new directory
+        os.chdir(self.path)
+        os.system("cpc PNO-CCSD")
+        pnoccsd_path = os.path.join(self.path,"PNO-CCSD")
+
+        OT = OptimizationTools(pnoccsd_path)
+        GT = GeneralTools(pnoccsd_path)
+        mol = GT.coord_to_mol()
+
+
+        # 1. Remove dft, rij, and disp3 from the control file
+        GT.kdg("dft")
+        GT.kdg("rij")
+        GT.kdg("disp3")
+        GT.kdg("energy")
+        GT.kdg("grad")
+
+        # 2. Change the basis set
+        GT.change_basis_set(basis_set=basis_set, ref_control_file = os.path.join("../control"),  title = self.lot)
+
+        # 3. Perform the HF calculation
+        HF_energy = GT.dscf()
+        converged = GT.check_scf_converged("dscf.out")
+        if not converged:
+            print("HF orbitals did not converge. Exiting...")
+            sys.exit()
+        
+        # 4. Add the pnoccsd options
+        GT.define_pnoccsd(pnoccsd=pnoccsd, max_mem=self.max_mem, F12=F12)
+        OT.pnoccsd()
+        self._clean_pnoccsd(pnoccsd_path)
+
+        energy = GT.get_ccsd_energy(F12=F12, model=model, ccsd_out_name="pnoccsd.out", nel = Mol(mol).count_number_of_electrons())
+        info_dict = {}
+        info_dict["ospecID"] = ospecID
+        info_dict["info"] = "E(%s)=%5.10f;" %(self.lot, energy)
+        self.write_json(self, info_dict, name = 'pnoccsd.json')
+        return         
+
 
 
     def write_submit_py_level1(self, path_ref_educts = [], path_ref_products = [], path_ref_ts = '', start_lot = '', reactionID = 0, rbonds = [], atom_ids_dict = {}):
@@ -2711,7 +2871,7 @@ class OptimizationTools:
             atom_ids_dict: dictionary which holds the atom ids matching the ReaxFF optimized structures to that of the trajectory.
         """
         f_path = os.path.join(self.path,"submit.py")
-        f = open(f_path,"a")
+        f = open(f_path,"w")
         f.write("import os\n")
         f.write("import molsys\n")
         f.write("from molsys.util import turbomole\n\n")
@@ -2735,7 +2895,7 @@ class OptimizationTools:
         """ writes a script to submit the jobs for the DFT calculations starting from another DFT calculation        
         """
         f_path = os.path.join(self.path,"submit.py")
-        f = open(f_path,"a")
+        f = open(f_path,"w")
         f.write("import os\n")
         f.write("import molsys\n")
         f.write("from molsys.util import turbomole\n\n")
@@ -2749,6 +2909,22 @@ class OptimizationTools:
             f.write("OT.dft_re_optimization(specID=specID, path_ref=path_ref, ts=True)\n")
         else:
             f.write("OT.dft_re_optimization(specID=specID, path_ref=path_ref, ts=False)\n")
+        f.close()
+        return
+
+
+    def write_submit_py_level3(self, ospecID, pnoccsd, submit_py='submit_pnoccsd.out'):
+        f_path = os.path.join(self.path,submit_py)
+        f = open(f_path,"w")
+        f.write("import os\n")
+        f.write("import molsys\n")
+        f.write("from molsys.util import turbomole\n\n")
+        f.write("lot               = '%s'\n" %self.lot)
+        f.write("max_mem           = %d\n"   %self.max_mem)
+        f.write("ospecID            = %d\n"   %ospecID)
+        f.write("pnocssd = %s\n" %repr(pnoccsd))
+        f.write("OT = turbomole.OptimizationTools(lot = lot, max_mem = max_mem)\n")
+        f.write("OT.refine_pnoccsd(ospecID=ospecID, pnoccsd=pnocssd)")
         f.close()
         return
 
@@ -2792,10 +2968,10 @@ class Slurm:
                 MEM  = int(line[2])
         return CPUS, MEM
 
-    def write_submission_script(path=os.getcwd(), TURBODIR="", ntasks=8, partition="normal"):
+    def write_submission_script(path=os.getcwd(), TURBODIR="", ntasks=8, partition="normal", submit_sh='submit.sh', submit_py='submit.py', submit_out='submit.out'):
         """ Writes a SLURM job submission script which will run whatever is written in submit.py. See write_submit_py under OptimizationTools.
         """
-        s_script_path = os.path.join(path, "submit.sh")
+        s_script_path = os.path.join(path, submit_sh)
         s_script = open(s_script_path,"w")
         s_script.write("#!/bin/bash\n")
         s_script.write("#SBATCH --ntasks=%d\n" %ntasks)
@@ -2817,9 +2993,10 @@ class Slurm:
         s_script.write("#=====================================\n")
         s_script.write("#  Copy every file and run the job    \n")
         s_script.write("#=====================================\n")
-        s_script.write("sbcast submit.py $TMPDIR/submit.py\n")
+        s_script.write("sbcast %s $TMPDIR/%s\n" %(submit_py,submit_py))
+        s_script.write("cpc $TMPDIR\n")
         s_script.write("cd $TMPDIR\n")
-        s_script.write("python3 submit.py > submit.out\n")
+        s_script.write("python3 %s > %s\n" %(submit_py,submit_out))
         s_script.write("#=====================================\n")
         s_script.write("# Copy everything back                \n")
         s_script.write("#=====================================\n")
@@ -2837,5 +3014,76 @@ class Harvest:
             raise FileNotFoundError("The directory %s does not exist." % path)
         else:
             self.path = path
+            self.maindir = os.getcwd()
         return
 
+    def thermodynamics(self, onlyqvib = False, f_ZPE = 1.0, Tstart = 300.0, Tend = 3000.0, numT = 271, Pressure = 0.1):
+        ''' Calls the freeh program for the temperature range needed at a given pressure.
+
+        Args:
+        onlyqvib  : Do you only want to get the logarithm of vibrational partition function?
+        f_ZPE     : Zero point vibrational energy correction factor.
+        T_start   : Start temperature in K
+        T_end     : End temperature in K
+        numT      : Number of temperatures
+        P         : Pressure in MPa
+            
+        Returns:
+
+        '''
+        molinfo = {}
+        # . initialize rotational temperatures
+        Tr = [0,0,0]
+        # . initialize the temperature list, and the thermodynanmic variable dictionaries.
+        T=[] # temperature in K
+        logQ=[] # dictionary of partition functions. Later needed to calculate the concentration of the activated complex, 
+             # and hence, reaction rate and the rate constant from Transition State Theory.
+        G=[] # dictionary of Gibbs Free Energy | 
+        S=[] # dictionary of Entropy           | Later needed to fit NASA polynomials
+        H=[] # dictionary of Enthalpy          |
+        Cp=[]
+        # TODO : change it later to freeh
+        freehdir = '/home/oyoender/freeh'
+        os.chdir(self.path)
+        # . write an input file for the freeh program
+        f = open('freeh.inp','w+')
+        f.write('\n%f\ntstart=%f tend=%f numt=%d pstart=%f\nq' %(f_ZPE,Tstart,Tend,numT,Pressure))
+        f.close()
+        # . run the freeh program
+        os.system('%s -freerotor < freeh.inp > freeh.out  2> /dev/null' %freehdir)
+        # . read the output and get the thermodynamic variables
+        #   Note: Output of the free rotor approximation.
+        linenum = 0
+        linenumTr = 0
+        with open('freeh.out') as freehout:
+            for i, line in enumerate(freehout, start=1):
+                if 'The quasi-RRHO Approach Short Output' in line:
+                    linenum=i+11 # The line where the thermodynamic properties are started to be list.
+                if 'ThetaA' in line: Tr[0] = float(line.strip().split()[2])
+                elif 'ThetaB' in line: Tr[1] = float(line.strip().split()[2])
+                elif 'ThetaC' in line: Tr[2] = float(line.strip().split()[2])
+                if 'Total degeneracy of the electronic wavefunction' in line: qel = float(line.strip().split()[-1])
+                if linenum <= i <= linenum+numT-1 and linenum != 0:
+                    Ttmp=float(line.split()[0])
+                    T.append(Ttmp) # in K
+                    logqtrans=float(line.split()[2])
+                    #V = kB*Ttmp/PressurePa
+                    #qtransperunitvolume = qtrans/V
+                    logqrot=float(line.split()[3])
+                    # vibrational partition function with the energy levels relative to the bottom of the internuclear potential well.
+                    logqvib=float(line.split()[4])
+                    if onlyqvib:
+                       logQ.append(logqvib)
+                    else:
+                       logQ.append(logqtrans+logqrot+logqvib+np.log(qel))
+                    G.append(float(line.split()[5])*1.0E3) # in J/mol
+                    S.append(float(line.split()[6])*1.0E3) # in J/mol/K
+                    H.append(float(line.split()[8])*1.0E3) # in J/mol
+                    Cp.append(float(line.split()[7])*1.0E3) # in J/mol/K
+                if 'SIGMA' in line:
+                    molinfo['sym'] = int(line.strip().split()[4].split('.')[0])
+        os.chdir(self.maindir)
+        molinfo['Tr'] = Tr
+        return molinfo, logQ, G, S, H, T
+    
+    

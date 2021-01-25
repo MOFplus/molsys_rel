@@ -45,7 +45,7 @@ class turbomole_calculator:
        dft_dir_name = "-".join([dft_functional,basis_set])
        self.dft_path = os.path.join(self.data_dir, dft_dir_name)
        print(self.dft_path)
-       if not os.path.isdir(self.dft_path):
+       if not os.path.isdir(self.dft_path) and 'level3' not in params["level"]:
            os.mkdir(self.dft_path)
 
        # default parameters
@@ -64,9 +64,6 @@ class turbomole_calculator:
                params["partition"] = "normal" 
            if "maxnodes" not in params:
                params["maxnodes"] = 4
-
-           # write the SLURM job submission script 'submit.sh' to the QM calculation home directory 
-           turbomole.Slurm.write_submission_script(self.dft_path, params["turbodir"], params["ntasks"], params["partition"])
            CPUS, MEM = turbomole.Slurm.get_partition_info(params["partition"])
            MEM_per_CPU = MEM/CPUS
            params["max_mem"] = 0.8*MEM_per_CPU
@@ -102,6 +99,10 @@ class turbomole_calculator:
                                 reactionID = reactionID
                                 )
        else:
+           # write the SLURM job submission script 'submit.sh' to the QM calculation home directory:
+           turbomole.Slurm.write_submission_script(self.dft_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"])
+ 
+           # write python script to run in the nodes:
            OT.write_submit_py_level1(
                               path_ref_educts = path_ref_educts, 
                               path_ref_products = path_ref_products, 
@@ -131,6 +132,7 @@ class turbomole_calculator:
                                   ts = ts
                                   )
        else:
+           turbomole.Slurm.write_submission_script(self.dft_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"])
            OT.write_submit_py_level2(specID = specID,
                                      path_ref = path_ref,
                                      ts = ts
@@ -142,6 +144,29 @@ class turbomole_calculator:
            jobid = sbatchout.split()[3]
            os.chdir(self.maindir)
        return jobid
+
+
+    def refine_level3(self, ospecID, dft_subdir_path):
+       OT = turbomole.OptimizationTools(path = dft_subdir_path,
+                                        lot = self.params["lot"],
+                                        max_mem = self.params["max_mem"],
+                                        gcart = self.params["gcart"])
+
+       if self.params["submit"] == False:
+           OT.refine_pnoccsd(ospecID = ospecID, pnoccsd = params["pnoccsd"])
+       else:
+           submit_sh = "submit_pnoccsd.sh"
+           submit_py = "submit_pnoccsd.py"
+           submit_out = "submit_pnoccsd.out"
+           turbomole.Slurm.write_submission_script(dft_subdir_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"], submit_sh, submit_py, submit_out)
+           OT.write_submit_py_level3(ospecID = ospecID, pnoccsd = params["pnoccsd"], submit_py=submit_py)
+           #submit the job to the SLURM queuing system and get the assigned job id
+           os.chdir(dft_subdir_path)
+           sbatchout = os.popen("sbatch -J ospec%d %s" %(ospecID, os.path.join(dft_subdir_path,submit_sh))).read()
+           jobid = sbatchout.split()[3]
+           os.chdir(self.maindir)
+       return jobid
+
 
 
     def get_mol(subdir_path):
@@ -222,7 +247,7 @@ start_lotID = rdb.get_lot(start_lot)
 # ------------------------------
 # DFT could look like
 #params = { "calculator"        : "turbomole"
-#         , "level"             : "level1:DFT" (or "level2:DFT" or "level3:PNO-CCSD")
+#         , "level"             : "level1:DFT" or "level2:DFT" or "level3:PNO-CCSD"
 #         , "lot"               : "ri-utpss/SVP"
 #         , "max_mem"           : 3000
 #         , "submit"            : True
@@ -241,7 +266,9 @@ params = ast.literal_eval(content)
 assert "calculator" in params, "Calculator defined"
 assert "lot" in params, "Level of theory is given for the calculator"
 assert "level" in params, "The level of calculation is defined: level1:dft, level2:dft, level3:pno-ccsd"
-
+if "level3" in params['level']:
+    pnoccsd_example = ',"pnoccsd"           : " multilevel off\n localization ibo\n osvmode davidson\n tolpnos  1.d-7\n uosvs on\n ccsd(t)"'
+    assert "pnoccsd" in params, "Please provide $pnoccsd data group in the parameters: e.g.,\n"+repr(pnoccsd_example) 
 
 if params["calculator"] == "turbomole":
     calculator = turbomole_calculator(params = params, db_path = db_path)
@@ -268,7 +295,6 @@ for r in reactions:
         reac2prod_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  1)).select()
         reac2spec = db((db.reac2spec.reactionsID == r)).select()
 
-
         n_ed = len(reac2educt_spec)
         n_prod = len(reac2prod_spec)
  
@@ -283,7 +309,7 @@ for r in reactions:
             ##########################################################
             #   LEVEL 1: DFT calculations from ReaxFF/xTB strutures  #
             ##########################################################
-            if params["level"].lower() == "level1:dft":
+            if "level1" in params["level"].lower():
 
                 # 1) Get the reference structures from the startLOT for the further optimizations
 
@@ -340,7 +366,7 @@ for r in reactions:
             ########################################################
             #             LEVEL 2: DFT Re-optimization             #
             ########################################################
-            elif params["level"].lower() == "level2:dft":
+            elif "level2" in params["level"].lower():
                 for r2s in reac2spec:
                     specID = r2s["speciesID"]
                     ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
@@ -360,6 +386,22 @@ for r in reactions:
                                 jobids.append(jobid)
                             elif exists:
                                 print('The directory %s already exists. Please, check if the directory contains the results.' %dft_subdir_path)
+
+
+            ########################################################
+            #             LEVEL 3: PNO-CCSD Energy                 #
+            ########################################################
+            elif "level3" in params["level"].lower():
+                for r2s in reac2spec:
+                    specID = r2s["speciesID"]
+                    ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
+
+                    if ospec == None:
+                        print("The species %d is not optimized with lot=%s" %(specID,start_lot))
+                    else:
+                        if params["calculator"] == "turbomole":
+                             jobid = calculator.refine_level3(ospecID = ospec.id, dft_subdir_path = os.path.join(db_path,ospec.path))
+                             jobids.append(jobid)
 
             ncurjobs, curjobids = get_ncurjobs(jobids)
         else:
