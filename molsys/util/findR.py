@@ -204,6 +204,9 @@ class findR(mpiobject):
                     # first we need to make sure that there is no other reaction in the subsegment
                     #   test if the product (TS_fid+1) is equal to the end of the subsegment (subseg_end)
                     #   if this is not the case then we have to go forward in fine mode further on
+                    if TS_fid+1 >= self.nframes:
+                        print("Warning! We run out of frames")
+                        break
                     comparer_subseg = self.get_comparer(TS_fid+1, subseg_end)
                     flag = comparer_subseg.check()
                     if flag > 0:

@@ -925,17 +925,17 @@ class graph(object):
 
                 e1 = molg1.get_edges()
                 e2 = molg2.get_edges()
-
+                
                 if e1.shape[0] > 0 and e2.shape[0] > 0:
 
                     # quick exist?
                     vert1 = molg1.get_vertices()
                     vert2 = molg2.get_vertices()
 
-                    if len(vert1) != len(vert2):
+                    if len(vert1) != len(vert2) or len(e1) != len(e2):
                        is_equal = False
                        return is_equal, error_code
-                   
+                     
                     masterg = Graph(molg2)
                     masterg.add_vertex() 
 
@@ -948,7 +948,7 @@ class graph(object):
                            if molg1.vp.type[vi] != molg2.vp.type[vj]:
                                is_equal = False
                                break
-
+                       
                 else:
                     # We don't have any edges... 
 
