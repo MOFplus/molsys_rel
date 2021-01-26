@@ -1119,6 +1119,13 @@ class OptimizationTools:
         return converged
 
 
+    def t2x(self):
+        os.chdir(self.path)
+        os.system("t2x coord > coord.xyz")
+        os.chdir(self.maindir)
+        return
+
+
     def aoforce(self):
         os.chdir(self.path)
         os.system("aoforce > aoforce.out")
@@ -1525,8 +1532,8 @@ class OptimizationTools:
             mol_ordered      : Mol object of the re-ordered molecule
         """
         # 1. Make a mol object for the species
-        path_spec = os.path.join(os.path.join(QM_path,"%s_%d" %(label,n)),'coord.xyz')
-        mol_spec = molsys.mol.from_file(path_spec)
+        path_spec = os.path.join(QM_path,"%s_%d" %(label,n))
+        mol_spec = GeneralTools(path_spec).coord_to_mol()
         mol_spec.detect_conn_by_bo()
 
         # 2. Make a mol object for the TS
@@ -1591,8 +1598,8 @@ class OptimizationTools:
            print('    %s_%d' %(label,n))
            print('================')
            # a) Create a mol object of the DFT optimized species
-           path_opt = os.path.join(os.path.join(QM_path,"%s_%d" %(label,n)),'coord.xyz')
-           mol_opt = molsys.mol.from_file(path_opt)
+           path_opt = os.path.join(QM_path,"%s_%d" %(label,n))
+           mol_opt = GeneralTools(path_opt).coord_to_mol()
            mol_opt.detect_conn_by_bo()
            natoms = len(mol_opt.elems)
 
@@ -2262,6 +2269,7 @@ class OptimizationTools:
                elif inum > 1:
                   converged = False
                   reason += 'There are still more than one imaginary frequencies.'
+        OT.t2x()
 
         return converged, is_similar, QM_paths_dict, reason
 
@@ -2365,6 +2373,7 @@ class OptimizationTools:
                              M = M+2
 
            # 9. Return the final multiplicities and the QM paths of each structure as a list
+            OT.t2x()
             mol_opt.multiplicity = M
             multiplicities.append(M)
             QM_paths.append(QM_path)
