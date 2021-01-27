@@ -2535,7 +2535,7 @@ class OptimizationTools:
         if not barrierless:
             if list(set.intersection(set(M_list),{M_ts})) == []: spin_not_conserved = True
         if spin_not_conserved:
-            info['reaction']['origin'] += ':failed'
+            info['reaction']['source'] += ':failed'
         return info
             
     def write_json(self, info_dict, name = 'r'):
