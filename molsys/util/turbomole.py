@@ -1744,30 +1744,14 @@ class OptimizationTools:
                xyz_complex = zmat_complex.get_cartesian()
                print('The complex is succesfully created.')
 
-               # 11. Separate the xyz coordinates into two molecules
-               xyz_1 = []
-               xyz_2 = []
+               # 11. Now make a mol object which has the same order as in the ts
+               mol_str = '%d\n\n' %mol_ts.natoms
                for i in range(mol_ts.natoms):
                    atom = xyz_complex.loc[i+1, 'atom']
                    x = xyz_complex.loc[i+1, 'x']
                    y = xyz_complex.loc[i+1, 'y']
                    z = xyz_complex.loc[i+1, 'z']
-                   if i < (mol_ts.natoms - natoms): # atoms of the first molecule
-                       xyz_1.append('%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z))
-                   else:
-                       xyz_2.append('%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z))
-
-               # 11. Now make a mol object which has the same order as in the ts
-               i1 = 0
-               i2 = 0
-               mol_str = '%d\n\n' %mol_ts.natoms
-               for i,ts_MD_idx in zip(range(mol_ts.natoms),atom_ids_dict['ts']):
-                   if ts_MD_idx in atom_ids_dict['%s_1' %label]:
-                       mol_str += xyz_1[i1]
-                       i1 += 1
-                   else:
-                       mol_str += xyz_2[i2]
-                       i2 += 1
+                   mol_str += '%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z)
                mol_complex = molsys.mol.from_string(mol_str,'xyz')
         return mol_complex 
 
