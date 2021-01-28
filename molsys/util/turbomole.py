@@ -1547,7 +1547,7 @@ class OptimizationTools:
 
         # 4. Order the species wrt TS
         mol_str = '%d\n\n' %mol_ts.natoms
-        for vts in vts2vspec:
+        for vts in sorted(vts2vspec):
             vspec = vts2vspec[vts]
             atom = mol_spec.elems[vspec]
             x = mol_spec.xyz[vspec][0]
@@ -1555,7 +1555,6 @@ class OptimizationTools:
             z = mol_spec.xyz[vspec][2]
             mol_str += '%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z)
         mol_ordered = molsys.mol.from_string(mol_str,'xyz')
-
         return mol_ordered
 
 
