@@ -1217,6 +1217,7 @@ class OptimizationTools:
             GT.run_tmole()
             converged = GT.check_scf_converged()
 
+
             # 3. If SCF did not converge, increase the SCF start damping to 2.0 instead of 1.0.
             if not converged:
                 print('The SCF calculation for Fermi smearing with start damping 1.0 did not converge. Increasing it to 2.0.' )
@@ -1742,13 +1743,31 @@ class OptimizationTools:
                # 10. Convert the Z-matrix of the complex back to the carte
                xyz_complex = zmat_complex.get_cartesian()
                print('The complex is succesfully created.')
-               mol_str = '%d\n\n' %mol_ts.natoms
+
+               # 11. Separate the xyz coordinates into two molecules
+               xyz_1 = []
+               xyz_2 = []
                for i in range(mol_ts.natoms):
                    atom = xyz_complex.loc[i+1, 'atom']
                    x = xyz_complex.loc[i+1, 'x']
                    y = xyz_complex.loc[i+1, 'y']
                    z = xyz_complex.loc[i+1, 'z']
-                   mol_str += '%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z)
+                   if i < (mol_ts.natoms - natoms): # atoms of the first molecule
+                       xyz_1.append('%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z))
+                   else:
+                       xyz_2.append('%s %5.6f %5.6f %5.6f\n' %(atom,x,y,z))
+
+               # 11. Now make a mol object which has the same order as in the ts
+               i1 = 0
+               i2 = 0
+               mol_str = '%d\n\n' %mol_ts.natoms
+               for i,ts_MD_idx in zip(range(mol_ts.natoms),atom_ids_dict['ts']):
+                   if ts_MD_idx in atom_ids_dict['%s_1' %label]:
+                       mol_str += xyz_1[i1]
+                       i1 += 1
+                   else:
+                       mol_str += xyz_2[i2]
+                       i2 += 1
                mol_complex = molsys.mol.from_string(mol_str,'xyz')
         return mol_complex 
 
@@ -2097,6 +2116,9 @@ class OptimizationTools:
         # Add noise to the structure and perform the single point energy calculation
         energy = OT.generate_MOs(mol = mol, pre_defined_M = True, fermi = True, M = M, active_atoms = active_atoms, add_noise = add_noise, upto = 0.05)
 
+        # TODO Fix this in tmole... Tmole does not change maxcor
+        OT.change_maxcor()
+
         # freeze the active atoms
         OT.freeze_atoms(active_atoms)
 
@@ -2275,6 +2297,15 @@ class OptimizationTools:
         return converged, is_similar, QM_paths_dict, reason
 
 
+    def change_maxcor(self, frac_max_mem = 0.7):
+        os.chdir(self.path)
+        os.system("kdg maxcor")
+        os.system("kdg end")
+        os.system('''echo "\$maxcor    %d MiB  per_core" >> control''' %(frac_max_mem*self.max_mem))
+        os.system('''echo "\$end" >> control''')
+        os.chdir(self.maindir)
+        return
+
 
     def educts_and_products_workflow(self, mols, add_noise = True, upto = 0.05, label = 'eq_spec'):
         """ Optimizes the equilibrium species by first determining the ground state multiplicity through comparison of energies by {M_Fermi, M_Fermi+-2}.
@@ -2312,6 +2343,9 @@ class OptimizationTools:
 
             # 2. Add noise to the structure and perform the single point energy calculation
             energy = OT.generate_MOs(mol = mol_ini, add_noise = add_noise, upto = upto, lowest_energy_M = True)
+
+            # TODO This should be fixed in tmole... It doesn't modify the memory correctly
+            OT.change_maxcor() 
 
             # 3. Get the multiplicity
             nalpha, nbeta = GeneralTools(QM_path).get_nalpha_and_nbeta_from_ridft_output()

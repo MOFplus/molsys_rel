@@ -55,6 +55,8 @@ class turbomole_calculator:
            params["max_mem"] = 500
        if "gcart" not in params:
            params["gcart"] = 3
+       if "exclusive" not in params:
+           params["exclusive"] = False
 
        # default parameters for job submission and set the other variables
        if params["submit"]:
