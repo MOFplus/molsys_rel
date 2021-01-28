@@ -186,7 +186,7 @@ class GeneralTools:
         f.write('*\n')
         f.write('cbas\n') # assign auxiliary basis sets
         f.write('*\n')
-        f.write('memory %f\n' %max_mem) # set maximum core memory per_core
+        f.write('memory %d\n' %max_mem) # set maximum core memory per_core
         if F12:
             f.write('f12\n') # F12 approximation
             f.write('*\n')
@@ -460,6 +460,7 @@ class GeneralTools:
         f.write("%title\n")
         f.write("%s\n" % title)
         f.write("%method\n")
+        # NOTE For some reason tmole does not modify the memory...
         f.write("ENRGY :: %s [gen_mult = %d, gen_symm = c1, scf_dsta = %f, scf_msil = 1000, scf_rico = %d, for_maxc = %d, genprep = %d]\n" %
                 (lot, M, scf_dsta, 0.3*max_mem, 0.7*max_mem, genprep))
         f.write("%coord\n")
@@ -2792,8 +2793,8 @@ class OptimizationTools:
 
         wherefrom  = os.path.join(self.path,'wherefrom')
         statistics = os.path.join(self.path,'statistics')
-        if os.path.isfile(wherefrom): os.path.remove(wherefrom)
-        if os.path.isfile(statistics): os.path.remove(statistics)
+        if os.path.isfile(wherefrom): os.remove(wherefrom)
+        if os.path.isfile(statistics): os.remove(statistics)
 
         ospec_info['lot']    = self.lot
         ospec_info['energy'] = energy
@@ -2977,7 +2978,7 @@ class Slurm:
                 MEM  = int(line[2])
         return CPUS, MEM
 
-    def write_submission_script(path=os.getcwd(), TURBODIR="", ntasks=8, partition="normal", submit_sh='submit.sh', submit_py='submit.py', submit_out='submit.out'):
+    def write_submission_script(path=os.getcwd(), TURBODIR="", ntasks=8, partition="normal", exclusive = False, submit_sh='submit.sh', submit_py='submit.py', submit_out='submit.out'):
         """ Writes a SLURM job submission script which will run whatever is written in submit.py. See write_submit_py under OptimizationTools.
         """
         s_script_path = os.path.join(path, submit_sh)
@@ -2989,6 +2990,8 @@ class Slurm:
         s_script.write("#SBATCH --output=job.%J.out\n")
         s_script.write("#SBATCH --time=999:00:00\n")
         s_script.write("#SBATCH --partition=%s\n" %partition)
+        if exclusive:
+            s_script.write("#SBATCH --exclusive\n")
         s_script.write("#=====================================\n")
         s_script.write("# Setup the environment for Turbomole \n")
         s_script.write("#=====================================\n")

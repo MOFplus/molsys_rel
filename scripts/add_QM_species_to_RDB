@@ -76,12 +76,12 @@ for dft_subdir_path in dft_subdir_paths:
             print("%s does not exist." %f_json)
 
     elif 'level2' in level.lower():
-        f_json = os.path.join(dft_subdir_path,'optspec.json')
+        f_json = os.path.join(dft_subdir_path,'ospec.json')
         if os.path.isfile(f_json):
              with open(f_json) as f:
                  data = json.load(f)
                  GT = turbomole.GeneralTools(dft_subdir_path)
-                 mol = OT.coord_to_mol()
+                 mol = GT.coord_to_mol()
                  rel_path = os.path.relpath(dft_subdir_path, db_path)
                  # Add to the opt_species table
                  rdb.add_opt_species(mol         = mol,
