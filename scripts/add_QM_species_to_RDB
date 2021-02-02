@@ -83,16 +83,22 @@ for dft_subdir_path in dft_subdir_paths:
                  GT = turbomole.GeneralTools(dft_subdir_path)
                  mol = GT.coord_to_mol()
                  rel_path = os.path.relpath(dft_subdir_path, db_path)
-                 # Add to the opt_species table
-                 rdb.add_opt_species(mol         = mol,
-                                     specID      = data['specID'],
-                                     lot         = data['lot'],
-                                     energy      = data['energy'],
-                                     path        = rel_path,
-                                     change_molg = data['change_molg'],
-                                     rbonds      = None,
-                                     info        = data['info'])
-
+                 lotID = rdb.get_lot(data["lot"])
+                 ospec = db(db.opt_species.speciesID == data['specID'] and db.opt_species.lotID == lotID and db.opt_species.energy == data['energy'] and db.opt_species.path == rel_path and db.opt_species.info == data['info']).select().first()
+                 print(data['specID'])
+                 if ospec != None:
+                     print("Optimized species %d is already registered." %(ospec.id))
+                 else:
+                     # Add to the opt_species table
+                     optID = rdb.add_opt_species(mol         = mol,
+                                                 specID      = data['specID'],
+                                                 lot         = data['lot'],
+                                                 energy      = data['energy'],
+                                                 path        = rel_path,
+                                                 change_molg = data['change_molg'],
+                                                 rbonds      = None,
+                                                 info        = data['info'])
+                     print("Optimized species %d from species %d is registered." %(optID, data['specID']))
         else:
             print("%s does not exist." %f_json)
 

@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""test script to optimize all systems in the DB
+
+all systems with zero energy and not TS are picked and optimized
+"""
+
+import pylmps
+import molsys
+import sys
+import os
+import time
+import numpy as np
+import ast
+from scipy import constants
+from molsys.util import RDB
+from molsys.util import turbomole
+
+
+HtokJmol = constants.value("hartree-joule relationship")*constants.N_A*1.E-3
+
+#
+# Helper functions
+#
+def get_mol_from_opt_spec(ospec):
+    # get mol object from DB
+    fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
+    mfpxs = mfpxf.read().decode('utf-8')
+    mfpxf.close()
+    mol = molsys.mol.from_string(mfpxs)
+    mol.addon("graph")
+    mol.detect_conn()
+    mol.graph.make_graph()
+    return mol
+
+def get_opt_spec_path(ospec):
+    fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
+    ospec_mfpxf_path = mfpxf.name
+    mfpxf.close()
+    return ospec_mfpxf_path
+
+def get_md_spec_mfpx(md_spec):
+    fname, mfpxf = db.md_species.mfpx.retrieve(md_spec.mfpx)
+    md_spec_mfpxf_path = mfpxf.name
+    mfpxf.close()
+    return md_spec_mfpxf_path
+
+
+######################################################################################################################
+######################################################################################################################
+#
+# Start of main program 
+#
+if len(sys.argv) < 3:
+    print ("usage:  opt_QM_species <db_path> <cmd_file>")
+    exit()
+    
+
+db_path   = os.path.abspath(sys.argv[1])
+cmd_file  = sys.argv[2]
+
+assert os.path.isfile(cmd_file), "command file exists!"
+# read param set. Examples are:
+# ------------------------------
+# DFT could look like
+#params = { "level"             : "level1:DFT" or "level2:DFT" or "level3:PNO-CCSD"
+#         , "lot"               : "ri-utpssh/TZVP"
+#         , "f_cor"             : 0.9874
+#         , "reaction_origin"   : [14,15,22,27,41,55,56,61,69,95,100,109]
+#         }
+
+file = open(cmd_file, "r")
+content = file.read()
+params = ast.literal_eval(content)
+
+# sanity check(s)
+assert "lot" in params, "Level of theory is given for the calculator"
+assert "level" in params, "The level of calculation is defined: level1:dft, level2:dft, level3:pno-ccsd"
+assert "f_cor" in params, "The ZPE correction factor is defined"
+
+print ("open database %s" % db_path)
+rdb = RDB.RDB(db_path)
+db = rdb.db
+# get all reactions
+reactions = db(db.reactions).select()
+if "reaction_origin" in params:
+    reactions = reactions.find(lambda row: row.origin in params["reaction_origin"])
+print(reactions)
+
+print("Level of theory = ", params["lot"])
+lotID = rdb.get_lot(params["lot"])
+
+print("The ZPE correction factor = ", params["f_cor"])
+
+curjobids = []
+ncurjobs = 0
+jobids = []
+
+# Loop over the reactions
+'''
+path_ref_educts   : list   : the mfpx path of the educts from the start LOT
+path_ref_products : list   : the mfpx path of the products from the start LOT
+path_ref_ts       : string : the mfpx path of the TS from the start LOT
+path_ed_complex   : string : the mfpx path of the educt complex from MD for non-unimolecular rxns
+path_prod_complex : string : the mfpx path of the product complex from MD for non-unimolecular rxns
+'''
+for r in reactions:
+    skip = False
+    if r.id != 1:
+        # get all species for this reaction
+        reac2ts_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  0)).select().first()
+        reac2educt_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label == -1)).select()
+        reac2prod_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  1)).select()
+        reac2spec = db((db.reac2spec.reactionsID == r)).select()
+
+        n_ed = len(reac2educt_spec)
+        n_prod = len(reac2prod_spec)
+
+        print("============================================")
+        if r.origin == None:
+            print("Reaction %d:" %r.id)
+        else:
+            print("Reaction %d from reaction origin %d:" %(r.id, r.origin))
+        print("--------------------------------------------")
+        ##########################################################
+        #            LEVEL 1/ LEVEL 2: DFT calculations          #
+        ##########################################################
+        if "level1" in params["level"].lower() or "level2" in params["level"].lower():
+            E_el_rxn = 0.0
+            E_el_act = 0.0
+            ZPE_rxn = 0.0
+            ZPE_act = 0.0
+            # educts
+            path_ref_educts = []
+            print("educt specIDs:")
+            for i,ed in enumerate(reac2educt_spec):
+                print(ed.id)
+                oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+                if oed == None:
+                    print("The educt species %d is not optimized with %s according to the database entries!" %(ed.speciesID,params["lot"]))
+                    print("Skipping the reaction %d ..." %r.id)
+                    skip = True
+                    continue
+                print(oed.info)
+                for info in oed.info.split(";"):
+                    if "ZPE" in info:
+                        ZPE = float(info.split("=")[-1])
+                    if "M" in info:
+                        M = float(info.split("=")[-1])
+                        m_s = (M-1)/2
+                print("m_s = %.1f" %m_s)
+                E_el_rxn -= oed.energy
+                ZPE_rxn  -= params["f_cor"]*ZPE
+                E_el_act -= oed.energy
+                ZPE_act  -= params["f_cor"]*ZPE
+            if skip: continue
+
+            # products
+            path_ref_products = []
+            print("product specIDs:")
+            for i,prod in enumerate(reac2prod_spec):
+                print(prod.id)
+                oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+                if oprod == None:
+                    print("The product species %d is not optimized with %s according to the database entries!" %(prod.speciesID,params["lot"]))
+                    print("Skipping the reaction %d ..." %r.id)
+                    skip = True
+                    continue
+                print(oprod.info)
+                for info in oprod.info.split(";"):
+                    if "ZPE" in info:
+                        ZPE = float(info.split("=")[-1])
+                    if "M" in info:                
+                        M = float(info.split("=")[-1])
+                        m_s = (M-1)/2
+                print("m_s = %.1f" %m_s)
+
+                E_el_rxn += oprod.energy
+                ZPE_rxn  += params["f_cor"]*ZPE
+
+            if skip: continue
+
+            if reac2ts_spec != None:            
+                print("TS specID:")
+                # transition state
+                ots =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+                print(ots.info)
+                if ots == None:
+                    print("The transition state species %d is not optimized with %s according to the database entries!" %(reac2ts_spec.speciesID,params["lot"]))
+                    print("Skipping the reaction %d ..." %r.id)
+                    continue
+                print(reac2ts_spec.id)
+                for info in ots.info.split(";"):
+                    if "ZPE" in info:
+                        ZPE = float(info.split("=")[-1])
+                    if "M" in info:
+                        M = float(info.split("=")[-1])
+                        m_s = (M-1)/2
+                print("m_s = %.1f" %m_s)
+                E_el_act += ots.energy
+                ZPE_act +=  params["f_cor"]*ZPE
+
+                print("--------------------------------------------")
+                print("E_act = %.1f kJ/mol, E_rxn = %.1f kJ/mol" %((E_el_act+ZPE_act)*HtokJmol, (E_el_rxn+ZPE_rxn)*HtokJmol))
+                print("============================================\n")
+
+            else:
+                print("Barrierless reaction:")
+                print("--------------------------------------------")
+                print("E_rxn = %.1f kJ/mol" %(E_el_rxn+ZPE_rxn)*HtokJmol)
+                print("============================================\n")
+
+
+#            ########################################################
+#            #             LEVEL 2: DFT Re-optimization             #
+#            ########################################################
+#            elif "level2" in params["level"].lower():
+#                for r2s in reac2spec:
+#                    specID = r2s["speciesID"]
+#                    ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
+#
+#                    if ospec == None:
+#                        print("The species %d is not optimized with lot=%s" %(specID,start_lot))
+#                    else:
+#                        if params["calculator"] == "turbomole":
+#
+#                            dft_subdir_path, exists = calculator.make_dft_subdir(ID = ospec.id, ID_type = "opt_species")
+#                            if not exists:
+#                                jobid = calculator.optimize_level2(specID          = specID,
+#                                                                   dft_subdir_path = dft_subdir_path,
+#                                                                   path_ref        = os.path.join(db_path, ospec.path),
+#                                                                   ts              = (r2s["label"] == 0)
+#                                                                   )
+#                                jobids.append(jobid)
+#                            elif exists:
+#                                print('The directory %s already exists. Please, check if the directory contains the results.' %dft_subdir_path)
+

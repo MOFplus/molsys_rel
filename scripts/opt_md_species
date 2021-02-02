@@ -140,8 +140,8 @@ def get_mol_from_opt_spec(ospec):
 #
 # Start of main program 
 #
-if len(sys.argv) < 2:
-    print ("usage:  opt_md_species <db_path> <pdlp_file> <stage>")
+if len(sys.argv) < 5:
+    print ("usage:  opt_md_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
     exit()
     
 
