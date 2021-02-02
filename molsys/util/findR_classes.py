@@ -697,20 +697,23 @@ class revent:
         else:
             self.ED = f1
             self.TS = f2
-            self.PR = self.fR.process_frame(self.TS.fid+1)
-            self.ED_spec = educts
-            self.TS_spec = products
-            loccomp = fcompare(self.TS, self.PR)
-            if loccomp.check_aids() == 0:
-                # no change in atom ids .. we can use TS species for PR as well
-                self.PR_spec = {}
-                for e in products:
-                    if e in self.PR.specs:
-                        self.PR_spec[e] = self.PR.specs[e]
-                    else:
-                        self.PR_spec[e] = self.PR.make_species(e)
+            if self.fR.nframes > self.TS.fid+1:
+                self.PR = self.fR.process_frame(self.TS.fid+1)
+                self.ED_spec = educts
+                self.TS_spec = products
+                loccomp = fcompare(self.TS, self.PR)
+                if loccomp.check_aids() == 0:
+                    # no change in atom ids .. we can use TS species for PR as well
+                    self.PR_spec = {}
+                    for e in products:
+                        if e in self.PR.specs:
+                            self.PR_spec[e] = self.PR.specs[e]
+                        else:
+                            self.PR_spec[e] = self.PR.make_species(e)
+                else:
+                    print ("Houston we have a problem!!! species changed between TS and PR")
             else:
-                print ("Houston we have a problem!!! species changed between TS and PR")
+                print("Warning! We run out of frames to process to identify TS and PR.")
         # get TS_fid for ease
         self.TS_fid = self.TS.fid
 
