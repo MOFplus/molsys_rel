@@ -87,6 +87,7 @@ channels:
   - conda-forge
 dependencies:
   - python
+  - nodejs
   - numpy
   - scipy
   - mpi4py

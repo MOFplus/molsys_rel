@@ -46,7 +46,9 @@ class topo:
                         edges.append([i,v])
                         # NOTE: in some cases pconn contains FLOAT numbers which is wrong!!! find out where thsi comes from!! and who did it?
                         labels.append(self._mol.pconn[i][j].astype("int32").tolist())
-            self._systrekey, mapping = systrekey.run_systrekey(edges, labels)            
+            self._systrekey, mapping, result = systrekey.run_systrekey(edges, labels)     
+            print ("DEBUG DEBUG systrekey")
+            print (result)
             self._skey_mapping = [-1 for i in range(self._mol.get_natoms())]
             for k in mapping:
                 self._skey_mapping[int(k)-1] = mapping[k]-1
