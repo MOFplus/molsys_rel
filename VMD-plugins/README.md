@@ -26,17 +26,23 @@ make install
 
 ### mfpx file reader
 
-TBI
+To install the plugin (i.e. to copy the shared objects, try
+```
+cd mfpx
+make install
+```
+
 
 
 ## Usage
 
 ### mfp
 
-You can start off vmd with -mfp5 to tell it to read such a file as
+You can start off vmd with -mfp5 or -mfpx to tell it to read such a file as
 
 ```
 vmd -mfp5 [FILENAME]
+vmd -mfpx [FILENAME]
 ```
 
 # CREDITS
