@@ -60,6 +60,36 @@ int mfp5_open(struct mfp5_file** _file, const char *filename, int can_write){
 	}
 }
 
+void mfp5_detect_stages(struct mfp5_file* file){
+    herr_t   status,err;
+	hsize_t nobj;
+    hid_t    gid;
+    ssize_t  len;
+    char     group_name[1024],memb_name[1024];
+    char** group_names;
+
+    gid = H5Gopen(file->file_id,"/",H5P_DEFAULT);
+    len = H5Iget_name(gid, group_name, 1024  );
+	err = H5Gget_num_objs(gid, &nobj);
+
+	for (int i = 0; i < nobj; i++) {
+                /*
+                 *  For each object in the group, get the name and
+                 *   what type of object it is.
+                 */
+		len = H5Gget_objname_by_idx(gid, (hsize_t)i,memb_name, (size_t)1024 );
+        if (strcmp(memb_name,"default") == 0){
+            continue;
+        }
+        if (strcmp(memb_name,"system") == 0){
+            continue;
+        }
+		printf("   %s \n",memb_name);fflush(stdout);
+    }
+    H5Gclose(gid);
+    return;
+}
+
 int mfp5_set_stage(struct mfp5_file* file, char *stagename){
     if (*stagename == file-> current_stage_name){
         return 0;
