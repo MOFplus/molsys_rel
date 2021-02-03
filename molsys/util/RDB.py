@@ -551,9 +551,8 @@ class RDB:
             # make the nodes of the revent
             educ = []
             prod = []
+            reactID = cur_revent["reactionsID"]
             if only_unique_reactions:
-
-                reactID = cur_revent["reactionsID"]
  
                 if reactID in already_visited:
                    continue
@@ -583,9 +582,9 @@ class RDB:
                     fimg = img_path+m.png
 
                 if m.foffset == -1:
-                    new_node = pydot.Node("%d_ed_%d" % (cur_revent.frame, m.spec),\
+                    new_node = pydot.Node("%d_ed_%d_react_%d" % (cur_revent.frame, m.spec, reactID),\
                                        image = fimg,\
-                                       label = "%s" % m.sumform,\
+                                       label = "reaction %s \n %s" % (reactID, m.sumform),\
                                        labelloc = "t", \
                                        height = 2.5, \
                                        width  = 2.5, \
@@ -593,7 +592,7 @@ class RDB:
                                        shape = "box")
                     educ.append(new_node)
                 elif m.foffset == 1:
-                    new_node = pydot.Node("%d_pr_%d" % (cur_revent.frame, m.spec),\
+                    new_node = pydot.Node("%d_pr_%d_react_%d" % (cur_revent.frame, m.spec, reactID),\
                                        image = fimg,\
                                        label = "%s" % m.sumform,\
                                        labelloc = "t", \
@@ -607,7 +606,7 @@ class RDB:
                         label = "%10d (unimol)" % cur_revent.frame 
                     else:
                         label = "%10d" % cur_revent.frame
-                    new_node = pydot.Node("%d_ts_%d" % (cur_revent.frame, m.spec),\
+                    new_node = pydot.Node("%d_ts_%d_react_%d" % (cur_revent.frame, m.spec, reactID),\
                                        image = fimg,\
                                        label = label,\
                                        labelloc = "t",\
