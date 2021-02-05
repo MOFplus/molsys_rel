@@ -1157,8 +1157,13 @@ class OptimizationTools:
                 os.remove(f_path)
         return
 
-
-
+    def add_arh_to_control(self):
+        os.chdir(self.path)
+        os.system("kdg end")
+        os.system('''echo "\$arh" >> control''')
+        os.system('''echo "\$end" >> control''')
+        os.chdir(self.maindir)
+        return
 
     def generate_MOs(self, mol, title = '', add_noise = True, upto = 0.05, active_atoms = [], fermi = True, pre_defined_M = False, lowest_energy_M = False, M = None) :
         """ To generate molecular orbitals
@@ -1250,12 +1255,15 @@ class OptimizationTools:
             # 4. Remove the data group $fermi from the control file
             GT.kdg("fermi")
 
-            # 5. If there are partial occupations round them to integers
+            # 5. Add to the control file the Augmented Roothan Hall solver keyword
+            self.add_arh_to_control()
+
+            # 6. If there are partial occupations round them to integers
             GT.round_fractional_occupation()
             energy = GT.ridft()
             print("The energy of the structure is %f Hartree." %energy)
 
-            # 6. Now get the spin multiplicity from Fermi
+            # 7. Now get the spin multiplicity from Fermi
             nalpha, nbeta = GT.get_nalpha_and_nbeta_from_ridft_output()
             M_fermi = GT.calculate_spin_multiplicity_from(nalpha, nbeta)
 
@@ -1263,10 +1271,10 @@ class OptimizationTools:
             if pre_defined_M:
                 assert M != None, "You must provide a multiplicity for a TS!"
  
-                # 7. If the multiplicity changes in the Fermi smearing, change the multiplicity such that the desired multiplicity is used.
+                # 8. If the multiplicity changes in the Fermi smearing, change the multiplicity such that the desired multiplicity is used.
                 if M_fermi != M:
                     print("The spin multiplicity after Fermi smearing is %d, it will be changed to %d." %(M_fermi, M))
-                    GT.for_c1_sym_change_multiplicity_in_control_by(M-M_fermi, nalpha, nbeta)
+                    GT.for_c1_sym_change_multiplicity_in_control_by(M-M_fermi, nalpha, nbeta)   
                     energy = GT.ridft()
                     converged = GT.check_scf_converged()
                     if not converged:
@@ -1288,7 +1296,11 @@ class OptimizationTools:
                         GT_m2 = GeneralTools(m2_path)
                         GT_m2.for_c1_sym_change_multiplicity_in_control_by(-2, nalpha, nbeta)
                         energy_m2 = GT_m2.ridft()
-                        dict_energies[energy_m2] = M_fermi-2
+                        converged = GT_m2.check_scf_converged()
+                        if converged:      
+                            dict_energies[energy_m2] = M_fermi-2
+                        else:
+                            print('The SCF calculation with multiplicity %d did not converge. It is not added to the dictionary.' %(M_fermi-2))
                         os.chdir(self.maindir)
                     # The maximum possible multiplicity that the molecule can have
                     M_max = Mol(mol).get_max_M()
@@ -1301,7 +1313,11 @@ class OptimizationTools:
                         GT_p2 = GeneralTools(p2_path)
                         GT_p2.for_c1_sym_change_multiplicity_in_control_by(+2, nalpha, nbeta)
                         energy_p2 = GT_p2.ridft()
-                        dict_energies[energy_p2] = M_fermi+2
+                        converged = GT_p2.check_scf_converged()
+                        if converged:
+                            dict_energies[energy_p2] = M_fermi+2
+                        else:
+                            print('The SCF calculation with multiplicity %d did not converge. It is not added to the dictionary.' %(M_fermi+2))
                         os.chdir(self.maindir)
                     M_final = dict_energies[min(dict_energies)]
                     print('The dictionary of energies and multiplicities:')
@@ -2364,12 +2380,15 @@ class OptimizationTools:
                     if os.path.isdir(path_tmp):
                         OT_tmp = OptimizationTools(path_tmp, lot = self.lot, max_mem = self.max_mem)
                         GT_tmp = GeneralTools(path_tmp)
+                        converged = GT_tmp.check_scf_converged()
+                        if not converged:
+                             print('The are no converged SCF orbitals with multiplicity %d.' %(M+2))
+                             exit()
                         converged = OT_tmp.jobex()
                         if not converged:
                             print('The geometry optimization with multiplicity %d has failed.' %(M+2))
                             exit()
                         mol_tmp = GT_tmp.coord_to_mol()
-
                         Mol(mol_tmp).make_molecular_graph()
                         mg_tmp = mol_tmp.graph.molg
                         equal = molsys.addon.graph.is_equal(mg_ini, mg_tmp)[0]
