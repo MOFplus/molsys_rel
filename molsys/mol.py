@@ -3125,11 +3125,7 @@ class mol(mpiobject):
         self.list_bond_properties()
         return
 
-    def calc_uncorrected_bond_order( self
-                               , iat : int
-                               , jat : int
-                               , bo_cut = 0.1
-                               ):
+    def calc_uncorrected_bond_order( self, iat : int, jat : int, bo_cut = 0.1):
         # Which elements do we have?
         element_list = self.get_elems()
         # sanity check(s)
@@ -3164,7 +3160,7 @@ class mol(mpiobject):
             BO = 0.0
         return BO
 
-    def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5,dist_thresh=5.0,correct=True):
+    def detect_conn_by_bo(self, bo_cut=0.1, bo_thresh=0.5, dist_thresh=5.0, correct=True):
 
         def f2(di,dj):
             lambda1 = 50.0
