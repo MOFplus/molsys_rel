@@ -210,6 +210,38 @@ class GeneralTools:
         self.invoke_define()
         return
 
+    def define_canonical_ccsd(self, model, max_mem=500, F12=True, title=''):
+        define_in_path = os.path.join(self.path,'define.in')
+        f=open(define_in_path,'w')
+        f.write("%s\n" %title)
+        f.write('n\n') # do not change geometry data
+        f.write('n\n') # do not change atomic attribute data
+        f.write('n\n') # do not change molecular orbital data
+        f.write('n\n') # DO YOU WANT TO DELETE DATA GROUPS LIKE
+        f.write('n\n') # we do not want to write natural orbitals 
+        f.write('cc\n')
+        f.write('freeze\n') # set frozen occupied/virtual orbital options
+        f.write('*\n')
+        f.write('cbas\n') # assign auxiliary basis sets
+        f.write('*\n')
+        f.write('memory %d\n' %max_mem) # set maximum core memory per_core
+        if F12:
+            f.write('f12\n') # F12 approximation
+            f.write('*\n')
+            f.write('cabs\n') # complementary auxiliary basis set
+            f.write('*\n')
+            f.write('jkbas\n') # auxiliary basis for Fock matrices
+            f.write('*\n')
+        f.write('ricc2\n') 
+        f.write('model %s\n' %model) 
+        f.write('*\n')
+        f.write('*\n')
+        f.write('q\n')
+        f.close()
+        self.invoke_define()
+        return
+
+
     def define_pnoccsd(self, pnoccsd, max_mem=500, F12=True, title=''):
         define_in_path = os.path.join(self.path,'define.in')
         f=open(define_in_path,'w')
@@ -1236,11 +1268,17 @@ class OptimizationTools:
         os.chdir(self.maindir)
         return
 
-    def _clean_pnoccsd(self, pnoccsd_path):
-        lst = os.listdir(pnoccsd_path)
+    def ccsdf12(self):
+        os.chdir(self.path)
+        os.system("ccsdf12 > ccsdf12.out")
+        os.chdir(self.maindir)
+        return
+
+    def _clean_ccsd(self, ccsd_path):
+        lst = os.listdir(ccsd_path)
         for f in lst:
             f_path = os.path.join(pnoccsd_path, f)
-            if f in ["wherefrom","statistics"] or f.startswith("PNO") or f.startswith("CCB") or f.startswith("CCY")  or f.startswith("CCH") or f.startswith("CCK") or f.startswith("CCI") or f.startswith("CCJ") or f.startswith("CCV")  or f.startswith("CC_") or f.startswith("CC3") or f.startswith("RIR12"):
+            if f in ["wherefrom","statistics"] or f.startswith("PNO") or f.startswith("CC") or f.startswith("RIR12"):
                 os.remove(f_path)
         return
 
@@ -2925,53 +2963,70 @@ class OptimizationTools:
         return
 
 
-    def refine_pnoccsd(self, ospecID, pnoccsd):
-        # Get the model and basis set from level of theory
-        if "pno-" in self.lot.lower():
-            model_basis_set = re.split("pno-", self.lot, flags=re.IGNORECASE)[-1]
-            basis_set = model_basis_set.split("/")[-1]
-            model_tmp = model_basis_set.split("/")[0]
-            if "(f12*)" in model_basis_set.lower():
-                F12 = True
-                if "-" in model_tmp:
-                    model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower().split("-")[-1]
-                else:
-                    model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower()
-            elif "f12" in model_basis_set.lower():
-                print("Only the submission of the calculations with CCSD(F12*) approximation is automated. For other F12 approximations, you need to modify the code.")
-                sys.exit()
-            else:
-                print("No F12 approximation will be used.")
-                F12 = False
-                model = model_tmp.lower()
-        else:
-            print("Only the submission of the calculations with pair natural orbitals (PNOs) is automated. If you want to use PNOs, use 'PNO-' in front of the 'lot' option.")
-            sys.exit()
-
-        assert model in [s.strip() for s in pnoccsd.split('\n')], "The model %s specified in the level of theory (lot) should be consistent with that specified in the pnoccsd option:" %model + pnoccsd
-
-        if "rohf" in self.lot.lower():
+    def refine_ccsd(self, ospecID, pnoccsd=""):
+        # 1. Get the model and basis set from level of theory (self.lot)
+        # example formats for lot:
+        # "PNO-ROHF-CCSD(T)(F12*)/cc-pVTZ" -> Uses pnoccsd code
+        # "PNO-CCSD(T)(F12*)/cc-pVTZ"      -> Takes the orbitals from the reference DFT calculation
+        # "ROHF-CCSD(T)(F12*)/cc-pVTZ"     -> Uses canonical code ccsdf12
+        # "CCSD(T)(F12*)/cc-pVTZ"          -> Takes the orbitals from the reference DFT calculation
+        if "pno-" in self.lot.lower() and "rohf" in self.lot.lower():
+            model_basis_set = re.split("rohf-", self.lot, flags=re.IGNORECASE)[-1]
+            pno = True
             rohf = True
+        elif "pno-" in self.lot.lower() and "rohf" not in self.lot.lower():
+            model_basis_set = re.split("pno-", self.lot, flags=re.IGNORECASE)[-1]
+            pno = True
+            rohf = False
+        elif "pno-" not in self.lot.lower() and "rohf" in self.lot.lower():
+            model_basis_set = re.split("rohf-", self.lot, flags=re.IGNORECASE)[-1]
+            pno = False
+            rohf = True
+        elif "pno-" not in self.lot.lower() and "rohf" not in self.lot.lower():
+            model_basis_set = self.lot.lower()
+            pno = False
+            rohf = False
+        basis_set = model_basis_set.split("/")[-1]
+        model_tmp = model_basis_set.split("/")[0]
+        # check if F12 approximation is used
+        if "(f12*)" in model_basis_set.lower():
+            F12 = True
+            if "-" in model_tmp:
+                model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower().split("-")[-1]
+            else:
+                model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower()
+        elif "f12" in model_basis_set.lower():
+            print("Only the submission of the calculations with CCSD(F12*) approximation is automated. For other F12 approximations, you need to modify the code.")
+            sys.exit()
+        else:
+            print("No F12 approximation will be used.")
+            F12 = False
+            model = model_tmp.lower()
+        # make sure the the model matches in the pnoccsd data group and the specified lot.
+        if pno:
+            assert model in [s.strip() for s in pnoccsd.split('\n')], "The model %s specified in the level of theory (lot) should be consistent with that specified in the pnoccsd option:" %model + pnoccsd
 
         # cpc to a new directory
         os.chdir(self.path)
-        pnoccsd_path = os.path.join(self.path,"PNO-CCSD")
-        os.mkdir(pnoccsd_path)
-        OT = OptimizationTools(pnoccsd_path)
-        GT = GeneralTools(pnoccsd_path)
+        ccsd_path = os.path.join(self.path,"CC")
+        os.mkdir(ccsd_path)
+        OT = OptimizationTools(ccsd_path)
+        GT = GeneralTools(ccsd_path)
         # 1. Set up the HF calculation input
         if rohf:
-            shutil.copy(os.path.join(self.path,"coord"),os.path.join(pnoccsd_path,"coord"))
+            shutil.copy(os.path.join(self.path,"coord"),os.path.join(ccsd_path,"coord"))
             M = GeneralTools(self.path).get_M_from_control()
             GT.define_rohf(basis_set=basis_set, M=M)
         else:
-            os.system("cpc PNO-CCSD")
+            # if UHF reference, then start with the DFT orbitals
+            os.system("cpc CC")
             # Remove dft, rij, and disp3 from the control file
             GT.kdg("dft")
             GT.kdg("rij")
             GT.kdg("disp3")
             GT.kdg("energy")
             GT.kdg("grad")
+            GT.kdg("arh")
             # Change the basis set
             GT.change_basis_set(basis_set=basis_set, ref_control_file = os.path.join("../control"),  title = self.lot)
 
@@ -2985,16 +3040,22 @@ class OptimizationTools:
             sys.exit()
         
         # 3. Add the pnoccsd options
-        GT.define_pnoccsd(pnoccsd=pnoccsd, max_mem=self.max_mem, F12=F12)
-        OT.pnoccsd()
-        self._clean_pnoccsd(pnoccsd_path)
+        if pno:
+            GT.define_pnoccsd(pnoccsd=pnoccsd, max_mem=self.max_mem, F12=F12)
+            ccsd_out_name="pnoccsd.out"
+            OT.pnoccsd()
+        else:
+            GT.define_canonical_ccsd(model=model, max_mem=self.max_mem, F12=F12)
+            ccsd_out_name="ccsdf12.out"
+            OT.ccsdf12()
+        self._clean_ccsd(ccsd_path)
 
         # 4. Write the json file to later add to the database
-        energy = GT.get_ccsd_energy(F12=F12, model=model, ccsd_out_name="pnoccsd.out", nel = Mol(mol).count_number_of_electrons())
+        energy = GT.get_ccsd_energy(F12=F12, model=model, ccsd_out_name=ccsd_out_name, nel = Mol(mol).count_number_of_electrons())
         info_dict = {}
         info_dict["ospecID"] = ospecID
         info_dict["info"] = "E(%s)=%5.10f;" %(self.lot, energy)
-        self.write_json(info_dict, name = 'pnoccsd')
+        self.write_json(info_dict, name = 'ccsd')
         return         
 
 
@@ -3065,7 +3126,7 @@ class OptimizationTools:
         f.write("ospecID            = %d\n"   %ospecID)
         f.write("pnocssd = %s\n" %repr(pnoccsd))
         f.write("OT = turbomole.OptimizationTools(lot = lot, max_mem = max_mem)\n")
-        f.write("OT.refine_pnoccsd(ospecID=ospecID, pnoccsd=pnocssd)")
+        f.write("OT.refine_ccsd(ospecID=ospecID, pnoccsd=pnocssd)")
         f.close()
         return
 
@@ -3129,8 +3190,8 @@ class Slurm:
         s_script.write("export TURBODIR=%s\n" %TURBODIR)
         s_script.write("source $TURBODIR/Config_turbo_env\n")
         s_script.write("export PATH=$TURBODIR/scripts:$PATH\n")
-        s_script.write("export PATH=$TURBODIR/bin/`sysname`:$PATH\n")
         s_script.write("export PARA_ARCH=SMP\n")
+        s_script.write("export PATH=$TURBODIR/bin/`sysname`:$PATH\n")
         s_script.write("export OMP_NUM_THREADS=$SLURM_NTASKS\n")
         s_script.write("export PARNODES=$SLURM_NTASKS\n")
         s_script.write("#=====================================\n")

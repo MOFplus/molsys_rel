@@ -155,13 +155,13 @@ class turbomole_calculator:
                                         gcart = self.params["gcart"])
 
        if self.params["submit"] == False:
-           OT.refine_pnoccsd(ospecID = ospecID, pnoccsd = params["pnoccsd"])
+           OT.refine_ccsd(ospecID = ospecID, pnoccsd = self.params["pnoccsd"])
        else:
-           submit_sh = "submit_pnoccsd.sh"
-           submit_py = "submit_pnoccsd.py"
-           submit_out = "submit_pnoccsd.out"
+           submit_sh = "submit_ccsd.sh"
+           submit_py = "submit_ccsd.py"
+           submit_out = "submit_ccsd.out"
            turbomole.Slurm.write_submission_script(dft_subdir_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"], self.params["exclusive"],submit_sh, submit_py, submit_out)
-           OT.write_submit_py_level3(ospecID = ospecID, pnoccsd = params["pnoccsd"], submit_py=submit_py)
+           OT.write_submit_py_level3(ospecID = ospecID, pnoccsd = self.params["pnoccsd"], submit_py=submit_py)
            #submit the job to the SLURM queuing system and get the assigned job id
            os.chdir(dft_subdir_path)
            sbatchout = os.popen("sbatch -J ospec%d %s" %(ospecID, os.path.join(dft_subdir_path,submit_sh))).read()
@@ -182,13 +182,15 @@ class turbomole_calculator:
 #
 # Helper functions
 #
-def get_mol_from_opt_spec(ospec):
+def get_mol_from_opt_spec(ospec, detect_conn = True):
     # get mol object from DB
     fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
     mfpxs = mfpxf.read().decode('utf-8')
     mfpxf.close()
     mol = molsys.mol.from_string(mfpxs)
     mol.addon("graph")
+    if detect_conn:
+        mol.detect_conn_by_bo()
     mol.detect_conn()
     mol.graph.make_graph()
     return mol
@@ -255,10 +257,12 @@ params = ast.literal_eval(content)
 assert "calculator" in params, "Calculator defined"
 assert "lot" in params, "Level of theory is given for the calculator"
 assert "level" in params, "The level of calculation is defined: level1:dft, level2:dft, level3:pno-ccsd"
-if "level3" in params['level']:
-    pnoccsd_example = ',"pnoccsd"           : " multilevel off\n localization ibo\n osvmode davidson\n tolpnos  1.d-7\n uosvs on\n ccsd(t)"'
-    assert "pnoccsd" in params, "Please provide $pnoccsd data group in the parameters: e.g.,\n"+repr(pnoccsd_example) 
-
+if "level3" in params["level"]:
+    if "pno" in params["lot"].lower():
+        pnoccsd_example = ',"pnoccsd"           : " multilevel off\n localization ibo\n osvmode davidson\n tolpnos  1.d-7\n uosvs on\n ccsd(t)"'
+        assert "pnoccsd" in params, "Please provide $pnoccsd data group in the parameters: e.g.,\n"+repr(pnoccsd_example) 
+    else:
+        params["pnoccsd"] = ""
 if params["calculator"] == "turbomole":
     calculator = turbomole_calculator(params = params, db_path = db_path)
 
@@ -394,17 +398,36 @@ for r in reactions:
 
 
             ########################################################
-            #             LEVEL 3: PNO-CCSD Energy                 #
+            #             LEVEL 3: (PNO-)CCSD Energy               #
             ########################################################
             elif "level3" in params["level"].lower():
+                if r.origin != None:
+                    if reac2ts_spec == None:
+                        print("Barrierless reaction %d from reaction origin %d. Skipped..." %(r.id, r.origin))
+                        continue
+
+                    if n_ed == n_prod and n_ed == 1:
+                        ed_spec = reac2educt_spec.first()
+                        oed = db((db.opt_species.speciesID == ed_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
+                        if oed != None:
+                            mol_ed = get_mol_from_opt_spec(oed)
+                        prod_spec = reac2prod_spec.first()
+                        oprod = db((db.opt_species.speciesID == prod_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
+                        if oprod != None:
+                            mol_prod = get_mol_from_opt_spec(oprod)
+                        if oed != None and oprod != None:
+                            uni_equal = molsys.addon.graph.is_equal(mol_ed.graph.molg, mol_prod.graph.molg)
+                            if uni_equal[0]:
+                                print("The graph of the educt and product of the unimolecular reaction %d from reaction origin %d is the same. Skipped..." %(r.id,r.origin))
+                                continue
+
                 for r2s in reac2spec:
                     specID = r2s["speciesID"]
                     ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
-
-                    if ospec == None:
-                        print("The species %d is NOT optimized with lot=%s" %(specID,start_lot))
-                    else:
-                        print("The species %d is optimized with lot=%s" %(specID,start_lot))
+                    #if ospec == None:
+                    #   print("The species %d is NOT optimized with lot=%s" %(specID,start_lot))
+                    if ospec != None:
+                        #print("The species %d is optimized with lot=%s" %(specID,start_lot))
                         if params["calculator"] == "turbomole":
                             jobid = calculator.refine_level3(ospecID = ospec.id, dft_subdir_path = os.path.join(db_path,ospec.path))
                             jobids.append(jobid)

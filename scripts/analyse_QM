@@ -53,7 +53,7 @@ def get_md_spec_mfpx(md_spec):
 # Start of main program 
 #
 if len(sys.argv) < 3:
-    print ("usage:  opt_QM_species <db_path> <cmd_file>")
+    print ("usage:  analyse_QM <db_path> <cmd_file>")
     exit()
     
 

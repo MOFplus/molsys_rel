@@ -46,7 +46,7 @@ for dft_subdir_path in dft_subdir_paths:
 
                      # Register a new reaction
                      origin = db(db.reactions.id == r['origin']).select().first()
-                     reaction = db(db.reactions.uni == r['uni'] and db.reactions.change == r['change'] and db.reactions.source == r['source'] and db.reactions.origin == origin).select().first()
+                     reaction = db((db.reactions.uni == r['uni']) & (db.reactions.change == r['change']) & (db.reactions.source == r['source']) & (db.reactions.origin == origin)).select().first()
                      if reaction != None:
                          print("Reaction %d originating from the reaction %d is already registered." %(reaction.id, origin.id))
                      else:
@@ -84,10 +84,9 @@ for dft_subdir_path in dft_subdir_paths:
                  mol = GT.coord_to_mol()
                  rel_path = os.path.relpath(dft_subdir_path, db_path)
                  lotID = rdb.get_lot(data["lot"])
-                 ospec = db(db.opt_species.speciesID == data['specID'] and db.opt_species.lotID == lotID and db.opt_species.energy == data['energy'] and db.opt_species.path == rel_path and db.opt_species.info == data['info']).select().first()
-                 print(data['specID'])
+                 ospec = db((db.opt_species.lotID == lotID) & (db.opt_species.speciesID == data['specID']) & (db.opt_species.energy == data['energy']) & (db.opt_species.path == rel_path) & (db.opt_species.info == data['info'])).select().first()
                  if ospec != None:
-                     print("Optimized species %d is already registered." %(ospec.id))
+                     print("Optimized species %d from species %d is already registered." %(ospec.id, data['specID']))
                  else:
                      # Add to the opt_species table
                      optID = rdb.add_opt_species(mol         = mol,
@@ -98,13 +97,13 @@ for dft_subdir_path in dft_subdir_paths:
                                                  change_molg = data['change_molg'],
                                                  rbonds      = None,
                                                  info        = data['info'])
-                     print("Optimized species %d from species %d is registered." %(optID, data['specID']))
+                     print("Optimized species %d from species %d is registered." %(int(optID), data['specID']))
         else:
             print("%s does not exist." %f_json)
 
     elif 'level3' in level.lower():
-        pnoccsd_path = os.path.join(dft_subdir_path,'PNO-CCSD')
-        f_json = os.path.join(pnoccsd_path,'pnoccsd.json')
+        ccsd_path = os.path.join(dft_subdir_path,'CC')
+        f_json = os.path.join(pnoccsd_path,'ccsd.json')
         if os.path.isfile(f_json):
              with open(f_json) as f:
                  data = json.load(f)
