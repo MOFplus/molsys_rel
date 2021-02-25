@@ -172,7 +172,45 @@ class GeneralTools:
         return
  
 
-    def define_pnoccsd(self, pnoccsd, max_mem=500, F12=True, title='', ):
+    def define_rohf(self, basis_set, M, scfiterlimit = 300, charge = 0, title = ""):
+        mol  = self.coord_to_mol()
+        n_el = Mol(mol).count_number_of_electrons(charge)
+        define_in_path = os.path.join(self.path,'define.in')
+        f=open(define_in_path,'w')
+        f.write('\n') # IF YOU WANT TO READ DEFAULT-DATA FROM ANOTHER control-TYPE FILE -> NO
+        f.write('%s\n' %title)
+        f.write('a coord\n')
+        f.write('*\n')
+        f.write('no\n')
+        f.write('bb all %s\n' %basis_set)
+        f.write('*\n') # terminate this section and write data to control
+        f.write('eht\n')
+        f.write('y\n')
+        f.write('%d\n' %charge)
+        f.write('n\n') # don't accept the occupation
+        # M = nalpha - nbeta + 1
+        # the number of closed shell orbitals = (number of electrons - number of singly occupied orbitals)/2
+        n_somo = (M-1)
+        n_c  = (n_el-n_somo)/2
+        f.write("c 1-%d\n" %n_c)
+        if n_somo == 1:
+            f.write("o %d\n" %(n_c+1))
+        elif n_somo > 1:
+            f.write("o %d-%d" %((n_c+1),(n_c+n_somo))) 
+        f.write('1\n') # THE OPEN-SHELL OCCUPATION NUMBER PER MO
+        f.write('y\n') 
+        f.write('*\n')
+        f.write('y\n')
+        f.write('scf\n')
+        f.write('iter\n')
+        f.write('%d\n' %scfiterlimit)
+        f.write('\n\n')
+        f.write('q\n')
+        f.close()
+        self.invoke_define()
+        return
+
+    def define_pnoccsd(self, pnoccsd, max_mem=500, F12=True, title=''):
         define_in_path = os.path.join(self.path,'define.in')
         f=open(define_in_path,'w')
         f.write("%s\n" %title)
@@ -487,21 +525,21 @@ class GeneralTools:
         return
 
 
-    def check_scf_converged(self, scf_out_name = 'ridft.out'):
+    def check_scf_converged(self, scf = 'ridft', scf_out_name = None):
         """ Reads the ridft/dscf output and checks if ridft/dscf converged.
 
             Returns
                 converged: True/False 
         """
         converged = True
+        if scf_out_name == None:
+            scf_out_name = scf + '.out'
         scfout = open(os.path.join(self.path, scf_out_name),'r')
         for line in scfout:
-            if 'ridft' in scf_out_name:
-                if 'ATTENTION: ridft did not converge!' in line:
-                    converged = False
-            elif 'dscf' in scf_out_name:
-                if 'ATTENTION: dscf did not converge!' in line:
-                    converged = False
+            if 'ATTENTION: %s did not converge!' %scf in line:
+                converged = False
+            elif '%s ended abnormally' %scf in line:
+                converged = False
         lst = os.listdir(self.path)
         for f in lst:
             f_path = os.path.join(self.path, f)
@@ -883,10 +921,12 @@ class Mol:
         nel -= charge
         return nel
 
-    def make_molecular_graph(self):
+    def make_molecular_graph(self, by_bo = True):
         # 1) Detect the connectivity information by bond order
-        #if not any(mol.conn):
-        self.mol.detect_conn_by_bo()
+        if by_bo:
+            self.mol.detect_conn_by_bo()
+        else:
+            self.mol.detect_conn()
         # 2) Make the molecular graph
         if  not hasattr(self.mol, "graph"):
             self.mol.addon("graph")
@@ -894,13 +934,15 @@ class Mol:
         mg = self.mol.graph.molg
         return mg
 
-    def separate_molecules(self):
+    def separate_molecules(self, by_bo = False):
        """ Separates the molecules according to their molecular graph.
+
+       By default the connectivity is determined without the bo.
 
        Returns:
            mol: a dictionary of mol objects of the separated molecules
        """
-       self.make_molecular_graph()
+       self.make_molecular_graph(by_bo = by_bo)
        mg = self.mol.graph.molg
        # 1) Label the components of the molecular graph to which each vertex in the the graph belongs
        from graph_tool.topology import label_components
@@ -1093,6 +1135,51 @@ class OptimizationTools:
         vibspec.close()
         if verbose: print('The number of imaginary frequencies is ', inum,'and they are/it is', imfreq)
         return inum, imfreq
+
+    def disturb_and_reoptimize(self, natoms=None):
+        os.chdir(self.path)
+        # 1. Copy necessary files to a file new directory called disturb
+        os.system("cpc disturb")
+        path_tmp = os.path.join(self.path,"disturb")
+        OT = OptimizationTools(path_tmp)
+        GT = GeneralTools(path_tmp)
+        if natoms == None:
+            mol = GT.coord_to_mol() 
+            natoms = mol.natoms
+        os.chdir(path_tmp)
+        # 2. Disturb the coordinates along the first normal vibration with the default T value 298 K.
+        os.system('echo -e "1\n\n" | vibration')
+        # 3. Read the new coordinates from the control file
+        newcoords = os.popen("sdg newcoord | tail -%s" %natoms).read()
+        # 4. Write new coord file
+        f = open("coord", "w")
+        f.write("$coord\n"+newcoords+"$end")
+        f.close()
+        # 5. Define internal redundant coordinates
+        OT.ired()
+        # 6. Geometry optimization
+        converged = OT.jobex()
+        if not converged:
+            print("Geometry optimization failed.")
+            sys.exit()
+        # 7. Calculate Hessian
+        OT.aoforce()
+        inum, imfreq = OT.check_imaginary_frequency()
+        if inum == 0:
+            print("The minimum is found!")
+            # 8. Remove the old files
+            old_files = [ os.path.join(self.path,f) for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path,f)) ]
+            for f in old_files:
+               os.remove(f)
+            # 9. Move the tmp dir to the main one
+            for f in os.listdir(path_tmp):
+                shutil.move(os.path.join(path_tmp,f), os.path.join(self.path,f))
+            os.rmdir(path_tmp)
+        else:
+            print("This is not a minimum!")
+            sys.exit()
+        os.chdir(self.maindir)
+        return
 
     def jobex(self, ts=False, cycles=150, gcart=None):
         """ Runs jobex.
@@ -2039,10 +2126,13 @@ class OptimizationTools:
         os.system('woelfling-job -ri > woelfling.out')
         with open('woelfling.out') as out:
             for line in out:
-                if 'dscf_problem' in line:
-                    self._clean_woelfling(woelfling_path)
-                    print('The SCF did not converge in one of the structures of woelfling calculation. Exiting...')
-                    sys.exit()
+                if 'dscf_problem' in line or 'scf energy ended abnormally' in line:
+                    if os.path.isfile(os.path.join(woelfling_path,'path-20.xyz')):
+                        print('The SCF did not converge in one of the structures of woelfling calculation. But there were at least 20 iterations. So, a TS will be searched...')
+                    else:
+                        self._clean_woelfling(woelfling_path)
+                        print('The SCF did not converge in one of the structures of woelfling calculation. Exiting...')
+                        sys.exit()
 
         # 3. If exists, get the peaks on the woelfling energy profile to use later as a TS start guess
         try:
@@ -2073,7 +2163,8 @@ class OptimizationTools:
         lst = os.listdir(woelfling_path)
         for f in lst:
             f_path = os.path.join(woelfling_path, f)
-            if f in ["alpha", "beta", "mos", "wherefrom","statistics"]:
+            #if f in ["alpha", "beta", "mos", "wherefrom","statistics"]:
+            if f in ["wherefrom","statistics"]:
                 os.remove(f_path)
             if "rechnung" in f:
                 lst_rechnung_X = os.listdir(f_path)
@@ -2186,8 +2277,7 @@ class OptimizationTools:
             OT.aoforce()
             inum, imfreq = OT.check_imaginary_frequency()
             if inum != 0:
-                print("This is not a minimum!")
-                sys.exit()
+                OT.disturb_and_reoptimize(natoms=mol_opt.natoms)
             else:
                 key = '%s_1' %(label)
                 QM_paths_dict[key] = path
@@ -2201,8 +2291,7 @@ class OptimizationTools:
                 OT_opt.aoforce()
                 inum, imfreq = OT_opt.check_imaginary_frequency()
                 if inum != 0:
-                    print("This is not a minimum!")
-                    sys.exit()
+                    OT_opt.disturb_and_reoptimize(natoms=mols_opt[i].natoms)
                 else:
                     key = '%s_%d' %(label, i+1)
                     QM_paths_dict[key] = QM_path
@@ -2581,8 +2670,6 @@ class OptimizationTools:
         f_json.close()
         return
 
-
-
     def reaction_workflow(self, rbonds = [], path_ref_educts = [], path_ref_products = [], path_ref_ts = '', atom_ids_dict = {}, start_lot = '', reactionID = 0):
         """ This method considers the reaction event and optimizes the species accordingly.
         All of the input variables are retrieved from the RDB database, but should also work if one would like to just provide some reference structures...
@@ -2711,16 +2798,14 @@ class OptimizationTools:
                         OT.aoforce()
                         inum, imfreq = OT.check_imaginary_frequency()
                         if inum != 0:
-                            print("This is not a minimum!")
-                            sys.exit()
+                            OT.disturb_and_reoptimize()
                     for i,QM_path_prod in enumerate(QM_paths_prod):
                         QM_paths_dict['product_%d' %i] = QM_path_prod
                         OT = OptimizationTools(QM_path_prod)
                         OT.aoforce()
                         inum, imfreq = OT.check_imaginary_frequency()
                         if inum != 0:
-                            print("This is not a minimum!")
-                            sys.exit()
+                            OT.disturb_and_reoptimize()
                     r_info = self.make_r_info_dict(QM_paths_dict = QM_paths_dict, uni = uni, change = False, source = start_lot+':woelfling', origin=reactionID,  barrierless = True)
                     info_dict[counter] = r_info
                     counter += 1
@@ -2822,8 +2907,7 @@ class OptimizationTools:
                     sys.exit()
             else:
                 if inum != 0:
-                    print("This is not a minimum.")
-                    sys.exit()
+                    self.disturb_and_reoptimize(natoms=mol_opt.natoms)
         else: # atom
             ZPE = 0 
 
@@ -2849,7 +2933,10 @@ class OptimizationTools:
             model_tmp = model_basis_set.split("/")[0]
             if "(f12*)" in model_basis_set.lower():
                 F12 = True
-                model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower()
+                if "-" in model_tmp:
+                    model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower().split("-")[-1]
+                else:
+                    model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower()
             elif "f12" in model_basis_set.lower():
                 print("Only the submission of the calculations with CCSD(F12*) approximation is automated. For other F12 approximations, you need to modify the code.")
                 sys.exit()
@@ -2863,38 +2950,46 @@ class OptimizationTools:
 
         assert model in [s.strip() for s in pnoccsd.split('\n')], "The model %s specified in the level of theory (lot) should be consistent with that specified in the pnoccsd option:" %model + pnoccsd
 
+        if "rohf" in self.lot.lower():
+            rohf = True
+
         # cpc to a new directory
         os.chdir(self.path)
-        os.system("cpc PNO-CCSD")
         pnoccsd_path = os.path.join(self.path,"PNO-CCSD")
-
+        os.mkdir(pnoccsd_path)
         OT = OptimizationTools(pnoccsd_path)
         GT = GeneralTools(pnoccsd_path)
+        # 1. Set up the HF calculation input
+        if rohf:
+            shutil.copy(os.path.join(self.path,"coord"),os.path.join(pnoccsd_path,"coord"))
+            M = GeneralTools(self.path).get_M_from_control()
+            GT.define_rohf(basis_set=basis_set, M=M)
+        else:
+            os.system("cpc PNO-CCSD")
+            # Remove dft, rij, and disp3 from the control file
+            GT.kdg("dft")
+            GT.kdg("rij")
+            GT.kdg("disp3")
+            GT.kdg("energy")
+            GT.kdg("grad")
+            # Change the basis set
+            GT.change_basis_set(basis_set=basis_set, ref_control_file = os.path.join("../control"),  title = self.lot)
+
         mol = GT.coord_to_mol()
 
-
-        # 1. Remove dft, rij, and disp3 from the control file
-        GT.kdg("dft")
-        GT.kdg("rij")
-        GT.kdg("disp3")
-        GT.kdg("energy")
-        GT.kdg("grad")
-
-        # 2. Change the basis set
-        GT.change_basis_set(basis_set=basis_set, ref_control_file = os.path.join("../control"),  title = self.lot)
-
-        # 3. Perform the HF calculation
+        # 2. Perform the HF calculation
         HF_energy = GT.dscf()
-        converged = GT.check_scf_converged("dscf.out")
+        converged = GT.check_scf_converged("dscf")
         if not converged:
             print("HF orbitals did not converge. Exiting...")
             sys.exit()
         
-        # 4. Add the pnoccsd options
+        # 3. Add the pnoccsd options
         GT.define_pnoccsd(pnoccsd=pnoccsd, max_mem=self.max_mem, F12=F12)
         OT.pnoccsd()
         self._clean_pnoccsd(pnoccsd_path)
 
+        # 4. Write the json file to later add to the database
         energy = GT.get_ccsd_energy(F12=F12, model=model, ccsd_out_name="pnoccsd.out", nel = Mol(mol).count_number_of_electrons())
         info_dict = {}
         info_dict["ospecID"] = ospecID
@@ -3031,13 +3126,13 @@ class Slurm:
         s_script.write("#=====================================\n")
         s_script.write("# Setup the environment for Turbomole \n")
         s_script.write("#=====================================\n")
-        s_script.write("export PARA_ARCH=SMP\n")
-        s_script.write("export OMP_NUM_THREADS=%d\n" %ntasks)
-        s_script.write("export PARNODES=%d\n" %ntasks)
         s_script.write("export TURBODIR=%s\n" %TURBODIR)
-        s_script.write("export PATH=$TURBODIR/bin/`sysname`:$PATH\n")
+        s_script.write("source $TURBODIR/Config_turbo_env\n")
         s_script.write("export PATH=$TURBODIR/scripts:$PATH\n")
-        s_script.write("export TURBOTMPDIR=$TMP\n")
+        s_script.write("export PATH=$TURBODIR/bin/`sysname`:$PATH\n")
+        s_script.write("export PARA_ARCH=SMP\n")
+        s_script.write("export OMP_NUM_THREADS=$SLURM_NTASKS\n")
+        s_script.write("export PARNODES=$SLURM_NTASKS\n")
         s_script.write("#=====================================\n")
         s_script.write("#  Copy every file and run the job    \n")
         s_script.write("#=====================================\n")

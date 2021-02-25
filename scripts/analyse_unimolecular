@@ -18,16 +18,17 @@ from molsys.util import RDB
 #
 # Helper functions
 #
-def get_mol_from_opt_spec(ospec):
+def get_mol_from_opt_spec(ospec, detect_conn = True):
     # get mol object from DB
-	    fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
-	    mfpxs = mfpxf.read().decode('utf-8')
-	    mfpxf.close()
-	    mol = molsys.mol.from_string(mfpxs)
-	    mol.addon("graph")
-	    mol.detect_conn(thresh=0.001)
-	    mol.graph.make_graph()
-	    return mol
+    fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
+    mfpxs = mfpxf.read().decode('utf-8')
+    mfpxf.close()
+    mol = molsys.mol.from_string(mfpxs)
+    mol.addon("graph")
+    if detect_conn:
+        mol.detect_conn_by_bo() #(thresh=0.001)
+    mol.graph.make_graph()
+    return mol
 
 def get_opt_spec_path(ospec):
     fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
@@ -86,9 +87,12 @@ n_eq = n_spec - n_ts
 n_uni = 0
 n_uni_same = 0
  
+detect_conn = True
+#False
+
 # Loop over the reactions
 print('The list of the unimolecular reaction with the same educt and product at LOT %s.' %lot)
-if lot == "ReaxFF":
+if lot == "ReaxFF" or lot == "fromMD":
     print('  Reaction             Frame           ReactionID')
 else:
     print('     Reaction       Reaction.origin       ')
@@ -96,7 +100,7 @@ print('---------------------------------------')
 for r in reactions:
     if r.id != 1:
         # get all species for this reaction
-        if lot == "ReaxFF":
+        if lot == "ReaxFF" or lot == "fromMD":
             revent = db(db.revent.reactionsID == r.id).select().first()
         reac2ts_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  0)).select().first()
         reac2educt_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label == -1)).select()
@@ -120,7 +124,7 @@ for r in reactions:
             if unimolecular:
                 oed_ref = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
                 if oed_ref != None:
-                    mol_ed_ref = get_mol_from_opt_spec(oed_ref)
+                    mol_ed_ref = get_mol_from_opt_spec(oed_ref, detect_conn)
         
         products = ''
         for i,prod in enumerate(reac2proc_spec):
@@ -131,7 +135,7 @@ for r in reactions:
             if unimolecular:
                 oprod_ref = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
                 if oprod_ref != None:
-                    mol_prod_ref = get_mol_from_opt_spec(oprod_ref)
+                    mol_prod_ref = get_mol_from_opt_spec(oprod_ref, detect_conn)
         
         if unimolecular:
             if oed_ref != None and oprod_ref != None:
@@ -145,9 +149,10 @@ for r in reactions:
                 uni_equal = molsys.addon.graph.is_equal(mol_ed_ref.graph.molg, mol_prod_ref.graph.molg)
                 if uni_equal[0]:
                      n_uni_same += 1
-                     if lot == "ReaxFF":
+                     if lot == "ReaxFF" or lot == "fromMD":
                          print('%15s  %10d %10d' %(reaction,revent.frame, r.id))
-                     else:print('%15s %10d' %(reaction, r.origin))
+                     else:
+                         print('%15s %10d' %(reaction, r.origin))
 
 print(n_uni_same, n_uni)
 print('For %d percent of the unimolecular reactions, the educt and product has the same molecular graph...' %(n_uni_same/n_uni*100))

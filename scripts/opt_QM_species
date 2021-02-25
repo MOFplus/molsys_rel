@@ -402,11 +402,12 @@ for r in reactions:
                     ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
 
                     if ospec == None:
-                        print("The species %d is not optimized with lot=%s" %(specID,start_lot))
+                        print("The species %d is NOT optimized with lot=%s" %(specID,start_lot))
                     else:
+                        print("The species %d is optimized with lot=%s" %(specID,start_lot))
                         if params["calculator"] == "turbomole":
-                             jobid = calculator.refine_level3(ospecID = ospec.id, dft_subdir_path = os.path.join(db_path,ospec.path))
-                             jobids.append(jobid)
+                            jobid = calculator.refine_level3(ospecID = ospec.id, dft_subdir_path = os.path.join(db_path,ospec.path))
+                            jobids.append(jobid)
 
             ncurjobs, curjobids = get_ncurjobs(jobids)
         else:

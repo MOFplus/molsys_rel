@@ -208,7 +208,7 @@ for r in reactions:
             else:
                 print("Barrierless reaction:")
                 print("--------------------------------------------")
-                print("E_rxn = %.1f kJ/mol" %(E_el_rxn+ZPE_rxn)*HtokJmol)
+                print("E_rxn = %.1f kJ/mol" %((E_el_rxn+ZPE_rxn)*HtokJmol))
                 print("============================================\n")
 
 
