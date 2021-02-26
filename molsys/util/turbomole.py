@@ -192,13 +192,13 @@ class GeneralTools:
         # the number of closed shell orbitals = (number of electrons - number of singly occupied orbitals)/2
         n_somo = (M-1)
         n_c  = (n_el-n_somo)/2
+        print(n_c,n_somo)
         f.write("c 1-%d\n" %n_c)
-        if n_somo == 1:
-            f.write("o %d\n" %(n_c+1))
-        elif n_somo > 1:
-            f.write("o %d-%d" %((n_c+1),(n_c+n_somo))) 
-        f.write('1\n') # THE OPEN-SHELL OCCUPATION NUMBER PER MO
-        f.write('y\n') 
+        for i in range(int(n_somo)):
+            mo = n_c+1+i
+            f.write("o %d\n" %(mo))
+            f.write('1\n') # THE OPEN-SHELL OCCUPATION NUMBER PER MO
+            f.write('y\n') 
         f.write('*\n')
         f.write('y\n')
         f.write('scf\n')
@@ -1277,7 +1277,7 @@ class OptimizationTools:
     def _clean_ccsd(self, ccsd_path):
         lst = os.listdir(ccsd_path)
         for f in lst:
-            f_path = os.path.join(pnoccsd_path, f)
+            f_path = os.path.join(ccsd_path, f)
             if f in ["wherefrom","statistics"] or f.startswith("PNO") or f.startswith("CC") or f.startswith("RIR12"):
                 os.remove(f_path)
         return
