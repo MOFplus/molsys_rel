@@ -38,6 +38,8 @@ class GeneralTools:
         else:
             self.path    = os.path.abspath(path)
             self.maindir = os.getcwd()
+        self.nalpha = 0
+        self.nbeta = 0
         return
         
     def invoke_define(self, define_in_name='define.in', define_out_name = 'define.out', coord_name='coord'):
@@ -114,7 +116,7 @@ class GeneralTools:
         return mol
 
 
-    def change_basis_set(self, basis_set, blow_up = True, ref_control_file = "../control",  title = "", ri = True):
+    def change_basis_set(self, basis_set, blow_up = True, ref_control_file = "../control",  title = "", delete_old_aux_bas = True, ri = True):
         """
         Args:
             blow_up : True  -> Express molecular orbitals of a previous calculation in the new basis
@@ -131,7 +133,7 @@ class GeneralTools:
         f.write('y\n') # yes, we want to change ATOMIC ATTRIBUTE DATA (BASES,CHARGES,MASSES,ECPS)
         f.write('bb all %s\n' %basis_set)
         f.write('*\n') # terminate this section and write data to control
-        if ri:
+        if delete_old_aux_bas:
             for i in range(n_el_type):
                 f.write('d\n') # delete the old auxiliary basis set for each atom type
         if blow_up:
@@ -320,15 +322,14 @@ class GeneralTools:
         ridft_path = os.path.join(self.path, ridft_out_name)
         if not os.path.isfile(ridft_path):
             raise FileNotFoundError("There is no ridft output file named %s in the directory %s." %(ridft_out_name, self.path))
-        nalpha = 0
-        nbeta = 0
+
         with open(ridft_path) as ridft_out:
             for line in ridft_out:
                 # Get the number of alpha and beta shell occupations
                 if line.startswith('   sum'):
-                    nalpha = float(line.split()[1])
-                    nbeta = float(line.split()[2])
-        return nalpha, nbeta
+                    self.nalpha = float(line.split()[1])
+                    self.nbeta = float(line.split()[2])
+        return self.nalpha, self.nbeta
 
 
     def calculate_spin_multiplicity_from(self, nalpha, nbeta):
@@ -391,8 +392,6 @@ class GeneralTools:
             for line in control:
                 lines.append(line)
     
-        nalpha = 0
-        nbeta  = 0
         for i,line in enumerate(lines):
             if '$alpha shells' in line:
                 j = 1
@@ -400,7 +399,7 @@ class GeneralTools:
                     split_line = lines[i+j].strip().split()
                     n_mos = self._get_n_mos(split_line)
                     occ = float(split_line[3])
-                    nalpha += n_mos*occ
+                    self.nalpha += n_mos*occ
                     j += 1
             if '$beta shells' in line:
                 j = 1
@@ -408,9 +407,9 @@ class GeneralTools:
                     split_line = lines[i+j].strip().split()
                     n_mos = self._get_n_mos(split_line)
                     occ = float(split_line[3])
-                    nbeta += n_mos*occ
+                    self.nbeta += n_mos*occ
                     j += 1
-        M = abs(nalpha-nbeta)+1
+        M = abs(self.nalpha-self.nbeta)+1
         return M
 
     
@@ -595,22 +594,26 @@ class GeneralTools:
                SPE = float(l[4])
         return SPE
 
-    def get_ccsd_energy(self, F12=True, model='ccsd(t)', ccsd_out_name="pnoccsd.out", nel=3):
+    def get_ccsd_energy(self, F12=True, Tstar = True, model='ccsd(t)', ccsd_out_name="pnoccsd.out", nel=3):
        ccsdout = open(os.path.join(self.path, ccsd_out_name),'r')
        for line in ccsdout:
           if F12:
-              if 'Final CCSD(F12*) energy                 :' in line:
+              if 'Final CCSD(F12*) energy        ' in line:
                   CCSDenergy = float(line.rstrip('\n').split()[5])
-              elif 'Final CCSD(F12*)(T0) energy             :' in line:
+              elif 'Final CCSD(F12*)(T0) energy  ' in line:
                   CCSDT0energy = float(line.rstrip('\n').split()[5])
-              elif 'Final CCSD(F12*)(T) energy              :' in line:
+              elif 'Final CCSD(F12*)(T0*) energy  ' in line:
+                  CCSDT0starenergy = float(line.rstrip('\n').split()[5])
+              elif 'Final CCSD(F12*)(T) energy  ' in line:
                   CCSDTenergy = float(line.rstrip('\n').split()[5])
+              elif 'Final CCSD(F12*)(T*) energy  ' in line:
+                  CCSDTstarenergy = float(line.rstrip('\n').split()[5])
           else:
-              if 'Final CCSD energy                 :' in line:
+              if 'Final CCSD energy         ' in line:
                   CCSDenergy = float(line.rstrip('\n').split()[5])
-              elif 'Final CCSD(T0) energy             :' in line:
+              elif 'Final CCSD(T0) energy   ' in line:
                   CCSDT0energy = float(line.rstrip('\n').split()[5])
-              elif 'Final CCSD(T) energy              :' in line:
+              elif 'Final CCSD(T) energy    ' in line:
                   CCSDTenergy = float(line.rstrip('\n').split()[5])
 
        if model == 'ccsd':
@@ -620,13 +623,19 @@ class GeneralTools:
            if nel == 2:
                return CCSDenergy
            else:
-               return CCSDT0energy
+               if Tstar:
+                   return CCSDT0starenergy
+               else:
+                   return CCSDT0energy
 
        elif model == 'ccsd(t)':
            if nel == 2:
                return CCSDenergy
            else:
-               return CCSDTenergy
+               if Tstar:
+                   return CCSDTstarenergy
+               else:
+                   return CCSDTenergy
 
        else:
            return None
@@ -2963,6 +2972,16 @@ class OptimizationTools:
         return
 
 
+    def replace_uhfmo_xxx_with_scfmo(self, xxx, ref_mo_file, mo_file):
+        f1 = open(ref_mo_file, 'r')
+        f2 = open(mo_file, 'w')
+        for line in f1:
+            f2.write(line.replace('uhfmo_%s' %xxx, 'scfmo'))
+        f1.close()
+        f2.close()
+        return
+
+
     def refine_ccsd(self, ospecID, pnoccsd=""):
         # 1. Get the model and basis set from level of theory (self.lot)
         # example formats for lot:
@@ -2970,6 +2989,7 @@ class OptimizationTools:
         # "PNO-CCSD(T)(F12*)/cc-pVTZ"      -> Takes the orbitals from the reference DFT calculation
         # "ROHF-CCSD(T)(F12*)/cc-pVTZ"     -> Uses canonical code ccsdf12
         # "CCSD(T)(F12*)/cc-pVTZ"          -> Takes the orbitals from the reference DFT calculation
+        Tstar = False
         if "pno-" in self.lot.lower() and "rohf" in self.lot.lower():
             model_basis_set = re.split("rohf-", self.lot, flags=re.IGNORECASE)[-1]
             pno = True
@@ -2993,8 +3013,14 @@ class OptimizationTools:
             F12 = True
             if "-" in model_tmp:
                 model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower().split("-")[-1]
+                if '*' in model:
+                    model = ''.join(model.split('*'))
+                    Tstar = True
             else:
                 model = ''.join(re.split("\(f12\*\)", model_tmp, flags=re.IGNORECASE)).lower()
+                if '*' in model:
+                    model = ''.join(model.split('*'))
+                    Tstar = True
         elif "f12" in model_basis_set.lower():
             print("Only the submission of the calculations with CCSD(F12*) approximation is automated. For other F12 approximations, you need to modify the code.")
             sys.exit()
@@ -3008,18 +3034,39 @@ class OptimizationTools:
 
         # cpc to a new directory
         os.chdir(self.path)
-        ccsd_path = os.path.join(self.path,"CC")
+        dir_name = "".join(".".join(".".join("".join(self.lot.split("*")).split("/")).split("(")).split(")"))
+        ccsd_path = os.path.join(self.path,dir_name)
         os.mkdir(ccsd_path)
         OT = OptimizationTools(ccsd_path)
         GT = GeneralTools(ccsd_path)
+        GT_ref = GeneralTools(self.path)
         # 1. Set up the HF calculation input
         if rohf:
             shutil.copy(os.path.join(self.path,"coord"),os.path.join(ccsd_path,"coord"))
-            M = GeneralTools(self.path).get_M_from_control()
+            M = GT_ref.get_M_from_control()
             GT.define_rohf(basis_set=basis_set, M=M)
+            # Start with the DFT orbitals of the highest occupied one (alpha/beta)
+            tmp_path = os.path.join(self.path,"tmp")
+            os.system("cpc tmp")
+            GT_tmp =  GeneralTools(tmp_path)
+            # / blow up the basis set so that the number of atomic orbitals are correct
+            GT_tmp.change_basis_set(basis_set=basis_set, ref_control_file = "../control",  title = self.lot, ri=False)
+            mo_file = os.path.join(ccsd_path,"mos")
+            os.remove(mo_file)
+            # / copy the blown up alpha or beta mo file to mos
+            if GT_ref.nalpha >= GT_ref.nbeta:
+                ref_mo_file = os.path.join(tmp_path,"alpha")
+                self.replace_uhfmo_xxx_with_scfmo("alpha", ref_mo_file, mo_file)
+            else:
+                ref_mo_file = os.path.join(tmp_path,"beta")
+                self.replace_uhfmo_beta_with_scfmo("beta", ref_mo_file, mo_file)            
+            # / remove the tmp directory
+            shutil.rmtree(tmp_path)
         else:
-            # if UHF reference, then start with the DFT orbitals
-            os.system("cpc CC")
+            # Start with the DFT orbitals
+            os.system("cpc %s" %dir_name)
+            # Change the basis set
+            GT.change_basis_set(basis_set=basis_set, ref_control_file = "../control",  title = self.lot, ri=False)
             # Remove dft, rij, and disp3 from the control file
             GT.kdg("dft")
             GT.kdg("rij")
@@ -3027,8 +3074,6 @@ class OptimizationTools:
             GT.kdg("energy")
             GT.kdg("grad")
             GT.kdg("arh")
-            # Change the basis set
-            GT.change_basis_set(basis_set=basis_set, ref_control_file = os.path.join("../control"),  title = self.lot)
 
         mol = GT.coord_to_mol()
 
@@ -3051,7 +3096,7 @@ class OptimizationTools:
         self._clean_ccsd(ccsd_path)
 
         # 4. Write the json file to later add to the database
-        energy = GT.get_ccsd_energy(F12=F12, model=model, ccsd_out_name=ccsd_out_name, nel = Mol(mol).count_number_of_electrons())
+        energy = GT.get_ccsd_energy(F12=F12, Tstar=Tstar, model=model, ccsd_out_name=ccsd_out_name, nel = Mol(mol).count_number_of_electrons())
         info_dict = {}
         info_dict["ospecID"] = ospecID
         info_dict["info"] = "E(%s)=%5.10f;" %(self.lot, energy)
