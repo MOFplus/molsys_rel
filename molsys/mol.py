@@ -228,11 +228,15 @@ class mol(mpiobject):
         return
 
     @classmethod
-    def from_smiles(cls, smile, bbcenter='com', maxiter=500):
+    def from_smiles(cls, smile, bbcenter='com', maxiter=500, ff="mmff94", confsearch=True):
         ''' generates mol object from smiles string, requires openbabel to be installed
+
+        use a conformational search by default
         '''
+        assert ff in ["UFF", "mmff94"]   # add other potential openbabel ffs
         try:
             from openbabel import pybel
+            from openbabel import OBForceField
         except ImportError as e:
             print(e)
             import traceback
@@ -245,6 +249,16 @@ class mol(mpiobject):
         #        smile = smile.replace(c,dummies[i])
         om = pybel.readstring("smi", smile)
         om.make3D(forcefield='UFF', steps=maxiter)
+        if confsearch:
+            ff = OBForceField.FindForceField(ff)
+            ff.Setup(om.OBMol)
+            ie = ff.Energy()
+            # ToDo ..add more options on conformational search here
+            # how to tell the user? logger or print?
+            ff.WeightedRotorSearch(200,25)
+            fe = ff.Energy()
+            ff.UpdateCoordinates(om.OBMol)
+            print("Conformational search performed. intital %12.6f final %12.6f" % (ie, fe))
         txyzs = om.write('txyz')
         # there is gibberish in the first line of the txyzstring, we need to remove it!
         txyzsl = txyzs.split("\n")
@@ -3112,11 +3126,7 @@ class mol(mpiobject):
         self.list_bond_properties()
         return
 
-    def calc_uncorrected_bond_order( self
-                               , iat : int
-                               , jat : int
-                               , bo_cut = 0.1
-                               ):
+    def calc_uncorrected_bond_order( self, iat : int, jat : int, bo_cut = 0.1):
         # Which elements do we have?
         element_list = self.get_elems()
         # sanity check(s)
@@ -3151,7 +3161,7 @@ class mol(mpiobject):
             BO = 0.0
         return BO
 
-    def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5,dist_thresh=5.0,correct=True):
+    def detect_conn_by_bo(self, bo_cut=0.1, bo_thresh=0.5, dist_thresh=5.0, correct=True):
 
         def f2(di,dj):
             lambda1 = 50.0

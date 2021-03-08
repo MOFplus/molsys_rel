@@ -376,8 +376,8 @@ class graph(object):
         print ("graph made")
         # first test for interp
         self.interp = 1 # if interp > 1 then we have N interp nets which are in moldg_full, mappings in self.interp_map
-        self.detect_interp()
-        print ("interp detected")
+        result = self.detect_interp()
+        print ("interp detected  :" + str(result))
         # split it
         if mode == "ringsize":
             self.split_ringsize()
@@ -464,6 +464,9 @@ class graph(object):
         if len(hist) == 1:
             return False
         else:
+            print ("DEBUG DEBUG check interpenetration")
+            print (hist)
+            print (comp)
             # we have more than one component, let's see if these are all the same subgraphs
             if len(hist)*hist[0] == self.moldg.num_vertices():
                 # mask out all but the first interp net
