@@ -48,30 +48,40 @@ for dft_subdir_path in dft_subdir_paths:
                      origin = db(db.reactions.id == r['origin']).select().first()
                      reaction = db((db.reactions.uni == r['uni']) & (db.reactions.change == r['change']) & (db.reactions.source == r['source']) & (db.reactions.origin == origin)).select().first()
                      if reaction != None:
-                         print("Reaction %d originating from the reaction %d is already registered." %(reaction.id, origin.id))
-                     else:
-                         print("This is a new reaction originating from the reaction %d.!" %origin.id)
-                         reactID = rdb.register_reaction(uni = r['uni'], change = r['change'], source = r['source'], origin = origin)
                          opt_spec = data[rxn]['opt_spec']
+                         skip = True
                          for i in opt_spec:
                              spec_info = opt_spec[i]
-                             abs_path = os.path.abspath(os.path.join(dft_subdir_path,spec_info['path']))
-                             rel_path = os.path.relpath(abs_path, db_path)
-                             GT = turbomole.GeneralTools(abs_path)
-                             mol = GT.coord_to_mol()
-                             # Add to the species table
-                             specID, is_new = rdb.add_species(mol = mol)
-                             # Add to the reac2spec table
-                             reac2specID = rdb.add_reac2spec(reactID = reactID, specID = specID, itype = spec_info['itype'])
-                             # Add to the opt_species table
-                             rdb.add_opt_species(mol         = mol,
-                                                 specID      = specID, 
-                                                 lot         = spec_info['lot'], 
-                                                 energy      = spec_info['energy'], 
-                                                 path        = rel_path,
-                                                 change_molg = r['change'],
-                                                 rbonds      = None,
-                                                 info        = spec_info['info'])
+                             opt = db((db.opt_species.energy == spec_info['energy']) & (db.opt_species.info == spec_info['info'])).select().first() 
+                             if opt != None:
+                                 skip = skip and True
+                             else:
+                                 skip = skip and False
+                         if skip:
+                             print("Reaction %d originating from the reaction %d is already registered." %(reaction.id, origin.id))
+                         else:
+                             print("This is a new reaction originating from the reaction %d.!" %origin.id)
+                             reactID = rdb.register_reaction(uni = r['uni'], change = r['change'], source = r['source'], origin = origin)
+                             opt_spec = data[rxn]['opt_spec']
+                             for i in opt_spec:
+                                 spec_info = opt_spec[i]
+                                 abs_path = os.path.abspath(os.path.join(dft_subdir_path,spec_info['path']))
+                                 rel_path = os.path.relpath(abs_path, db_path)
+                                 GT = turbomole.GeneralTools(abs_path)
+                                 mol = GT.coord_to_mol()
+                                 # Add to the species table
+                                 specID, is_new = rdb.add_species(mol = mol)
+                                 # Add to the reac2spec table
+                                 reac2specID = rdb.add_reac2spec(reactID = reactID, specID = specID, itype = spec_info['itype'])
+                                 # Add to the opt_species table
+                                 rdb.add_opt_species(mol         = mol,
+                                                     specID      = specID, 
+                                                     lot         = spec_info['lot'], 
+                                                     energy      = spec_info['energy'], 
+                                                     path        = rel_path,
+                                                     change_molg = r['change'],
+                                                     rbonds      = None,
+                                                     info        = spec_info['info'])
         else:
             print("%s does not exist." %f_json)
 

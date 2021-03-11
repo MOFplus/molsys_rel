@@ -51,7 +51,7 @@ class turbomole_calculator:
        # default parameters
        if "turbodir" not in params:
            params["turbodir"] = os.popen("echo $TURBODIR").read() 
-       if "max_mem" not in params:
+       if "max_mem" not in params and "submit" not in params:
            params["max_mem"] = 500
        if "gcart" not in params:
            params["gcart"] = 3
@@ -68,7 +68,8 @@ class turbomole_calculator:
                params["maxnodes"] = 4
            CPUS, MEM = turbomole.Slurm.get_partition_info(params["partition"])
            MEM_per_CPU = MEM/CPUS
-           params["max_mem"] = 0.8*MEM_per_CPU
+           if "max_mem" not in params:
+               params["max_mem"] = 0.8*MEM_per_CPU
            njobs_per_node = CPUS/params["ntasks"]
            self.max_njobs = int(params["maxnodes"]*njobs_per_node)
        self.params = params

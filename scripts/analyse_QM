@@ -133,15 +133,15 @@ for r in reactions:
             ZPE_act = 0.0
             # educts
             path_ref_educts = []
-            print("educt specIDs:")
+            print("educt specID, ospecID:")
             for i,ed in enumerate(reac2educt_spec):
-                print(ed.id)
                 oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
                 if oed == None:
                     print("The educt species %d is not optimized with %s according to the database entries!" %(ed.speciesID,params["lot"]))
                     print("Skipping the reaction %d ..." %r.id)
                     skip = True
                     continue
+                print(ed.id, oed.id)
                 print(oed.info)
                 for info in oed.info.split(";"):
                     if "ZPE" in info:
@@ -158,15 +158,15 @@ for r in reactions:
 
             # products
             path_ref_products = []
-            print("product specIDs:")
+            print("product specID, ospecID:")
             for i,prod in enumerate(reac2prod_spec):
-                print(prod.id)
                 oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
                 if oprod == None:
                     print("The product species %d is not optimized with %s according to the database entries!" %(prod.speciesID,params["lot"]))
                     print("Skipping the reaction %d ..." %r.id)
                     skip = True
                     continue
+                print(prod.id, oprod.id)
                 print(oprod.info)
                 for info in oprod.info.split(";"):
                     if "ZPE" in info:
@@ -182,15 +182,15 @@ for r in reactions:
             if skip: continue
 
             if reac2ts_spec != None:            
-                print("TS specID:")
+                print("TS specID, ospecID:")
                 # transition state
                 ots =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == lotID)).select().first()
-                print(ots.info)
                 if ots == None:
                     print("The transition state species %d is not optimized with %s according to the database entries!" %(reac2ts_spec.speciesID,params["lot"]))
                     print("Skipping the reaction %d ..." %r.id)
                     continue
-                print(reac2ts_spec.id)
+                print(reac2ts_spec.id, ots.id)
+                print(ots.info)
                 for info in ots.info.split(";"):
                     if "ZPE" in info:
                         ZPE = float(info.split("=")[-1])

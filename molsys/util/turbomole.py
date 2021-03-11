@@ -1291,10 +1291,10 @@ class OptimizationTools:
                 os.remove(f_path)
         return
 
-    def add_arh_to_control(self):
+    def add_dg_to_control(self, dg="arh"):
         os.chdir(self.path)
         os.system("kdg end")
-        os.system('''echo "\$arh" >> control''')
+        os.system('''echo "\$%s" >> control''' %dg)
         os.system('''echo "\$end" >> control''')
         os.chdir(self.maindir)
         return
@@ -1390,7 +1390,7 @@ class OptimizationTools:
             GT.kdg("fermi")
 
             # 5. Add to the control file the Augmented Roothan Hall solver keyword
-            self.add_arh_to_control()
+            self.add_dg_to_control("arh")
 
             # 6. If there are partial occupations round them to integers
             GT.round_fractional_occupation()
@@ -3059,7 +3059,7 @@ class OptimizationTools:
                 self.replace_uhfmo_xxx_with_scfmo("alpha", ref_mo_file, mo_file)
             else:
                 ref_mo_file = os.path.join(tmp_path,"beta")
-                self.replace_uhfmo_beta_with_scfmo("beta", ref_mo_file, mo_file)            
+                self.replace_uhfmo_xxx_with_scfmo("beta", ref_mo_file, mo_file)            
             # / remove the tmp directory
             shutil.rmtree(tmp_path)
         else:
@@ -3075,6 +3075,9 @@ class OptimizationTools:
             GT.kdg("grad")
             GT.kdg("arh")
 
+        # write additional information about timings and memory usage into statistics.ccsdf12
+        OT.add_dg_to_control("profile")
+ 
         mol = GT.coord_to_mol()
 
         # 2. Perform the HF calculation
