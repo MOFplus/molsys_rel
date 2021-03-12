@@ -62,6 +62,12 @@ class fragments:
             raise ValueError("A fragment name is missing")
         return
 
+    def get_occurence_of_frag(self,name):
+        '''
+            returns the fragment count of the fragment with the given name
+        '''
+        return self.fraglist.count(name)
+
     def get_fragnames(self):
         return self.fragnames
 
@@ -157,18 +163,24 @@ class fragments:
         self._mol.graph.plot_graph(fname, g=self.frag_graph, **kwargs)
         return
 
-    def upgrade(self, se, rep):
+    def upgrade(self, se, rep, rep_n = None):
         """
         upgrades the vertex labels in a frag graph
         :Parameters:
             - se  (str): vertex label to be replaced
             - rep (str): new vertex label
+            - rep_n (int): optional. the amount of vertices to be replaced
         """
         assert type(se) == type(rep) == str
         assert hasattr(self, "frag_graph")
+        nreplaced = 0
         for v in self.frag_graph.vertices():
             if self.frag_graph.vp.type[v] == se: 
                 self.frag_graph.vp.type[v] = rep
+                nreplaced += 1
+                if rep_n is not None:
+                    if nreplaced == rep_n:
+                        return
         return
 
 
