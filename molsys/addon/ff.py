@@ -1418,13 +1418,17 @@ class ff(base):
             # for the upgraded reference systems
             upgrades = ref_dic[ref][3]
             if upgrades:
+                if len(upgrades) != 1:
+                    raise ValueError('Currently, only one upgrade is supported')
                 # if upgrades should be applied, also an active zone has to be present
                 assert ref_dic[ref][2] != None
-                subs_upgrade = []
                 for s,r in upgrades.items():
-                    self.ref_systems[ref].fragments.upgrade(s, r)
-                    subs_upgrade += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
-                subs += subs_upgrade
+                    subs_upgrade = []
+                    n_upgrade_frags = self.ref_systems[ref].fragments.get_occurence_of_frag(s)
+                    for i in range(n_upgrade_frags):
+                        self.ref_systems[ref].fragments.upgrade(s, r, rep_n=1)
+                        subs_upgrade += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                    subs += subs_upgrade
             logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
             if len(subs) == 0:
                 # this ref system does not appear => discard

@@ -11,6 +11,7 @@
 from openbabel import openbabel as ob
 from openbabel import pybel
 import numpy as np
+from ctypes import *
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 
@@ -223,16 +224,13 @@ class obabel:
 
     def get_ff_gradient(self):
         """ get obabel ff gradient
-
-        this is extrmely painful to do ... currently i can not find a better way despite extensive googeling
-        if anyone knows how to exploit the GetGradientPtr function in OBForcField (returns a swiged double pointer but that cant be accessed in Python it seems)
-        please let me know!!!
         """
-        grad = []
-        for a in ob.OBMolAtomIter(self.pybmol.OBMol):
-            g = self.pff.GetGradient(a)
-            grad.append([g.GetX(), g.GetY(), g.GetZ()])
-        grad = np.array(grad)
+        gradp = self.pff.GetGradientPtr()
+        # Set number of elements to receive
+        nelem = self.mol.natoms*3
+        # int returns the actual address in memory
+        p = (c_double * nelem).from_address(int(gradp))
+        grad = np.array(p).reshape(self.mol.natoms,3)
         return grad
 
     def ff_opt(self, steps=None, steps_per_atom=10, maxsteps=10000, gconv=0.1):
