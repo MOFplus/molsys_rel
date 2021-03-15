@@ -10,6 +10,7 @@
 
 from openbabel import openbabel as ob
 from openbabel import pybel
+import numpy as np
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 
@@ -53,6 +54,18 @@ class obabel:
         # defaults
         self._smiles = None
         self._cansmiles = None
+        self._ff = "uff"
+        self.pff = None
+        return
+
+    @property
+    def ff(self):
+        return self._ff
+
+    @ff.setter
+    def ff(self, forcefield):
+        assert forcefield in pybel.forcefields
+        self._ff = forcefield
         return
 
     @property
@@ -173,5 +186,129 @@ class obabel:
             centers.append(local_check)
             is_chiral = is_chiral or (local_check)
         return is_chiral, centers 
+
+    ################ force field stuff ##############################
+
+    def get_obmol_coords(self):
+        """ Get OBMol coords and put them into the parent mol object
+
+        Needs to be called after pybel or openbabel operations that chenged the coords
+        """
+        coords = []
+        for a in ob.OBMolAtomIter(self.pybmol.OBMol):
+            coords.append([a.GetX(), a.GetY(), a.GetZ()])
+        coords = np.array(coords)
+        self._mol.set_xyz(coords)
+        return
+
+    # this is a black box in pybel using steepest descent  ... fixed iterations
+    # advantage: no need to setup ff
+    def localopt(self, steps=500):
+        self.pybmol.localopt(forcefield=self.ff, steps=steps)
+        self.get_obmol_coords()
+        return
+
+    def setup_ff(self):
+        from openbabel import OBForceField
+        self.pff = OBForceField.FindForceField(self.ff)
+        assert (self.pff.Setup(self.pybmol.OBMol))
+        self.pff.SetLogLevel(ob.OBFF_LOGLVL_LOW)
+        self.pff.SetLogToStdOut()
+        return
+
+    def get_ff_energy(self):
+        assert self.pff
+        e = self.pff.Energy(True)
+        return e
+
+    def get_ff_gradient(self):
+        """ get obabel ff gradient
+
+        this is extrmely painful to do ... currently i can not find a better way despite extensive googeling
+        if anyone knows how to exploit the GetGradientPtr function in OBForcField (returns a swiged double pointer but that cant be accessed in Python it seems)
+        please let me know!!!
+        """
+        grad = []
+        for a in ob.OBMolAtomIter(self.pybmol.OBMol):
+            g = self.pff.GetGradient(a)
+            grad.append([g.GetX(), g.GetY(), g.GetZ()])
+        grad = np.array(grad)
+        return grad
+
+    def ff_opt(self, steps=None, steps_per_atom=10, maxsteps=10000, gconv=0.1):
+        if steps is None:
+            steps = steps_per_atom*self._mol.natoms
+        self.pff.SteepestDescent(steps, 1.0e-10)
+        energy = self.get_ff_energy()
+        grad = self.get_ff_gradient()
+        rmsgrad = np.sqrt(np.linalg.norm(grad))
+        print ("obabel ff_opt  energy %15.5f rmsgrad %12.6f" % (energy, rmsgrad))
+        while rmsgrad > gconv:
+            self.pff.SteepestDescent(steps, 1.0e-10)
+            energy = self.get_ff_energy()
+            grad = self.get_ff_gradient()
+            rmsgrad = np.sqrt(np.linalg.norm(grad))
+            print ("obabel ff_opt  energy %15.5f rmsgrad %12.6f" % (energy, rmsgrad))
+        print ("Converged!")
+        # get coords from ff object back into OBMol
+        self.pff.GetCoordinates(self.pybmol.OBMol)
+        # now get OBMol coords back into mol object
+        self.get_obmol_coords()
+        return energy, rmsgrad
+        
+    def get_ff_hessian(self, delta=0.001):
+        hess = []
+        for a in ob.OBMolAtomIter(self.pybmol.OBMol):
+            print ("computing atom %d" % a.GetIndex())
+            keep = [a.GetX(), a.GetY(), a.GetZ()]
+            # X
+            a.SetVector(keep[0]+delta, keep[1], keep[2])
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            energy_xp = self.get_ff_energy()
+            grad_xp = self.get_ff_gradient()
+            a.SetVector(keep[0]-delta, keep[1], keep[2])
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            energy_xm = self.get_ff_energy()
+            grad_xm = self.get_ff_gradient()
+            a.SetVector(keep[0], keep[1], keep[2])
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            hx = (grad_xm.ravel()-grad_xp.ravel())/(2.0*delta)
+            hess.append(hx)
+            # Y
+            a.SetVector(keep[0], keep[1]+delta, keep[2])
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            energy_yp = self.get_ff_energy()
+            grad_yp = self.get_ff_gradient()
+            a.SetVector(keep[0], keep[1]-delta, keep[2])
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            energy_ym = self.get_ff_energy()
+            grad_ym = self.get_ff_gradient()
+            a.SetVector(keep[0], keep[1], keep[2])
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            hy = (grad_ym.ravel()-grad_yp.ravel())/(2.0*delta)
+            hess.append(hy)
+            # Z
+            a.SetVector(keep[0], keep[1], keep[2]+delta)
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            energy_zp = self.get_ff_energy()
+            grad_zp = self.get_ff_gradient()
+            a.SetVector(keep[0], keep[1], keep[2]-delta)
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            energy_zm = self.get_ff_energy()
+            grad_zm = self.get_ff_gradient()
+            a.SetVector(keep[0], keep[1], keep[2])
+            self.pff.SetCoordinates(self.pybmol.OBMol)
+            hz = (grad_zm.ravel()-grad_zp.ravel())/(2.0*delta)
+            hess.append(hz)
+        hess = np.array(hess)
+        # measure symmetry
+        dev = np.linalg.norm(hess - hess.T)
+        # make symmetric
+        hess = (hess + hess.T)/2.0
+        return hess
+
+
+
+
 
 

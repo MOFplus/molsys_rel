@@ -18,6 +18,7 @@
 
 import os
 import h5py
+import numpy as np
 
 class DataReference:
     
@@ -58,7 +59,13 @@ class DataReference:
                     group = h5file[key]
                 self.build_rec_dataset(value, group, exists_warning=exists_warning)
             else:
-                h5file.create_dataset(key, data=value)
+                value = np.array(value)
+                if "U" in str(value.dtype):
+                    dt = h5py.string_dtype(encoding='utf-8')
+                    dset = h5file.create_dataset(key, value.shape, dtype=dt)
+                    dset[...] = value
+                else:
+                    h5file.create_dataset(key, data=value)
     
             
     def load_rec_dataset(self, h5file = None, path = None):

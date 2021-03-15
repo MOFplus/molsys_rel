@@ -23,6 +23,30 @@ const float default_charge= 0.0;
 const float default_radius= 0.5;
 const int default_atomicnumber= 1;
 
+static const char *element_symbols[] = { 
+    "X",  "H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne",
+    "Na", "Mg", "Al", "Si", "P" , "S",  "Cl", "Ar", "K",  "Ca", "Sc",
+    "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", 
+    "As", "Se", "Br", "Kr", "Rb", "Sr", "Y",  "Zr", "Nb", "Mo", "Tc",
+    "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I",  "Xe",
+    "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb",
+    "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W",  "Re", "Os",
+    "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr",
+    "Ra", "Ac", "Th", "Pa", "U",  "Np", "Pu", "Am", "Cm", "Bk", "Cf",
+    "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt",
+    "Ds", "Rg"
+};
+
+int get_element_index(const char *elem){
+    for (int i=0; i<112;i++){
+        // printf("elemcmp %s %s %i\n", element_symbols[i],elem,strcmp(element_symbols[i],elem)); fflush(stdout);
+        if (strcmp(element_symbols[i],elem) == 0){
+            return i;
+        }
+    }
+    return default_atomicnumber;
+}
+
 static void *open_mfp5_read(const char *filename, const char *filetype, int *natoms){
 	struct mfp5_file* file;
 	mfp5_open(&file,filename,-1);
@@ -41,7 +65,7 @@ void close_file(void* _file){
 int read_mfp5_structure(void *_file, int *optflags,molfile_atom_t *atoms) {
     printf("Entering read function\n\n");
     molfile_atom_t *atom;
-	*optflags =  MOLFILE_CHARGE; 
+	*optflags =  MOLFILE_ATOMICNUMBER | MOLFILE_CHARGE; 
 	struct mfp5_file* file=_file;
 	int natoms;
 	mfp5_get_natoms(file, &natoms);
@@ -65,6 +89,7 @@ int read_mfp5_structure(void *_file, int *optflags,molfile_atom_t *atoms) {
         strncpy(atom->type,atypes[i],16*sizeof(char));
         strncpy(atom->resname,fragtypes[i],8*sizeof(char));
         atom->resid=fragnumbers[i];	
+        atom->atomicnumber = get_element_index(elems[i]);
         //atom->name            
         //atom->type
         //atom->atomicnumber
@@ -79,6 +104,8 @@ int read_mfp5_structure(void *_file, int *optflags,molfile_atom_t *atoms) {
     }
     // user input for stage
     // todo: find avaiable stages and display them!
+    printf("available stages:\n");
+    mfp5_detect_stages(file);
     char stagename[100];
     printf("which stage should be displayed? ");
     scanf("%s", stagename);

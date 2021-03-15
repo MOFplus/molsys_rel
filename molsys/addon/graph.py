@@ -376,8 +376,8 @@ class graph(object):
         print ("graph made")
         # first test for interp
         self.interp = 1 # if interp > 1 then we have N interp nets which are in moldg_full, mappings in self.interp_map
-        self.detect_interp()
-        print ("interp detected")
+        result = self.detect_interp()
+        print ("interp detected  :" + str(result))
         # split it
         if mode == "ringsize":
             self.split_ringsize()
@@ -464,6 +464,9 @@ class graph(object):
         if len(hist) == 1:
             return False
         else:
+            print ("DEBUG DEBUG check interpenetration")
+            print (hist)
+            print (comp)
             # we have more than one component, let's see if these are all the same subgraphs
             if len(hist)*hist[0] == self.moldg.num_vertices():
                 # mask out all but the first interp net
@@ -925,17 +928,17 @@ class graph(object):
 
                 e1 = molg1.get_edges()
                 e2 = molg2.get_edges()
-
+                
                 if e1.shape[0] > 0 and e2.shape[0] > 0:
 
                     # quick exist?
                     vert1 = molg1.get_vertices()
                     vert2 = molg2.get_vertices()
 
-                    if len(vert1) != len(vert2):
+                    if len(vert1) != len(vert2) or len(e1) != len(e2):
                        is_equal = False
                        return is_equal, error_code
-                   
+                     
                     masterg = Graph(molg2)
                     masterg.add_vertex() 
 
@@ -948,7 +951,7 @@ class graph(object):
                            if molg1.vp.type[vi] != molg2.vp.type[vj]:
                                is_equal = False
                                break
-
+                       
                 else:
                     # We don't have any edges... 
 
