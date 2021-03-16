@@ -23,7 +23,7 @@ Now let us generate a molsys object and read the xyz file in.
     >>> m.read("benz.xyz")
 
 Note that we can shortcut this with ``m = molsys.mol.from_file("benz.xyz")``. The file IO detects the file type by the extension.
-Now we can get the basic info for the mol object **m**:
+Now we can get the basic info for the mol object **m** :
 
 .. code-block:: python
 
@@ -68,14 +68,14 @@ Since the system was read from pure coordinates also no connectivity info is ava
 
 Atom indices start with 0!
 Now let us write to a file that stores all connectivity information. We use a file format called mfpx which is just an extended tinker (txyz) format.
-In addition to tinker txyz files it stores also fragment info, unit cell data and further meta-data. See the section on file formats :sec:`File I/O`. 
+In addition to tinker txyz files it stores also fragment info, unit cell data and further meta-data. See the section on file formats :ref:`File Formats`. 
 
 .. code-block:: python
 
     >>> m.write("benz.mfpx")
 
 Now we can generate atomtype information. *molsys* generates *MOF-FF* atomtypes which have the general form <element><coordination>_[seq:<neighbor elem><count>].
-As an example C3_c3h1 means a carbon atom with 3 neighbors, 2x carbon and 1x hydrogen. There is a convenience script to generate atomtypes in a mfpx file 
+As an example c3_c3h1 means a carbon atom with 3 neighbors, 2x carbon and 1x hydrogen. There is a convenience script to generate atomtypes in a mfpx file 
 (file will be overwritten).
 
 .. code-block:: console
@@ -120,5 +120,46 @@ All atoms belong the the fragment **ph** for phenyl and to fragment number 0
 Periodic Systems
 ****************
 
-To be done!
+Periodic systems are not that easy to generate as the benzene molecule shown above. Therefore we use a mfpx file of a MOF that can be downloaded
+from `MOF+ <https://www.mofplus.org>`_. Under **Frameworks** search for the MOF name "hkust" and check out the MOF with the *tbo* net.
+Or you just follow this `link <https://www.mofplus.org/mofs/mof/1>`_ and then dopwnload the coordinates as mfpx (the other option is cif). 
+The file you get looks like this (at least the first 20 lines)
+NOTE: This is one of the first frameworks we generated on MOF+ and it contains the wrong fragment names. In order to fix this please run
+*fragmentize hkust1.mfpx* on the downloaded file. We will fix this at some point. 
+
+.. literalinclude:: _static/hkust1.mfpx
+    :lines: 1-20
+
+As you can see in mfpx the cell parameter are stored as metadata (lines with *#* at the top). The system is automatically detected as cubic.
+
+.. code-block:: python
+
+    >> import molsys
+    >>> m = molsys.mol.from_file("hkust1.mfpx")
+    >>> m.get_bcond()
+    1
+    >>> m.get_cell()
+    array([[26.4327,  0.    ,  0.    ],
+        [ 0.    , 26.4327,  0.    ],
+        [ 0.    ,  0.    , 26.4327]])
+    >>> m.get_cellparams()
+    [26.4327, 26.4327, 26.4327, 90.0, 90.0, 90.0]
+
+One of the powerful tools of the native *mol* class (without using any addons) is to generate supercells of periodic systems with an automatic 
+generation of the connectivity of the supercell. You can use the method :py:class:`molsys.mol.make_supercell` for that.
+
+.. code-block:: python
+
+    >>> m.make_supercell([2,2,1])
+    >>> m.write("hkust1_221.mfpx")
+
+This enhances the system in *x* and *y* direction to span 2 unitcells. The number of atoms gets 4 times as big. To visualize your system you can either use
+*moldenx* (You need to have molden installed and in your path. moldenx is a wrapper script in *molsys* that converts the mfpx on the fly into a tinker *txyz* file
+and shows it. The better option is to use the vmd plugin that comes with molsys. You need to have vmd installed and compile and install the plugin (there is a plugin
+for *mfpx* and another for *mfp5* aka *pdlp*, which is trajectory info written in a *hdf5* file format.
+
+
+
+
+
 
