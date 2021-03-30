@@ -60,7 +60,7 @@ class reaxff_calculator(base_calculator):
     def calc_energy(self):
         return self.pl.calc_energy()
 
-    def optimize(self,tconv=0.01,TS=False,rbonds=[]):
+    def optimize(self,tconv=0.01,TS=False,remove_constraint=False,rbonds=[],bondlength=[]):
         ### default ####
         forceconst = 1000.0
         if TS:
@@ -70,6 +70,8 @@ class reaxff_calculator(base_calculator):
         final_energy = self.pl.MIN(tconv)
         if TS:
             self.pl.clear_restraints()
+            if remove_constraint:
+               final_energy = self.pl.MIN(tconv)
         self.pl.update_mol()
         return final_energy
 
@@ -102,7 +104,7 @@ class xtb_calculator(base_calculator):
     def calc_energy(self):
         return self.pl.calc_energy()
 
-    def optimize(self,tconv=0.01,TS=False,rbonds=[]):
+    def optimize(self,tconv=0.01,TS=False,remove_constraint=False,rbonds=[],bondlength=[]):
         ### default ####
         forceconst = 1000.0
         if TS:
@@ -112,6 +114,8 @@ class xtb_calculator(base_calculator):
         final_energy = self.pl.MIN(tconv)
         if TS:
             self.pl.clear_restraints()
+            if remove_constraint:
+               final_energy = self.pl.MIN(tconv)
         self.pl.update_mol()
         return final_energy
 
@@ -195,6 +199,19 @@ assert "lot" in params, "Level of Theory given for calculator"
 for r in reactions:
     # get all species for this reaction
     reac2spec = db((db.reac2spec.reactionsID == r)).select()
+    is_unimolecular = r["uni"]
+    # dry run to get rbonds
+    rbonds_list = []
+    for r2s in reac2spec:
+        specID = r2s["speciesID"]
+        ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
+        if r2s["label"] == 0:
+           # get revent for this mdspecies
+           rbonds = ospec["rbonds"]
+           rbonds = np.array(rbonds)
+           nrbonds = len(rbonds)//2
+           rbonds.shape = (nrbonds, 2)
+           rbonds_list.append(rbonds)
     for r2s in reac2spec:
         specID = r2s["speciesID"]
         ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
@@ -205,14 +222,20 @@ for r in reactions:
         elif r2s["label"] == 0:
            TS = True
         rbonds =  []
+        remove_constraint = False
         if TS:
            # get revent for this mdspecies
            rbonds = ospec["rbonds"]
            rbonds = np.array(rbonds)
            nrbonds = len(rbonds)//2
            rbonds.shape = (nrbonds, 2)
+        if is_unimolecular:
+           assert len(rbonds_list) == 1, "dimension of rbond list"
+           rbonds = rbonds_list[0]
+           remove_constraint = True
+        bondlength = []
+        if TS or is_unimolecular:
            # all molecules are non-perioidc  .. just compute current bond distance
-           bondlength = []
            for i in range(nrbonds):
                r = mol.xyz[rbonds[i,0]]-mol.xyz[rbonds[i,1]]
                bondlength.append(np.sqrt((r*r).sum()))
@@ -227,7 +250,7 @@ for r in reactions:
            print("Unknown calculator!")
            sys.exit(1)
         init_energy  = calculator.calc_energy()
-        final_energy = calculator.optimize(0.01,TS,rbonds)
+        final_energy = calculator.optimize(0.01,TS,remove_constraint,rbonds,bondlength)
         print ("\n\n########################################")
         print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
         print ("########################################\n\n")
