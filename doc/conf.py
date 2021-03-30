@@ -39,7 +39,8 @@ extensions = ['sphinx.ext.autodoc',
     'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
-    'sphinx.ext.githubpages']
+    'sphinx.ext.githubpages',
+    'sphinx.ext.autosectionlabel']
 
 intersphinx_mapping = {"MOFplus":('file:///opt/sandbox/mofplus/doc/_build/html',None)}
 
@@ -57,7 +58,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'molsys'
-copyright = u'2019, Roberto Amabile, Johannes P. Duerholt, Julian Keupp, Rochus Schmid'
+copyright = u'2019-2021, Roberto Amabile, Johannes P. Duerholt, Julian Keupp, Rochus Schmid'
 author = u'Roberto Amabile, Johannes P. Duerholt, Julian Keupp, Rochus Schmid'
 
 # The version info for the project you're documenting, acts as replacement for

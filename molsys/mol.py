@@ -568,7 +568,7 @@ class mol(mpiobject):
         """
         f = StringIO()
         logger.info("writing string as %s" % str(ftype))
-        if ftype in formats.read:
+        if ftype in formats.write:
             formats.write[ftype](self,f,**kwargs)
         else:
             logger.error("unsupported format: %s" % ftype)
@@ -2689,6 +2689,7 @@ class mol(mpiobject):
             - ctab   : list of bonds (nbonds, 2)
         """
         self.set_empty_conn()
+        self.nbonds = len(ctab)
         for c in ctab:
             i,j = c
             self.conn[i].append(j)
