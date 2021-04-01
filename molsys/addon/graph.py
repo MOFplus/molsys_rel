@@ -826,7 +826,8 @@ class graph(object):
                 # check if isomorphic
                 # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
                 else:
-                    if isomorphism(cur_bbsg, old_bbsg):
+                    is_iso, iso_map = isomorphism(cur_bbsg, old_bbsg, isomap=True)
+                    if is_iso:
                         known = True
                         break
             if not known:
@@ -871,7 +872,8 @@ class graph(object):
                         continue
                     # check if isomorphic
                     # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
-                    if isomorphism(cur_bbsg, old_bbsg):
+                    is_iso, iso_map = isomorphism(cur_bbsg, old_bbsg, isomap=True)
+                    if is_iso:
                         known = True
                         break
                 if not known:
