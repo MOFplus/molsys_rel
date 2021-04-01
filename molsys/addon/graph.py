@@ -50,7 +50,7 @@ class graph(object):
         """
         if idx is None: idx = range(self._mol.natoms)
         # now add vertices
-        self.vert2atom = [] # this list maps vertex indices to the real atoms becasue we omit the hydrogens in the graph
+        self.vert2atom = [] # this list maps vertex indices to the real atoms because we omit the hydrogens in the graph
         ig = 0
         self.molg.clear() # allways start from a fresh graph
         for i in idx:
@@ -227,6 +227,29 @@ class graph(object):
                 subs_check.append(sl_check)
         return subs
 
+    # the following static methods are used in the fragments addon (to avoid graphtool dependence of the rest of fragments)
+    @staticmethod
+    def get_kcore(graph):
+        return kcore_decomposition(graph)
+
+    @staticmethod
+    def filt_kcore(graph, k):
+        kcore = kcore_decomposition(graph).get_array()
+        new_g = GraphView(graph, vfilt=np.not_equal(kcore, k))
+        return new_g
+
+    @staticmethod
+    def get_filt_view(graph, filt):
+        return GraphView(graph, vfilt=filt)
+
+    @staticmethod
+    def get_filt_copy(graph, filt=None):
+        if filt is None:
+            ng = Graph(graph, prune=True)
+        else:
+            gv = GraphView(graph, vfilt=filt)
+            ng = Graph(gv, prune=True)
+        return ng
 
     def find_sub(self, subg):
         """
@@ -285,22 +308,40 @@ class graph(object):
             frags.append(f)
         return frags
 
-    def util_graph(self, vertices, conn, vtypes2 = None):
-        """
-        generate a graph with vertices and connectivity in conn
+    def util_graph(self, vertices, conn, atom_map=None, vtypes2 = None):
+        """generates a fragment or atom graph
+
+        Args:
+            vertices (list of strings): vertex identifier
+            conn (list of lists): connectivity 
+            atom_map (list of list of ints, optional): atoms mapped by this vertex. Defaults to None.
+            vtypes2 (list of strings, optional): alternative vertex identifiers. Defaults to None.
+
+        Returns:
+            graph: graph object    
+        
+        RS: this is currently just a helper function that produces the graph and returns it.
+            we could consider to store this graph with a name in the graph addon
+
         """
         if vtypes2 is not None:
             assert len(vtypes2)==len(vertices)
+        if atom_map is not None:
+            assert len(atom_map) == len(vertices)
         g = Graph(directed=False)
         # now add vertices
         g.vp.type = g.new_vertex_property("string")
         if vtypes2 is not None:
             g.vp.types2 = g.new_vertex_property("string")
+        if atom_map is not None:
+            g.vp.atom_map = g.new_vertex_property("vector<int>")
         for i, v in enumerate(vertices):
             g.add_vertex()
             g.vp.type[i] = v
             if vtypes2 is not None:
                 g.vp.types2[i] = vtypes2[i]
+            if atom_map is not None:
+                g.vp.atom_map[i] = atom_map[i]
         # now add edges ...
         for i, v in enumerate(vertices):
             for j in conn[i]:
