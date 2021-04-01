@@ -230,26 +230,8 @@ class graph(object):
     # the following static methods are used in the fragments addon (to avoid graphtool dependence of the rest of fragments)
     @staticmethod
     def get_kcore(graph):
-        return kcore_decomposition(graph)
+        return kcore_decomposition(graph).get_array()
 
-    @staticmethod
-    def filt_kcore(graph, k):
-        kcore = kcore_decomposition(graph).get_array()
-        new_g = GraphView(graph, vfilt=np.not_equal(kcore, k))
-        return new_g
-
-    @staticmethod
-    def get_filt_view(graph, filt):
-        return GraphView(graph, vfilt=filt)
-
-    @staticmethod
-    def get_filt_copy(graph, filt=None):
-        if filt is None:
-            ng = Graph(graph, prune=True)
-        else:
-            gv = GraphView(graph, vfilt=filt)
-            ng = Graph(gv, prune=True)
-        return ng
 
     def find_sub(self, subg):
         """

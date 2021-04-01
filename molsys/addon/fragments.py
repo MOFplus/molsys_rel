@@ -6,6 +6,8 @@ Created on Tue Nov 29 21:30:26 2016
 """
 import string
 import logging
+
+from numpy.core.fromnumeric import trace
 logger = logging.getLogger("molsys.fragments")
 import numpy as np
 
@@ -226,9 +228,6 @@ class fragments:
         """
         assert source in self.fgraphs
         assert target not in self.fgraphs
-        frags = []
-        atom_maps = []
-        conn = []
         # get copy of source graph
         g = self.fgraphs[source].copy()
         # first iterate over fragments and find which have to be merged
@@ -296,20 +295,55 @@ class fragments:
         """
         assert source in self.fgraphs
         assert target not in self.fgraphs
-        ng = self._mol.graph.filt_kcore(self.fgraphs[source], 1)
+        ng = self.fgraphs[source].copy()
+        kcore = self._mol.graph.get_kcore(ng)
+        kfilt = ng.new_vertex_property("bool")
+        kfilt.a = np.not_equal(kcore, 1)
+        ng.set_vertex_filter(kfilt)
+        ng.purge_vertices()
         self.fgraphs[target] = ng
         return ng 
 
     def remove_bridge_frags(self, source, target):
-         """remove all frags with CN=2 just bridging
+        """remove all frags with CN=2 just bridging
         Args:
             source (string): name of fgraph to start with
             target (string): name of graph to generate (should not exist)
 
         """
         ng = self.fgraphs[source].copy()
-                
-
+        skip_vertices = [] # ignore those already checked
+        remove_vert =   [] # remove these in the end
+        for v in ng.vertices():
+            if v not in skip_vertices:
+                if v.out_degree() == 2:
+                    #print ("remove vert %d" % v)
+                    remove_vert.append(v)
+                    neighb = list(v.all_neighbors())
+                    # now check on both ends if we need to extend to further cn=2 vertices
+                    for d in range(2):
+                        stop = False
+                        while not stop:
+                            nv = neighb[d]
+                            if nv.out_degree() == 2:
+                                # yes, this is another vertex to be deleted
+                                if nv > v: skip_vertices.append(nv)
+                                remove_vert.append(nv)
+                                # which is the next next vertex?
+                                for nnv in nv.all_neighbors():
+                                    if nnv != v: neighb[d] = nnv
+                            else:
+                                stop = True
+                    # connect neighb
+                    #print ("connecting %s" % str(neighb))
+                    ng.add_edge(neighb[0], neighb[1])
+        # finally remove all vertices that have to go (edges go along with them)
+        #print ("remove")
+        #print (remove_vert)
+        ng.remove_vertex(remove_vert)
+        ng.shrink_to_fit()
+        self.fgraphs[target] = ng
+        return ng
 
     def remove_cn_frags(self, source, target, cn):
         """remove all frags which have a given coordiantion number (degree)
@@ -321,9 +355,14 @@ class fragments:
         """
         assert source in self.fgraphs
         assert target not in self.fgraphs
-        g = self.fgraphs[source]
-        filt = [(v.out_degree() == cn) for v in g.vertices()]
-        print (filt)
-        ng = self._mol.graph.get_filt_view(g, filt)
+        ng = self.fgraphs[source].copy()
+        remove_vert = [v for v in ng.vertices() if v.out_degree() == cn]
+        ng.remove_vertex(remove_vert)
+        ng.shrink_to_fit()
         self.fgraphs[target] = ng
         return ng 
+
+    def report_graph(self, name):
+        g = self.fgraphs[name]
+        for v in g.vertices():
+            print ("vertex %d (%s) with CN %d" % (v, g.vp.type[v], v.out_degree()))
