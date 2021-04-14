@@ -112,14 +112,18 @@ for dft_subdir_path in dft_subdir_paths:
             print("%s does not exist." %f_json)
 
     elif 'level3' in level.lower():
-        ccsd_path = os.path.join(dft_subdir_path,'CC')
-        f_json = os.path.join(pnoccsd_path,'ccsd.json')
+        f_json = os.path.join(dft_subdir_path,'ccsd.json')
         if os.path.isfile(f_json):
              with open(f_json) as f:
                  data = json.load(f)
                  ospec = db(db.opt_species.id == data['ospecID']).select().first()
-                 ospec.info += data['info']
-                 ospec.update_record()
+                 if data['info'] in ospec.info:
+                     print('Info of the optimized species %d  is already updated!' %data['ospecID'])
+                 else:
+                    ospec.info += data['info']
+                    ospec.update_record()
+                    db.commit()
+                    print("The record of the optimized species %d is updated." %data['ospecID'])
         else:
             print("%s does not exist." %f_json)
 

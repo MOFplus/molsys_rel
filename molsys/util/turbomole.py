@@ -5,6 +5,7 @@ import sys
 import os
 import re
 import numpy
+import scipy
 import tempfile
 import time
 import shutil
@@ -110,10 +111,27 @@ class GeneralTools:
     def coord_to_mol(self, coord_name="coord"):
         coord_path = os.path.join(self.path,coord_name)
         if not os.path.isfile(coord_path):
-            raise FileNotFoundError("Please provide a coord file for invoking define.")
+            raise FileNotFoundError("Please provide a coord file.")
         xyz = self.coord_to_xyz()
         mol = molsys.mol.from_string(xyz, "xyz")
         return mol
+
+    def add_to_coord(self, coord_name="coord", text=""):
+        coord_path = os.path.join(self.path,coord_name)
+        newlines = ''
+        if not os.path.isfile(coord_path):
+            raise FileNotFoundError("Please provide a coord file.")
+        with open(coord_path) as coord:
+           for line in coord:
+               if '$end' in line:
+                   newlines += '%s\n$end' %text
+               else:
+                   newlines += line
+        f = open(coord_path,'w')
+        f.write(newlines)
+        f.close()
+        return
+
 
 
     def change_basis_set(self, basis_set, blow_up = True, ref_control_file = "../control",  title = "", delete_old_aux_bas = True, ri = True):
@@ -660,7 +678,7 @@ class GeneralTools:
     def ridft(self):
         os.chdir(self.path)
         os.system("ridft > ridft.out")
-        SPE =  self.get_energy_from_scf_out("ridft.out")
+        SPE = self.get_energy_from_scf_out("ridft.out")
         os.chdir(self.maindir)
         return SPE
 
@@ -982,6 +1000,7 @@ class Mol:
 
        Returns:
            mol: a dictionary of mol objects of the separated molecules
+           labels: list of labels for individual fragments
        """
        self.make_molecular_graph(by_bo = by_bo)
        mg = self.mol.graph.molg
@@ -1007,7 +1026,7 @@ class Mol:
            mol_tmp = molsys.mol.from_string(mol_str, 'xyz')
            mol_tmp.detect_conn_by_bo()
            mols.append(mol_tmp)
-       return mols
+       return mols, labels
 
     def get_max_M(self):
         """ Calculates the number of core + valence MOs (nMOs)
@@ -1777,6 +1796,7 @@ class OptimizationTools:
                const_table_1 = const_table_1.replace(iopt2its)
                new_index = [iopt2its[iopt] for iopt in const_table_1.index]
                const_table_1.index = new_index
+               print('zmat_opt_1',zmat_opt_1)
 
            #  2nd species
            elif n == 2:
@@ -1805,6 +1825,7 @@ class OptimizationTools:
                const_table_2 = const_table_2.replace(iopt2its)
                new_index = [iopt2its[iopt] for iopt in const_table_2.index]
                const_table_2.index = new_index
+               print('zmat_opt_2',zmat_opt_2)
 
                # 6. Build the construction table of the complex/transition state
 
@@ -1859,6 +1880,7 @@ class OptimizationTools:
                # 7. Construct the Z-matrix of the TS using the construction table created
                xyz_ts = zmat(mol_ts).to_Cartesian()
                zmat_complex = xyz_ts.get_zmat(const_table)
+               print('zmat_ts',zmat_complex)
 
                # 8. Replace all of the coordinates for the 1st molecule
                for i in const_table_1.index:
@@ -1889,6 +1911,7 @@ class OptimizationTools:
                        zmat_complex.safe_loc[i,'angle'] = zmat_opt_2.loc[vts2vopt[i-1]+1,'angle']
                        zmat_complex.safe_loc[i,'dihedral'] = zmat_opt_2.loc[vts2vopt[i-1]+1,'dihedral']
 
+               print('zmat_complex',zmat_complex)
                # 10. Convert the Z-matrix of the complex back to the carte
                xyz_complex = zmat_complex.get_cartesian()
                print('The complex is succesfully created.')
@@ -1947,7 +1970,7 @@ class OptimizationTools:
 
         # 5. Get the molecules at the end points
         mol = GT.coord_to_mol()
-        mols = Mol(mol).separate_molecules()
+        mols, labels = Mol(mol).separate_molecules()
 
         # 6. Go to the main directory
         os.chdir(self.maindir)
@@ -2499,7 +2522,7 @@ class OptimizationTools:
                 mol_opt = GT.coord_to_mol()
 
                 # 6. Check if the molecule stays as a single molecule, e.g., the awkward H-O-H-O-H-O complexes of ReaxFF...
-                mols =  Mol(mol_opt).separate_molecules()
+                mols, labels =  Mol(mol_opt).separate_molecules()
                 if len(mols) != 1:
                     print('The optimised structure has more than a single molecule. This cannot be handled automatically.')
                     exit()
@@ -2981,8 +3004,27 @@ class OptimizationTools:
         f2.close()
         return
 
+    def replace_cso_xxx_with_scfmo(self, xxx, ref_mo_file, mo_file):
+        f1 = open(ref_mo_file, 'r')
+        f2 = open(mo_file, 'w')
+        for line in f1:
+            f2.write(line.replace('cso_%s' %xxx, 'scfmo'))
+        f1.close()
+        f2.close()
+        return
 
-    def refine_ccsd(self, ospecID, pnoccsd=""):
+    def get_csos(self, path_proper="/home/oyoender/programs/proper"):
+        os.chdir(self.path)
+        f = open("proper.in", "w")
+        f.write("mos\ncsos symao\nq")
+        f.close()
+        os.system("%s < proper.in" %path_proper)
+        os.remove("proper.in")
+        os.chdir(self.maindir)
+        return
+        
+
+    def refine_ccsd(self, ospecID, pnoccsd="", proper_path="/home/oyoender/programs/proper"):
         # 1. Get the model and basis set from level of theory (self.lot)
         # example formats for lot:
         # "PNO-ROHF-CCSD(T)(F12*)/cc-pVTZ" -> Uses pnoccsd code
@@ -3049,17 +3091,29 @@ class OptimizationTools:
             tmp_path = os.path.join(self.path,"tmp")
             os.system("cpc tmp")
             GT_tmp =  GeneralTools(tmp_path)
+            OT_tmp =  OptimizationTools(tmp_path)
             # / blow up the basis set so that the number of atomic orbitals are correct
             GT_tmp.change_basis_set(basis_set=basis_set, ref_control_file = "../control",  title = self.lot, ri=False)
+            GT_tmp.kdg("rij")
+            GT_tmp.dscf()
+            converged = GT_tmp.check_scf_converged("dscf")
+            if not converged:
+                print("The scf calculation did not converge with the new basis set.")
             mo_file = os.path.join(ccsd_path,"mos")
             os.remove(mo_file)
+            # / get the corresponding spin orbitals
+            OT_tmp.get_csos(proper_path)
             # / copy the blown up alpha or beta mo file to mos
             if GT_ref.nalpha >= GT_ref.nbeta:
-                ref_mo_file = os.path.join(tmp_path,"alpha")
-                self.replace_uhfmo_xxx_with_scfmo("alpha", ref_mo_file, mo_file)
+                ref_mo_file = os.path.join(tmp_path,"cso_alpha")
+                self.replace_cso_xxx_with_scfmo("alpha", ref_mo_file, mo_file)
+            #    ref_mo_file = os.path.join(tmp_path,"alpha")
+            #    self.replace_uhfmo_xxx_with_scfmo("alpha", ref_mo_file, mo_file)
             else:
-                ref_mo_file = os.path.join(tmp_path,"beta")
-                self.replace_uhfmo_xxx_with_scfmo("beta", ref_mo_file, mo_file)            
+                ref_mo_file = os.path.join(tmp_path,"cso_beta")
+                self.replace_cso_xxx_with_scfmo("beta", ref_mo_file, mo_file)
+                #ref_mo_file = os.path.join(tmp_path,"beta")
+                #self.replace_uhfmo_xxx_with_scfmo("beta", ref_mo_file, mo_file)            
             # / remove the tmp directory
             shutil.rmtree(tmp_path)
         else:
@@ -3081,11 +3135,40 @@ class OptimizationTools:
         mol = GT.coord_to_mol()
 
         # 2. Perform the HF calculation
-        HF_energy = GT.dscf()
-        converged = GT.check_scf_converged("dscf")
+        bck_path = os.path.join(ccsd_path, "BACK")
+        os.chdir(ccsd_path)
+        os.system("cpc %s" %bck_path)
+        os.chdir(self.path)
+        GT_bck = GeneralTools(bck_path)
+        HF_energy = GT_bck.dscf()
+        converged = GT_bck.check_scf_converged("dscf")
         if not converged:
-            print("HF orbitals did not converge. Exiting...")
-            sys.exit()
+            bck_path_2 = os.path.join(ccsd_path, "BACK_dsta_10")
+            os.chdir(ccsd_path)
+            os.system("cpc %s" %bck_path_2)
+            os.chdir(self.path)
+            GT_bck_2 = GeneralTools(bck_path_2)
+            GT_bck_2.change_dsta_to(10.0)
+            HF_energy = GT_bck_2.dscf()
+            converged = GT_bck_2.check_scf_converged("dscf")
+            if not converged:
+                print('The SCF calculation with start damping 10.0 did not converge.')
+                sys.exit()
+            else:
+                GT_bck_2.change_dsta_to(1.0)
+                HF_energy = GT_bck_2.dscf()
+                converged = GT_bck_2.check_scf_converged("dscf")
+                if not converged:
+                    print('The SCF calculation with start damping 1.0 did not converge.')
+                    sys.exit()
+                for f in os.listdir(bck_path_2):
+                    shutil.move(os.path.join(bck_path_2, f), os.path.join(ccsd_path, f))
+                shutil.rmtree(bck_path_2)
+        else:
+            for f in os.listdir(bck_path):
+                shutil.move(os.path.join(bck_path, f), os.path.join(ccsd_path, f))
+        shutil.rmtree(bck_path)
+
         
         # 3. Add the pnoccsd options
         if pno:
@@ -3261,81 +3344,166 @@ class Slurm:
 
 class Harvest:
     
-    def __init__(self, path=os.getcwd()):
+    def __init__(self, path=os.getcwd(), freehdir = '/home/oyoender/programs/freeh-09.06'):
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
         else:
             self.path = path
             self.maindir = os.getcwd()
+        self.freehdir = freehdir
+        self.kB = scipy.constants.physical_constants['Boltzmann constant'][0] # J/K
+        self.h  = scipy.constants.physical_constants['Planck constant'][0] # J.s
+        self.R  = scipy.constants.physical_constants['molar gas constant'][0] # J/mol/K or Pa.m3/mol/K
+        self.NA = scipy.constants.physical_constants['Avogadro constant'][0] # molecule/mol
+        self.c  = scipy.constants.physical_constants['speed of light in vacuum'][0]*100.0 # cm/s
         return
 
-    def thermodynamics(self, onlyqvib = False, f_ZPE = 1.0, Tstart = 300.0, Tend = 3000.0, numT = 271, Pressure = 0.1):
+    def thermodynamics(self, onlyqvib = False, f_cor = 1.0, Tstart = 300.0, Tend = 3000.0, numT = 271, P = 0.1):
         ''' Calls the freeh program for the temperature range needed at a given pressure.
 
         Args:
         onlyqvib  : Do you only want to get the logarithm of vibrational partition function?
-        f_ZPE     : Zero point vibrational energy correction factor.
+        f_cor     : Zero point vibrational energy correction factor.
         T_start   : Start temperature in K
         T_end     : End temperature in K
         numT      : Number of temperatures
         P         : Pressure in MPa
             
         Returns:
-
+        lnQ       : Numpy array of partition functions
+        T         : Numpy array of temperatures
         '''
-        molinfo = {}
-        # . initialize rotational temperatures
-        Tr = [0,0,0]
-        # . initialize the temperature list, and the thermodynanmic variable dictionaries.
-        T=[] # temperature in K
-        logQ=[] # dictionary of partition functions. Later needed to calculate the concentration of the activated complex, 
-             # and hence, reaction rate and the rate constant from Transition State Theory.
-        G=[] # dictionary of Gibbs Free Energy | 
-        S=[] # dictionary of Entropy           | Later needed to fit NASA polynomials
-        H=[] # dictionary of Enthalpy          |
-        Cp=[]
-        # TODO : change it later to freeh
-        freehdir = '/home/oyoender/freeh'
         os.chdir(self.path)
-        # . write an input file for the freeh program
+        # 1. initialize the temperature list, and the thermodynanmic variable dictionaries.
+        T=[] # temperature in K
+        lnQ=[] # dictionary of partition functions. Later needed to calculate the concentration of the activated complex, 
+             # and hence, reaction rate and the rate constant from Transition State Theory.
+        #G=[] # dictionary of Gibbs Free Energy | 
+        #S=[] # dictionary of Entropy           | Later needed to fit NASA polynomials
+        #H=[] # dictionary of Enthalpy          |
+        #Cp=[]
+
+        # 2. Write an input file for the freeh program
         f = open('freeh.inp','w+')
-        f.write('\n%f\ntstart=%f tend=%f numt=%d pstart=%f\nq' %(f_ZPE,Tstart,Tend,numT,Pressure))
+        f.write('\n%f\ntstart=%f tend=%f numt=%d pstart=%f\nq' %(f_cor,Tstart,Tend,numT,P))
         f.close()
-        # . run the freeh program
-        os.system('%s -freerotor < freeh.inp > freeh.out  2> /dev/null' %freehdir)
-        # . read the output and get the thermodynamic variables
-        #   Note: Output of the free rotor approximation.
+        # run the freeh program
+        os.system('%s -freerotor < freeh.inp > freeh.out  2> /dev/null' %self.freehdir)
+
+        # 3. Read the output and get the thermodynamic variables
         linenum = 0
-        linenumTr = 0
         with open('freeh.out') as freehout:
             for i, line in enumerate(freehout, start=1):
                 if 'The quasi-RRHO Approach Short Output' in line:
                     linenum=i+11 # The line where the thermodynamic properties are started to be list.
-                if 'ThetaA' in line: Tr[0] = float(line.strip().split()[2])
-                elif 'ThetaB' in line: Tr[1] = float(line.strip().split()[2])
-                elif 'ThetaC' in line: Tr[2] = float(line.strip().split()[2])
                 if 'Total degeneracy of the electronic wavefunction' in line: qel = float(line.strip().split()[-1])
                 if linenum <= i <= linenum+numT-1 and linenum != 0:
                     Ttmp=float(line.split()[0])
                     T.append(Ttmp) # in K
-                    logqtrans=float(line.split()[2])
+                    lnqtrans=float(line.split()[2])
                     #V = kB*Ttmp/PressurePa
                     #qtransperunitvolume = qtrans/V
-                    logqrot=float(line.split()[3])
+                    lnqrot=float(line.split()[3])
                     # vibrational partition function with the energy levels relative to the bottom of the internuclear potential well.
-                    logqvib=float(line.split()[4])
+                    lnqvib=float(line.split()[4])
                     if onlyqvib:
-                       logQ.append(logqvib)
+                       lnQ.append(lnqvib)
                     else:
-                       logQ.append(logqtrans+logqrot+logqvib+np.log(qel))
-                    G.append(float(line.split()[5])*1.0E3) # in J/mol
-                    S.append(float(line.split()[6])*1.0E3) # in J/mol/K
-                    H.append(float(line.split()[8])*1.0E3) # in J/mol
-                    Cp.append(float(line.split()[7])*1.0E3) # in J/mol/K
-                if 'SIGMA' in line:
-                    molinfo['sym'] = int(line.strip().split()[4].split('.')[0])
+                       lnQ.append(lnqtrans+lnqrot+lnqvib+numpy.log(qel))
+                   # G.append(float(line.split()[5])*1.0E3) # in J/mol
+                   # S.append(float(line.split()[6])*1.0E3) # in J/mol/K
+                   # H.append(float(line.split()[8])*1.0E3) # in J/mol
+                   # Cp.append(float(line.split()[7])*1.0E3) # in J/mol/K
         os.chdir(self.maindir)
-        molinfo['Tr'] = Tr
-        return molinfo, logQ, G, S, H, T
+        lnQ = numpy.array(lnQ)
+        T = numpy.array(T)
+        return lnQ, T
     
+    def func(self, T, lnA, n, E):
+        lnk = lnA+n*numpy.log(T)-E/T
+        return lnk
     
+    def fitArr(self, lnk, T, lnA0, n0, E0, verbose=False, k_unit='', title='', subtitle=''):
+        """
+        Returns:
+        popt is basically the fitted values
+        """
+        popt, pcov = scipy.optimize.curve_fit(f = self.func, xdata = T, ydata = lnk, p0 = [lnA0, n0, E0])
+        if verbose:
+            lnkfit = self.func(T, *popt)
+            print('lnk')
+            print(lnk)
+            print('lnkfit')
+            print(lnkfit)
+            plt.rcParams.update({'font.size': 14})
+            plt.xlabel('1000/T (1/K)')
+            plt.ylabel('lnk (k in %s)' %k_unit)
+            plt.plot(1000.0/T,  lnkfit,       label = 'fitted'     )
+            plt.plot(1000.0/T,  lnk,   '.',   label = 'calculated' )
+            plt.legend()
+            plt.suptitle(title)
+            plt.title(subtitle)
+            plt.savefig('lnk%s.png' %(title.replace(" ","")+subtitle.replace(" ","")))
+            print('p0 = [lnA0, n0, E0] = [', lnA0, n0, E0,']')
+            print('p  = [lnA,  n,  E]  = [', popt[0], popt[1], popt[2],']')
+            plt.close()
+        return popt, pcov
+ 
+
+    def get_kappa(self, T, E_el_act, imfreq):
+       # The tunneling factor
+       # since the frequency is imaginary, the square of it will give a minus. Therefore, the equation is normally given as 1 - 1/24*(...), 
+       # but here since frequency is read as a negative value, its square will be positive. Therefore, 1 + 1/24*(...)
+       kappa = 1.0 + 1.0/24.0*numpy.square(((self.h*imfreq*self.c)/(self.kB*T)))*(1.0 + (self.R*T)/(1000.0*E_el_act*self.NA))
+       return kappa
+
+
+    def get_lnk(self, T, P, E_el_act, imfreq, lnQ_educts, lnQ_ts, verbose = False):
+        """
+        Args:
+        T          : K        : Numpy  array of temperatures
+        P          : MPa      : The pressure
+        E_el_act   : kJ/mol   : Electronic activation energy
+        imfreq     : cm^-1    : The imaginary frequency
+        lnQ_educts : unitless : List of list of the natural logarithm of the educts for the temperature range
+        lnQ_ts     : unitless : List of the natural logarithm of the transition state for the temperature range
+        """
+        kappa = self.get_kappa(T, E_el_act, imfreq)
+        #print('kappa=', kappa)
+        # Units of V: (J*mol/K)*K/MPa = Pa*m³/mol/MPa = 10⁻⁶m³/mol = cm³/mol
+        lnV = numpy.log(self.NA*self.kB*T/P) # Natural logarithm of the molar volume 
+        lnQ = 0.0
+        lnQ += lnQ_ts
+        n = -1
+        for lnQ_ed in lnQ_educts:
+            n += 1
+            lnQ -= lnQ_ed
+        if verbose:
+            print('lnQ', lnQ)
+            print('E_el_act*1.0E3/(self.R*T)', E_el_act*1.0E3/(self.R*T))
+        lnk = numpy.log(kappa) + numpy.log(self.kB*T/self.h) + lnQ + n*lnV - E_el_act*1.0E3/(self.R*T)
+        if n == 0:
+            k_unit = '1/s'
+        elif n == 1:
+            k_unit = 'cm^3/mol/s'
+        else:
+            k_unit = '((cm^3/mol)^%d/s)' %n
+        return lnk, k_unit
+
+
+    def get_p0(self, E_el_act, lnk, T, test=False):
+        """
+        Returns initial guess for the fit parameters of the modified Arrhenius law
+        k = A T^n e^(-E/T)
+
+        Args:
+        E_el_act : kJ/mol : Electronic activation energy
+        lnk      : Natural logarithm of the rate constants
+        T        : Temperature
+        """
+        E0 = E_el_act*1.0E3/self.R
+        n0 = (lnk[10]-lnk[-10] + E0*(1.0/T[10]-1.0/T[-10]))/(numpy.log(T[10]/T[-10]))
+        lnA0 = lnk[-10] - n0*numpy.log(T[-10]) - E0/T[-10]
+        if test:
+            print('p0 = [lnA0, n0, E0] = [', lnA0, n0, E0,']')
+        return lnA0, n0, E0
