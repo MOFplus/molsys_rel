@@ -11,6 +11,8 @@ from numpy.core.fromnumeric import trace
 logger = logging.getLogger("molsys.fragments")
 import numpy as np
 
+import molsys
+
 class fragments:
     """
     fragments is an addon class to support advanced fragment
@@ -170,8 +172,8 @@ class fragments:
         #self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
         return self.frag_graph
 
-    def add_frag_graph(self):
-        self.fgraphs["base"] = self.make_frag_graph(add_atom_map=True)
+    def add_frag_graph(self, fgname="base"):
+        self.fgraphs[fgname] = self.make_frag_graph(add_atom_map=True)
         return
         
     def plot_frag_graph(self, fname, **kwargs):
@@ -366,3 +368,49 @@ class fragments:
         g = self.fgraphs[name]
         for v in g.vertices():
             print ("vertex %d (%s) with CN %d" % (v, g.vp.type[v], v.out_degree()))
+
+    def find_subgraph(self, name, subg):
+        subs = self._mol.graph.find_subgraph(self.fgraphs[name], subg)
+        return subs
+
+    def fgraph_to_mol(self, name, elemmap):
+        fg = self.fgraphs[name]
+        atypes = [fg.vp.type[v] for v in fg.vertices()]
+        natoms = len(atypes)
+        elems = [elemmap[at] for at in atypes]
+        xyz = self.fgraph_get_coms(name)
+        m = molsys.mol.from_array(xyz)
+        m.set_elems(elems)
+        m.set_atypes(atypes)
+        # now generate connectivity
+        conn = [[] for i in range(natoms)]
+        for e in fg.edges():
+            i, j = int(e.source()), int(e.target())
+            conn[i].append(j)
+            conn[j].append(i)
+        m.set_conn(conn)
+        return m
+
+    def fgraph_get_coms(self, name):
+        """get an array with COMs of the fraggraph fragments
+
+        This function works currently not in PBC
+
+        Args:
+            name (string): name of the fgraph to use
+        """
+        assert self._mol.bcond == 0
+        fg = self.fgraphs[name]
+        # compute the xyz positions of the vertices from the fragments atom_maps
+        mxyz = self._mol.get_xyz()
+        self._mol.set_real_mass()
+        mmass = np.array(self._mol.get_mass()) # make a numpy array from the list to allow index lookup
+        xyz = np.zeros([fg.num_vertices(),3], dtype="float64")
+        for v in fg.vertices():
+            am = list(fg.vp.atom_map[v])
+            fxyz = mxyz[am]
+            fmass = mmass[am]
+            com = (fxyz*fmass[:,np.newaxis]).sum(axis=0)/fmass.sum()
+            xyz[int(v)] = com
+        return xyz
+
