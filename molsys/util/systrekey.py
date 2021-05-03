@@ -139,7 +139,7 @@ def run_systrekey(edges, labels):
                 err = el
                 break
         print ("systrekey says -> %s" % err)
-        return err, []
+        return err, [], None
 
     result = json.loads(json_result)
     key = result["key"]

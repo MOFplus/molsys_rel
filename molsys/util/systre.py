@@ -21,6 +21,16 @@ from molsys.util import elems
 # get my path 
 molsys_path = os.path.dirname(molsys.__file__)
 systreCmd_path = os.path.dirname(molsys_path) + "/external"
+# RS Jan2021 .. looks like Jython 2.7 is not properly working with setting CLASSPATH .. so we search for the Systre*.jar directly
+import glob
+jars = glob.glob("%s/Systre*.jar" % systreCmd_path)
+if len(jars) == 0:
+    print("There is no Systre jar-file in %s" % systreCmd_path)
+    print("Download Systre-19.6.0.jar or newer from here https://github.com/odf/gavrog/releases into the above path")
+    raise ImportError
+jars.sort()
+systre_jar = jars[-1]
+print ("Using the following systre jar file: %s" % systre_jar)
 
 
 def run_systre(key, debug=False,run_symm_for_q=False):
@@ -47,10 +57,12 @@ def run_systre(key, debug=False,run_symm_for_q=False):
             fcgd.write("%s\n" % " ".join(edge))
         fcgd.write("END\n")
         fcgd.flush()
+        jython_args = ["jython", "-Dpython.path=%s" % systre_jar, systreCmd_path+"/systreCmd.py"]
+        print (jython_args)
         try:
-            systre_result = subprocess.check_output(args=["jython", "-u", systreCmd_path+"/systreCmd.py", "-u", fcgd.name], stderr=subprocess.STDOUT)
+            systre_result = subprocess.check_output(args=jython_args + ["-u", fcgd.name], stderr=subprocess.STDOUT)
             if run_symm_for_q:
-                systre_result_symm = subprocess.check_output(args=["jython", systreCmd_path+"/systreCmd.py", fcgd.name], stderr=subprocess.STDOUT)
+                systre_result_symm = subprocess.check_output(args=jython_args + [fcgd.name], stderr=subprocess.STDOUT)
                 q = systre_result_symm.decode().split('Edges:\n')[-1].split('Edge centers:')[0].count('\n')
             else:
                 q = -1
