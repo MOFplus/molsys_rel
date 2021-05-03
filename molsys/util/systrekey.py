@@ -100,6 +100,39 @@ db_key2name = RCSR_db.key2name
 db_name2key = RCSR_db.name2key
 
 
+class lqg:
+
+    def __init__(self, edges, labels):
+        self.edges = edges
+        self.labels = labels
+        self.is_systrekey = None
+        self.systrekey = None
+        self.ne = len(edges)
+        nv = 0
+        for e in self.edges:
+            for v in e:
+                if v > nv:
+                    nv = v
+        self.nv = nv+1
+        return
+
+    @classmethod
+    def from_string(cls, lqgs):
+        lqg = lqgs.split()
+        assert len(lqg)%5 == 0
+        ne = len(lqg)/5
+        edges = []
+        labels = []
+        for i in range(ne):
+            edges.append([int(lqg[i*5])-1, int(lqg[i*5+1])-1])
+            labels.append([int(lqg[i*5+2]), int(lqg[i*5+3]), int(lqg[i*5+4]),])
+        return cls(edges, labels)
+
+    def __repr__(self):
+        
+
+
+
 def run_systrekey(edges, labels):
     import json
     import copy
