@@ -436,6 +436,7 @@ class graph(object):
         """make a mol graph for decomposition
         """
         self.moldg = Graph(directed=False)
+        self.moldg.vp.aid  = self.moldg.new_vertex_property("int")     # atom index (needed when making vies and subgraphs later to map to global atom index)
         self.moldg.vp.bb   = self.moldg.new_vertex_property("int")     # bb index
         self.moldg.vp.con  = self.moldg.new_vertex_property("string")  # connector atom (-1 no con, else atom to which is bonded)
         self.moldg.vp.filt = self.moldg.new_vertex_property("bool")    # vertex filter (for endgroups aka hydrogen)
@@ -455,6 +456,7 @@ class graph(object):
         self.moldg.ep.filt = self.moldg.new_edge_property("bool")     # filter for splitting into BBs
         # init properties
         for v in self.moldg.vertices():
+            self.moldg.vp.aid[v] = int(v)
             self.moldg.vp.con[v] = ""
             # determine the atype from the graph
             atype = self.moldg.vp.elem[v]
@@ -751,6 +753,11 @@ class graph(object):
         self.decomp_nv = self.bbg.num_vertices()
         if plot:
             self.plot_graph("bbg_after", g=self.bbg, label="bb")
+        # make a map from bbs to vertices
+        self.decomp_map_bb2v = {}
+        for v in self.bbg.vertices():
+            bb = self.bbg.vp.bb[v]
+            self.decomp_map_bb2v[bb] = int(v)
         # generate xyz coordinates of the original system where the BBs are properly wrapped into one image
         wrap_xyz = self._mol.get_xyz().copy()
         for i in range(self.decomp_nbb):
@@ -816,6 +823,9 @@ class graph(object):
 
     def get_bbs(self, get_all=False, write_mfpx=True):
         """this method generates the unique bbs from moldg and bbg
+
+        TBI: currently we map connections only for the vertices but not the edges 
+
         """
         assert self.bbg is not None
         if get_all == True:
@@ -825,15 +835,31 @@ class graph(object):
         self.decomp_ebb = [] # edge/linker BB mol objects (only unique)
         self.decomp_vbb_map = [] # mapping of BBs to the vertices
         self.decomp_ebb_map = [] # mapping of the BBS to the edges
+        self.decomp_vbb_cons = [] # contains a list of indices of neigbor vertices for each vertex in the order of connectors
+                                  #     but mapped with respect to the first detected bb which is converted to a mol object
         # VERTICES
         # start with the vertices ... check all
         vbb_graphs = []
+        vbb_local_con = [] # a list with the vertex bbs connectors in local (vbb's) atom indices (mapped from the global decomp_map_bb2con)
         vbb_map   = {}
         vbb_remap = {}
         nvbbs = 0
         for v in self.bbg.vertices():
             bb = self.bbg.vp.bb[v]
             cur_bbsg = GraphView(self.moldg, directed=False, vfilt = self.moldg.vp.bb.a == bb)
+            # find connections from all connector atoms (in their order in self.decomp_map_bb2cons) to the corresponding
+            # vertices (not bbs)
+            conn_vertices = []
+            for c in self.decomp_map_bb2cons[bb]:
+                # c is the index of an connector atom in the current bb
+                con_string = self.moldg.vp.con[c] # string of atom indices connecting to
+                assert len(con_string) > 0        # should be something if it is a conn (only sanity test)
+                con = con_string.split()
+                assert len(con) == 1              # currently only singel connector allowed
+                con = int(con[0]) # now con is the atom connecting to .. what is its bb? what is its vertex?
+                con_bb = self.moldg.vp.bb[con]
+                con_v = self.decomp_map_bb2v[con_bb]
+                conn_vertices.append(con_v)
             # now check if we have this bb already
             known = False
             for i in range(len(vbb_graphs)):
@@ -843,6 +869,7 @@ class graph(object):
                 #JK: there is an error thrown for single atom graphs (1 vertex 0 edges)
                 # in this case we simply check if the elements are the same
                 if old_bbsg.num_vertices() == 1:
+                    iso_map = [0]
                     if self._mol.elems[cur_bbsg.get_vertices()[0]] == self._mol.elems[old_bbsg.get_vertices()[0]]:
                         known = True
                         break
@@ -850,19 +877,31 @@ class graph(object):
                 # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
                 else:
                     is_iso, iso_map = isomorphism(cur_bbsg, old_bbsg, isomap=True)
+                    iso_map = [iso_map[ii] for ii in self.decomp_map_bb2cons[bb]]
                     if is_iso:
                         known = True
                         break
             if not known:
                 # add graph
-                vbb_graphs.append(Graph(cur_bbsg, prune=True))
+                vbbg = Graph(cur_bbsg, prune=True) # make a new graph object with only the nonfiiltered atoms
+                vbb_graphs.append(vbbg) 
                 vbb_map[nvbbs]   = [bb]
                 vbb_remap[nvbbs] = [int(v)]
                 nvbbs += 1
+                # we can add connecting vertices in the original order because this is the first unknown
+                self.decomp_vbb_cons.append(conn_vertices)
+                # add the gloabl to local map for this new bb (needed for a mapping of the connectors)
+                glob2loc = [vbbg.vp.aid[v] for v in vbbg.vertices()]
+                local_con = [glob2loc.index(v) for v in self.decomp_map_bb2cons[bb]]
+                vbb_local_con.append(local_con)
             else:
                 # known already .. i equals nvbb
                 vbb_map[i].append(bb)
                 vbb_remap[i].append(int(v))
+                # we need to rearange the vertices in the order they appear in this building block according to the isomap
+                local_con = vbb_local_con[i]
+                mapped_conn_vertices = [conn_vertices[local_con.index(a)] for a in iso_map]
+                self.decomp_vbb_cons.append(mapped_conn_vertices)
         # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
         # TBI: with flag get_all==True convert them all
         for i in range(nvbbs):

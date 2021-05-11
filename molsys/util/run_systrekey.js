@@ -1,4 +1,4 @@
-// RS 2019 .. revised sode to run systrekey with mapping using json for exchange
+// RS 2019 .. revised code to run systrekey with mapping using json for exchange
 //            of data with python
 
 // parse input
