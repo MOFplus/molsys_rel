@@ -30,7 +30,7 @@ if len(jars) == 0:
     raise ImportError
 jars.sort()
 systre_jar = jars[-1]
-print ("Using the following systre jar file: %s" % systre_jar)
+# print ("Using the following systre jar file: %s" % systre_jar)
 
 
 def run_systre(key, debug=False,run_symm_for_q=False):
@@ -41,6 +41,10 @@ def run_systre(key, debug=False,run_symm_for_q=False):
     
     Args:       
         key (string): systrekey to be converted
+
+    HACK .. skip jython and do it with java directly .. ha this is not a hack but a really good idea .. why did i not do it this way from the start
+            jython sucks (sorry)
+
     """
     lsk = key.split()
     assert lsk[0] == "3"
@@ -57,12 +61,13 @@ def run_systre(key, debug=False,run_symm_for_q=False):
             fcgd.write("%s\n" % " ".join(edge))
         fcgd.write("END\n")
         fcgd.flush()
-        jython_args = ["jython", "-Dpython.path=%s" % systre_jar, systreCmd_path+"/systreCmd.py"]
-        print (jython_args)
+        # jython_args = ["jython", "-Dpython.path=%s" % systre_jar, systreCmd_path+"/systreCmd.py"]
+        # print (jython_args)
+        java_args = ["java", "-cp", systre_jar, "org.gavrog.apps.systre.SystreCmdline"]
         try:
-            systre_result = subprocess.check_output(args=jython_args + ["-u", fcgd.name], stderr=subprocess.STDOUT)
+            systre_result = subprocess.check_output(args=java_args + ["--fullUnitCell", fcgd.name], stderr=subprocess.STDOUT)
             if run_symm_for_q:
-                systre_result_symm = subprocess.check_output(args=jython_args + [fcgd.name], stderr=subprocess.STDOUT)
+                systre_result_symm = subprocess.check_output(args=java_args + [fcgd.name], stderr=subprocess.STDOUT)
                 q = systre_result_symm.decode().split('Edges:\n')[-1].split('Edge centers:')[0].count('\n')
             else:
                 q = -1
@@ -73,7 +78,7 @@ def run_systre(key, debug=False,run_symm_for_q=False):
         except subprocess.CalledProcessError as err:
             raw_err = err.stdout.decode().split("\n")
             print (raw_err)
-    # now parse the systre output - we use the regular output but for a P1 embedding (-u)
+    # now parse the systre output - we use the regular output but for a P1 embedding (-u / --fullUnitCell)
     if debug:
         print (systre_result.decode())
     systre_result = systre_result.decode().split("\n")
@@ -241,23 +246,21 @@ def run_systre(key, debug=False,run_symm_for_q=False):
     m.use_pconn = True
     # now make sure that the conversion went ok by running systrekey with the built topo .. the key must match the input
     m.addon("topo")
-    new_key = m.topo.systrekey
-    if key != new_key:
+    new_key = m.topo.systrekey # new_key is a lqg class object -> the string is produced by the repr() function
+    if key != repr(new_key):
         print ("someting went wrong here")
         print (key)
         print (new_key)
     # at this point we can be sure that the embedding went well and we have all the mappings
     # now the symmetry unique vertices have to be written as strings to atype
-    key_mapping = m.topo.skey_mapping
+    key_mapping = m.topo.sk_vmapping
     sym_mapping = []
     for v in key_mapping:
-        sym_mapping.append(str(rev_equiv[v]))
+        sym_mapping.append(str(rev_equiv[v]))   # NOTE: i am not sure anymore what it is and why it is done :-)
     m.set_atypes(sym_mapping)
     # set transitivity values ## 1 is set above already!
     p,r,s =  len(list(set(rev_equiv))), -1,-1 # r and s can not be determined by systre --> 3ds?
-    m.topo._transitivity =  '%s %s %s %s' % (p,q,r,s)
-    m.topo._spgr = spgroup
-    m.topo._coord_seq = coord_seq
+    m.topo.set_topoinfo(spgr=spgroup, coord_seq=coord_seq, transitivity='%s %s %s %s' % (p,q,r,s))
     return m
 
 

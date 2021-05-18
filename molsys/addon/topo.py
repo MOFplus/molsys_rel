@@ -7,8 +7,8 @@ Features:
         -> generate a barycentreic embedding
         -> compute the systre key and detect the name of the topo
 
-TBI: we could think of a way to make a mol/topo object from the systrekey (or a lqg) which should directly convert the
-     mol object into a topo and add the addon
+Note: we store the systrekey internally without the prepended "3 " which is redundant. but for reporting we add it
+
 """
 
 # from molsys.util.lqg import lqg
@@ -27,17 +27,28 @@ class topo:
         # we need pconn here in any case for many things so add it if it is not there, yet
         if not self._mol.use_pconn:
             self._mol.add_pconn()
-        self._systrekey = None
-        self._RCSRname   = None
-        self._spgr = None
-        self._coord_seq = None
+        self._lqg = None             # the lqg object of the actual topo object
+        self._systrekey = None       # the systrekey lqg object
+        self._sk_vmapping = None     # the vertex mapping between lqg and sk
+        self._sk_emapping = None     # the edge mapping between lqg and sk
+        self._RCSRname   = None      # the RCSR name if known (present in the RSCR.arc file)
+        self._info = {} # dictionary with metainfo which can be present or not (most comes from systre runs)
         return
-    
+
+    def get_info(self, name):
+        if name in self._info:
+            return self._info[name]
+        else:
+            return None
+
+    def available_info(self):
+        return self._name.keys()
+
     @property
-    def systrekey(self):
-        """method calls javascript systreKey (must be installed) and computes the systreKey
+    def lqg(self):
+        """method to register the topos labeled quotient graph
         """
-        if self._systrekey is None:
+        if self._lqg is None:
             edges = []
             labels = []
             for i in range(self._mol.get_natoms()):
@@ -46,17 +57,21 @@ class topo:
                         edges.append([i,v])
                         # NOTE: in some cases pconn contains FLOAT numbers which is wrong!!! find out where thsi comes from!! and who did it?
                         labels.append(self._mol.pconn[i][j].astype("int32").tolist())
-            sk = systrekey.lqg(edges, labels)
-            self._systrekey = sk.get_systrekey()     
-            # print ("DEBUG DEBUG systrekey")
-            # print (sk.systrekey)
-            # print (sk.sk_mapping)
-            # print (sk.sk_edge_mapping)
-            self._skey_mapping = [-1 for i in range(self._mol.get_natoms())]
-            for k in sk.sk_mapping:
-                self._skey_mapping[int(k)] = sk.sk_mapping[k]
-            # store the mapping in fragnumbers
-            self._mol.set_fragnumbers(self._skey_mapping)
+            self._lqg = systrekey.lqg(edges, labels)
+        return self._lqg
+
+    @property
+    def systrekey(self):
+        """method calls javascript systreKey (must be installed) and computes the systreKey
+        """
+        if self._systrekey is None:
+            lqg = self.lqg
+            self._systrekey = lqg.get_systrekey()     
+            # store the vertex mapping in fragnumbers
+            self._mol.set_fragnumbers(lqg.sk_vmapping)
+            # connect mappings
+            self._sk_vmapping = lqg.sk_vmapping
+            self._sk_emapping = lqg.sk_emapping
         return self._systrekey
 
     @property
@@ -69,41 +84,54 @@ class topo:
         return self._RCSRname
 
     @property
-    def skey_mapping(self):
-        if self._systrekey is None:
-            self.systrekey()
-        return self._skey_mapping
+    def sk_vmapping(self):
+        if self._sk_vmapping is None:
+            # this triggers the computing of the systrekey ... we do not need it because the info is 
+            # in the lqg object after that
+            sk = self.systrekey
+        return self._sk_vmapping
+
+    @property
+    def sk_emapping(self):
+        if self._sk_emapping is None:
+            # this triggers the computing of the systrekey ... we do not need it because the info is 
+            # in the lqg object after that
+            sk = self.systrekey
+        return self._sk_emapping
 
     @property
     def spgr(self):
-        return self._spgr
+        return self.get_info("spgr")
     
     @property
     def transitivity(self):
-        return self._transitivity
+        return self.get_info("transitivity")
 
     @property
     def coord_seq(self):
-        return self._coord_seq
+        return self.get_info("coord_seq")
 
-    def set_topoinfo(self, skey="None", mapping = [], spgr = "None", RCSRname = "None", coord_seq = None, transitivity = '-1 -1 -1 -1'):
+    def set_topoinfo(self, skey=None,
+                         vmapping = None,
+                         emapping = None, 
+                         spgr = None, 
+                         RCSRname = None, 
+                         coord_seq = None, 
+                         transitivity = None):
         """
-        There are two ways to generate metadata (which have to come in group from a trusted source)
-        either systrekey/skey_mapping is generated by calling systrekey.js (RCSRname can be always retrieved)
-        or the info comes from systre (or reading a new topo mfpx file with topoinfo, which hs been generated by systre)
-        Of course it is possible to manually feed in some wrong info ...
-        
-        Args:
-            skey (string): systrekey
-            mapping (string): skey_mapping
-            spgr (string): spacegroup
+        In case we read a topo object from file this meat info could be just set and no need to 
+        runs systreky (which might not even be installed or work)
         """
         self._systrekey = skey
-        self._skey_mapping = mapping
-        self._spgr = spgr
-        self._RCSRname = RCSRname 
-        self._coord_seq = coord_seq
-        self._transitivity = transitivity
+        self._sk_vmapping = vmapping
+        self._sk_emapping = emapping
+        self._RCSRname = RCSRname
+        if spgr is not None: 
+            self._info["spgr"] = spgr
+        if coord_seq is not None: 
+            self._info["coord_seq"] = coord_seq
+        if transitivity is not None:
+            self._info["transitivity"] = transitivity
         return
 
     def fix_topo_elems(self):

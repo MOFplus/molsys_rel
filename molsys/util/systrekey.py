@@ -5,10 +5,11 @@
     author: R. Schmid
 """
 
+import numpy as np
 import os
 import subprocess
-import string
 import molsys
+
 
 """
 INSTALLATION Instructions:
@@ -100,6 +101,12 @@ db_key2name = RCSR_db.key2name
 db_name2key = RCSR_db.name2key
 
 
+def str2edge(s):
+    l = [int(i) for i in s.split()]
+    e = l[:2]
+    l = np.array(l[2:])
+    return e,l
+
 class lqg:
 
     def __init__(self, edges, labels):
@@ -129,22 +136,34 @@ class lqg:
         return cls(edges, labels)
 
     def __repr__(self):
-        out = ""
+        out = "3 "
         for e,l in zip(self.edges, self.labels):
             out += "%d %d %d %d %d " % (e[0]+1, e[1]+1, l[0], l[1], l[2])
-        return out
+        return out[:-1]     # remove the last space 
 
-    def get_edge(self, i, j):
-        if i < j:
-            e = [i, j]
-        else:
-            e = [j, i]
-        if not (self.edges.count(e) == 1):
-            print (e)
-            print (self.edges)
+    def get_edge_index(self, e, l, incr=0):
+        """get index of edge
 
-        ind = self.edges.index(e)
-        return ind, self.edges[ind], self.labels[ind]
+        Args:
+            e (list): vertices
+            l (np.darray): label
+
+        Returns:
+            int: index of the edge (WARNING .. we need to count from 1 in order to discriminate reverse edges as -1)
+        """
+        er = e.copy()
+        er.reverse()
+        for i in range(self.ne):
+            if e == self.edges[i]:
+                if l.tolist() == self.labels[i]:
+                    return i+incr
+            elif er == self.edges[i]:
+                if (l*-1).tolist() == self.labels[i]:
+                    return -(i+incr)
+            else:
+                pass
+        print ("ERROR: edge %s %s not found" % (str(e), str(l)))
+        return None
 
     def get_systrekey(self):
         """run javascript systrekey
@@ -172,7 +191,6 @@ class lqg:
             el.append(l)
             lqg_in.append(el)
         json_lqg = str(lqg_in)
-        print (json_lqg)
         try:
             json_result = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", json_lqg, systre_path], stderr=subprocess.STDOUT).decode()
         except subprocess.CalledProcessError as err:
@@ -184,20 +202,29 @@ class lqg:
             print ("ERROR: systrekey says -> %s" % err)
             return
         result = json.loads(json_result)
-        print (result)
         skey = result["key"][2:] # cut off the "3 " for the 3D
         self.systrekey = lqg.from_string(skey)
-        self.systrekey.is_systrekey = True 
+        self.systrekey.is_systrekey = True
+        # convert the mappings for vertices to dictionaries with indices -1 (start counting from 0)
+        #  and then to a flat list 
         mapping = result["mapping"]
-        self.sk_mapping = {}
+        edge_mapping = result["edgeMapping"]
+        sk_mapping = {}
         for k in mapping:
-            self.sk_mapping[int(k)-1] = mapping[k]-1
-        # now let us try to map the edges from the
-        self.sk_edge_mapping = {}
-        for i, e in enumerate(self.edges):
-            si = self.sk_mapping[e[0]]
-            sj = self.sk_mapping[e[1]]
-            self.sk_edge_mapping[i] = self.systrekey.get_edge(si, sj)[0]
+            sk_mapping[int(k)-1] = mapping[k]-1
+        sk_edge_mapping = {}
+        for e in edge_mapping:
+            lqg_e, lqg_l = str2edge(e)
+            lqg_e = (np.array(lqg_e)-1).tolist()  # we use indices from 0 internaly but systrekey returns mapping from 1
+            lqg_ei = self.get_edge_index(lqg_e, lqg_l)
+            sk_e, sk_l  = str2edge(edge_mapping[e])
+            sk_e = (np.array(sk_e)-1).tolist()
+            sk_ei = self.systrekey.get_edge_index(sk_e, sk_l, incr=1)
+            # print ("%20s --> %20s  %4d" % (e, edge_mapping[e], sk_ei))
+            sk_edge_mapping[lqg_ei] = sk_ei
+        # now convert to a flat list
+        self.sk_vmapping = [sk_mapping[i] for i in range(self.nv)]       # if vertices are missing in the dict (which should not happen) we get an error here
+        self.sk_emapping = [sk_edge_mapping[i] for i in range(self.ne)]  # if edges are missing we should see an error here
         return self.systrekey
 
 
@@ -206,6 +233,8 @@ if __name__=="__main__":
     labels = [[1,0,0], [0,1,0], [0,0,1]]
     g = lqg(edges, labels)
     print (g.get_systrekey())
+    print (g.sk_vmapping)
+    print (g.sk_emapping)
 
 
 

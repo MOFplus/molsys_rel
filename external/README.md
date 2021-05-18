@@ -10,18 +10,15 @@ The precompiled jar file of systre is available here:
 
 https://github.com/odf/gavrog/releases
 
-To run systre.py in molsys.utils you need to download the current Systre jar-file (Systre-19.6.0.jar) into this directory. Install jython by your favorite package manager and set the environment variable CLASSPATH to point to this file. If molsys is located in ```~/sandbox/molsys``` put the 
+RS: From 18/0521 systre.py does not run via jython but directly via java. This has several advantages.
+
+To run systre.py in molsys.utils you need to download the current Systre jar-file (Systre-19.6.0.jar) into this directory. You need a java RT liek OpenJDK. If molsys is located in ```~/sandbox/molsys``` put the 
 jar file into /external and set CLASSPATH like this:
 ```
 export CLASSPATH=~/sandbox/molsys/external/Systre.jar
 ```
-In order to test your setup launch jython and try this:
-```
-import org.gavrog
-```
-If the module imports in jython your setup is fine.
-
-In order to simplify things we include systreCmd.py from gavrog in the molsys repository. You can always get an updated version of it as part of the gavrog repo in the above mentioned github repo.
+NOTE: with java the systreCmd.py is not needed any more. I did not test it but also the CLASSPATH environment varibale should not be necessary.
+Please report problems to rochus.schmid@rub.de if there are any issues with systre.py and the java option.
 
 ## systrekey.js
 
