@@ -2,6 +2,7 @@
 from collections import OrderedDict
 
 number = {
+        'x12':0,
         'x': 0,
         'h':1,
         'he':2,
@@ -519,6 +520,8 @@ sigmas = {
         'h' : 0.723638,
         'c' : 1.162986,
         'zn': 2.073300,
+        'mg': 1.615500,                # taken from QuickFF/tools.py
+        'ca': 1.654100,                # taken from QuickFF/tools.py
         'n' : 1.125000,
         'ni': 2.073300,
         'o' : 1.117553,
@@ -550,6 +553,7 @@ vdw_prm = {
         "he" : [1.530, 0.026],
         "ne" : [1.600, 0.090],
         "ar" : [1.990, 0.268],
+        "ca" : [2.810, 0.134],     # taken from https://www.sciencedirect.com/science/article/pii/S0166128009800080
         "kr" : [2.150, 0.358],
         "xe" : [2.280, 0.495],
         "fe" : [2.200, 0.020],
@@ -581,7 +585,6 @@ maxbond = {
         "o" : 2,
         "n" : 3,
 }
-
 
 def get_covdistance(elements):
     ''' get covalent bond distances based on elems.py cov_radii
