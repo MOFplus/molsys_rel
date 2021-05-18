@@ -78,7 +78,7 @@ class topo:
     def RCSRname(self):
         if self._RCSRname is None:
             try:
-                self._RCSRname = skdb.get_name(self.systrekey)
+                self._RCSRname = skdb.get_name(repr(self.systrekey))
             except KeyError:
                 self._RCSRname = "unknown"
         return self._RCSRname
