@@ -759,6 +759,74 @@ class mol(mpiobject):
         self.set_ctab_from_conn(pconn_flag=self.use_pconn)
         self.set_etab_from_tabs()
         return
+    
+    # customized detect conn
+    # added el_fixed_dist to include bond distances between certain atom types manually
+    # has to provide a distance and element value
+    def detect_conn_custom(self, tresh = 0.1,remove_duplicates = False, fixed_dist=False, el_fixed_dist = {}):
+        """
+        detects the connectivity of the system, based on covalent radii.
+
+        Args:
+            tresh (float): additive treshhold
+            remove_duplicates (bool): flag for the detection of duplicates
+            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance 
+                replaces covalent radii (for blueprints use 1.0)
+        """
+
+        logger.info("detecting connectivity by distances ... ")
+
+        xyz = self.xyz
+        elems = self.elems
+        natoms = self.natoms
+        conn = []
+        duplicates = []
+        for i in range(natoms):
+            a = xyz - xyz[i]
+            if self.periodic:
+                if self.bcond <= 2:
+                    cell_abc = self.cellparams[:3]
+                    a -= cell_abc * np.around(a/cell_abc)
+                elif self.bcond == 3:
+                    frac = np.dot(a, self.inv_cell)
+                    frac -= np.around(frac)
+                    a = np.dot(frac, self.cell)
+            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
+            conn_local = []
+            if remove_duplicates == True:
+                for j in range(i,natoms):
+                    if i != j and dist[j] < tresh:
+                        logger.debug("atom %i is duplicate of atom %i" % (j,i))
+                        duplicates.append(j)
+            else:
+                for j in range(natoms):
+                    if (fixed_dist is False) and ((elems[i]+","+elems[j]) not in el_fixed_dist.keys()):
+                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
+                            conn_local.append(j)
+                    elif (fixed_dist is False):
+                        if i != j and dist[j] <= el_fixed_dist[elems[i]+","+elems[j]]+tresh:
+                            conn_local.append(j)
+                    else:
+                        if i!= j and dist[j] <= fixed_dist+tresh:
+                            conn_local.append(j)
+            if remove_duplicates == False: conn.append(conn_local)
+        if remove_duplicates:
+            if len(duplicates)>0:
+                logger.warning("Found and merged %d atom duplicates" % len(duplicates))
+                duplicates = list(set(duplicates)) # multiple duplicates are taken once
+                self.natoms -= len(duplicates)
+                self.set_xyz(np.delete(xyz, duplicates,0))
+                self.set_elems(np.delete(elems, duplicates))
+                self.set_atypes(np.delete(self.atypes,duplicates))
+                self.set_fragtypes(np.delete(self.fragtypes,duplicates))
+                self.set_fragnumbers(np.delete(self.fragnumbers,duplicates))
+            self.detect_conn(tresh = tresh)
+        else:
+            self.set_conn(conn)
+        if self.use_pconn:
+            # we had a pconn and redid the conn --> need to reconstruct the pconn
+            self.add_pconn()
+        return
 
     def set_conn_nopbc(self):
         """

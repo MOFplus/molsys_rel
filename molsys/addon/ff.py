@@ -594,12 +594,17 @@ class ff(base):
             "chargetype": "gaussian",
             "cutoff"  :12.0, 
             "vdwtype": "exp6_damped",
+            "cut_lj_inner": 10.0,
+            "cut_lj": 12.0,
             "coreshell": False
         }
         self.settings_formatter = {
             "radfact": float,
             "radrule": str,
             "epsrule": str,
+            "cut_lj_inner": float,
+            "cut_lj": float,
+            "cut_coul": float,
             "coul12"  : float,
             "coul13"  : float,
             "coul14"  : float,
@@ -700,7 +705,7 @@ class ff(base):
             self.par.FF=FF
 
     @timer("assign parameter")
-    def assign_params_offline(self, ref, key = False):
+    def assign_params_offline(self, ref, key = False, incomplete=False):
         loaded_pots = {'bnd':[],
                 'ang':[],
                 'dih':[],
@@ -733,27 +738,40 @@ class ff(base):
                         sparname = list(map(str,parname))
                         full_parname_list = []
                         for p in loaded_pots[ic]:
-                            full_parname = p+"->("+",".join(sparname)+")|"+ref
-                            if full_parname in self.par[ic] and full_parname not in full_parname_list:
-                                full_parname_list.append(full_parname)
+                            #full_parname = p+"->("+string.join(sparname,",")+")|"+ref
+                            # MODIFICATION, remove having to know the ref
+                            full_parname = p+"->("+",".join(sparname)+")"
+                            mod_pars = []
+                            for pname in self.par[ic]:
+                                semifull_parname = pname.split("|")[0]
+                                if full_parname == semifull_parname and pname not in full_parname_list:
+                                    full_parname_list.append(pname)
                         if full_parname_list != []:
                             self.parind[ic][i] = full_parname_list
         # check if all rics have potentials
-        self.check_consistency()
+        if not incomplete:
+          self.check_consistency()
         # check if there are potentials which are not needed -> remove them
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             # make a set
             badlist = []
             l = []
-            for i in self.parind[ic]: l+=i
-            s = set(l)
-            for j in self.par[ic].keys():
-                if j not in s:
-                    badlist.append(j)
-            # remove stuff from badlist
-            for i in badlist: 
-                del self.par[ic][i]
-                #logger.warning("")
+            #print (self.parind[ic][:])
+            #print(ic)
+            if not (self.parind[ic] is None):
+              for i in self.parind[ic]: 
+                if i is not None:
+                  l+=i
+                else:
+                  l+=['']
+              s = set(l)
+              for j in self.par[ic].keys():
+                  if j not in s:
+                      badlist.append(j)
+              # remove stuff from badlist
+              for i in badlist: 
+                  del self.par[ic][i]
+                  #logger.warning("")
 
 
 
@@ -1027,6 +1045,10 @@ class ff(base):
             "oop" : ("harm", 2, "o", ["d",0.0], [0.0, 1.0]),
             "cha" : ("gaussian", 2, "c", ["d","d"], [0.0, 2.0]),
             "vdw" : ("buck6d", 2, "v", ["d","d"], [0.0, 2.0])}
+        # define which torsional cross terms exist
+        cross_types = {}
+        cross_types["ang"] = [["strbnd"],[6]]
+        cross_types["dih"] = [["mbt","ebt","at","aat","bb13"],[4,8,8,3,3]]
         for ic in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
             count  = 0
             ric = self.ric_type[ic]
@@ -1043,14 +1065,15 @@ class ff(base):
                     else:
                         parname = self.get_parname_sort(p, ic)
                     sparname = list(map(str, parname))
-                    fullparname = defaults[ic][0]+"->("+",".join(sparname)+")|"+self.refsysname
+                    fullparlist = []
+                    fullparlist.append(defaults[ic][0]+"->("+",".join(sparname)+")|"+self.refsysname)
                     ### we have to set the variables here now
-                    if not fullparname in par:
+                    if not fullparlist[0] in par:
                         if ic in var_ics:
                             count+=1
                             vnames = list(map(lambda a: "$%s%i_%i" % (defaults[ic][2],count,a) 
                                 if type(defaults[ic][3][a]) == str else defaults[ic][3][a], range(defaults[ic][1])))
-                            par[fullparname] = (defaults[ic][0], vnames)
+                            par[fullparlist[0]] = (defaults[ic][0], vnames)
                             for idx,vn in enumerate(vnames):
                                 if type(vn) == str:
                                     if defaults[ic][3][idx] == "r":
@@ -1058,37 +1081,52 @@ class ff(base):
                                                 val = p.value, range = [0.9*p.value, 1.1*p.value])
                                     else:
                                         self.par.variables[vn]=varpar(self.par,name = vn, range = defaults[ic][4])
-                                    self.par.variables[vn].pos.append((ic, fullparname, idx))
+                                    self.par.variables[vn].pos.append((ic, fullparlist[0], idx))
+                            # hack for cross terms
+                            if ic in cross_types.keys():
+                              for ctid,ctype in enumerate(cross_types[ic][0]):
+                                if ctype in cross_terms:
+                                  fullparlist.append(ctype+"->("+",".join(sparname)+")|"+self.refsysname)
+                                  count+=1
+                                  vnames = list(map(lambda a: "$"+ctype+"%i_%i" % (count, a), range(cross_types[ic][1][ctid])))
+                                  par[fullparlist[-1]] = (ctype, vnames)
+                                  for idx,vn in enumerate(vnames):
+                                      self.par.variables[vn] = varpar(self.par, name = vn)
+                                      self.par.variables[vn].pos.append((ic,fullparlist[-1],idx))
+                                      
                             # hack for strbnd
-                            if ic == "ang" and "strbnd" in cross_terms:
-                                fullparname2 = "strbnd->("+",".join(sparname)+")|"+self.refsysname
-                                count+=1
-                                vnames = list(map(lambda a: "$s%i_%i" % (count, a), range(6)))
-                                par[fullparname2] = ("strbnd", vnames)
-                                for idx,vn in enumerate(vnames):
-                                    self.par.variables[vn] = varpar(self.par, name = vn)
-                                    self.par.variables[vn].pos.append((ic,fullparname2,idx))
-                            # hack for bb13
-                            if ic == "dih" and "bb13" in cross_terms:
-                                fullparname2 = "bb13->("+",".join(sparname)+")|"+self.refsysname
-                                count+=1
-                                vnames = list(map(lambda a: "$bb%i_%i" % (count, a), range(3)))
-                                par[fullparname2] = ("bb13", vnames)
-                                for idx,vn in enumerate(vnames):
-                                    self.par.variables[vn] = varpar(self.par, name = vn)
-                                    self.par.variables[vn].pos.append((ic,fullparname2,idx))
+                            #if ic == "ang" and "strbnd" in cross_terms:
+                                #fullparlist.append("strbnd->("+string.join(sparname,",")+")|"+self.refsysname)
+                                #count+=1
+                                #vnames = map(lambda a: "$s%i_%i" % (count, a), range(6))
+                                #par[fullparlist[-1]] = ("strbnd", vnames)
+                                #for idx,vn in enumerate(vnames):
+                                    #self.par.variables[vn] = varpar(self.par, name = vn)
+                                    #self.par.variables[vn].pos.append((ic,fullparlist[-1],idx))
+                            ## hack for torsional cross terms
+                            #if ic == "dih":
+                            ## hack for bb13
+                            #if ic == "dih" and "bb13" in cross_terms:
+                                #fullparlist.append("bb13->("+string.join(sparname,",")+")|"+self.refsysname)
+                                #count+=1
+                                #vnames = map(lambda a: "$bb%i_%i" % (count, a), range(3))
+                                #par[fullparlist[-1]] = ("bb13", vnames)
+                                #for idx,vn in enumerate(vnames):
+                                    #self.par.variables[vn] = varpar(self.par, name = vn)
+                                    #self.par.variables[vn].pos.append((ic,fullparlist[-1],idx))
                         else:
-                            par[fullparname] = [defaults[ic][0], defaults[ic][1]*[0.0]]
-                    if ic == "ang" and "strbnd" in cross_terms:
-                        parind[i] = [fullparname, fullparname2]
-                    elif ic == "dih" and "bb13" in cross_terms:
-                        parind[i] = [fullparname, fullparname2] 
-                    else:
-                        parind[i] = [fullparname]
+                            par[fullparlist[0]] = [defaults[ic][0], defaults[ic][1]*[0.0]]
+                    parind[i] = fullparlist
+                    #if ic == "ang" and "strbnd" in cross_terms:
+                        #parind[i] = [fullparname, fullparname2]
+                    #elif ic == "dih" and "bb13" in cross_terms:
+                        #parind[i] = [fullparname, fullparname2] 
+                    #else:
+                        #parind[i] = [fullparname]
         self.set_def_sig(self.active_zone)
         self.set_def_vdw(self.active_zone)
         self.fix_strbnd()
-        self.fix_bb13()
+        self.fix_dih_cross()
         return
 
     def fix_strbnd(self):
@@ -1127,28 +1165,63 @@ class ff(base):
         for i in dels: del(self.par.variables[i])
         return
 
-    def fix_bb13(self):
-        """Method to perform the fuxup for bb13 potentials
+    def fix_dih_cross(self):
+        """Method to perform the fixup for class2 dihedral cross term potentials
         """
         pots = self.par.variables.varpots
         dels = []
+        crosspots = ["mbt","ebt","at","aat","bb13"]
         for p in pots:
             pot, ref, aftypes = self.split_parname(p[1])
-            if pot == "bb13":
-                # distribute ref values
-                spot1 = self.build_parname("bnd", "mm3", self.refsysname, aftypes[:2])
-                spot2 = self.build_parname("bnd", "mm3", self.refsysname, aftypes[2:])
-                s1 = self.par["bnd"][spot1][1][1]
-                s2 = self.par["bnd"][spot2][1][1]
-                # delete variables
-                dels.append(self.par["dih"][p[1]][1][1])
-                dels.append(self.par["dih"][p[1]][1][2])
-                # rename variables
-                self.par["dih"][p[1]][1][1] = s1
-                self.par["dih"][p[1]][1][2] = s2
-                # redistribute pots to self.variables dictionary
-                self.par.variables[s1].pos.append(("dih", p[1],1))
-                self.par.variables[s2].pos.append(("dih", p[1],2))
+            if pot in crosspots:
+              # distribute ref values
+              spot1   = self.build_parname("bnd", "mm3", self.refsysname, aftypes[:2])
+              spot2   = self.build_parname("bnd", "mm3", self.refsysname, aftypes[2:])
+              spotmid = self.build_parname("bnd", "mm3", self.refsysname, aftypes[1:3])
+              s1      = self.par["bnd"][spot1][1][1]
+              s2      = self.par["bnd"][spot2][1][1]
+              smid    = self.par["bnd"][spotmid][1][1]
+              apot1   = self.build_parname("ang", "mm3", self.refsysname, aftypes[:3])
+              apot2   = self.build_parname("ang", "mm3", self.refsysname, aftypes[1:])
+              a1      = self.par["ang"][apot1][1][1]
+              a2      = self.par["ang"][apot2][1][1]
+              if pot == "bb13":
+                  # delete variables
+                  dels.append(self.par["dih"][p[1]][1][1])
+                  dels.append(self.par["dih"][p[1]][1][2])
+                  # rename variables
+                  self.par["dih"][p[1]][1][1] = s1
+                  self.par["dih"][p[1]][1][2] = s2
+                  # redistribute pots to self.variables dictionary
+                  self.par.variables[s1].pos.append(("dih", p[1],1))
+                  self.par.variables[s2].pos.append(("dih", p[1],2))
+              elif pot == "mbt":
+                  dels.append(self.par["dih"][p[1]][1][3])
+                  self.par["dih"][p[1]][1][3] = smid
+                  self.par.variables[smid].pos.append(("dih", p[1],3))
+              elif pot == "ebt":
+                  dels.append(self.par["dih"][p[1]][1][6])
+                  self.par["dih"][p[1]][1][6] = s1
+                  self.par.variables[s1].pos.append(("dih", p[1],6))
+                  dels.append(self.par["dih"][p[1]][1][7])
+                  self.par["dih"][p[1]][1][7] = s2
+                  self.par.variables[s2].pos.append(("dih", p[1],7))
+              elif pot == "at":
+                  dels.append(self.par["dih"][p[1]][1][6])
+                  self.par["dih"][p[1]][1][6] = a1
+                  self.par.variables[a1].pos.append(("dih", p[1],6))
+                  dels.append(self.par["dih"][p[1]][1][7])
+                  self.par["dih"][p[1]][1][7] = a2
+                  self.par.variables[a2].pos.append(("dih", p[1],7))
+              elif pot == "aat":
+                  dels.append(self.par["dih"][p[1]][1][1])
+                  self.par["dih"][p[1]][1][1] = a1
+                  self.par.variables[a1].pos.append(("dih", p[1],1))
+                  dels.append(self.par["dih"][p[1]][1][2])
+                  self.par["dih"][p[1]][1][2] = a2
+                  self.par.variables[a2].pos.append(("dih", p[1],2))
+              
+                  
         for i in dels: del(self.par.variables[i])
         return
 
@@ -1333,6 +1406,36 @@ class ff(base):
                     else:
                         raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
                     par_ij = (pot,[A,B,C])    
+                elif pot == "lj_12_6":
+                    if self.settings["radrule"] == "kong":
+                        epsrule = "kong"
+                        ri = par_i[0] * 2.0
+                        rj = par_j[0] * 2.0
+                        ei = par_i[1]
+                        ej = par_j[1]
+                        rad = (1.0/(2**13)*(ei * ri**12)/np.sqrt(ei*ri**6*ej*rj**6) * (1 + ((ej*rj**12)/(ei*ri**12))**(1.0/13))**13)**(1.0/6)
+                    elif self.settings["radrule"] == "waldman":
+                        epsrule = "waldman"
+                        ri = par_i[0] * 2
+                        rj = par_j[0] * 2
+                        rad = ((ri**6 + rj**6)/2.0)**(1.0/6)
+                    elif self.settings["radrule"] == "arithmetic":
+                        rad = self.settings["radfact"]*(par_i[0]+par_j[0])
+                    elif self.settings["radrule"] == "geometric":
+                        rad = 2.0*self.settings["radfact"]*np.sqrt(par_i[0]*par_j[0])
+                    else:
+                        raise IOError("Unknown radius rule %s specified" % self.settings["radrule"])
+                    if self.settings["epsrule"] == "kong":
+                        eps = np.sqrt(ei * ri**6 * ej * rj**6)/rad**6
+                    elif self.settings["epsrule"] == "waldman":
+                        eps = 2.0 * np.sqrt(par_i[1]*par_j[1]) * ((ri**3 * rj**3)/(ri**6 + rj**6))
+                    elif self.settings["epsrule"] == "arithmetic":
+                        eps = 0.5 * (par_i[1]+par_j[1])
+                    elif self.settings["epsrule"] == "geometric":
+                        eps = np.sqrt(par_i[1]*par_j[1])
+                    else:
+                        raise IOError("Unknown epsilon rule %s specified" % self.settings["epsilon"])
+                    par_ij = (pot,[rad,eps])
                 # all combinations are symmetric .. store pairs bith ways
                 self.vdwdata[types[i]+":"+types[j]] = par_ij 
                 self.vdwdata[types[j]+":"+types[i]] = par_ij   
