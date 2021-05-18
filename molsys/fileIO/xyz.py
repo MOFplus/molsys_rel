@@ -25,7 +25,7 @@ def read(mol, f, cycle = 0):
     if "Lattice=" in line:
         periodic = True
         lattice = [float(i) for i in line.rsplit('"',1)[0].rsplit('"',1)[-1].split() if i != '']
-        cell = numpy.array(lattice).reshape((3,3),order="F")
+        cell = numpy.array(lattice).reshape((3,3))
     xyz = numpy.zeros((natoms, 3))
     elements = []
     atypes = []
@@ -59,7 +59,7 @@ def write(mol, f, energy = None, forces = None, plain = False, charges = None):
     natoms = mol.natoms 
     header = ""
     if mol.periodic:
-        header +=  'Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" ' %  tuple(mol.cell.ravel(order='F'))
+        header +=  'Lattice="%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f" ' %  tuple(mol.cell.ravel())
     header += "Properties=species:S:1:pos:R:3"
     if forces is not None:
         assert forces.shape == mol.xyz.shape, "Force array does not match the coordinates array"
