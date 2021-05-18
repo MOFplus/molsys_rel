@@ -11,6 +11,5 @@ from .fragmentizer import fragmentizer
 from .slicer import slicer
 from . import sysmisc
 from .histogram import histogram
-from .MOFplusid import MOFplusid
 
-__all__ = ['unit_cell', 'elems', 'rotations', 'atomtyper', 'images', 'fragmentizer','spacegroups', 'slicer', 'sysmisc', "histogram", "MOFplusid"]
+__all__ = ['unit_cell', 'elems', 'rotations', 'atomtyper', 'images', 'fragmentizer','spacegroups', 'slicer', 'sysmisc', "histogram"]
