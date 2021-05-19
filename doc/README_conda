@@ -87,13 +87,14 @@ channels:
   - conda-forge
 dependencies:
   - python
+  - nodejs              # in case you want to use systrekey (otherwise comment out)
   - numpy
   - scipy
   - mpi4py
   - h5py
   - graph-tool
   - openbabel
-  - xtb-python
+  - xtb-python          # In case you want to use GFN0,1,2-xTB or GFN-FF 
   - packmol
   - ase
   - spglib
@@ -106,5 +107,7 @@ dependencies:
   - pip:
      - pydal
      - cma
+     - pymatgen         # In some cases we rely on pymatgen .. you can also install lter by pip  
+     - sphinx-rtd-theme # just in case you want to build the docu
 
 

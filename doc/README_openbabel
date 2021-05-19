@@ -1,3 +1,7 @@
+#
+#  IMPORTANT: it is not recommended to compile openbabel from scrtach but rather use the conda environment
+#
+
 
 clone openbabel 3.0 from github
 

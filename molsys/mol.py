@@ -228,11 +228,15 @@ class mol(mpiobject):
         return
 
     @classmethod
-    def from_smiles(cls, smile, bbcenter='com', maxiter=500):
+    def from_smiles(cls, smile, bbcenter='com', maxiter=500, ff="mmff94", confsearch=True):
         ''' generates mol object from smiles string, requires openbabel to be installed
+
+        use a conformational search by default
         '''
+        assert ff in ["UFF", "mmff94"]   # add other potential openbabel ffs
         try:
             from openbabel import pybel
+            from openbabel import OBForceField
         except ImportError as e:
             print(e)
             import traceback
@@ -245,6 +249,16 @@ class mol(mpiobject):
         #        smile = smile.replace(c,dummies[i])
         om = pybel.readstring("smi", smile)
         om.make3D(forcefield='UFF', steps=maxiter)
+        if confsearch:
+            ff = OBForceField.FindForceField(ff)
+            ff.Setup(om.OBMol)
+            ie = ff.Energy()
+            # ToDo ..add more options on conformational search here
+            # how to tell the user? logger or print?
+            ff.WeightedRotorSearch(200,25)
+            fe = ff.Energy()
+            ff.UpdateCoordinates(om.OBMol)
+            print("Conformational search performed. intital %12.6f final %12.6f" % (ie, fe))
         txyzs = om.write('txyz')
         # there is gibberish in the first line of the txyzstring, we need to remove it!
         txyzsl = txyzs.split("\n")
@@ -554,7 +568,7 @@ class mol(mpiobject):
         """
         f = StringIO()
         logger.info("writing string as %s" % str(ftype))
-        if ftype in formats.read:
+        if ftype in formats.write:
             formats.write[ftype](self,f,**kwargs)
         else:
             logger.error("unsupported format: %s" % ftype)
@@ -744,6 +758,74 @@ class mol(mpiobject):
             self.add_pconn()
         self.set_ctab_from_conn(pconn_flag=self.use_pconn)
         self.set_etab_from_tabs()
+        return
+    
+    # customized detect conn
+    # added el_fixed_dist to include bond distances between certain atom types manually
+    # has to provide a distance and element value
+    def detect_conn_custom(self, tresh = 0.1,remove_duplicates = False, fixed_dist=False, el_fixed_dist = {}):
+        """
+        detects the connectivity of the system, based on covalent radii.
+
+        Args:
+            tresh (float): additive treshhold
+            remove_duplicates (bool): flag for the detection of duplicates
+            fixed_dist (bool or float, optional): Defaults to False. If a float is set this distance 
+                replaces covalent radii (for blueprints use 1.0)
+        """
+
+        logger.info("detecting connectivity by distances ... ")
+
+        xyz = self.xyz
+        elems = self.elems
+        natoms = self.natoms
+        conn = []
+        duplicates = []
+        for i in range(natoms):
+            a = xyz - xyz[i]
+            if self.periodic:
+                if self.bcond <= 2:
+                    cell_abc = self.cellparams[:3]
+                    a -= cell_abc * np.around(a/cell_abc)
+                elif self.bcond == 3:
+                    frac = np.dot(a, self.inv_cell)
+                    frac -= np.around(frac)
+                    a = np.dot(frac, self.cell)
+            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
+            conn_local = []
+            if remove_duplicates == True:
+                for j in range(i,natoms):
+                    if i != j and dist[j] < tresh:
+                        logger.debug("atom %i is duplicate of atom %i" % (j,i))
+                        duplicates.append(j)
+            else:
+                for j in range(natoms):
+                    if (fixed_dist is False) and ((elems[i]+","+elems[j]) not in el_fixed_dist.keys()):
+                        if i != j and dist[j] <= elements.get_covdistance([elems[i],elems[j]])+tresh:
+                            conn_local.append(j)
+                    elif (fixed_dist is False):
+                        if i != j and dist[j] <= el_fixed_dist[elems[i]+","+elems[j]]+tresh:
+                            conn_local.append(j)
+                    else:
+                        if i!= j and dist[j] <= fixed_dist+tresh:
+                            conn_local.append(j)
+            if remove_duplicates == False: conn.append(conn_local)
+        if remove_duplicates:
+            if len(duplicates)>0:
+                logger.warning("Found and merged %d atom duplicates" % len(duplicates))
+                duplicates = list(set(duplicates)) # multiple duplicates are taken once
+                self.natoms -= len(duplicates)
+                self.set_xyz(np.delete(xyz, duplicates,0))
+                self.set_elems(np.delete(elems, duplicates))
+                self.set_atypes(np.delete(self.atypes,duplicates))
+                self.set_fragtypes(np.delete(self.fragtypes,duplicates))
+                self.set_fragnumbers(np.delete(self.fragnumbers,duplicates))
+            self.detect_conn(tresh = tresh)
+        else:
+            self.set_conn(conn)
+        if self.use_pconn:
+            # we had a pconn and redid the conn --> need to reconstruct the pconn
+            self.add_pconn()
         return
 
     def set_conn_nopbc(self):
@@ -2675,6 +2757,7 @@ class mol(mpiobject):
             - ctab   : list of bonds (nbonds, 2)
         """
         self.set_empty_conn()
+        self.nbonds = len(ctab)
         for c in ctab:
             i,j = c
             self.conn[i].append(j)
@@ -3111,11 +3194,7 @@ class mol(mpiobject):
         self.list_bond_properties()
         return
 
-    def calc_uncorrected_bond_order( self
-                               , iat : int
-                               , jat : int
-                               , bo_cut = 0.1
-                               ):
+    def calc_uncorrected_bond_order( self, iat : int, jat : int, bo_cut = 0.1):
         # Which elements do we have?
         element_list = self.get_elems()
         # sanity check(s)
@@ -3150,7 +3229,7 @@ class mol(mpiobject):
             BO = 0.0
         return BO
 
-    def detect_conn_by_bo(self,bo_cut=0.1,bo_thresh=0.5,dist_thresh=5.0,correct=True):
+    def detect_conn_by_bo(self, bo_cut=0.1, bo_thresh=0.5, dist_thresh=5.0, correct=True):
 
         def f2(di,dj):
             lambda1 = 50.0

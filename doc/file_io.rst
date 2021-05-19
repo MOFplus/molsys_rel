@@ -3,9 +3,10 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. _   
 
-File I/O
-########
+File Formats
+############
 
 Molsys supports several molecular file formats with various options. Some of them needs additional python dependencies, `e.g.` ``cif`` files need ``pycifrw``. 
 

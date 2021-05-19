@@ -6,8 +6,12 @@ Created on Tue Nov 29 21:30:26 2016
 """
 import string
 import logging
-logger = logging.getLogger("molsys.fragments")
 
+from numpy.core.fromnumeric import trace
+logger = logging.getLogger("molsys.fragments")
+import numpy as np
+
+import molsys
 
 class fragments:
     """
@@ -22,6 +26,8 @@ class fragments:
         self.check()
         if self.setup:
             self.make_frag_conn()
+        # a dictionary to hold derived fragment graphs
+        self.fgraphs = {}
         return
 
     def check(self):
@@ -61,6 +67,12 @@ class fragments:
         if None in self.fraglist:
             raise ValueError("A fragment name is missing")
         return
+
+    def get_occurence_of_frag(self,name):
+        '''
+            returns the fragment count of the fragment with the given name
+        '''
+        return self.fraglist.count(name)
 
     def get_fragnames(self):
         return self.fragnames
@@ -133,10 +145,13 @@ class fragments:
                     self._mol.atypes[i] += "_"+ft
         return
 
-    def make_frag_graph(self):
+    def make_frag_graph(self, add_atom_map=False):
         """
         generate a graph of the frag_conn in analogy to the graph addon on the molecular level
         using the graph addons util_graph method
+
+        RS: in order not to burden general runs with atom_maps it is not added by default
+            ==> use the add_frag_graph() method to make a graph with atom map and store it in the dictionary
         """
         self._mol.addon("graph")
         # create here a second list of vertex types, with the aryl substituted species
@@ -148,31 +163,46 @@ class fragments:
                 vtypes2.append("ph")
             else:
                 vtypes2.append(t)
-        self.frag_graph = self._mol.graph.util_graph(self.fraglist, self.frag_conn, vtypes2=vtypes2)
+        if add_atom_map:
+            atom_map = self.frag_atoms
+        else:
+            atom_map = None
+        self.frag_graph = self._mol.graph.util_graph(self.fraglist, self.frag_conn, vtypes2=vtypes2, atom_map=atom_map)
         # DEBUG here just for debug reasons
         #self._mol.graph.plot_graph("frag_conn", g=self.frag_graph)
         return self.frag_graph
+
+    def add_frag_graph(self, fgname="base"):
+        self.fgraphs[fgname] = self.make_frag_graph(add_atom_map=True)
+        return
         
     def plot_frag_graph(self, fname, **kwargs):
         self._mol.graph.plot_graph(fname, g=self.frag_graph, **kwargs)
         return
 
-    def upgrade(self, se, rep):
+    def upgrade(self, se, rep, rep_n = None):
         """
         upgrades the vertex labels in a frag graph
         :Parameters:
             - se  (str): vertex label to be replaced
             - rep (str): new vertex label
+            - rep_n (int): optional. the amount of vertices to be replaced
         """
         assert type(se) == type(rep) == str
         assert hasattr(self, "frag_graph")
+        nreplaced = 0
         for v in self.frag_graph.vertices():
             if self.frag_graph.vp.type[v] == se: 
                 self.frag_graph.vp.type[v] = rep
+                nreplaced += 1
+                if rep_n is not None:
+                    if nreplaced == rep_n:
+                        return
         return
 
 
     def frags2atoms(self, frags):
+        # HINT (RS) ... use atom_map and get it directly
         # TODO improve speed
         #assert type(frags) == list
         idx = []
@@ -182,6 +212,205 @@ class fragments:
         return idx
 
 
+    ######## fgraphs methods  ##################################
+    # 
+    # the following methods operate on fragment graphs in the fgraphs dictionary
+    #
+    # the intrinsically rely on the availability of graphtools and the graph addon
+    # 
 
+    def merge_frags(self, source, target, mergelist, newfrag):
+        """merge frags in merge list into one
 
+        Args:
+            source (string): name of fgraph to start with
+            target (string): name of graph to generate (should not exist)
+            mergelist (list of strings): names of frags to be merged
+            newfrag (string): name of merged fragment
+        """
+        assert source in self.fgraphs
+        assert target not in self.fgraphs
+        # get copy of source graph
+        g = self.fgraphs[source].copy()
+        # first iterate over fragments and find which have to be merged
+        merged_frag = []
+        new_vertices = []
+        skip_frag = []
+        for i in range(g.num_vertices()):
+            if i not in skip_frag:
+                if g.vp.type[i] in mergelist:
+                    # print ("frag %d (%s) in mergelist .. start searching" % (i, g.vp.type[i]))
+                    new_frag = [i]
+                    check_frag = [i]
+                    skip_frag.append(i)
+                    external_frag = []
+                    stop = False
+                    # start searching neighbors if they are also in the mergelist
+                    while not stop:
+                        # print ("checking fragments %s" % str(check_frag))
+                        next_check_frag = []
+                        for j in check_frag:
+                            neig = g.get_all_neighbors(j)
+                            for k in neig:
+                                if g.vp.type[k] in mergelist:
+                                    if (k > i) and (k not in new_frag):
+                                        # print ("frag %d (%s) to append" % (k, g.vp.type[k]))
+                                        new_frag.append(k)
+                                        next_check_frag.append(k)
+                                        skip_frag.append(k)
+                                else:
+                                    external_frag.append(k)
+                        # done with iterating over check_frag .. next round
+                        if len(next_check_frag) == 0:
+                            stop = True
+                        else:
+                            check_frag = next_check_frag
+                    # all to be merged frags (vertices) are collected in new_frag
+                    # now we can make a new vertex with that info and store it for removing the obsolete vertices in the end
+                    nv = g.add_vertex()
+                    new_vertices.append(nv)
+                    g.vp.type[nv] = newfrag # new vertex type
+                    # generate a combined atom_map
+                    namap = []
+                    for f in new_frag:
+                        namap += np.array(g.vp.atom_map[f]).tolist()
+                    g.vp.atom_map[nv] = namap
+                    # make edges to external frags
+                    for e in external_frag:
+                        g.add_edge(nv, g.vertex(e))
+                    # remember frags/vertices to be deleted
+                    merged_frag += new_frag
+        # done with adding new merged vertices ..now remove all obsolete ones in one shot
+        g.remove_vertex(merged_frag) 
+        g.shrink_to_fit()
+        # store in the dictionary and return the new graph
+        self.fgraphs[target] = g
+        return g
+ 
+    def remove_dangling_frags(self, source, target):
+        """remove all frags which dangling arms (kcore = 1)
+
+        Args:
+            source (string): name of fgraph to start with
+            target (string): name of graph to generate (should not exist)
+
+        """
+        assert source in self.fgraphs
+        assert target not in self.fgraphs
+        ng = self.fgraphs[source].copy()
+        kcore = self._mol.graph.get_kcore(ng)
+        kfilt = ng.new_vertex_property("bool")
+        kfilt.a = np.not_equal(kcore, 1)
+        ng.set_vertex_filter(kfilt)
+        ng.purge_vertices()
+        self.fgraphs[target] = ng
+        return ng 
+
+    def remove_bridge_frags(self, source, target):
+        """remove all frags with CN=2 just bridging
+        Args:
+            source (string): name of fgraph to start with
+            target (string): name of graph to generate (should not exist)
+
+        """
+        ng = self.fgraphs[source].copy()
+        skip_vertices = [] # ignore those already checked
+        remove_vert =   [] # remove these in the end
+        for v in ng.vertices():
+            if v not in skip_vertices:
+                if v.out_degree() == 2:
+                    #print ("remove vert %d" % v)
+                    remove_vert.append(v)
+                    neighb = list(v.all_neighbors())
+                    # now check on both ends if we need to extend to further cn=2 vertices
+                    for d in range(2):
+                        stop = False
+                        while not stop:
+                            nv = neighb[d]
+                            if nv.out_degree() == 2:
+                                # yes, this is another vertex to be deleted
+                                if nv > v: skip_vertices.append(nv)
+                                remove_vert.append(nv)
+                                # which is the next next vertex?
+                                for nnv in nv.all_neighbors():
+                                    if nnv != v: neighb[d] = nnv
+                            else:
+                                stop = True
+                    # connect neighb
+                    #print ("connecting %s" % str(neighb))
+                    ng.add_edge(neighb[0], neighb[1])
+        # finally remove all vertices that have to go (edges go along with them)
+        #print ("remove")
+        #print (remove_vert)
+        ng.remove_vertex(remove_vert)
+        ng.shrink_to_fit()
+        self.fgraphs[target] = ng
+        return ng
+
+    def remove_cn_frags(self, source, target, cn):
+        """remove all frags which have a given coordiantion number (degree)
+
+        Args:
+            source (string): name of fgraph to start with
+            target (string): name of graph to generate (should not exist)
+
+        """
+        assert source in self.fgraphs
+        assert target not in self.fgraphs
+        ng = self.fgraphs[source].copy()
+        remove_vert = [v for v in ng.vertices() if v.out_degree() == cn]
+        ng.remove_vertex(remove_vert)
+        ng.shrink_to_fit()
+        self.fgraphs[target] = ng
+        return ng 
+
+    def report_graph(self, name):
+        g = self.fgraphs[name]
+        for v in g.vertices():
+            print ("vertex %d (%s) with CN %d" % (v, g.vp.type[v], v.out_degree()))
+
+    def find_subgraph(self, name, subg):
+        subs = self._mol.graph.find_subgraph(self.fgraphs[name], subg)
+        return subs
+
+    def fgraph_to_mol(self, name, elemmap):
+        fg = self.fgraphs[name]
+        atypes = [fg.vp.type[v] for v in fg.vertices()]
+        natoms = len(atypes)
+        elems = [elemmap[at] for at in atypes]
+        xyz = self.fgraph_get_coms(name)
+        m = molsys.mol.from_array(xyz)
+        m.set_elems(elems)
+        m.set_atypes(atypes)
+        # now generate connectivity
+        conn = [[] for i in range(natoms)]
+        for e in fg.edges():
+            i, j = int(e.source()), int(e.target())
+            conn[i].append(j)
+            conn[j].append(i)
+        m.set_conn(conn)
+        return m
+
+    def fgraph_get_coms(self, name):
+        """get an array with COMs of the fraggraph fragments
+
+        This function works currently not in PBC
+
+        Args:
+            name (string): name of the fgraph to use
+        """
+        assert self._mol.bcond == 0
+        fg = self.fgraphs[name]
+        # compute the xyz positions of the vertices from the fragments atom_maps
+        mxyz = self._mol.get_xyz()
+        self._mol.set_real_mass()
+        mmass = np.array(self._mol.get_mass()) # make a numpy array from the list to allow index lookup
+        xyz = np.zeros([fg.num_vertices(),3], dtype="float64")
+        for v in fg.vertices():
+            am = list(fg.vp.atom_map[v])
+            fxyz = mxyz[am]
+            fmass = mmass[am]
+            com = (fxyz*fmass[:,np.newaxis]).sum(axis=0)/fmass.sum()
+            xyz[int(v)] = com
+        return xyz
 

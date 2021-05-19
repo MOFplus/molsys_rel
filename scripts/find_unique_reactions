@@ -40,17 +40,22 @@ def add_compare_data(comparer, mdspec):
         sumform = mol.get_sumformula()
     
         mol.addon("graph")
+        mol.graph.make_graph()
+        molgfull = copy.deepcopy(mol.graph.molg)
         mol.graph.make_comp_graph()
         molg = mol.graph.molg
 
         if (m.foffset ==  0 ):
             comparer["molgraph:ts"].append(molg)
+            comparer["molgraph_full:ts"].append(molgfull)
             comparer["sumform:ts"].append(sumform)
         if (m.foffset == -1 ):
             comparer["molgraph:ed"].append(molg)
+            comparer["molgraph_full:ed"].append(molgfull)
             comparer["sumform:ed"].append(sumform)
         if (m.foffset ==  1 ):
             comparer["molgraph:pr"].append(molg)
+            comparer["molgraph_full:pr"].append(molgfull)
             comparer["sumform:pr"].append(sumform) 
 
     return
@@ -142,20 +147,30 @@ num_unique = 0
 #
 unique_reactions = []
 unique_cmp_data  = {}
+num_unique_change = 0
 for r in revents:
     if r["reactionsID"] is not None:
         unique_reactions.append(r)
-        unique_cmp_data[r["reactionsID"]] = { "molgraph:ts" : []
-                                            , "sumform:ts"  : []
-                                            , "molgraph:ed" : []
-                                            , "sumform:ed"  : []
-                                            , "molgraph:pr" : []
-                                            , "sumform:pr"  : []
-                                            }
+        is_first = not r["reactionsID"] in unique_cmp_data
+        if is_first:
+            unique_cmp_data[r["reactionsID"]] = { "molgraph:ts"      : []
+                                                , "molgraph_full:ts" : []
+                                                , "sumform:ts"       : []
+                                                , "molgraph:ed"      : []
+                                                , "molgraph_full:ed" : []
+                                                , "sumform:ed"       : []
+                                                , "molgraph:pr"      : []
+                                                , "molgraph_full:pr" : []
+                                                , "sumform:pr"       : []
+                                                }
 
-        mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
+            mdspec = db((db.md_species.reventID == r) & (db.md_species.react_compl == False)  ).select()
 
-        add_compare_data(unique_cmp_data[r["reactionsID"]], mdspec)
+            add_compare_data(unique_cmp_data[r["reactionsID"]], mdspec)
+
+            reaction = db(db.reactions.id == r["reactionsID"]).select().first()
+            if reaction["change"]:
+                num_unique_change += 1
 
 
 num_unique = len(unique_cmp_data)
@@ -164,7 +179,7 @@ num_unique = len(unique_cmp_data)
 # Main loop to sort out non-unique reactions
 #
 count = 0
-
+bad_reactions = []
 for r in revents:
 
     cur_r = r
@@ -241,20 +256,11 @@ for r in revents:
                 remove_aids = remove_aids.union(aids)
                 new_revent = True
 
-       # #
-       # # remove aids which are artifacts from ReaxFF       
-       # #
-       # if new_revent:
-       #     # TODO
-       #     # We need to register a new (fake) reaction event
-       #     newr = rdb.register_revent(cur_r.frame,cur_r["ed"],cur_r["ts"],cur_r["pr"],cur_r["tr_ed"],cur_r["tr_pr"],cur_r["rbonds"],cur_r["uni"])  
-       #     for ed,m in ed_mol:
-       #         rdb.add_md_species(newr,ed,m["spec"],-1,m["atomids"],m["tracked"],False)
-       #     for pr,m in pr_mol:
-       #         rdb.add_md_species(newr,pr,m["spec"],1,m["atomids"],m["tracked"],False)
-       #     for ts,m in ts_mol:
-       #         rdb.add_md_species(newr,ts,m["spec"],0,m["atomids"],m["tracked"],False)
-       #     cur_r = db((db.revent.id == newr)).select().first()
+        #
+        # remove aids which are artifacts from ReaxFF       
+        #
+        if new_revent:
+            print("Strange molcular species detected in revent %d" % (r.id)) 
 
         ##
         # compare with elements in unique_reaction list
@@ -286,68 +292,88 @@ for r in revents:
         num_unique += 1
 
         # create comparison data structure 
-        cmp_data = { "molgraph:ts" : []
-                   , "sumform:ts"  : []
-                   , "molgraph:ed" : []
-                   , "sumform:ed"  : []
-                   , "molgraph:pr" : []
-                   , "sumform:pr"  : []
+        cmp_data = { "molgraph:ts"      : []
+                   , "molgraph_full:ts" : []
+                   , "sumform:ts"       : []
+                   , "molgraph:ed"      : []
+                   , "molgraph_full:ed" : []
+                   , "sumform:ed"       : []
+                   , "molgraph:pr"      : []
+                   , "molgraph_full:pr" : []
+                   , "sumform:pr"       : []
                    }
 
         mdspec = db((db.md_species.reventID == cur_r) & (db.md_species.react_compl == False)  ).select()
 
         add_compare_data(cmp_data, mdspec)
-
-        # Check if molecular graph changed
+        #
+        # Check if molecular C graph changed
+        #
         change_in_molgraph = False 
         for ed, pr in zip(cmp_data["molgraph:ed"], cmp_data["molgraph:pr"] ):
             is_equal, error_code = molsys.addon.graph.is_equal(ed, pr)
 
             if not is_equal:
                 change_in_molgraph = True
+                num_unique_change += 1
                 break
+        #
+        # in rare cases it can happen that the findR wrongly assigned a reaction. We catch this below
+        change_in_full_molgraph = change_in_molgraph
+        if not change_in_full_molgraph:
+            for ed, pr in zip(cmp_data["molgraph_full:ed"], cmp_data["molgraph_full:pr"] ):
+                is_equal, error_code = molsys.addon.graph.is_equal(ed, pr)
 
+                if not is_equal:
+                   change_in_full_molgraph = True
+                   break
+        # 
+        # GS: Currently deactivated 
+        change_in_full_molgraph = True
         #
         # Add unique reaction entry to database. 
         #
-        reactID = rdb.register_reaction(
-            cur_r["uni"],
-            change_in_molgraph,
-            "fromMD"
-        )
-
-        #
-        # Update comparison data
-        #
-        unique_cmp_data[reactID] = cmp_data 
-
-        #
-        # let species ref to reaction
-        #
-        rbonds = []
-        for ed,m in ed_mol:
-           specid, is_new = rdb.add_species(ed,check_if_included)
-           rdb.add_reac2spec(reactID,specid,-1)
-           if is_new:
-              rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-              m.update_record(speciesID=specid)
-        for pr,m in pr_mol:
-           specid, is_new = rdb.add_species(pr,check_if_included)
-           rdb.add_reac2spec(reactID,specid, 1) 
-           if is_new:
-              rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-              m.update_record(speciesID=specid)
-        for ts,m in ts_mol:
-           specid, is_new = rdb.add_species(ts,False) # For the moment the transisiton state is always unique
-           rbonds = r["rbonds"]  
-           rdb.add_reac2spec(reactID,specid, 0) 
-           if is_new:
-              rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
-              m.update_record(speciesID=specid)
-
-        # Update reaction event
-        cur_r.update_record(reactionsID=reactID)
-        cur_r.update_record(reversed=is_reversed)
+        if change_in_full_molgraph:
+            reactID = rdb.register_reaction(
+                cur_r["uni"],
+                change_in_molgraph,
+                "fromMD"
+            )
+            #
+            # Update comparison data
+            #
+            unique_cmp_data[reactID] = cmp_data 
+            #
+            # let species ref to reaction
+            #
+            rbonds = []
+            for ed,m in ed_mol:
+               specid, is_new = rdb.add_species(ed,check_if_included)
+               rdb.add_reac2spec(reactID,specid,-1)
+               if is_new:
+                  rdb.add_opt_species(mol=ed,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+                  m.update_record(speciesID=specid)
+            for pr,m in pr_mol:
+               specid, is_new = rdb.add_species(pr,check_if_included)
+               rdb.add_reac2spec(reactID,specid, 1) 
+               if is_new:
+                  rdb.add_opt_species(mol=pr,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+                  m.update_record(speciesID=specid)
+            for ts,m in ts_mol:
+               specid, is_new = rdb.add_species(ts,False) # For the moment the transisiton state is always unique
+               rbonds = r["rbonds"]  
+               rdb.add_reac2spec(reactID,specid, 0) 
+               if is_new:
+                  rdb.add_opt_species(mol=ts,lot="fromMD",energy=0.0,specID=specid,path="",rbonds=rbonds)
+                  m.update_record(speciesID=specid)
+            # Update reaction event
+            cur_r.update_record(reactionsID=reactID)
+            cur_r.update_record(reversed=is_reversed)
+            if new_revent:
+               bad_reactions.append(reactID)
+        else:
+            del unique_reactions[-1]
+            num_unique -= 1
     else:
         # update reaction event
         cur_r.update_record(reactionsID=ur["reactionsID"])
@@ -357,6 +383,12 @@ for r in revents:
 num_non_unique = num_all - num_unique
 db.commit()
 
+print("Num unique :     %d " % (num_unique)) 
+print("Num unique (C):  %d " % (num_unique_change))
+print("Num non unique : %d " % (num_non_unique)) 
 
-print("Num unique : " + str(num_unique)) 
-print("Num non unique : " + str(num_non_unique)) 
+if len(bad_reactions) > 0:
+  print("Consider to ignore reaction:")
+  print("----------------------------")
+  for rid in bad_reactions:
+      print(rid)
