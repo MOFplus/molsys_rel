@@ -7,12 +7,12 @@ import sys
 import molsys
 import json
 from molsys.util import RDB
-from molsys.util import turbomole
+from molsys.util import refine_qm_turbomole
 
 
 # input
 if len(sys.argv) < 3:
-    print ("usage:  add_QM_species_to_RDB <db_path> <dft_path> <level>")
+    print ("usage:  add_qm_species_to_RDB <db_path> <dft_path> <level>")
     exit()
 
 test = True
@@ -67,7 +67,7 @@ for dft_subdir_path in dft_subdir_paths:
                                  spec_info = opt_spec[i]
                                  abs_path = os.path.abspath(os.path.join(dft_subdir_path,spec_info['path']))
                                  rel_path = os.path.relpath(abs_path, db_path)
-                                 GT = turbomole.GeneralTools(abs_path)
+                                 GT = refine_qm_turbomole.GeneralTools(abs_path)
                                  mol = GT.coord_to_mol()
                                  # Add to the species table
                                  specID, is_new = rdb.add_species(mol = mol)
@@ -90,7 +90,7 @@ for dft_subdir_path in dft_subdir_paths:
         if os.path.isfile(f_json):
              with open(f_json) as f:
                  data = json.load(f)
-                 GT = turbomole.GeneralTools(dft_subdir_path)
+                 GT = refine_qm_turbomole.GeneralTools(dft_subdir_path)
                  mol = GT.coord_to_mol()
                  rel_path = os.path.relpath(dft_subdir_path, db_path)
                  lotID = rdb.get_lot(data["lot"])

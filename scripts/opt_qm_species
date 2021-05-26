@@ -14,7 +14,7 @@ import time
 import numpy as np
 import ast
 from molsys.util import RDB
-from molsys.util import turbomole
+from molsys.util import refine_qm_turbomole
 
 #
 # class defintions 
@@ -30,7 +30,7 @@ class turbomole_calculator:
        # Turbomole User’s Manual Version 6.0, 2009, pp. 38–44
        # https://www.cms.hu-berlin.de/de/dl/systemservice/computeservice/docs/turbo58_html
        # 
-       # TODO the turbomole module needs generalization...
+       # TODO the refine_qm_turbomole module needs generalization...
        lot_DFT = params["lot"]
 
        # get the current working directory
@@ -66,7 +66,7 @@ class turbomole_calculator:
                params["partition"] = "normal" 
            if "maxnodes" not in params:
                params["maxnodes"] = 4
-           CPUS, MEM = turbomole.Slurm.get_partition_info(params["partition"])
+           CPUS, MEM = refine_qm_turbomole.Slurm.get_partition_info(params["partition"])
            MEM_per_CPU = MEM/CPUS
            if "max_mem" not in params:
                params["max_mem"] = 0.8*MEM_per_CPU
@@ -86,8 +86,8 @@ class turbomole_calculator:
 
 
     def optimize_level1(self, reactionID, dft_subdir_path, start_lot = '', path_ref_educts = [], path_ref_products = [], path_ref_ts = '',  rbonds = [], atom_ids_dict = {}):
-       # initialize the OptimizationTools class from the turbomole module under molsys/util/turbomole.py
-       OT = turbomole.OptimizationTools(path = dft_subdir_path, 
+       # initialize the OptimizationTools class from the refine_qm_turbomole module under molsys/util/refine_qm_turbomole.py
+       OT = refine_qm_turbomole.OptimizationTools(path = dft_subdir_path, 
                                         lot = self.params["lot"], 
                                         max_mem = self.params["max_mem"],
                                         gcart = self.params["gcart"])
@@ -103,7 +103,7 @@ class turbomole_calculator:
                                 )
        else:
            # write the SLURM job submission script 'submit.sh' to the QM calculation home directory:
-           turbomole.Slurm.write_submission_script(self.dft_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"],self.params["exclusive"])
+           refine_qm_turbomole.Slurm.write_submission_script(self.dft_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"],self.params["exclusive"])
  
            # write python script to run in the nodes:
            OT.write_submit_py_level1(
@@ -124,7 +124,7 @@ class turbomole_calculator:
        return jobid
 
     def optimize_level2(self, specID, dft_subdir_path, path_ref = '', ts = False):
-       OT = turbomole.OptimizationTools(path = dft_subdir_path,
+       OT = refine_qm_turbomole.OptimizationTools(path = dft_subdir_path,
                                         lot = self.params["lot"],
                                         max_mem = self.params["max_mem"],
                                         gcart = self.params["gcart"])
@@ -135,7 +135,7 @@ class turbomole_calculator:
                                   ts = ts
                                   )
        else:
-           turbomole.Slurm.write_submission_script(self.dft_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"], self.params["exclusive"])
+           refine_qm_turbomole.Slurm.write_submission_script(self.dft_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"], self.params["exclusive"])
            OT.write_submit_py_level2(specID = specID,
                                      path_ref = path_ref,
                                      ts = ts
@@ -150,7 +150,7 @@ class turbomole_calculator:
 
 
     def refine_level3(self, ospecID, dft_subdir_path):
-       OT = turbomole.OptimizationTools(path = dft_subdir_path,
+       OT = refine_qm_turbomole.OptimizationTools(path = dft_subdir_path,
                                         lot = self.params["lot"],
                                         max_mem = self.params["max_mem"],
                                         gcart = self.params["gcart"])
@@ -161,7 +161,7 @@ class turbomole_calculator:
            submit_sh = "submit_ccsd.sh"
            submit_py = "submit_ccsd.py"
            submit_out = "submit_ccsd.out"
-           turbomole.Slurm.write_submission_script(dft_subdir_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"], self.params["exclusive"],submit_sh, submit_py, submit_out)
+           refine_qm_turbomole.Slurm.write_submission_script(dft_subdir_path, self.params["turbodir"], self.params["ntasks"], self.params["partition"], self.params["exclusive"],submit_sh, submit_py, submit_out)
            OT.write_submit_py_level3(ospecID = ospecID, pnoccsd = self.params["pnoccsd"], submit_py=submit_py)
            #submit the job to the SLURM queuing system and get the assigned job id
            os.chdir(dft_subdir_path)
@@ -223,7 +223,7 @@ def get_ncurjobs(jobids):
 # Start of main program 
 #
 if len(sys.argv) < 6:
-    print ("usage:  opt_QM_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
+    print ("usage:  opt_qm_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
     exit()
     
 

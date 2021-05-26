@@ -15,7 +15,7 @@ import numpy as np
 import ast
 from scipy import constants
 from molsys.util import RDB
-from molsys.util import turbomole
+from molsys.util import refine_qm_turbomole
 
 
 HtokJmol = constants.value("hartree-joule relationship")*constants.N_A*1.E-3
@@ -53,7 +53,7 @@ def get_md_spec_mfpx(md_spec):
 # Start of main program 
 #
 if len(sys.argv) < 3:
-    print ("usage:  analyse_QM <db_path> <cmd_file>")
+    print ("usage:  analyse_qm <db_path> <cmd_file>")
     exit()
     
 
@@ -189,7 +189,7 @@ for r in reactions:
                 E_el_rxn   -= CC_energy
                 E_el_act_f -= CC_energy
                 oed_path = os.path.join(db_path,oed.path)
-                HT_oed = turbomole.Harvest(oed_path)
+                HT_oed = refine_qm_turbomole.Harvest(oed_path)
                 lnQ_ed, T = HT_oed.thermodynamics(f_cor=params["f_cor"],Tstart=Tstart, Tend=Tend, numT=numT, P=P)
                 lnQ_educts.append(lnQ_ed)
             else:
@@ -233,7 +233,7 @@ for r in reactions:
                 E_el_rxn   += CC_energy
                 E_el_act_r -= CC_energy
                 oprod_path = os.path.join(db_path,oprod.path)
-                HT_oprod = turbomole.Harvest(oprod_path)
+                HT_oprod = refine_qm_turbomole.Harvest(oprod_path)
                 lnQ_prod, T = HT_oprod.thermodynamics(f_cor=params["f_cor"],Tstart=Tstart, Tend=Tend, numT=numT, P=P)
                 lnQ_products.append(lnQ_prod)
             else:
@@ -273,8 +273,8 @@ for r in reactions:
                 E_el_act_f += CC_energy
                 E_el_act_r += CC_energy
                 path = os.path.join(db_path,ots.path)
-                OT = turbomole.OptimizationTools(path)
-                HT = turbomole.Harvest(path)
+                OT = refine_qm_turbomole.OptimizationTools(path)
+                HT = refine_qm_turbomole.Harvest(path)
                 # Rate constants from transition state theory
                 inum, imfreq = OT.check_imaginary_frequency()
                 lnQ_ts, T = HT.thermodynamics(f_cor=params["f_cor"], Tstart=Tstart, Tend=Tend, numT=numT, P=P)

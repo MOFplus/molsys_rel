@@ -9,12 +9,12 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 from molsys.util import RDB
-from molsys.util import turbomole
+from molsys.util import refine_qm_turbomole
 
 
 # input
 if len(sys.argv) < 2:
-    print ("usage:  analyse_QM_statistics <db_path> <dft_path>")
+    print ("usage:  analyse_qm_statistics <db_path> <dft_path>")
     exit()
 
 test = True
