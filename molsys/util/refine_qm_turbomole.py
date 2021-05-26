@@ -1972,11 +1972,34 @@ class OptimizationTools:
         mol = GT.coord_to_mol()
         mols, labels = Mol(mol).separate_molecules()
 
-        # 6. Go to the main directory
+        # 6. Add the $frag data group to the coordinate file 
+        if len(mols) > 1:
+            OT.add_frag_to_coord(labels=labels)
+        
+        # 7. Go to the main directory
         os.chdir(self.maindir)
 
         return mols, QM_path
 
+    def add_frag_to_coord(self, coord_dir='', labels=[]):
+        if coord_dir == '': coord_dir = self.path
+        to_coord = '$frag\n'
+        for i,frag in enumerate(labels):
+            to_coord += '       atom  %d  fragment  %d\n' %(i+1,frag+1)
+        newlines = ''
+        coord_path = os.path.join(coord_dir, 'coord')
+        with open(coord_path) as coord:
+            for line in coord:
+                 if '$end' in line:
+                     newlines += to_coord
+                     newlines += '$end'
+                 else:
+                     newlines += line
+        print(newlines)
+        f = open(coord_path,'w')
+        f.write(newlines)
+        f.close()
+        return
 
     def compare_mols(self, mols_1, mols_2, mode = 'mg'):
         """ Compares the list of reference molecules (mols_1) with the list of molecules to compare (mols_2).
@@ -2339,6 +2362,7 @@ class OptimizationTools:
         path      = irc_path[displaced] # the pathway to the .../displaced_minus/minus or .../displaced_plus/plus directories 
 
         OT = OptimizationTools(path, lot = self.lot, max_mem = self.max_mem)
+        GT = GeneralTools(path)
 
         # If there is only one molecule just calculate just the Hessian 
         if len(mols) == 1:
@@ -2355,18 +2379,84 @@ class OptimizationTools:
         # If there is more than one, then optimize them separately starting only from the coordinates.
         else:
             print("The number of molecules is not 1...")
-            multiplicities, QM_paths, mols_opt = OT.educts_and_products_workflow(mols = mols, add_noise = False, label = label)
-            for i, QM_path in enumerate(QM_paths):
-                OT_opt = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
+            OT.add_dg_to_control("frag file=coord")
+            OT.proper_frag()
+            for i,mol in enumerate(mols):
+                key = '%s_%d' %(label, i+1)
+                QM_path = os.path.join(path,key)
+                os.mkdir(QM_path)
+                OT.prepare_frag_input(i+1,QM_path)
+                OT_opt = OptimizationTools(QM_path)
+                OT_opt.jobex()
                 OT_opt.aoforce()
                 inum, imfreq = OT_opt.check_imaginary_frequency()
                 if inum != 0:
-                    OT_opt.disturb_and_reoptimize(natoms=mols_opt[i].natoms)
+                    OT_opt.disturb_and_reoptimize(natoms=mols[i].natoms)
                 else:
-                    key = '%s_%d' %(label, i+1)
                     QM_paths_dict[key] = QM_path
 
         return QM_paths_dict
+
+
+    # TODO The path to the proper should be changed to link that set from the TURBODIR
+    def proper_frag(self, path_proper='/home/haettig/bin/proper_frag'):
+        """ produces for each fragment 5 files: frag1.xyz, control1, coord1, alpha1, beta1
+        """
+        proper_in = os.path.join(self.path,'proper.in')
+        f=open(proper_in,'w')
+        f.write('mos\nfrag\nq')
+        f.close()
+        os.chdir(self.path)
+        os.system('%s < proper.in' %path_proper)
+        os.chdir(self.maindir) 
+        return
+
+    def prepare_frag_input(self, i, QM_path):
+        os.chdir(self.path)
+        OT_QM = OptimizationTools(QM_path)
+        # step 1: Move the input files created by proper for that fragment
+        for f in ['control','coord','alpha','beta']:
+            shutil.move('%s%d' %(f,i), os.path.join(QM_path,f))
+        newlines = ''
+        control_path = os.path.join(QM_path,'control') 
+        with open(control_path) as control:
+            for line in control:
+                line_added = False
+                for f in ['coord','alpha','beta']:
+                    if '%s%d' %(f,i) in line:
+                        sline =  line.split('%s%d' %(f,i))
+                        newlines += sline[0]+f+sline[-1]
+                        line_added = True
+                        break
+                if not line_added:
+                    newlines += line
+        f = open(control_path,'w')
+        f.write(newlines)
+        f.close()
+
+        # step 2: Copy the data existing groups from the reference calculation to the new one
+        control_ref = os.path.join(self.path,'control')
+        with open(control_ref) as control:
+            text = control.read()
+        datagroups = text.split('$')
+        for dg in datagroups:
+            for s in ['ri','disp','dft','scfiterlimit','maxcor']:
+                if dg.startswith(s):
+                    OT_QM.add_dg_to_control(dg.strip())
+   
+        # step 3: Define the internal redundant coordinates
+        define_in = os.path.join(QM_path, 'define.in')
+        f = open(define_in, 'w')
+        f.write('\n')      # title
+        f.write('y\n')
+        f.write('ired\n')  # assign internal redundant coordinates
+        f.write('*\n')    
+        f.write('qq\n')    # exit define
+        f.close()
+        os.chdir(QM_path)
+        os.system('define < define.in > define.out')
+        os.chdir(self.maindir)
+        return
 
 
     def ts_workflow(self, QM_path_ts, mols_ed_QM_ref, mols_prod_QM_ref, M = None, mode = 'mg'):
@@ -3207,7 +3297,7 @@ class OptimizationTools:
         f = open(f_path,"w")
         f.write("import os\n")
         f.write("import molsys\n")
-        f.write("from molsys.util import turbomole\n\n")
+        f.write("from molsys.util import refine_qm_turbomole\n\n")
         f.write("lot               = '%s'\n" %self.lot)
         f.write("max_mem           = %d\n"   %self.max_mem)
         f.write("gcart             = %d\n"   %self.gcart)
@@ -3219,7 +3309,7 @@ class OptimizationTools:
         f.write("start_lot         = '%s'\n" %start_lot)
         f.write("reactionID        = %d\n"   %reactionID)
 
-        f.write("OT = turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart)\n")
+        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart)\n")
         f.write("OT.reaction_workflow(rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict, start_lot, reactionID)\n")
         f.close()
         return
@@ -3231,13 +3321,13 @@ class OptimizationTools:
         f = open(f_path,"w")
         f.write("import os\n")
         f.write("import molsys\n")
-        f.write("from molsys.util import turbomole\n\n")
+        f.write("from molsys.util import refine_qm_turbomole\n\n")
         f.write("lot               = '%s'\n" %self.lot)
         f.write("max_mem           = %d\n"   %self.max_mem)
         f.write("gcart             = %d\n"   %self.gcart)
         f.write("path_ref          = '%s'\n" %path_ref)
         f.write("specID            = %d\n"   %specID)
-        f.write("OT = turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart)\n")
+        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart)\n")
         if ts:
             f.write("OT.dft_re_optimization(specID=specID, path_ref=path_ref, ts=True)\n")
         else:
@@ -3251,12 +3341,12 @@ class OptimizationTools:
         f = open(f_path,"w")
         f.write("import os\n")
         f.write("import molsys\n")
-        f.write("from molsys.util import turbomole\n\n")
+        f.write("from molsys.util import refine_qm_turbomole\n\n")
         f.write("lot               = '%s'\n" %self.lot)
         f.write("max_mem           = %d\n"   %self.max_mem)
         f.write("ospecID            = %d\n"   %ospecID)
         f.write("pnocssd = %s\n" %repr(pnoccsd))
-        f.write("OT = turbomole.OptimizationTools(lot = lot, max_mem = max_mem)\n")
+        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem)\n")
         f.write("OT.refine_ccsd(ospecID=ospecID, pnoccsd=pnocssd)")
         f.close()
         return
