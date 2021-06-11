@@ -17,10 +17,10 @@ def to_pymatgen(mol):
     except ImportError:
         logger.error("Pymatgen not available!")
         exit()
-    latt = mg.Lattice.from_parameters(*mol.get_cellparams())
+    latt = mg.core.Lattice.from_parameters(*mol.get_cellparams())
     elems = mol.get_elems()
     nelems = []
     for e in elems: nelems.append(e.title())
-    structure = mg.Structure(latt, nelems, mol.get_frac_xyz())
+    structure = mg.core.Structure(latt, nelems, mol.get_frac_xyz())
     return structure
 

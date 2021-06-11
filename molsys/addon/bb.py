@@ -14,6 +14,8 @@ from molsys.util.elems import vdw_radii as vdw
 import logging
 logger = logging.getLogger("molsys.bb")
 
+organic_elements = ["h", "b", "c", "n", "o", "f", "si", "p", "s", "cl", "as", "se", "br", "i"]
+
 class bb:
 
     def __init__(self,mol):
@@ -252,8 +254,7 @@ class bb:
         return newmol
 
     @property
-    def is_organic(self,organic_elements = ["h", "b", "c", "n", "o", "f", "si", "p", "s", "cl", "as", "se", "br", "i"]
-):
+    def is_organic(self):
         """
         Checks if the bb contains only organic elements
         """        
@@ -263,7 +264,7 @@ class bb:
             return True
         return False
 
-    def contains_disorder(self,reject_covrad_fact=0.8):
+    def contains_disorder(self, reject_covrad_fact=0.8):
         """        try to detect disordered parts of the structure based on heuristics:
             - unusual bond lengths
             - unusual coordination numbers
@@ -292,4 +293,68 @@ class bb:
                     return 'cov fact'
         return False        
 
+
+    ## RS Feb 2021 ##############################################
+    #
+    #   the follwoing methods a re used to generate smiles strings for BBs in order to generate MOF+IDs
+
+    _first_conn_anumber = 87
+
+    def _add_conatoms(self, nbb, connectors):
+        """generate a mol object as a copy of the original BB with ficitious heavy atoms attached to the connectors
+
+        Args:
+            connectors (list of ints): list of connector atoms
+        """
+        natoms = nbb.get_natoms()
+        # TBI check if any eleents are Fr or higher
+        fbond = []
+        tbond = []
+        for i, c in enumerate(connectors):
+            con_pos = nbb.get_xyz()[c]
+            con_dist = np.linalg.norm(con_pos)
+            new_pos = con_pos * (con_dist+1.0)/con_dist
+            new_elem = elements.pse[self._first_conn_anumber+i] #  use Fr and higher to annotate connectors.
+            nbb.add_atom(new_elem, "xx%i" % i, new_pos)
+            fbond.append(c)
+            tbond.append(natoms+i)
+        nbb.add_bonds(fbond, tbond)
+        return nbb
+
+    def _remove_metal_bonds(self, nbb):
+        del_bonds = []
+        for i in range(nbb.get_natoms()):
+            for j in nbb.conn[i]:
+                if i < j:
+                    if (nbb.elems[i] not in organic_elements) and (nbb.elems[j] not in organic_elements):
+                        del_bonds.append((i,j))
+        for b in del_bonds:
+            nbb.delete_bond(b[0],b[1])
+        return
+
+
+    def get_BBsmile(self):
+        import itertools
+        # from tqdm import tqdm
+        # we need the obabel addon
+        all_smiles = []
+        all_conn_seqs = []
+        nconn = len(self.connector)
+        assert nconn < 9
+        for conn_seq in itertools.permutations(self.connector[1:]):
+            nbb = self.mol.clone()
+            if not self.is_organic:
+                self._remove_metal_bonds(nbb)
+            nbb = self._add_conatoms(nbb, [self.connector[0]]+list(conn_seq))
+            nbb.addon("obabel")
+            smi = nbb.obabel.cansmiles
+            if smi not in all_smiles:
+                all_smiles.append(smi)
+                all_conn_seqs.append(conn_seq)
+        seq = np.argsort(all_smiles)
+        final_smi = all_smiles[seq[0]]
+        final_seq = [self.connector[0]]+list(all_conn_seqs[seq[0]])
+        for i in range(nconn):
+            final_smi = final_smi.replace("[%s]" % elements.pse[self._first_conn_anumber+i].title(), "[X%s]" % (i+1))
+        return final_smi, final_seq
 

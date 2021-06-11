@@ -5,10 +5,11 @@
     author: R. Schmid
 """
 
+import numpy as np
 import os
 import subprocess
-import string
 import molsys
+
 
 """
 INSTALLATION Instructions:
@@ -100,57 +101,140 @@ db_key2name = RCSR_db.key2name
 db_name2key = RCSR_db.name2key
 
 
-def run_systrekey(edges, labels):
-    import json
-    import copy
-    """run javascript systrekey
-    
-    revised version using json strings to pass data to javascript
+def str2edge(s):
+    l = [int(i) for i in s.split()]
+    e = l[:2]
+    l = np.array(l[2:])
+    return e,l
 
-    Arguments:
-        edges {list of lists of 2 ints} - list of edges
-        labels {list of lists of 3 ints} - list of edge labels
-    """
-    if not node_avail:
-        # return nothing to avoid an error
-        print("""
-        WARNING: systrekey was called but node is not installed to run javascript
+class lqg:
+
+    def __init__(self, edges, labels):
+        self.edges = edges
+        self.labels = labels
+        self.is_systrekey = None
+        self.systrekey = None
+        self.ne = len(edges)
+        nv = 0
+        for e in self.edges:
+            for v in e:
+                if v > nv:
+                    nv = v
+        self.nv = nv+1
+        return
+
+    @classmethod
+    def from_string(cls, lqgs):
+        lqg = lqgs.split()
+        assert len(lqg)%5 == 0
+        ne = len(lqg)//5
+        edges = []
+        labels = []
+        for i in range(ne):
+            edges.append([int(lqg[i*5])-1, int(lqg[i*5+1])-1])
+            labels.append([int(lqg[i*5+2]), int(lqg[i*5+3]), int(lqg[i*5+4]),])
+        return cls(edges, labels)
+
+    def __repr__(self):
+        out = "3 "
+        for e,l in zip(self.edges, self.labels):
+            out += "%d %d %d %d %d " % (e[0]+1, e[1]+1, l[0], l[1], l[2])
+        return out[:-1]     # remove the last space 
+
+    def get_edge_index(self, e, l, incr=0):
+        """get index of edge
+
+        Args:
+            e (list): vertices
+            l (np.darray): label
+
+        Returns:
+            int: index of the edge (WARNING .. we need to count from 1 in order to discriminate reverse edges as -1)
         """
-        )
-        return "None", []
-    assert len(edges) == len(labels)
-    lqg = []
-    for e,l in zip(edges, labels):
-        el = []
-        el.append(int(e[0])+1)
-        el.append(int(e[1])+1)
-        el.append(l)
-        lqg.append(el)
-    #import pdb; pdb.set_trace()
-    #json_lqg = json.dumps(str(lqg))
-    json_lqg = str(lqg)
+        er = e.copy()
+        er.reverse()
+        for i in range(self.ne):
+            if e == self.edges[i]:
+                if l.tolist() == self.labels[i]:
+                    return i+incr
+            elif er == self.edges[i]:
+                if (l*-1).tolist() == self.labels[i]:
+                    return -(i+incr)
+            else:
+                pass
+        print ("ERROR: edge %s %s not found" % (str(e), str(l)))
+        return None
 
-    try:
-        json_result = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", json_lqg, systre_path], stderr=subprocess.STDOUT).decode()
-    except subprocess.CalledProcessError as err:
-        raw_err = err.stdout.decode().split("\n")
-        for el in raw_err:
-            if el[:6] == "Error:":
-                err = el
-                break
-        print ("systrekey says -> %s" % err)
-        return err, []
-
-    result = json.loads(json_result)
-    key = result["key"]
-    mapping = result["mapping"]
-    return key, mapping, result
+    def get_systrekey(self):
+        """run javascript systrekey
+        
+        revised version using json strings to pass data to javascript
+        """
+        import json
+        if self.is_systrekey:
+            return self
+        if self.systrekey is not None:
+            return self.systrekey
+        # the systrekey is not yet available -> compute it
+        if not node_avail:
+            # return nothing to avoid an error
+            print("""
+            WARNING: systrekey was called but node is not installed to run javascript
+            """
+            )
+            return
+        lqg_in = []
+        for e,l in zip(self.edges, self.labels):
+            el = []
+            el.append(int(e[0])+1)
+            el.append(int(e[1])+1)
+            el.append(l)
+            lqg_in.append(el)
+        json_lqg = str(lqg_in)
+        try:
+            json_result = subprocess.check_output(args=["node", molsys_path+"/util/run_systrekey.js", json_lqg, systre_path], stderr=subprocess.STDOUT).decode()
+        except subprocess.CalledProcessError as err:
+            raw_err = err.stdout.decode().split("\n")
+            for el in raw_err:
+                if el[:6] == "Error:":
+                    err = el
+                    break
+            print ("ERROR: systrekey says -> %s" % err)
+            return
+        result = json.loads(json_result)
+        skey = result["key"][2:] # cut off the "3 " for the 3D
+        self.systrekey = lqg.from_string(skey)
+        self.systrekey.is_systrekey = True
+        # convert the mappings for vertices to dictionaries with indices -1 (start counting from 0)
+        #  and then to a flat list 
+        mapping = result["mapping"]
+        edge_mapping = result["edgeMapping"]
+        sk_mapping = {}
+        for k in mapping:
+            sk_mapping[int(k)-1] = mapping[k]-1
+        sk_edge_mapping = {}
+        for e in edge_mapping:
+            lqg_e, lqg_l = str2edge(e)
+            lqg_e = (np.array(lqg_e)-1).tolist()  # we use indices from 0 internaly but systrekey returns mapping from 1
+            lqg_ei = self.get_edge_index(lqg_e, lqg_l)
+            sk_e, sk_l  = str2edge(edge_mapping[e])
+            sk_e = (np.array(sk_e)-1).tolist()
+            sk_ei = self.systrekey.get_edge_index(sk_e, sk_l, incr=1)
+            # print ("%20s --> %20s  %4d" % (e, edge_mapping[e], sk_ei))
+            sk_edge_mapping[lqg_ei] = sk_ei
+        # now convert to a flat list
+        self.sk_vmapping = [sk_mapping[i] for i in range(self.nv)]       # if vertices are missing in the dict (which should not happen) we get an error here
+        self.sk_emapping = [sk_edge_mapping[i] for i in range(self.ne)]  # if edges are missing we should see an error here
+        return self.systrekey
 
 
 if __name__=="__main__":
-    edges = [[1,1], [1,1], [1,1]]
+    edges = [[0,0], [0,0], [0,0]]
     labels = [[1,0,0], [0,1,0], [0,0,1]]
-    print (run_systrekey(edges, labels))
+    g = lqg(edges, labels)
+    print (g.get_systrekey())
+    print (g.sk_vmapping)
+    print (g.sk_emapping)
 
 
 

@@ -2,6 +2,7 @@
 from collections import OrderedDict
 
 number = {
+        'x12':0,
         'x': 0,
         'h':1,
         'he':2,
@@ -115,12 +116,12 @@ number = {
         'ds':110,
         'rg':111,
         'cn':112,
-        'uut':113,
-        'uuq':114,
-        'uup':115,
-        'uuh':116,
-        'uus':117,
-        'uuo':118}
+        'nh':113,
+        'fl':114,
+        'mc':115,
+        'lv':116,
+        'ts':117,
+        'og':118}
 
 number = OrderedDict(sorted(number.items(), key=lambda t: t[1])) # order dict to get number from element
 pse = list(number.keys()) # list of elements  
@@ -240,12 +241,12 @@ cov_radii={'xx':0.300000,
         'ds':0.000000,
         'rg':0.000000,
         'cn':0.000000,
-        'uut':0.000000,
-        'uuq':0.000000,
-        'uup':0.000000,
-        'uuh':0.000000,
-        'uus':0.000000,
-        'uuo':0.000000}
+        'nh':0.000000,
+        'fl':0.000000,
+        'mc':0.000000,
+        'lv':0.000000,
+        'ts':0.000000,
+        'og':0.000000}
 
 
 vdw_radii={'xx':0.300000,
@@ -363,12 +364,12 @@ vdw_radii={'xx':0.300000,
         'ds':0.000000,
         'rg':0.000000,
         'cn':0.000000,
-        'uut':0.000000,
-        'uuq':0.000000,
-        'uup':0.000000,
-        'uuh':0.000000,
-        'uus':0.000000,
-        'uuo':0.000000}
+        'nh':0.000000,
+        'fl':0.000000,
+        'mc':0.000000,
+        'lv':0.000000,
+        'ts':0.000000,
+        'og':0.000000}
 
 
 mass  ={'xx':0.000000,
@@ -486,10 +487,10 @@ mass  ={'xx':0.000000,
         'ds':281.000000,
         'rg':280.000000,
         'cn':285.000000,
-        'uut':284.000000,
-        'uuq':289.000000,
-        'uup':288.000000,
-        'uuh':293.000000}
+        'nh':284.000000,
+        'fl':289.000000,
+        'mc':288.000000,
+        'lv':293.000000}
 
 # elements are made up .. make better suggestions for cn>8
 topotypes = {
@@ -519,6 +520,8 @@ sigmas = {
         'h' : 0.723638,
         'c' : 1.162986,
         'zn': 2.073300,
+        'mg': 1.615500,                # taken from QuickFF/tools.py
+        'ca': 1.654100,                # taken from QuickFF/tools.py
         'n' : 1.125000,
         'ni': 2.073300,
         'o' : 1.117553,
@@ -550,6 +553,7 @@ vdw_prm = {
         "he" : [1.530, 0.026],
         "ne" : [1.600, 0.090],
         "ar" : [1.990, 0.268],
+        "ca" : [2.810, 0.134],     # taken from https://www.sciencedirect.com/science/article/pii/S0166128009800080
         "kr" : [2.150, 0.358],
         "xe" : [2.280, 0.495],
         "fe" : [2.200, 0.020],
@@ -581,7 +585,6 @@ maxbond = {
         "o" : 2,
         "n" : 3,
 }
-
 
 def get_covdistance(elements):
     ''' get covalent bond distances based on elems.py cov_radii

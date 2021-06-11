@@ -39,6 +39,7 @@ def read(mol, f):
     topoinfo["spgr"]      = "None" 
     topoinfo["coord_seq"] = "None"
     topoinfo["transitivity"] = "None"
+    topoinfo["emapping"]  = "None"
     while not stop:
         if lbuffer[0] != '#':
             mol.natoms = int(lbuffer[0])
@@ -88,6 +89,8 @@ def read(mol, f):
                     topoinfo["coord_seq"] = " ".join(lbuffer[2:])
                 elif topokeyw == "transitivity":
                     topoinfo["transitivity"] = " ".join(lbuffer[2:])
+                elif topokeyw == "emapping":
+                    topoinfo["emapping"] = [int(i) for i in lbuffer[2:]]
                 else:
                     topoinfo[topokeyw.split(' ',1)[0]] = " ".join(lbuffer[2:])
                     logger.warning("unknown topo keyword %s" % keyword)
@@ -116,7 +119,8 @@ def read(mol, f):
                 cs = topoinfo["coord_seq"].split("|")
             mol.topo.topoinfo = topoinfo
             mol.topo.set_topoinfo(skey=topoinfo["systrekey"],\
-                                  mapping=mol.fragnumbers,\
+                                  vmapping=mol.fragnumbers,\
+                                  emapping=topoinfo["emapping"],\
                                   spgr=topoinfo["spgr"],\
                                   transitivity=topoinfo["transitivity"],\
                                   RCSRname=topoinfo["RCSRname"],\
@@ -187,11 +191,16 @@ def write(mol, f, fullcell = True, topoformat = "new"):
         else:
             topoinfo["format"] = "old"
         if "topo" in mol.loaded_addons:
-            for k in ["systrekey", "RCSRname", "spgr", "coord_seq",'transitivity']:
+            for k in ["systrekey", "RCSRname", "spgr", "coord_seq", "transitivity", "sk_emapping"]:
                 v = getattr(mol.topo, k)
                 if v != "None":
                     if type(v) == type([]):
-                        topoinfo[k] = "|".join(v)
+                        if type(v[0]) == type(""):
+                            # a list of strings .. use | as separator
+                            topoinfo[k] = "|".join(v)
+                        elif type(v[0]) == type(0):
+                            # a list of integers .. 
+                            topoinfo[k] = " ".join([str(i) for i in v])
                     else:
                         topoinfo[k] = v
         else:
@@ -275,7 +284,7 @@ def write(mol, f, fullcell = True, topoformat = "new"):
         if topoinfo["format"] == "new":
             topo_new = True
             # make sure that fragnumbers contains the skey_mapping of the topo addon (just for storing it)
-            mol.fragnumbers = mol.topo.skey_mapping
+            mol.fragnumbers = mol.topo.sk_vmapping
         write_body(f,mol,topo=True, topo_new=topo_new)
     return
 
