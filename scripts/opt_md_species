@@ -60,15 +60,16 @@ class reaxff_calculator(base_calculator):
     def calc_energy(self):
         return self.pl.calc_energy()
 
-    def optimize(self,tconv=0.01,TS=False,remove_constraint=False,rbonds=[],bondlength=[]):
+    def optimize(self,tconv=0.01,TS=False,add_constraint=False,remove_constraint=False,rbonds=[],bondlength=[]):
         ### default ####
         forceconst = 1000.0
-        if TS:
+        if TS or add_constraint:
+            print(rbonds)
             for i in range(rbonds.shape[0]):
                 par = (forceconst, bondlength[i])
                 self.pl.add_restraint("bnd", tuple(rbonds[i]), par)
         final_energy = self.pl.MIN(tconv)
-        if TS:
+        if TS or add_constraint:
             self.pl.clear_restraints()
             if remove_constraint:
                final_energy = self.pl.MIN(tconv)
@@ -104,15 +105,15 @@ class xtb_calculator(base_calculator):
     def calc_energy(self):
         return self.pl.calc_energy()
 
-    def optimize(self,tconv=0.01,TS=False,remove_constraint=False,rbonds=[],bondlength=[]):
+    def optimize(self,tconv=0.01,TS=False,add_constraint=False,remove_constraint=False,rbonds=[],bondlength=[]):
         ### default ####
         forceconst = 1000.0
-        if TS:
+        if TS or add_constraint:
             for i in range(rbonds.shape[0]):
                 par = (forceconst, bondlength[i])
                 self.pl.add_restraint("bnd", tuple(rbonds[i]), par)
         final_energy = self.pl.MIN(tconv)
-        if TS:
+        if TS or add_constraint:
             self.pl.clear_restraints()
             if remove_constraint:
                final_energy = self.pl.MIN(tconv)
@@ -250,7 +251,7 @@ for r in reactions:
            print("Unknown calculator!")
            sys.exit(1)
         init_energy  = calculator.calc_energy()
-        final_energy = calculator.optimize(0.01,TS,remove_constraint,rbonds,bondlength)
+        final_energy = calculator.optimize(0.01,TS,is_unimolecular,remove_constraint,rbonds,bondlength)
         print ("\n\n########################################")
         print ("initial %12.6f  final %12.6f " % (init_energy, final_energy))
         print ("########################################\n\n")
