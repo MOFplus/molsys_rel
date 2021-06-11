@@ -15,6 +15,7 @@ steps:
     source source_me 
     cd tests/graph/comp_graph/
     python3 test.py
+    python3 test_comp_graph.py
   displayName: 'testing molgraph comparison'
 
 - script: |
