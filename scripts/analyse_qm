@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""test script to optimize all systems in the DB
-
-all systems with zero energy and not TS are picked and optimized
+""" script to calculate the reaction and activation energies, and calculate rate constants after QM calculations
+    by reading the information from the database
 """
 
 import pylmps
@@ -13,12 +12,13 @@ import os
 import time
 import numpy as np
 import ast
-from scipy import constants
+#from scipy import constants
 from molsys.util import RDB
 from molsys.util import refine_qm_turbomole
+from   molsys.util.units import kjmol
 
 
-HtokJmol = constants.value("hartree-joule relationship")*constants.N_A*1.E-3
+#HtokJmol = constants.value("hartree-joule relationship")*constants.N_A*1.E-3
 
 #
 # Helper functions
@@ -281,14 +281,14 @@ for r in reactions:
                 #print('lnQ_educts',lnQ_educts, 'lnQ_ts', lnQ_ts, 'lnQ_products', lnQ_products)
                 print("--------------Forward reaction--------------")
                 # the forward rate constant
-                lnk_f, k_f_unit = HT.get_lnk(T, P, E_el_act_f*HtokJmol, imfreq[0], lnQ_educts, lnQ_ts, verbose=verbose)
+                lnk_f, k_f_unit = HT.get_lnk(T, P, E_el_act_f/kjmol, imfreq[0], lnQ_educts, lnQ_ts, verbose=verbose)
                 print('units of k:', k_f_unit)
                 lnA0, n0, E0 = HT.get_p0(E_el_act_f, lnk_f, T)
                 popt_f, pcov = HT.fitArr(lnk_f, T, lnA0, n0, E0, verbose=verbose, k_unit = k_f_unit, title=title, subtitle='forward reaction rate constant')
                 print('Forward rxn : lnA, n, E = ', popt_f)
                 print("--------------Reverse reaction--------------")
                 # the reverse rate constant
-                lnk_r, k_r_unit = HT.get_lnk(T, P, E_el_act_r*HtokJmol, imfreq[0], lnQ_products, lnQ_ts, verbose=verbose)
+                lnk_r, k_r_unit = HT.get_lnk(T, P, E_el_act_r/kjmol, imfreq[0], lnQ_products, lnQ_ts, verbose=verbose)
                 print('units of k:', k_r_unit)
                 lnA0, n0, E0 = HT.get_p0(E_el_act_r, lnk_r, T)
                 popt_r, pcov = HT.fitArr(lnk_r, T, lnA0, n0, E0, verbose=verbose, k_unit = k_r_unit, title=title, subtitle='reverse reaction rate constant')
@@ -297,12 +297,12 @@ for r in reactions:
                 E_el_act_f += ots.energy
 
             print("--------------------------------------------")
-            print("E_act = %.1f kJ/mol, E_rxn = %.1f kJ/mol" %((E_el_act_f+ZPE_act_f)*HtokJmol, (E_el_rxn+ZPE_rxn)*HtokJmol))
+            print("E_act = %.1f kJ/mol, E_rxn = %.1f kJ/mol" %((E_el_act_f+ZPE_act_f)/kjmol, (E_el_rxn+ZPE_rxn)/kjmol))
             print("============================================\n")
 
         else:
             print("Barrierless reaction:")
             print("--------------------------------------------")
-            print("E_rxn = %.1f kJ/mol" %((E_el_rxn+ZPE_rxn)*HtokJmol))
+            print("E_rxn = %.1f kJ/mol" %((E_el_rxn+ZPE_rxn)/kjmol))
             print("============================================\n")
 

@@ -68,52 +68,15 @@ class GeneralTools:
         return
 
     def write_coord_from_mol(self, mol, coord_name = 'coord'):
-        coord_path = os.path.join(self.path,coord_name)
-        f=open(coord_path,'w')
-        f.write('$coord\n')
-        c = mol.xyz*angstrom
-        for i in range(mol.natoms):
-            f.write("  %19.14f %19.14f %19.14f   %-2s\n" %
-                    (c[i,0],c[i,1], c[i,2], mol.elems[i]))
-        f.write('$end')
-        f.close()
+        os.chdir(self.path)
+        mol.write(coord_name,ftype="turbo")
+        os.chdir(self.maindir)
         return   
 
-    def mol_to_coord(self, mol):
-        coord_str = '$coord\n'
-        c = mol.xyz*angstrom
-        for i in range(mol.natoms):
-            coord_str += '  %19.14f %19.14f %19.14f   %-2s\n' %(c[i,0],c[i,1], c[i,2], mol.elems[i])
-        coord_str += '$end'
-        return coord_str
-
-    def coord_to_xyz(self, coord_name="coord"):
-        coord_path = os.path.join(self.path,coord_name)
-        if not os.path.isfile(coord_path):
-            raise FileNotFoundError("Please provide a coord file.")
-        coord = open(coord_path, "r")
-        str_tmp = ""
-        lines = coord.readlines()
-        natoms = 0
-        for i,line in enumerate(lines):
-            if '$coord' in line:
-                j = 1
-                while '$' not in lines[i+j]:
-                    c = lines[i+j].strip().split()
-                    j += 1
-                    natoms += 1
-                    str_tmp += "%s %19.14f %19.14f %19.14f\n" %(c[3].upper(), float(c[0])/angstrom, float(c[1])/angstrom, float(c[2])/angstrom)
-        
-        str_tmp = "%d\n\n" %natoms+str_tmp
-        return str_tmp
-
-
     def coord_to_mol(self, coord_name="coord"):
-        coord_path = os.path.join(self.path,coord_name)
-        if not os.path.isfile(coord_path):
-            raise FileNotFoundError("Please provide a coord file.")
-        xyz = self.coord_to_xyz()
-        mol = molsys.mol.from_string(xyz, "xyz")
+        os.chdir(self.path)
+        mol = molsys.mol.from_file(coord_name,ftype="turbo")
+        os.chdir(self.maindir)
         return mol
 
     def add_to_coord(self, coord_name="coord", text=""):
@@ -194,7 +157,7 @@ class GeneralTools:
 
     def define_rohf(self, basis_set, M, scfiterlimit = 300, charge = 0, title = ""):
         mol  = self.coord_to_mol()
-        n_el = Mol(mol).count_number_of_electrons(charge)
+        n_el = mol.get_n_el(charge)
         define_in_path = os.path.join(self.path,'define.in')
         f=open(define_in_path,'w')
         f.write('\n') # IF YOU WANT TO READ DEFAULT-DATA FROM ANOTHER control-TYPE FILE -> NO
@@ -612,7 +575,19 @@ class GeneralTools:
                SPE = float(l[4])
         return SPE
 
-    def get_ccsd_energy(self, F12=True, Tstar = True, model='ccsd(t)', ccsd_out_name="pnoccsd.out", nel=3):
+    def get_ccsd_energy(self, F12=True, Tstar = True, model='ccsd(t)', ccsd_out_name="pnoccsd.out", n_el=3):
+       """ Reads the ccsdf12 and returns the energy.
+
+           Args:
+               F12  : Explicitly correlated method?
+               Tstar: Do you want to read the T* approximation? (only for F12 calculations)
+               model: ccsd, ccsd(t), or ccsd(t0)
+               ccsd_out_name: Name of the output file; e.g. 'ccsdf12.out' or 'pnoccsd.out'
+               n_el : The number of electrons
+
+           Returns
+               the single point energy of the requested method in Hartree
+       """
        ccsdout = open(os.path.join(self.path, ccsd_out_name),'r')
        for line in ccsdout:
           if F12:
@@ -634,11 +609,11 @@ class GeneralTools:
               elif 'Final CCSD(T) energy    ' in line:
                   CCSDTenergy = float(line.rstrip('\n').split()[5])
 
-       if model == 'ccsd':
+       if model.lower() == 'ccsd':
            return CCSDenergy
 
-       elif model == 'ccsd(t0)':
-           if nel == 2:
+       elif model.lower() == 'ccsd(t0)':
+           if n_el == 2:
                return CCSDenergy
            else:
                if Tstar:
@@ -646,8 +621,8 @@ class GeneralTools:
                else:
                    return CCSDT0energy
 
-       elif model == 'ccsd(t)':
-           if nel == 2:
+       elif model.lower() == 'ccsd(t)':
+           if n_el == 2:
                return CCSDenergy
            else:
                if Tstar:
@@ -750,7 +725,7 @@ class GeneralTools:
 
 
     def similaritycheck_from_xyz(self, xyz_1, xyz_2):
-        """ Runs the fortran script similaritycheck and compares similarity of the two structures.
+        """ Runs the similaritycheck program of Turbomole and compares similarity of the two structures.
 
             Args:
                 xyz_1, xyz_2: The xyz paths of the molecules to be compared
@@ -954,103 +929,7 @@ class GeometryTools:
 
         
 
-class Mol:
 
-    def __init__(self, mol):
-        self.mol = mol
-        return
-
-    def count_number_of_electrons(self, charge=0):
-        """ Counts the number of electrons. 
-
-        Args:
-            charge: charge of the molecule
-            
-        Returns:
-            nel: number of electrons
-        """
-        # The dictionary of number of electrons
-        nelectrons = {'H':1,'He':2, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10, 'S':16, 'Cl':17, 'Ar':18} 
-        nel = 0
-        # 1) Count the number of electrons in the system
-        for t in set(self.mol.elems):
-           amount = self.mol.elems.count(t)
-           nel += nelectrons[t.capitalize()]*amount
-        # 2) Account for the charge of the molecule
-        nel -= charge
-        return nel
-
-    def make_molecular_graph(self, by_bo = True):
-        # 1) Detect the connectivity information by bond order
-        if by_bo:
-            self.mol.detect_conn_by_bo()
-        else:
-            self.mol.detect_conn()
-        # 2) Make the molecular graph
-        if  not hasattr(self.mol, "graph"):
-            self.mol.addon("graph")
-        self.mol.graph.make_graph()
-        mg = self.mol.graph.molg
-        return mg
-
-    def separate_molecules(self, by_bo = False):
-       """ Separates the molecules according to their molecular graph.
-
-       By default the connectivity is determined without the bo.
-
-       Returns:
-           mol: a dictionary of mol objects of the separated molecules
-           labels: list of labels for individual fragments
-       """
-       self.make_molecular_graph(by_bo = by_bo)
-       mg = self.mol.graph.molg
-       # 1) Label the components of the molecular graph to which each vertex in the the graph belongs
-       from graph_tool.topology import label_components
-       labels = label_components(mg)[0].a.tolist()
-
-       # 2) Number of molecules
-       n_mols = len(set(labels))
-
-       # 3) Now create mol objects with the separated molecules and append them into a list
-       mols = []
-       for i in set(labels):
-           n_atoms = labels.count(i)
-           mol_str = '%d\n\n' %n_atoms
-           counter = 0
-           for j,label in enumerate(labels):
-               if i == label:
-                   mol_str += '%s %5.10f %5.10f %5.10f' %(self.mol.elems[j], self.mol.xyz[j,0], self.mol.xyz[j,1], self.mol.xyz[j,2])
-                   counter += 1
-                   if counter != n_atoms:
-                       mol_str += '\n'
-           mol_tmp = molsys.mol.from_string(mol_str, 'xyz')
-           mol_tmp.detect_conn_by_bo()
-           mols.append(mol_tmp)
-       return mols, labels
-
-    def get_max_M(self):
-        """ Calculates the number of core + valence MOs (nMOs)
-        and from there calculates the maximum multiplicity that molecule possibly have.
-
-        Returns:
-            Max_M: the maximum multiplicity that molecule can possibly have
-        """
-        # The dictionary of the minimal number of atomic orbitals
-        # i.e. core + valence shells
-        nAOs = {'H':1,'He':1, 'C':5, 'N':5, 'O':5, 'F':5, 'Ne':5, 'S':9, 'Cl':9, 'Ar':9}
-        nMOs = 0       
-        for t in set(self.mol.elems):
-           amount = self.mol.elems.count(t)
-           nMOs += nAOs[t.capitalize()]*amount
-        nel = self.count_number_of_electrons()
-        alphashells = nMOs
-        betashells = nel - nMOs
-        NumberofMaxUnpairedElectrons = alphashells - betashells
-        Max_M = NumberofMaxUnpairedElectrons + 1
-        return Max_M
-
-
- 
 class OptimizationTools:
     """Methods for the optimization of QM species with ridft.
     
@@ -1073,6 +952,7 @@ class OptimizationTools:
             self.gcart = gcart
         return
 
+    ### CHANGES WITH DEFINE #########################################################
 
     def freeze_atoms(self, active_atoms, path = ''):
         """ writes a new define file to fix active atoms in internal coordinates. """
@@ -1241,6 +1121,9 @@ class OptimizationTools:
         os.chdir(self.maindir)
         return
 
+
+    ### CALLING TURBOMOLE BINARIES #########################################################
+
     def jobex(self, ts=False, cycles=150, gcart=None):
         """ Runs jobex.
 
@@ -1318,6 +1201,81 @@ class OptimizationTools:
         os.chdir(self.maindir)
         return
 
+    ### USING mol OBJECT #########################################################
+
+    def make_molecular_graph(self, mol, by_bo = True):
+        # 1) Detect the connectivity information by bond order
+        if by_bo:
+            mol.detect_conn_by_bo()
+        else:
+            mol.detect_conn()
+        # 2) Make the molecular graph
+        if  not hasattr(mol, "graph"):
+            mol.addon("graph")
+        mol.graph.make_graph()
+        mg = mol.graph.molg
+        return mg
+
+    def separate_molecules(self, mol, by_bo = False):
+       """ Separates the molecules according to their molecular graph.
+
+       By default the connectivity is determined without the bo.
+
+       Returns:
+           mols: a dictionary of mol objects of the separated molecules
+           labels: list of labels for individual fragments
+       """
+       mg = self.make_molecular_graph(mol = mol, by_bo = by_bo)
+       # 1) Label the components of the molecular graph to which each vertex in the the graph belongs
+       from graph_tool.topology import label_components
+       labels = label_components(mg)[0].a.tolist()
+
+       # 2) Number of molecules
+       n_mols = len(set(labels))
+
+       # 3) Now create mol objects with the separated molecules and append them into a list
+       mols = []
+       for i in set(labels):
+           n_atoms = labels.count(i)
+           mol_str = '%d\n\n' %n_atoms
+           counter = 0
+           for j,label in enumerate(labels):
+               if i == label:
+                   mol_str += '%s %5.10f %5.10f %5.10f' %(mol.elems[j], mol.xyz[j,0], mol.xyz[j,1], mol.xyz[j,2])
+                   counter += 1
+                   if counter != n_atoms:
+                       mol_str += '\n'
+           mol_tmp = molsys.mol.from_string(mol_str, 'xyz')
+           mol_tmp.detect_conn_by_bo()
+           mols.append(mol_tmp)
+       return mols, labels
+
+
+    def get_max_M(self, mol):
+        """ Calculates the number of core + valence MOs (nMOs)
+        and from there calculates the maximum multiplicity that molecule possibly have.
+
+        Returns:
+            Max_M: the maximum multiplicity that molecule can possibly have
+        """
+        # The dictionary of the minimal number of atomic orbitals
+        # i.e. core + valence shells
+        dic_nAOs = {'h':1,'he':1, 'c':5, 'n':5, 'o':5, 'f':5, 'ne':5, 's':9, 'cl':9, 'ar':9}
+        nMOs = 0
+        for t in set(mol.elems):
+           assert t in dic_nAOs, 'The element %s is in the dictionary.' %t.capitalize()
+           amount = mol.elems.count(t)
+           nMOs += dic_nAOs[t]*amount
+        nel = mol.get_n_el()
+        alphashells = nMOs
+        betashells = nel - nMOs
+        NumberofMaxUnpairedElectrons = alphashells - betashells
+        Max_M = NumberofMaxUnpairedElectrons + 1
+        return Max_M
+
+
+    ### TOOLS TO SET UP CALCULATIONS #########################################################
+
     def generate_MOs(self, mol, title = '', add_noise = True, upto = 0.05, active_atoms = [], fermi = True, pre_defined_M = False, lowest_energy_M = False, M = None) :
         """ To generate molecular orbitals
      
@@ -1355,7 +1313,7 @@ class OptimizationTools:
         if fermi:
 
             # 1. Determine the start multiplicity
-            nel = Mol(mol).count_number_of_electrons(charge = 0)
+            nel = mol.get_n_el()
             if (nel % 2) == 0:
                 M_start = 3
             else:
@@ -1456,7 +1414,7 @@ class OptimizationTools:
                             print('The SCF calculation with multiplicity %d did not converge. It is not added to the dictionary.' %(M_fermi-2))
                         os.chdir(self.maindir)
                     # The maximum possible multiplicity that the molecule can have
-                    M_max = Mol(mol).get_max_M()
+                    M_max = self.get_max_M(mol)
                     if M_fermi < M_max:
                         p2_path = os.path.join(self.path,'M_%d' %(M_fermi+2))
                         new_dirs.append(p2_path)
@@ -1547,6 +1505,8 @@ class OptimizationTools:
             sys.exit()
         return energy
 
+
+    ### TOOLS TO CHECK THE END POINTS FROM IRC CALCULATIONS ################################################
 
     def list_of_list_rbonds(self, rbonds):
         """ findR returns the reactive bonds as a list, this returns them into a list of list
@@ -1970,7 +1930,7 @@ class OptimizationTools:
 
         # 5. Get the molecules at the end points
         mol = GT.coord_to_mol()
-        mols, labels = Mol(mol).separate_molecules()
+        mols, labels = self.separate_molecules(mol)
 
         # 6. Add the $frag data group to the coordinate file 
         if len(mols) > 1:
@@ -2034,15 +1994,13 @@ class OptimizationTools:
                 mol_similar = False # similarity of individual molecules
 
                 if mode == 'mg':
-                    Mol(mol_1).make_molecular_graph()
-                    mg_1 = mol_1.graph.molg
+                    mg_1 = self.make_molecular_graph(mol_1)
 
                 # Loop over the molecules to compare
                 for j,mol_2 in enumerate(mols_2):
 
                     if mode == 'mg':
-                        Mol(mol_2).make_molecular_graph()
-                        mg_2 = mol_2.graph.molg
+                        mg_2 = self.make_molecular_graph(mol_2)
                         is_equal = molsys.addon.graph.is_equal(mg_1, mg_2, use_fast_check=False)[0]
                     elif mode == 'similaritycheck':
                         is_equal = GeneralTools().similaritycheck_from_mol(mol_1, mol_2)
@@ -2115,6 +2073,8 @@ class OptimizationTools:
                 index_dict['plus']  =  index_dict_plus_ed
         return is_similar, match, index_dict
 
+
+    ### TOOLS TO OPTIMIZE REACTION PATH AND ANALYSE THEM ######################################
 
     def get_peaks(self, path, plot = False):
         """Gets the peaks from the woelfling output
@@ -2459,6 +2419,8 @@ class OptimizationTools:
         return
 
 
+    ### THE MAIN WORKFLOWS #########################################################
+
     def ts_workflow(self, QM_path_ts, mols_ed_QM_ref, mols_prod_QM_ref, M = None, mode = 'mg'):
         """ The workflow for the TS. 
 
@@ -2586,7 +2548,7 @@ class OptimizationTools:
             if mol_ini.natoms == 1: atom = True
 
             # 1. Make molecular graph of the reference structure
-            Mol(mol_ini).make_molecular_graph()
+            self.make_molecular_graph(mol_ini)
             mg_ini = mol_ini.graph.molg            
 
             # 2. Add noise to the structure and perform the single point energy calculation
@@ -2612,13 +2574,13 @@ class OptimizationTools:
                 mol_opt = GT.coord_to_mol()
 
                 # 6. Check if the molecule stays as a single molecule, e.g., the awkward H-O-H-O-H-O complexes of ReaxFF...
-                mols, labels =  Mol(mol_opt).separate_molecules()
+                mols, labels =  self.separate_molecules(mol_opt)
                 if len(mols) != 1:
                     print('The optimised structure has more than a single molecule. This cannot be handled automatically.')
                     exit()
 
                 # 7. Compare the graph of the initial and optimized structure 
-                Mol(mol_opt).make_molecular_graph()
+                self.make_molecular_graph(mol_opt)
                 mg_opt = mol_opt.graph.molg
                 equal = molsys.addon.graph.is_equal(mg_ini, mg_opt)[0]
 
@@ -2638,7 +2600,7 @@ class OptimizationTools:
                             print('The geometry optimization with multiplicity %d has failed.' %(M+2))
                             exit()
                         mol_tmp = GT_tmp.coord_to_mol()
-                        Mol(mol_tmp).make_molecular_graph()
+                        self.make_molecular_graph(mol_tmp)
                         mg_tmp = mol_tmp.graph.molg
                         equal = molsys.addon.graph.is_equal(mg_ini, mg_tmp)[0]
                         if not equal:
@@ -2670,10 +2632,9 @@ class OptimizationTools:
     def write_coords(self, coords_path, mol_ini, mol_fin):
         """ Writes a coords file which includes concatanated coord files of the two mol objects."""
         coords = open(coords_path,'w')
-        GT = GeneralTools()
-        coords.write(GT.mol_to_coord(mol_ini))
+        coords.write(mol_ini.to_string(ftype="turbo"))
         coords.write('\n')
-        coords.write(GT.mol_to_coord(mol_fin))
+        coords.write(mol_fin.to_string(ftype="turbo"))
         coords.close()
         return
 
@@ -3021,7 +2982,7 @@ class OptimizationTools:
         # 1. Make molecular graph of the reference structure
         GT = GeneralTools(self.path)
         mol_ini = GT.coord_to_mol()
-        mg_ini = Mol(mol_ini).make_molecular_graph()
+        mg_ini = self.make_molecular_graph(mol_ini)
 
 
         # 2. Change the functional
@@ -3050,7 +3011,7 @@ class OptimizationTools:
             # 6. Geometry optimization
             converged = self.jobex(ts=ts)
             mol_opt = GT.coord_to_mol()
-            mg_opt = Mol(mol_opt).make_molecular_graph()
+            mg_opt = self.make_molecular_graph(mol_opt)
             change_molg = not molsys.addon.graph.is_equal(mg_ini, mg_opt, use_fast_check=False)[0]
 
             if not converged:
@@ -3272,7 +3233,7 @@ class OptimizationTools:
         self._clean_ccsd(ccsd_path)
 
         # 4. Write the json file to later add to the database
-        energy = GT.get_ccsd_energy(F12=F12, Tstar=Tstar, model=model, ccsd_out_name=ccsd_out_name, nel = Mol(mol).count_number_of_electrons())
+        energy = GT.get_ccsd_energy(F12=F12, Tstar=Tstar, model=model, ccsd_out_name=ccsd_out_name, nel = mol.get_n_el())
         info_dict = {}
         info_dict["ospecID"] = ospecID
         info_dict["info"] = "E(%s)=%5.10f;" %(self.lot, energy)
@@ -3433,8 +3394,9 @@ class Slurm:
 
 
 class Harvest:
-    
-    def __init__(self, path=os.getcwd(), freehdir = '/home/oyoender/programs/freeh-09.06'):
+   
+    # TODO change the freeh directory to a general name 
+    def __init__(self, path=os.getcwd(), freehdir = '/home/oyoender/bin/freeh-09.06'):
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
         else:
