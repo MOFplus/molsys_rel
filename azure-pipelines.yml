@@ -23,3 +23,15 @@ steps:
     cd tests/obabel/
     python3 test.py
   displayName: 'testing openbabel integration'
+
+- script: |
+    source source_me 
+    cd tests/utils/adding_hydrogen/
+    python3 test_add_H_to_hexane.py
+  displayName: 'testing util to add hydrogen'
+
+- script: |
+    source source_me 
+    cd tests/lqg/
+    python3 lqg_test.py
+  displayName: 'testing util to add hydrogen'

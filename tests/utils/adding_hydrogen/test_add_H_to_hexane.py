@@ -1,4 +1,3 @@
-import pytest
 
 import molsys
 from molsys.util.hydrogen import hydrogen
