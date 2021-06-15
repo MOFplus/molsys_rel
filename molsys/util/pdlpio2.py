@@ -522,12 +522,14 @@ class pdlpio2(mpiobject):
         self.mpi_comm.barrier()
         return
 
-    def add_bondtab(self, stage, nbondsmax):
+    def add_bondtab(self, stage, nbondsmax, bond_tab = 0, bond_order = 0.0):
         """generates a bondtab/bondorder entry in the trajectory group of the current stage for ReaxFF
         
         Args:
             stage (string): name of the current stage     
             nbondsmax (int): size of the tables
+            bond_tab (list) : bond table
+            bond_order (list) : bond order
         """
         if self.is_master:
             st = self.h5file[stage]
@@ -542,8 +544,8 @@ class pdlpio2(mpiobject):
                             maxshape=(None, nbondsmax),
                             chunks=(1,nbondsmax),
                             dtype = "float32")
-            bondtab[...] = 0
-            bondord[...] = 0.0
+            bondtab[...] = bond_tab
+            bondord[...] = bond_order
         return
 
         
