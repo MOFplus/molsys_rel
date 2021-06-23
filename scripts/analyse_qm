@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+""" script to calculate the reaction and activation energies, and calculate rate constants after QM calculations
+    by reading the information from the database
+"""
+
+import pylmps
+import molsys
+import sys
+import os
+import time
+import numpy as np
+import ast
+#from scipy import constants
+from molsys.util import RDB
+from molsys.util import refine_qm_turbomole
+from   molsys.util.units import kjmol
+
+
+#HtokJmol = constants.value("hartree-joule relationship")*constants.N_A*1.E-3
+
+#
+# Helper functions
+#
+def get_mol_from_opt_spec(ospec):
+    # get mol object from DB
+    fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
+    mfpxs = mfpxf.read().decode('utf-8')
+    mfpxf.close()
+    mol = molsys.mol.from_string(mfpxs)
+    mol.addon("graph")
+    mol.detect_conn()
+    mol.graph.make_graph()
+    return mol
+
+def get_opt_spec_path(ospec):
+    fname, mfpxf = db.opt_species.mfpx.retrieve(ospec.mfpx)
+    ospec_mfpxf_path = mfpxf.name
+    mfpxf.close()
+    return ospec_mfpxf_path
+
+def get_md_spec_mfpx(md_spec):
+    fname, mfpxf = db.md_species.mfpx.retrieve(md_spec.mfpx)
+    md_spec_mfpxf_path = mfpxf.name
+    mfpxf.close()
+    return md_spec_mfpxf_path
+
+
+######################################################################################################################
+######################################################################################################################
+#
+# Start of main program 
+#
+if len(sys.argv) < 3:
+    print ("usage:  analyse_qm <db_path> <cmd_file>")
+    exit()
+    
+
+db_path   = os.path.abspath(sys.argv[1])
+cmd_file  = sys.argv[2]
+
+assert os.path.isfile(cmd_file), "command file exists!"
+# read param set. Examples are:
+# ------------------------------
+# DFT could look like
+#params = { "level"             : "level1:DFT" or "level2:DFT" or "level3:CC"
+#         , "lot"               : "ri-utpssh/TZVP"
+#         , "f_cor"             : 0.9874
+#         , "reaction_origin"   : [14,15,22,27,41,55,56,61,69,95,100,109]
+#         }
+
+file = open(cmd_file, "r")
+content = file.read()
+params = ast.literal_eval(content)
+
+# sanity check(s)
+assert "lot" in params, "Level of theory is given for the calculator"
+assert "level" in params, "The level of calculation is defined: level1:dft, level2:dft, level3:pno-ccsd"
+assert "f_cor" in params, "The ZPE correction factor is defined"
+level3 = False
+if "level3" in params["level"].lower():
+    assert "lot_CC" in params, "The coupled cluster level of theory for the electronic energies is defined"
+    level3 = True
+    lot_CC = params["lot_CC"]
+    print("The electronic energies will be taken from the level of theory %s." %lot_CC)
+
+Tstart=300.0 # K
+Tend=3000.0 # K
+numT=271
+P=0.1 # MPa
+if "Tstart" in params:
+    Tstart=params["Tstart"]
+if "Tend" in params:
+    Tend=params["Tend"]
+if "numT" in params:
+    numT=params["numT"]
+if "P" in params:
+    P=params["P"]
+if "verbose" in params:
+    verbose=params["verbose"]
+else:
+    verbose=False
+print ("open database %s" % db_path)
+rdb = RDB.RDB(db_path)
+db = rdb.db
+# get all reactions
+reactions = db(db.reactions).select()
+if "reaction_origin" in params:
+    reactions = reactions.find(lambda row: row.origin in params["reaction_origin"])
+print(reactions)
+
+print("Level of theory = ", params["lot"])
+lotID = rdb.get_lot(params["lot"])
+
+
+print("The ZPE correction factor = ", params["f_cor"])
+
+curjobids = []
+ncurjobs = 0
+jobids = []
+
+# Loop over the reactions
+'''
+path_ref_educts   : list   : the mfpx path of the educts from the start LOT
+path_ref_products : list   : the mfpx path of the products from the start LOT
+path_ref_ts       : string : the mfpx path of the TS from the start LOT
+path_ed_complex   : string : the mfpx path of the educt complex from MD for non-unimolecular rxns
+path_prod_complex : string : the mfpx path of the product complex from MD for non-unimolecular rxns
+'''
+for r in reactions:
+    skip = False
+    if r.id != 1:
+        # get all species for this reaction
+        reac2ts_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  0)).select().first()
+        reac2educt_spec = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label == -1)).select()
+        reac2prod_spec  = db((db.reac2spec.reactionsID == r) & (db.reac2spec.label ==  1)).select()
+        reac2spec = db((db.reac2spec.reactionsID == r)).select()
+        n_ed = len(reac2educt_spec)
+        n_prod = len(reac2prod_spec)
+        E_el_rxn   = 0.0
+        E_el_act_f = 0.0
+        E_el_act_r = 0.0
+        ZPE_rxn    = 0.0
+        ZPE_act_f  = 0.0
+        ZPE_act_r  = 0.0
+
+        print("============================================")
+        if r.origin == None:
+            title = "Reaction %d" %r.id
+            print(title, ':')
+        else:
+            title = "Reaction %d from reaction origin %d" %(r.id, r.origin)
+            print(title, ':')
+        print("--------------------------------------------")
+
+        # EDUCTS
+        path_ref_educts = []
+        lnQ_educts = []
+        print("educt specID, ospecID:")
+        for i,ed in enumerate(reac2educt_spec):
+            oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+            if oed == None:
+                print("The educt species %d is not optimized with %s according to the database entries!" %(ed.speciesID,params["lot"]))
+                print("Skipping the reaction %d ..." %r.id)
+                skip = True
+                break
+            print(ed.id, oed.id)
+            print(oed.info)
+            if level3:
+                if not lot_CC in oed.info:
+                    print("The energy of the structure at the level of theory %s is not calculated." %lot_CC)
+                    print("Skipping the reaction %d ..." %r.id)
+                    skip = True
+                    break
+            CC_energy = 0.0
+            for info in oed.info.split(";"):
+                if "ZPE" in info:
+                    ZPE = float(info.split("=")[-1])
+                if "M" in info:
+                    M = float(info.split("=")[-1])
+                    m_s = (M-1)/2
+                if lot_CC in info:
+                    CC_energy = float(info.split("=")[-1])
+            print("m_s = %.1f" %m_s)
+            ZPE_rxn   -= params["f_cor"]*ZPE
+            ZPE_act_f -= params["f_cor"]*ZPE
+            if level3:
+                E_el_rxn   -= CC_energy
+                E_el_act_f -= CC_energy
+                oed_path = os.path.join(db_path,oed.path)
+                HT_oed = refine_qm_turbomole.Harvest(oed_path)
+                lnQ_ed, T = HT_oed.thermodynamics(f_cor=params["f_cor"],Tstart=Tstart, Tend=Tend, numT=numT, P=P)
+                lnQ_educts.append(lnQ_ed)
+            else:
+                E_el_rxn   -= oed.energy
+                E_el_act_f -= oed.energy
+        if skip: continue
+
+        # PRODUCTS
+        path_ref_products = []
+        lnQ_products = []
+        print("product specID, ospecID:")
+        for i,prod in enumerate(reac2prod_spec):
+            oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+            if oprod == None:
+                print("The product species %d is not optimized with %s according to the database entries!" %(prod.speciesID,params["lot"]))
+                print("Skipping the reaction %d ..." %r.id)
+                skip = True
+                break
+            print(prod.id, oprod.id)
+            print(oprod.info)
+            if level3:
+                if not lot_CC in oprod.info:
+                    print("The energy of the structure at the level of theory %s is not calculated." %lot_CC)
+                    print("Skipping the reaction %d ..." %r.id)
+                    skip = True
+                    break
+ 
+            for info in oprod.info.split(";"):
+                if "ZPE" in info:
+                    ZPE = float(info.split("=")[-1])
+                if "M" in info:                
+                    M = float(info.split("=")[-1])
+                    m_s = (M-1)/2
+                if lot_CC in info:
+                    CC_energy = float(info.split("=")[-1])
+            print("m_s = %.1f" %m_s)
+
+            ZPE_rxn  += params["f_cor"]*ZPE
+            ZPE_act_r -= params["f_cor"]*ZPE
+            if level3:
+                E_el_rxn   += CC_energy
+                E_el_act_r -= CC_energy
+                oprod_path = os.path.join(db_path,oprod.path)
+                HT_oprod = refine_qm_turbomole.Harvest(oprod_path)
+                lnQ_prod, T = HT_oprod.thermodynamics(f_cor=params["f_cor"],Tstart=Tstart, Tend=Tend, numT=numT, P=P)
+                lnQ_products.append(lnQ_prod)
+            else:
+                E_el_rxn += oprod.energy
+
+        if skip: continue
+
+        # TRANSITION STATE
+        if reac2ts_spec != None:            
+            print("TS specID, ospecID:")
+            ots =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+            if ots == None:
+                print("The transition state species %d is not optimized with %s according to the database entries!" %(reac2ts_spec.speciesID,params["lot"]))
+                print("Skipping the reaction %d ..." %r.id)
+                continue
+            print(reac2ts_spec.id, ots.id)
+            print(ots.info)
+            if level3:
+                if not lot_CC in ots.info:
+                    print("The energy of the structure at the level of theory %s is not calculated." %lot_CC)
+                    print("Skipping the reaction %d ..." %r.id)
+                    continue
+ 
+            for info in ots.info.split(";"):
+                if "ZPE" in info:
+                    ZPE = float(info.split("=")[-1])
+                if "M" in info:
+                    M = float(info.split("=")[-1])
+                    m_s = (M-1)/2
+                if lot_CC in info:
+                    CC_energy = float(info.split("=")[-1])
+            print("m_s = %.1f" %m_s)
+
+            ZPE_act_f +=  params["f_cor"]*ZPE
+            ZPE_act_r +=  params["f_cor"]*ZPE
+            if level3:
+                E_el_act_f += CC_energy
+                E_el_act_r += CC_energy
+                path = os.path.join(db_path,ots.path)
+                OT = refine_qm_turbomole.OptimizationTools(path)
+                HT = refine_qm_turbomole.Harvest(path)
+                # Rate constants from transition state theory
+                inum, imfreq = OT.check_imaginary_frequency()
+                lnQ_ts, T = HT.thermodynamics(f_cor=params["f_cor"], Tstart=Tstart, Tend=Tend, numT=numT, P=P)
+                #print('lnQ_educts',lnQ_educts, 'lnQ_ts', lnQ_ts, 'lnQ_products', lnQ_products)
+                print("--------------Forward reaction--------------")
+                # the forward rate constant
+                lnk_f, k_f_unit = HT.get_lnk(T, P, E_el_act_f/kjmol, imfreq[0], lnQ_educts, lnQ_ts, verbose=verbose)
+                print('units of k:', k_f_unit)
+                lnA0, n0, E0 = HT.get_p0(E_el_act_f, lnk_f, T)
+                popt_f, pcov = HT.fitArr(lnk_f, T, lnA0, n0, E0, verbose=verbose, k_unit = k_f_unit, title=title, subtitle='forward reaction rate constant')
+                print('Forward rxn : lnA, n, E = ', popt_f)
+                print("--------------Reverse reaction--------------")
+                # the reverse rate constant
+                lnk_r, k_r_unit = HT.get_lnk(T, P, E_el_act_r/kjmol, imfreq[0], lnQ_products, lnQ_ts, verbose=verbose)
+                print('units of k:', k_r_unit)
+                lnA0, n0, E0 = HT.get_p0(E_el_act_r, lnk_r, T)
+                popt_r, pcov = HT.fitArr(lnk_r, T, lnA0, n0, E0, verbose=verbose, k_unit = k_r_unit, title=title, subtitle='reverse reaction rate constant')
+                print('Reverse rxn : lnA, n, E = ', popt_r)
+            else:
+                E_el_act_f += ots.energy
+
+            print("--------------------------------------------")
+            print("E_act = %.1f kJ/mol, E_rxn = %.1f kJ/mol" %((E_el_act_f+ZPE_act_f)/kjmol, (E_el_rxn+ZPE_rxn)/kjmol))
+            print("============================================\n")
+
+        else:
+            print("Barrierless reaction:")
+            print("--------------------------------------------")
+            print("E_rxn = %.1f kJ/mol" %((E_el_rxn+ZPE_rxn)/kjmol))
+            print("============================================\n")
+

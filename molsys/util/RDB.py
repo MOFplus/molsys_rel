@@ -85,7 +85,7 @@ class RDB:
         dbstruc["opt_species"] = [
             "r:species",      # reference to species table 
             "r:lot",          # ref to lot
-            "d:energy",       # energy (in kcal/mol)
+            "d:energy",       # energy (in kcal/mol or Hartree)
             "u:xyz",          # upload xyz file
             "u:mfpx",         # upload mfpx file        
             "u:png",          # thumbnail
@@ -306,7 +306,7 @@ class RDB:
         
         mfpxf = io.BytesIO(bytes(mol.to_string(), "utf-8"))
         sumform = mol.get_sumformula()
-        if  mol.graph is None:
+        if  not hasattr(mol, "graph"):
            mol.addon("graph")
         mol.addon("obabel")
         mol.graph.make_graph()
@@ -444,7 +444,7 @@ class RDB:
         Args:
             mol (mol object): structure to be stored
             lot (string or int): name or id of the level of theory
-            energy (float): energy of the system (unit is defiend by lot)
+            energy (float): energy of the system (unit is defined by lot)
             mdspecID (int): reference id of the md_species entry
         """
         if type(lot) == type(""):
@@ -464,7 +464,7 @@ class RDB:
         )
         if self.do_commit:
             self.db.commit()
-        return
+        return optID
         
 
 ################################################################################################

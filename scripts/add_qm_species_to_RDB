@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+
+import os
+import sys
+import molsys
+import json
+from molsys.util import RDB
+from molsys.util import refine_qm_turbomole
+
+
+# input
+if len(sys.argv) < 3:
+    print ("usage:  add_qm_species_to_RDB <db_path> <dft_path> <level>")
+    exit()
+
+test = True
+
+db_path  = os.path.abspath(sys.argv[1])
+dft_path = os.path.abspath(sys.argv[2])
+level    = os.path.abspath(sys.argv[3])
+
+rdb = RDB.RDB(db_path)
+db = rdb.db
+ 
+
+dft_subdir_paths = []
+for path in os.listdir(dft_path):
+   dft_subdir_path = os.path.join(dft_path, path)
+   if os.path.isdir(dft_subdir_path):
+       dft_subdir_paths.append(dft_subdir_path)
+
+#TODO Check if the data is already added beforehand...
+for dft_subdir_path in dft_subdir_paths:
+
+
+    if 'level1' in level.lower():
+        f_json = os.path.join(dft_subdir_path,'r.json')
+        if os.path.isfile(f_json):
+             with open(f_json) as f:
+                 data = json.load(f)
+                 
+                 for rxn in data:
+                     r  = data[rxn]['reaction']
+
+                     # Register a new reaction
+                     origin = db(db.reactions.id == r['origin']).select().first()
+                     reaction = db((db.reactions.uni == r['uni']) & (db.reactions.change == r['change']) & (db.reactions.source == r['source']) & (db.reactions.origin == origin)).select().first()
+                     if reaction != None:
+                         opt_spec = data[rxn]['opt_spec']
+                         skip = True
+                         for i in opt_spec:
+                             spec_info = opt_spec[i]
+                             opt = db((db.opt_species.energy == spec_info['energy']) & (db.opt_species.info == spec_info['info'])).select().first() 
+                             if opt != None:
+                                 skip = skip and True
+                             else:
+                                 skip = skip and False
+                         if skip:
+                             print("Reaction %d originating from the reaction %d is already registered." %(reaction.id, origin.id))
+                         else:
+                             print("This is a new reaction originating from the reaction %d.!" %origin.id)
+                             reactID = rdb.register_reaction(uni = r['uni'], change = r['change'], source = r['source'], origin = origin)
+                             opt_spec = data[rxn]['opt_spec']
+                             for i in opt_spec:
+                                 spec_info = opt_spec[i]
+                                 abs_path = os.path.abspath(os.path.join(dft_subdir_path,spec_info['path']))
+                                 rel_path = os.path.relpath(abs_path, db_path)
+                                 GT = refine_qm_turbomole.GeneralTools(abs_path)
+                                 mol = GT.coord_to_mol()
+                                 # Add to the species table
+                                 specID, is_new = rdb.add_species(mol = mol)
+                                 # Add to the reac2spec table
+                                 reac2specID = rdb.add_reac2spec(reactID = reactID, specID = specID, itype = spec_info['itype'])
+                                 # Add to the opt_species table
+                                 rdb.add_opt_species(mol         = mol,
+                                                     specID      = specID, 
+                                                     lot         = spec_info['lot'], 
+                                                     energy      = spec_info['energy'], 
+                                                     path        = rel_path,
+                                                     change_molg = r['change'],
+                                                     rbonds      = None,
+                                                     info        = spec_info['info'])
+        else:
+            print("%s does not exist." %f_json)
+
+    elif 'level2' in level.lower():
+        f_json = os.path.join(dft_subdir_path,'ospec.json')
+        if os.path.isfile(f_json):
+             with open(f_json) as f:
+                 data = json.load(f)
+                 GT = refine_qm_turbomole.GeneralTools(dft_subdir_path)
+                 mol = GT.coord_to_mol()
+                 rel_path = os.path.relpath(dft_subdir_path, db_path)
+                 lotID = rdb.get_lot(data["lot"])
+                 ospec = db((db.opt_species.lotID == lotID) & (db.opt_species.speciesID == data['specID']) & (db.opt_species.energy == data['energy']) & (db.opt_species.path == rel_path) & (db.opt_species.info == data['info'])).select().first()
+                 if ospec != None:
+                     print("Optimized species %d from species %d is already registered." %(ospec.id, data['specID']))
+                 else:
+                     # Add to the opt_species table
+                     optID = rdb.add_opt_species(mol         = mol,
+                                                 specID      = data['specID'],
+                                                 lot         = data['lot'],
+                                                 energy      = data['energy'],
+                                                 path        = rel_path,
+                                                 change_molg = data['change_molg'],
+                                                 rbonds      = None,
+                                                 info        = data['info'])
+                     print("Optimized species %d from species %d is registered." %(int(optID), data['specID']))
+        else:
+            print("%s does not exist." %f_json)
+
+    elif 'level3' in level.lower():
+        f_json = os.path.join(dft_subdir_path,'ccsd.json')
+        if os.path.isfile(f_json):
+             with open(f_json) as f:
+                 data = json.load(f)
+                 ospec = db(db.opt_species.id == data['ospecID']).select().first()
+                 if data['info'] in ospec.info:
+                     print('Info of the optimized species %d  is already updated!' %data['ospecID'])
+                 else:
+                    ospec.info += data['info']
+                    ospec.update_record()
+                    db.commit()
+                    print("The record of the optimized species %d is updated." %data['ospecID'])
+        else:
+            print("%s does not exist." %f_json)
+
