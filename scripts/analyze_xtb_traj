@@ -48,6 +48,7 @@ while True:
 ftrj.close() 
 print(" I read %d frames" % len(frames) )
 
+
 fid = 1
 num_species_old = 0
 for frm in frames:
@@ -74,7 +75,14 @@ for frm in frames:
          print("Change in frame %i num_species %i" % (fid,nspecies_all))
       specs = {}
       # append the species
+      counter = 0
       for s in nspecies:
          specs[s] = species(fid, s, molg, make_graph=True, tracked=True)
+      for s in specs:
+         sp = specs[s]
+         m = sp.make_mol(xyz[list(sp.aids)], mol)
+         m.write("species/spec_" + str(counter) + "_in_frame" + str(fid) + ".xyz")
+         counter += 1
+
       fid += 1
 
