@@ -347,7 +347,7 @@ for r in reactions:
                 # transition state
                 ts_ref =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
                 path_ref_ts = get_opt_spec_path(ts_ref)
-                md_ts = db(db.md_species.speciesID == prod.speciesID).select().first()
+                md_ts = db(db.md_species.speciesID == ts_ref.speciesID).select().first()
                 atom_ids_dict['ts'] = md_ts.atomids
 
                 # Get the information on reactive bonds
