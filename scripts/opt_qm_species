@@ -322,13 +322,18 @@ for r in reactions:
             if "level1" in params["level"].lower():
 
                 # 1) Get the reference structures from the startLOT for the further optimizations
-
+                # and store the indices as of from MD simulation to extract the atoms which belong to educts or products from the TS structure
+                # (the latter is needed if woelfling calculation is necessary)
+ 
+                atom_ids_dict = {}
                 # educts
                 path_ref_educts = []
                 for i,ed in enumerate(reac2educt_spec):
                     ed_ref = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
                     mol_ed_ref = get_mol_from_opt_spec(ed_ref)
                     path_ref_educts.append(get_opt_spec_path(ed_ref))    
+                    md_ed = db(db.md_species.speciesID == ed.speciesID).select().first()
+                    atom_ids_dict['educt_%d' %(i+1)] = md_ed.atomids
 
                 # products
                 path_ref_products = []
@@ -336,22 +341,14 @@ for r in reactions:
                     prod_ref = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
                     mol_prod_ref = get_mol_from_opt_spec(prod_ref)
                     path_ref_products.append(get_opt_spec_path(prod_ref))
+                    md_prod = db(db.md_species.speciesID == prod.speciesID).select().first()
+                    atom_ids_dict['product_%d' %(i+1)] = md_prod.atomids
 
                 # transition state
                 ts_ref =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
                 path_ref_ts = get_opt_spec_path(ts_ref)
-
-                # store the indices as of from MD simulation to extract the atoms which belong to educts or products from the TS structure
-                # this is needed if woelfling calculation is necessary
-                revent    = db( db.revent.reactionsID == r.id ).select().first()
-                md_ed_species   = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == -1)& (db.md_species.react_compl == False)).select()
-                md_prod_species = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 1)& (db.md_species.react_compl == False)).select()
-                md_ts = db((db.md_species.reventID == revent.id) & (db.md_species.foffset == 0)).select().first()
-                atom_ids_dict = {'ts':md_ts.atomids}
-                for i,spec in enumerate(md_ed_species):
-                    atom_ids_dict['educt_%d' %(i+1)] = spec.atomids
-                for i,spec in enumerate(md_prod_species):
-                    atom_ids_dict['product_%d' %(i+1)] = spec.atomids
+                md_ts = db(db.md_species.speciesID == prod.speciesID).select().first()
+                atom_ids_dict['ts'] = md_ts.atomids
 
                 # Get the information on reactive bonds
                 rbonds = ts_ref["rbonds"]
