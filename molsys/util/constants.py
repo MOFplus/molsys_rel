@@ -11,7 +11,12 @@ mol = 6.0221415e23
 #
 bohr = 0.529177249 
 angstrom = 1.889726133921252 
- 
+
+#
+# Charge related things
+#
+coulomb = 1.0/1.602176462e-19
+
 #
 # Energy units
 #
