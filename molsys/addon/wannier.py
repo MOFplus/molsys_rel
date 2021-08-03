@@ -7,7 +7,7 @@ import copy
 import string
 
 from molsys.addon import base
-from molsys.util.units import debye, angstrom
+from molsys.util.constants import debye, angstrom
 
 eA2debye = 1./(debye/angstrom)
 

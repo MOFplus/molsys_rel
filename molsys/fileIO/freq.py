@@ -7,7 +7,7 @@ Read (and write?) molden .freq files
 
 import numpy
 import string
-from molsys.util.units import angstrom, kcalmol
+from molsys.util.constants import angstrom, kcalmol
 
 def read(mol, f):
     # missing docstring!
