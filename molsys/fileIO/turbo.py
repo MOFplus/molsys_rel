@@ -8,7 +8,7 @@ Created on Fri Jun  9 18:17:13 2017
 
 import numpy
 import string
-from molsys.util.units import angstrom, kcalmol
+from molsys.util.constants import angstrom, kcalmol
 
 def read(mol, f, gradient = False, trajectory=False, cycle = -1):
     ### read check ###

@@ -287,7 +287,8 @@ class species:
         """
         aids = list(self.aids) # in order to map backwards
         self.mol = molsys.mol.from_array(xyz)
-        self.mol.set_cell(pmol.get_cell())
+        if pmol.get_cell() is not None:
+            self.mol.set_cell(pmol.get_cell())
         self.mol.set_elems([pmol.elems[i] for i in aids])
         self.mol.set_real_mass()
         self.mol.center_com(check_periodic=False)

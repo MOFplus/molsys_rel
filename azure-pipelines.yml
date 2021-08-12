@@ -5,6 +5,7 @@
 
 trigger:
 - master
+- main
 
 # later we can think of a different pool for molsys
 pool: pylmps 
