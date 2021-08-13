@@ -27,6 +27,7 @@ class TimerDemo:
                time.sleep(1)
        
            self.wait(6) 
+           self.wait(6) 
        
        self.timer.report()
 

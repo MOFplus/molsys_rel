@@ -58,15 +58,16 @@ class Timer(object):
     def __init__(self, desc : str):
         self.desc = desc
         self.status = NOT_STARTED
-        self.children = []
+        self.children = {}
+        self.time_accum = 0 
         self.t1 = 0
         self.t2 = 0
 
     @property
     def elapsed(self):
         if self.status == RUNNING:
-            return time.time() - self.t1
-        return self.t2-self.t1
+            return self.time_accum + (time.time() - self.t1)
+        return self.time_accum + (self.t2-self.t1)
 
     def start(self):
         self.status = RUNNING
@@ -74,8 +75,14 @@ class Timer(object):
     
     def stop(self):
         self.t2 = time.time()
+        if self.status == RUNNING:
+           self.time_accum = time.time() - self.t1
         self.status = DONE
     
+    def reset(self):
+        self.time_accum = 0
+        self.t1 = 0
+        self.t2 = 0
 
     def __enter__(self):
         self.start()
@@ -124,16 +131,17 @@ class Timer(object):
         reps = []
 
         if self.children:
-            for ch in self.children:
+            for key,ch in self.children.items():
                 reps.append(ch._report())
         return {"status":self.status,"elapsed":self.elapsed,"desc":self.desc,"children":reps}
 
     def fork(self, desc : str):
         if self.status != RUNNING:
             raise RuntimeError("Unable to fork timer that is not running.")
-        new_timer = Timer(desc)
-        self.children.append(new_timer)
-        return new_timer
+        if not desc in self.children.keys():
+            new_timer = Timer(desc)
+            self.children[desc] = new_timer 
+        return self.children[desc] 
 
 
 class timer:
