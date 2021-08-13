@@ -28,6 +28,10 @@ class TimerDemo:
        
            self.wait(6) 
            self.wait(6) 
+ 
+       with self.timer('Monitor block of code'):
+           x = 2 + 2
+           time.sleep(4)
        
        self.timer.report()
 

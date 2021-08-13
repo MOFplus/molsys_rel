@@ -84,6 +84,20 @@ class Timer(object):
         self.t1 = 0
         self.t2 = 0
 
+    def __call__(self, name):
+        """Context manager for timing a block of code.
+
+        Example (tim is a timer object)::
+
+            with tim('Monitor block of code'):
+                x = 2 + 2
+        """
+        if not self.status == NOT_STARTED:
+            self.start()
+        new_timer = self.fork(name)
+        new_timer.start()
+        return self
+
     def __enter__(self):
         self.start()
         return self
