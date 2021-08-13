@@ -76,7 +76,9 @@ class Timer(object):
     def stop(self):
         self.t2 = time.time()
         if self.status == RUNNING:
-           self.time_accum = time.time() - self.t1
+           self.time_accum += time.time() - self.t1
+           self.t1 = 0
+           self.t2 = 0 
         self.status = DONE
     
     def reset(self):

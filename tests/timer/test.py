@@ -26,7 +26,7 @@ class TimerDemo:
            with mt.fork("sub timer 3") as subtimer3:
                time.sleep(1)
        
-           self.wait(6) 
+           self.wait(2) 
            self.wait(6) 
  
        with self.timer('Monitor block of code'):
