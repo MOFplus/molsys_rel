@@ -20,7 +20,15 @@
 #
 #########################################################################
 
+from __future__ import print_function
+
 import sys, time
+import functools
+
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 NOT_STARTED = 0
 RUNNING = 1
@@ -67,6 +75,7 @@ class Timer(object):
     def stop(self):
         self.t2 = time.time()
         self.status = DONE
+    
 
     def __enter__(self):
         self.start()
@@ -125,4 +134,37 @@ class Timer(object):
         new_timer = Timer(desc)
         self.children.append(new_timer)
         return new_timer
+
+
+class timer:
+    """Decorator for timing a method call.
+
+    Example::
+
+        from molsys.util.timer import timer, Timer
+
+        class X:
+            def __init__(self):
+                self.timer = Timer('name')
+
+            @timer('Add function')
+            def add(self, a, b):
+                return a + b
+
+        """
+    def __init__(self, name):
+        self.name = name
+
+    def __call__(self, method):
+        @functools.wraps(method)
+        def new_method(slf, *args, **kwargs):
+            newtimer = slf.timer.fork(self.name)
+            newtimer.start()
+            x = method(slf, *args, **kwargs)
+            try:
+                newtimer.stop()
+            except IndexError:
+                pass
+            return x
+        return new_method
 
