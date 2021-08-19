@@ -78,6 +78,12 @@ class systre_db:
             print("""
             WARNING: the file %s
             is not available. Please link it into the molsys/util directory.
+
+            To get rid of this annoying warning message just du the following:
+            - go to your molsys installation directory
+            - cd molsys/util
+            - wget wget http://rcsr.anu.edu.au/downloads/RCSRnets-2019-06-01.arc
+            - ln -s RCSRnets-2019-06-01.arc RCSR.arc
             """ % self.arc_file)
         return
 
@@ -164,6 +170,23 @@ class lqg:
                 pass
         print ("ERROR: edge %s %s not found" % (str(e), str(l)))
         return None
+
+    def get_edge_index_nolab(self, e, incr=0):
+        """same as above but without labels
+
+        check if the edges are sufficient .. otherwise fail
+
+        Args:
+            e (list of int): vertex indices
+            incr (int, optional): increment. Defaults to 0.
+        """
+        sign = 1
+        if e[0] > e[1]:
+            sign = -1
+            e.reverse()
+        assert self.edges.count(e) == 1
+        i = self.edges.index(e)
+        return sign*(i+incr)
 
     def get_systrekey(self):
         """run javascript systrekey
