@@ -55,7 +55,9 @@ class GeneralTools:
         err_path = os.path.join(self.path, "errormessage")
 
         # 1. invoke define
-        os.system('define < %s > %s 2> %s' %(define_in_path, out_path, err_path))
+        # TODO
+        os.system('/home/oyoender/bin/define-V7-6 < %s > %s 2> %s' %(define_in_path, out_path, err_path))
+        #os.system('define < %s > %s 2> %s' %(define_in_path, out_path, err_path))
 
         # 2. check if define was succesful
         with open(err_path) as err:
@@ -489,7 +491,7 @@ class GeneralTools:
         return
 
 
-    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot, genprep = 0, scf_dsta = 1.0, fermi = True, nue = False):
+    def make_tmole_dft_input(self, elems, xyz, M, max_mem, title, lot, genprep = 0, scf_dsta = 1.0, fermi = True, nue = False, new_ired = True):
         """Creates a tmole input called 'turbo.in' with c1 symmetry.
 
         Args:
@@ -503,6 +505,7 @@ class GeneralTools:
             scf_dsta: start value for the SCF damping.
             fermi   : Boolean for Fermi smearing
             nue     : To perform Fermi smearing with a restricted multiplicity, look at the Turbomole manual for further details
+            new_ired: To use the new version of the redundant coordinates code
         """
         turbo_in_path = os.path.join(self.path,"turbo.in")
         c = xyz*angstrom
@@ -519,6 +522,9 @@ class GeneralTools:
                     (c[i,0],c[i,1], c[i,2], elems[i]))
         f.write("%add_control_commands\n")
         f.write("$disp3\n")
+        if new_ired:
+            f.write('$redund_inp\n')
+            f.write('   new_version=1\n')
         if fermi:
             if nue:
                 f.write("$fermi tmstrt=300.00 tmend= 50.00 tmfac=0.900 hlcrt=1.0E-01 stop=1.0E-03 nue=%d\n" %M)
@@ -1336,7 +1342,7 @@ class OptimizationTools:
 
             # 3. If SCF did not converge, increase the SCF start damping to 2.0 instead of 1.0.
             if not converged:
-                print('The SCF calculation for Fermi smearing with start damping 1.0 did not converge. Increasing it to 2.0.' )
+                print('WARNING! The SCF calculation for Fermi smearing with start damping 1.0 did not converge. Increasing it to 2.0.' )
                 for f in os.listdir(self.path):
                     os.remove(os.path.join(self.path,f))
                 GT.make_tmole_dft_input(
@@ -1352,16 +1358,45 @@ class OptimizationTools:
                 GT.run_tmole()
                 converged = GT.check_scf_converged()
                 if not converged:
-                    print('The SCF calculation with Fermi smearing did not converge also with start damping 2.0.')
-                    sys.exit()
-                else:
-                    print('The SCF calculation converged with start damping 2.0. Decreasing it back to 1.0 and re-performing the SCF calculation.')
-                    GT.change_dsta_to(1.0)
-                    energy = GT.ridft()
+                    print('WARNING! The SCF calculation for Fermi smearing with start damping 2.0 did not converge. Increasing it to 10.0.' )
+                    for f in os.listdir(self.path):
+                        os.remove(os.path.join(self.path,f))
+                    GT.make_tmole_dft_input(
+                            elems = mol.elems,
+                            xyz = xyz,
+                            M = M_start,
+                            max_mem = self.max_mem,
+                            title = title,
+                            lot = self.lot,
+                            scf_dsta = 10.0, # SCF start damping
+                            fermi = True, # True for Fermi smearing 
+                            nue = False) # True to enforce a multiplicity in the Fermi smearing
+                    GT.run_tmole()
                     converged = GT.check_scf_converged()
                     if not converged:
-                        print('The SCF calculation with start damping 1.0 did not converge.')
+                        print('The SCF calculation with Fermi smearing did not converge also with start damping 10.0.')
                         sys.exit()
+                    else:
+                        # decrease the start damping to 2.0
+                        print('The SCF calculation converged with start damping 10.0. Removing Fermi option, decreasing SCF start damping to 2.0 and re-performing the SCF calculation.')
+                        GT.kdg("fermi")
+                        GT.change_dsta_to(2.0)
+                        GT.ridft()
+                        converged = GT.check_scf_converged()
+                        if not converged:
+                            print('The SCF calculation with start damping 2.0 did not converge.')
+                            sys.exit()
+                else:
+                    print('The SCF calculation converged with start damping 2.0. Removing Fermi option (if not removed yet).')
+                    GT.kdg("fermi")
+                # decrease the start damping to 1.0
+                print('Decreasing SCF start damping to 1.0 and re-performing the SCF calculation.')
+                GT.change_dsta_to(1.0)
+                energy = GT.ridft()
+                converged = GT.check_scf_converged()
+                if not converged:
+                    print('The SCF calculation with start damping 1.0 did not converge.')
+                    sys.exit()
 
             # 4. Remove the data group $fermi from the control file
             GT.kdg("fermi")
@@ -1723,15 +1758,29 @@ class OptimizationTools:
         mol_ts.detect_conn_by_bo()
 
         # 2. Loop over the equilibrium species
+        mols_opt = []
         for n in range(1, n_eq+1):
-           print('\n================')
-           print('    %s_%d' %(label,n))
-           print('================')
            # a) Create a mol object of the DFT optimized species
            path_opt = os.path.join(QM_path,"%s_%d" %(label,n))
            mol_opt = GeneralTools(path_opt).coord_to_mol()
            mol_opt.detect_conn_by_bo()
+           mols_opt.append(mol_opt)
+
+        ns = [1,2]
+        if len(mols_opt[0].elems) < len(mols_opt[1].elems):
+           mols_opt[0],mols_opt[1] = mols_opt[1],mols_opt[0]
+           ns = [2,1]
+
+        print(mols_opt)
+
+        i_mol = 0
+        for n, mol_opt in zip(ns,mols_opt):
+           i_mol += 1
+           print('\n================')
+           print('    %s_%d' %(label,n))
+           print('================')
            natoms = len(mol_opt.elems)
+           print('natoms',natoms)
 
            # 3. Get the matching indices
            ratom, rbond_btw, vts2vopt = self._match_wrt_ts(mol_opt, mol_ts, label, n, rbonds, atom_ids_dict)
@@ -1742,11 +1791,11 @@ class OptimizationTools:
                vopt2vts[vopt] = vts
                iopt2its[vopt+1] = vts+1
 
-           if n == 1: vts2vopt_1 = vts2vopt
+           if i_mol == 1: vts2vopt_1 = vts2vopt
 
            # 4. Make the Z-matrix of the optimized species
            # 1st species
-           if n == 1:
+           if i_mol == 1:
                # 5.a) Build construction table for the 1st species
                xyz_1 = zmat(mol_opt).to_Cartesian()
                # b) Form the Z-matrix of the 1st species (to replace the internal coordinates later)
@@ -1759,7 +1808,7 @@ class OptimizationTools:
                print('zmat_opt_1',zmat_opt_1)
 
            #  2nd species
-           elif n == 2:
+           elif i_mol == 2:
                # 5.a) Build the construction table for the 2nd species
                xyz_2 = zmat(mol_opt).to_Cartesian()
                const_table_2 = xyz_2.get_construction_table()
@@ -1805,13 +1854,17 @@ class OptimizationTools:
                for i in mol_ts.conn[ratom_on_mol1]:
                     # check if the connected one is a terminal atom, because if so, assigning the atom which will define the dihedral is difficult...
                     terminal_atom = False
+                    print('i',i)
+                    print('mol_ts.conn', mol_ts.conn)
+                    print('mol_ts.conn[i]',mol_ts.conn[i])
                     if len(mol_ts.conn[i]) == 1: terminal_atom = True 
+                    print(terminal_atom)
                     if i != ratom_on_mol1  and i != ratom and not terminal_atom: 
                         a = i
                try:
-                   const_table.loc[ratom+1,'a'] = a + 1
+                    const_table.loc[ratom+1,'a'] = a + 1
                except:
-                    print('The connected atom to the reacting atom %d different than the other reacting atom %d, and which is not a terminal atom could not be assigned.' %(ratom_on_mol1, ratom))
+                    print('The connected atom to the reacting atom %d different than the other reacting atom %d, and which is not a terminal atom could not be assigned.' %(ratom_on_mol1+1, ratom+1))
                     sys.exit()
               
                # DIHEDRAL:
@@ -1821,7 +1874,7 @@ class OptimizationTools:
                try:
                     const_table.loc[ratom+1,'d'] = d + 1
                except:
-                    print('The connected atom to the atom %d, different than the reactive atom %d could not be assigned.' %(a,ratom))
+                    print('The connected atom to the atom %d, different than the reactive atom %d could not be assigned.' %(a+1,ratom+1))
                     sys.exit()
 
                # 2nd atom of the 2nd molecule
@@ -2176,7 +2229,8 @@ class OptimizationTools:
         if not os.path.isdir(woelfling_path):
             os.mkdir(woelfling_path)
         os.chdir(woelfling_path)
-        os.system('woelfling-job -ri > woelfling.out')
+        # TODO Change back to the global woelfling-job script later
+        os.system('/home/oyoender/woelfling-job -ri > woelfling.out')
         with open('woelfling.out') as out:
             for line in out:
                 if 'dscf_problem' in line or 'scf energy ended abnormally' in line:
@@ -3064,18 +3118,18 @@ class OptimizationTools:
         f2.close()
         return
 
-    def get_csos(self, path_proper="/home/oyoender/programs/proper"):
+    def get_csos(self, proper_path="/home/haettig/bin/proper_csos"):
         os.chdir(self.path)
         f = open("proper.in", "w")
         f.write("mos\ncsos symao\nq")
         f.close()
-        os.system("%s < proper.in" %path_proper)
+        os.system("%s < proper.in" %proper_path)
         os.remove("proper.in")
         os.chdir(self.maindir)
         return
         
 
-    def refine_ccsd(self, ospecID, pnoccsd="", proper_path="/home/oyoender/programs/proper"):
+    def refine_ccsd(self, ospecID, pnoccsd="", proper_path="/home/haettig/bin/proper_csos"):
         # 1. Get the model and basis set from level of theory (self.lot)
         # example formats for lot:
         # "PNO-ROHF-CCSD(T)(F12*)/cc-pVTZ" -> Uses pnoccsd code
@@ -3153,7 +3207,8 @@ class OptimizationTools:
             mo_file = os.path.join(ccsd_path,"mos")
             os.remove(mo_file)
             # / get the corresponding spin orbitals
-            OT_tmp.get_csos(proper_path)
+            OT_tmp.get_csos()
+            print(GT_ref.nalpha, GT_ref.nbeta)
             # / copy the blown up alpha or beta mo file to mos
             if GT_ref.nalpha >= GT_ref.nbeta:
                 ref_mo_file = os.path.join(tmp_path,"cso_alpha")
@@ -3166,7 +3221,7 @@ class OptimizationTools:
                 #ref_mo_file = os.path.join(tmp_path,"beta")
                 #self.replace_uhfmo_xxx_with_scfmo("beta", ref_mo_file, mo_file)            
             # / remove the tmp directory
-            shutil.rmtree(tmp_path)
+            #shutil.rmtree(tmp_path)
         else:
             # Start with the DFT orbitals
             os.system("cpc %s" %dir_name)
@@ -3233,7 +3288,7 @@ class OptimizationTools:
         self._clean_ccsd(ccsd_path)
 
         # 4. Write the json file to later add to the database
-        energy = GT.get_ccsd_energy(F12=F12, Tstar=Tstar, model=model, ccsd_out_name=ccsd_out_name, nel = mol.get_n_el())
+        energy = GT.get_ccsd_energy(F12=F12, Tstar=Tstar, model=model, ccsd_out_name=ccsd_out_name, n_el = mol.get_n_el())
         info_dict = {}
         info_dict["ospecID"] = ospecID
         info_dict["info"] = "E(%s)=%5.10f;" %(self.lot, energy)

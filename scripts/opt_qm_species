@@ -276,10 +276,12 @@ print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 db = rdb.db
 md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
 
-
 reactions = db(db.reactions).select() 
+print(reactions)
 if "reaction_origin" in params:
     reactions = reactions.find(lambda row: row.origin in params["reaction_origin"])
+for r in reactions:
+    print('r',r)
 
 start_lotID = rdb.get_lot(start_lot)
 
