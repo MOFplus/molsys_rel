@@ -720,9 +720,9 @@ class GeneralTools:
              Returns:
                  is_similar: True/False
          """
-         xyz_1 = os.path.join(self.path,'mol_1.xyz')
+         xyz_1 = 'mol_1.xyz'
          mol_1.write(xyz_1)
-         xyz_2 = os.path.join(self.path,'mol_2.xyz')
+         xyz_2 = 'mol_2.xyz'
          mol_2.write(xyz_2)
          is_similar = self.similaritycheck_from_xyz(xyz_1, xyz_2)
          os.remove(xyz_1)

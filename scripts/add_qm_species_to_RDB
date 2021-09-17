@@ -65,7 +65,6 @@ for dft_subdir_path in dft_subdir_paths:
                      if skip:
                          print("Reaction %d originating from the reaction %d is already registered." %(reaction.id, origin.id))
                      else:
-                         print("This is a new reaction originating from the reaction %d." %origin.id)
                          reactID = rdb.register_reaction(uni = r['uni'], change = r['change'], source = r['source'], origin = origin)
                          opt_spec = data[rxn]['opt_spec']
                          for i in opt_spec:
@@ -74,19 +73,38 @@ for dft_subdir_path in dft_subdir_paths:
                              rel_path = os.path.relpath(abs_path, db_path)
                              GT = refine_qm_turbomole.GeneralTools(abs_path)
                              mol = GT.coord_to_mol()
-                             # Add to the species table
-                             specID, is_new = rdb.add_species(mol = mol)
-                             # Add to the reac2spec table
-                             reac2specID = rdb.add_reac2spec(reactID = reactID, specID = specID, itype = spec_info['itype'])
-                             # Add to the opt_species table
-                             rdb.add_opt_species(mol         = mol,
-                                                 specID      = specID, 
-                                                 lot         = spec_info['lot'], 
-                                                 energy      = spec_info['energy'], 
-                                                 path        = rel_path,
-                                                 change_molg = r['change'],
-                                                 rbonds      = None,
-                                                 info        = spec_info['info'])
+                             # Check if the optimized species is already in the database
+                             en_tol = 0.001 # tolerance of comparison in Hartree
+                             lotID = db(db.lot.name == spec_info['lot']).select().first()
+                             comp = db(((db.opt_species.energy <= spec_info['energy'] + en_tol) & (db.opt_species.energy >= spec_info['energy'] - en_tol)) & (db.opt_species.lotID == lotID)).select()
+                             similar = False
+                             for m in comp:
+                                 fname, mfpxf = db.md_species.mfpx.retrieve(m.mfpx)
+                                 mfpxs = mfpxf.read().decode('utf-8')
+                                 mfpxf.close()
+                                 mol_comp = molsys.mol.from_string(mfpxs)
+                                 similar = GT.similaritycheck_from_mol(mol_comp, mol)
+                             # if they are similar update the reac2spec information and do not add to the opt_species table:
+                             if similar:
+                                 if specID != m.speciesID:
+                                     # Add to the reac2spec table
+                                     print("The species %d is the same as the species %d otimised at lot %s. Therefore, only the species id will be updated from %d to %d!" %(specID, m.speciesID, spec_info['lot'], specID, m.speciesID))
+                                     reac2specID = rdb.add_reac2spec(reactID = reactID, specID = m.speciesID, itype = spec_info['itype'])
+                             # if they are not similar add to the reac2spec and to the opt_species table:
+                             else:
+                                 # Add to the species table
+                                 specID, is_new = rdb.add_species(mol = mol)
+                                 # Add to the reac2spec table
+                                 reac2specID = rdb.add_reac2spec(reactID = reactID, specID = specID, itype = spec_info['itype'])
+                                 # Add to the opt_species table
+                                 rdb.add_opt_species(mol         = mol,
+                                                     specID      = specID, 
+                                                     lot         = spec_info['lot'], 
+                                                     energy      = spec_info['energy'], 
+                                                     path        = rel_path,
+                                                     change_molg = r['change'],
+                                                     rbonds      = None,
+                                                     info        = spec_info['info'])
         else:
             print("%s does not exist." %f_json)
 
