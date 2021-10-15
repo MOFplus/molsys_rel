@@ -47,25 +47,66 @@ for dft_subdir_path in dft_subdir_paths:
                      # Register a new reaction
                      origin = db(db.reactions.id == r['origin']).select().first()
                      
-                     # First check if the reaction might have already been registered
-                     reaction = db((db.reactions.uni == r['uni']) & (db.reactions.change == r['change']) & (db.reactions.source == r['source']) & (db.reactions.origin == origin)).select().first()
+                     # 1) First check if the reaction might have already been registered
+                     # 1.1) select the reactions which have the same source and origin
+                     r_comps = db((db.reactions.uni == r['uni']) & (db.reactions.change == r['change']) & (db.reactions.source == r['source']) & (db.reactions.origin == origin)).select()
+                     # 1.2) now compare for each of these reactions if the educt and product species are already registered.
                      skip = False
-                     if reaction != None:
-                         opt_spec = data[rxn]['opt_spec']
-                         skip = True
+                     if r_comps != None:
+                         opt_spec = data[rxn]['opt_spec'] # the opt_spec indices from the r.json file
+                         lotID = db(db.lot.name == opt_spec['0']['lot']).select().first()
+                         mols_ed = []
+                         mols_prod = []
                          for i in opt_spec:
                              spec_info = opt_spec[i]
-                             opt = db((db.opt_species.energy == spec_info['energy']) & (db.opt_species.info == spec_info['info'])).select().first() 
-                             if opt != None:
-                                 skip = skip and True
-                             else:
-                                 skip = skip and False
+                             abs_path = os.path.abspath(os.path.join(dft_subdir_path,spec_info['path']))
+                             rel_path = os.path.relpath(abs_path, db_path)
+                             GT = refine_qm_turbomole.GeneralTools(abs_path)
+                             mol = GT.coord_to_mol()
+                             if spec_info['itype']  == -1:
+                                 mols_ed.append(mol)
+                             elif spec_info['itype'] == 1:
+                                 mols_prod.append(mol)                                 
+                         for r_comp in r_comps:
+                             r_comp_species = db(db.reac2spec.reactionsID == r_comp.id).select()
+                             mols_ed_comp = []
+                             mols_prod_comp = []
+                             for comp_spec in r_comp_species:
+                                 opt_comp = db((db.opt_species.speciesID == comp_spec.speciesID) & (db.opt_species.lotID == lotID)).select().first()
+                                 fname, mfpxf = db.md_species.mfpx.retrieve(opt_comp.mfpx)
+                                 mfpxs = mfpxf.read().decode('utf-8')
+                                 mfpxf.close()
+                                 mol_comp = molsys.mol.from_string(mfpxs)
+                                 if comp_spec.label  == -1:
+                                     mols_ed_comp.append(mol_comp)
+                                 elif comp_spec.label == 1:
+                                     mols_prod_comp.append(mol_comp)
+                             OT = refine_qm_turbomole.OptimizationTools()
+                             similar, m, idxd = OT.check_end_points(mols_ed_comp, mols_prod_comp, mols_ed, mols_prod, mode='similaritycheck')
+                             # Double check if the same rxn is really not registered:
+                             if not similar:
+                                 opt_specs = data[rxn]['opt_spec']
+                                 exists = True
+                                 for i in opt_specs:
+                                     spec_info = opt_specs[i]
+                                     opt = db((db.opt_species.energy == spec_info['energy']) & (db.opt_species.info == spec_info['info'])).select().first()
+                                     if opt != None:
+                                         exists = exists and True
+                                     else:
+                                         exists = exists and False
+                             skip = similar or False
+                             if not skip and exists:
+                                 print('Ups! Something went wrong with the comparison. It seems like the reaction %d from reaction origin %d is already registered, but the comparison says that it is a new reaction.' %(r_comp.id, r_comp.origin))
+                             if similar: reaction = r_comp
 
-                     # If not then add to the DB
+                     # 2) If not then add to the DB
                      if skip:
-                         print("Reaction %d originating from the reaction %d is already registered." %(reaction.id, origin.id))
+                             print("Reaction %d is already registered." %(reaction.id))
                      else:
+                         # 2.1) register the reaction
                          reactID = rdb.register_reaction(uni = r['uni'], change = r['change'], source = r['source'], origin = origin)
+
+                         # 2.2) check if any of the species are already in the database
                          opt_spec = data[rxn]['opt_spec']
                          for i in opt_spec:
                              spec_info = opt_spec[i]
@@ -84,13 +125,12 @@ for dft_subdir_path in dft_subdir_paths:
                                  mfpxf.close()
                                  mol_comp = molsys.mol.from_string(mfpxs)
                                  similar = GT.similaritycheck_from_mol(mol_comp, mol)
-                             # if they are similar update the reac2spec information and do not add to the opt_species table:
+                             # 2.2.1) if they are similar update the reac2spec information and do not add to the opt_species table:
                              if similar:
-                                 if specID != m.speciesID:
-                                     # Add to the reac2spec table
-                                     print("The species %d is the same as the species %d otimised at lot %s. Therefore, only the species id will be updated from %d to %d!" %(specID, m.speciesID, spec_info['lot'], specID, m.speciesID))
-                                     reac2specID = rdb.add_reac2spec(reactID = reactID, specID = m.speciesID, itype = spec_info['itype'])
-                             # if they are not similar add to the reac2spec and to the opt_species table:
+                                 # Add to the reac2spec table
+                                 print("The optimised species is the same as the species %d optimised at lot %s. Therefore, only the species %d will be added to the reac2spec table!" %(m.speciesID, spec_info['lot'], m.speciesID))
+                                 reac2specID = rdb.add_reac2spec(reactID = reactID, specID = m.speciesID, itype = spec_info['itype'])
+                             # 2.2.2) if they are not similar add to the reac2spec and to the opt_species table:
                              else:
                                  # Add to the species table
                                  specID, is_new = rdb.add_species(mol = mol)
@@ -117,7 +157,7 @@ for dft_subdir_path in dft_subdir_paths:
                  mol = GT.coord_to_mol()
                  rel_path = os.path.relpath(dft_subdir_path, db_path)
                  lotID = rdb.get_lot(data["lot"])
-                 ospec = db((db.opt_species.lotID == lotID) & (db.opt_species.speciesID == data['specID']) & (db.opt_species.energy == data['energy']) & (db.opt_species.path == rel_path) & (db.opt_species.info == data['info'])).select().first()
+                 ospec = db((db.opt_species.lotID == lotID) & (db.opt_species.speciesID == data['specID']) & (db.opt_species.energy == data['energy']) & (db.opt_species.path == rel_path) & (data['info'] in db.opt_species.info)).select().first()
                  if ospec != None:
                      print("Optimized species %d from species %d is already registered." %(ospec.id, data['specID']))
                  else:

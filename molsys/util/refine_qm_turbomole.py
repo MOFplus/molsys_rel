@@ -2072,7 +2072,7 @@ class OptimizationTools:
         return mols_similar, index_dict
 
 
-    def _check_end_points(self, mols_minus, mols_plus, mols_ed, mols_prod, mode = 'mg'):
+    def check_end_points(self, mols_minus, mols_plus, mols_ed, mols_prod, mode = 'mg'):
         """
         Compares the molecular graphs of the output of the IRC calculation to those of reference structures.
         Basically this is used to check if the molecular graph of the reaction has changed or not.
@@ -2538,7 +2538,7 @@ class OptimizationTools:
                   irc_mols['plus' ], irc_path['plus' ] = OT.find_end_point_from_IRC(displaced = 'plus') 
 
                   # 7. Compare the end points with the educts and products
-                  is_similar, match, index_dict = OT._check_end_points(irc_mols['minus'], irc_mols['plus'], mols_ed_QM_ref, mols_prod_QM_ref, mode = mode)
+                  is_similar, match, index_dict = OT.check_end_points(irc_mols['minus'], irc_mols['plus'], mols_ed_QM_ref, mols_prod_QM_ref, mode = mode)
 
                   if not is_similar: reason += "This transition state does not connect the reference educts and products."
 

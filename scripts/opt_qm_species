@@ -238,16 +238,18 @@ assert os.path.isfile(cmd_file), "command file exists!"
 # read param set. Examples are:
 # ------------------------------
 # DFT could look like
-#params = { "calculator"        : "turbomole"
-#         , "level"             : "level1:DFT" or "level2:DFT" or "level3:PNO-CCSD"
-#         , "lot"               : "ri-utpss/SVP"
-#         , "max_mem"           : 3000
-#         , "submit"            : True
-#         , "turbodir"          : "/opt/software/user-soft/turbomole/75"
-#         , "ntasks"            : 8
-#         , "maxnodes"          : 4
-#         , "partition"         : "normal"
-#         , "gcart"             : 4
+#params = { "calculator"             : "turbomole"
+#         , "level"                  : "level1:DFT" or "level2:DFT" or "level3:PNO-CCSD"
+#         , "lot"                    : "ri-utpss/SVP"
+#         , "max_mem"                : 3000
+#         , "submit"                 : True
+#         , "turbodir"               : "/opt/software/user-soft/turbomole/75"
+#         , "ntasks"                 : 8
+#         , "maxnodes"               : 4
+#         , "partition"              : "normal"
+#         , "gcart"                  : 4
+#         , "skip_barrierless"       : True
+#         , "skip_uni_no_mg_change" : True
 #         }
 
 file = open(cmd_file, "r")
@@ -266,7 +268,10 @@ if "level3" in params["level"]:
         params["pnoccsd"] = ""
 if params["calculator"] == "turbomole":
     calculator = turbomole_calculator(params = params, db_path = db_path)
-
+if "skip_barrierless" not in params:
+    params["skip_barrierless"] = True
+if "skip_uni_no_mg_change" not in params:
+    params["skip_uni_no_mg_change"] = True
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
@@ -299,6 +304,7 @@ path_ref_ts       : string : the mfpx path of the TS from the start LOT
 path_ed_complex   : string : the mfpx path of the educt complex from MD for non-unimolecular rxns
 path_prod_complex : string : the mfpx path of the product complex from MD for non-unimolecular rxns
 '''
+ospec_list = []
 for r in reactions:
     if r.id != 1:
         # get all species for this reaction
@@ -402,11 +408,11 @@ for r in reactions:
             ########################################################
             elif "level3" in params["level"].lower():
                 if r.origin != None:
-                    if reac2ts_spec == None:
+                    if reac2ts_spec == None and params["skip_barrierless"]:
                         print("Barrierless reaction %d from reaction origin %d. Skipped..." %(r.id, r.origin))
                         continue
 
-                    if n_ed == n_prod and n_ed == 1:
+                    if n_ed == n_prod and n_ed == 1 and params["skip_uni_no_mg_change"]:
                         ed_spec = reac2educt_spec.first()
                         oed = db((db.opt_species.speciesID == ed_spec.speciesID) & (db.opt_species.lotID == start_lotID)).select().first()
                         if oed != None:
@@ -425,12 +431,13 @@ for r in reactions:
                     specID = r2s["speciesID"]
                     ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
                     #if ospec == None:
-                    #   print("The species %d is NOT optimized with lot=%s" %(specID,start_lot))
-                    if ospec != None:
+                    #   print("Check if the species %d is optimized with lot=%s" %(specID,start_lot))
+                    if ospec != None and ospec.id not in ospec_list and "E(%s)" %params["lot"] not in ospec.info:
                         #print("The species %d is optimized with lot=%s" %(specID,start_lot))
                         if params["calculator"] == "turbomole":
                             jobid = calculator.refine_level3(ospecID = ospec.id, dft_subdir_path = os.path.join(db_path,ospec.path))
                             jobids.append(jobid)
+                            ospec_list.append(ospec.id)
 
             ncurjobs, curjobids = get_ncurjobs(jobids)
         else:

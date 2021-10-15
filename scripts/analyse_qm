@@ -101,6 +101,11 @@ if "verbose" in params:
     verbose=params["verbose"]
 else:
     verbose=False
+if "only_SPE" in params:
+    only_SPE = params["only_SPE"]
+else:
+    only_SPE=False
+
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
 db = rdb.db
@@ -157,7 +162,8 @@ for r in reactions:
         # EDUCTS
         path_ref_educts = []
         lnQ_educts = []
-        print("educt specID, ospecID:")
+        print("  EDUCTS  ")
+        print("----------")
         for i,ed in enumerate(reac2educt_spec):
             oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
             if oed == None:
@@ -165,8 +171,9 @@ for r in reactions:
                 print("Skipping the reaction %d ..." %r.id)
                 skip = True
                 break
-            print(ed.id, oed.id)
+            print("%d:\nspecID = %d;\nospecID = %d;" %(i+1,ed.speciesID, oed.id))
             print(oed.info)
+            print("E(%s) = %f H;" %(params["lot"],oed.energy))
             if level3:
                 if not lot_CC in oed.info:
                     print("The energy of the structure at the level of theory %s is not calculated." %lot_CC)
@@ -175,13 +182,16 @@ for r in reactions:
                     break
             CC_energy = 0.0
             for info in oed.info.split(";"):
-                if "ZPE" in info:
+                if "ZPE" in info and not only_SPE:
                     ZPE = float(info.split("=")[-1])
+                else:
+                    ZPE = 0.0
                 if "M" in info:
                     M = float(info.split("=")[-1])
                     m_s = (M-1)/2
-                if lot_CC in info:
-                    CC_energy = float(info.split("=")[-1])
+                if level3:
+                    if lot_CC in info:
+                        CC_energy = float(info.split("=")[-1])
             print("m_s = %.1f" %m_s)
             ZPE_rxn   -= params["f_cor"]*ZPE
             ZPE_act_f -= params["f_cor"]*ZPE
@@ -200,7 +210,9 @@ for r in reactions:
         # PRODUCTS
         path_ref_products = []
         lnQ_products = []
-        print("product specID, ospecID:")
+        print("----------")
+        print(" PRODUCTS ")
+        print("----------")
         for i,prod in enumerate(reac2prod_spec):
             oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
             if oprod == None:
@@ -208,8 +220,9 @@ for r in reactions:
                 print("Skipping the reaction %d ..." %r.id)
                 skip = True
                 break
-            print(prod.id, oprod.id)
+            print("%d:\nspecID = %d;\nospecID = %d;" %(i+1,prod.speciesID, oprod.id))
             print(oprod.info)
+            print("E(%s) = %f H;" %(params["lot"],oprod.energy))
             if level3:
                 if not lot_CC in oprod.info:
                     print("The energy of the structure at the level of theory %s is not calculated." %lot_CC)
@@ -218,13 +231,16 @@ for r in reactions:
                     break
  
             for info in oprod.info.split(";"):
-                if "ZPE" in info:
+                if "ZPE" in info and not only_SPE:
                     ZPE = float(info.split("=")[-1])
+                else:
+                    ZPE = 0.0
                 if "M" in info:                
                     M = float(info.split("=")[-1])
                     m_s = (M-1)/2
-                if lot_CC in info:
-                    CC_energy = float(info.split("=")[-1])
+                if level3:
+                    if lot_CC in info:
+                        CC_energy = float(info.split("=")[-1])
             print("m_s = %.1f" %m_s)
 
             ZPE_rxn  += params["f_cor"]*ZPE
@@ -238,19 +254,25 @@ for r in reactions:
                 lnQ_products.append(lnQ_prod)
             else:
                 E_el_rxn += oprod.energy
+                E_el_act_r -= oprod.energy
+
 
         if skip: continue
 
         # TRANSITION STATE
-        if reac2ts_spec != None:            
-            print("TS specID, ospecID:")
+        if reac2ts_spec != None:
+            print('Barrierless?', r)  
+            print("----------")          
+            print("    TS    ")
+            print("----------")
             ots =  db((db.opt_species.speciesID == reac2ts_spec.speciesID) & (db.opt_species.lotID == lotID)).select().first()
             if ots == None:
                 print("The transition state species %d is not optimized with %s according to the database entries!" %(reac2ts_spec.speciesID,params["lot"]))
                 print("Skipping the reaction %d ..." %r.id)
                 continue
-            print(reac2ts_spec.id, ots.id)
+            print("specID = %d;\nospecID = %d;" %(reac2ts_spec.speciesID, ots.id))
             print(ots.info)
+            print("E(%s) = %f H;" %(params["lot"],ots.energy))
             if level3:
                 if not lot_CC in ots.info:
                     print("The energy of the structure at the level of theory %s is not calculated." %lot_CC)
@@ -258,13 +280,16 @@ for r in reactions:
                     continue
  
             for info in ots.info.split(";"):
-                if "ZPE" in info:
+                if "ZPE" in info and not only_SPE:
                     ZPE = float(info.split("=")[-1])
+                else:
+                    ZPE = 0.0
                 if "M" in info:
                     M = float(info.split("=")[-1])
                     m_s = (M-1)/2
-                if lot_CC in info:
-                    CC_energy = float(info.split("=")[-1])
+                if level3:
+                    if lot_CC in info:
+                        CC_energy = float(info.split("=")[-1])
             print("m_s = %.1f" %m_s)
 
             ZPE_act_f +=  params["f_cor"]*ZPE
@@ -295,9 +320,11 @@ for r in reactions:
                 print('Reverse rxn : lnA, n, E = ', popt_r)
             else:
                 E_el_act_f += ots.energy
+                E_el_act_r += ots.energy
 
             print("--------------------------------------------")
-            print("E_act = %.1f kJ/mol, E_rxn = %.1f kJ/mol" %((E_el_act_f+ZPE_act_f)/kjmol, (E_el_rxn+ZPE_rxn)/kjmol))
+            print("E_act_f = %.1f kJ/mol, E_rxn = %.1f kJ/mol" %((E_el_act_f+ZPE_act_f)/kjmol, (E_el_rxn+ZPE_rxn)/kjmol))
+            print("E_act_r = %.1f kJ/mol" %((E_el_act_r+ZPE_act_r)/kjmol))
             print("============================================\n")
 
         else:
