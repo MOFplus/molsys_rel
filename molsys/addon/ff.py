@@ -2301,8 +2301,8 @@ class ff(base):
                 ntypes = len(ptypes)
                 for i in range(ntypes):
                     itype = npars[i,1]
-                    ptype = ptypes[i]
-                    ident = names[i]
+                    ptype = ptypes[i].decode("utf-8")
+                    ident = names[i].decode("utf-8")
                     param = list(pars[i,0:npars[i,0]]) # npars[i,0] is the number of params
                     if ident in par:
                         logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)
