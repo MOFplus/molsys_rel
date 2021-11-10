@@ -154,8 +154,8 @@ class Timer(object):
         return {"status":self.status,"elapsed":self.elapsed,"desc":self.desc,"children":reps}
 
     def fork(self, desc : str, start=True):
-        if self.status != RUNNING:
-            raise RuntimeError("Unable to fork timer that is not running.")
+        #if self.status != RUNNING:
+        #    raise RuntimeError("Unable to fork timer that is not running.")
         if not desc in self.children.keys():
             new_timer = Timer(desc)
             self.children[desc] = new_timer
