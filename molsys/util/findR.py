@@ -19,7 +19,7 @@ import os
 import molsys
 from molsys.util import pdlpio2
 
-from molsys.util.timing import timer, Timer
+from molsys.util.timer import timer, Timer
 from molsys.util.print_progress import print_progress
 from molsys import mpiobject
 from molsys.util import RDB
@@ -53,7 +53,7 @@ class findR(mpiobject):
         self.nframes = self.f_xyz.shape[0]
         # defaults and data structures
         self.frames = self.nframes*[None]
-        self.timer = Timer(name="findR")
+        self.timer = Timer("findR")
         self.bondord_cutoff = 0.5  # below this bond roder a bond is registered but swithced off
         self.min_atom = 6          # below this number of atoms a species is considered as gasphase
         self.min_elems = {"c" : 2} # below this number of atoms of the given element in the species it is not tracked
@@ -706,7 +706,7 @@ class findR(mpiobject):
         return
 
     def report(self):
-        self.timer.write()
+        self.timer.report()
 
 
 

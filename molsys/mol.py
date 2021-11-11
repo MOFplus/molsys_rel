@@ -17,7 +17,7 @@ except ImportError:
     from io import StringIO
 
 from .util import unit_cell
-from .util.units import *
+from .util.constants import *
 from .util import elems as elements
 from .util import rotations
 from .util import images

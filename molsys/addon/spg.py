@@ -34,7 +34,6 @@ logger.setLevel(logging.INFO)
 
 from molsys.util.misc import sort_by_columns, argsort_by_columns, sort_by_columns_in_place
 from molsys.util.sysmisc import isatty
-from molsys.util.timing import timer, Timer #to be removed
 
 def get_frac_match(frac, sym, thresh=5e-6, eps=1e-8):
     symperm = []
@@ -62,7 +61,6 @@ class spg:
         self.spg_version = spglib.get_version()
         self.symprec = 1.0e-2
         logger.info("Addon spg loaded (version %d.%d.%d)" % self.spg_version)
-        self.timer = Timer() #to be removed
         return
 
     def set_symprec(self, thresh):
