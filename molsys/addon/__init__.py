@@ -43,7 +43,6 @@ __all__ = [
     "fragments", ### graph
     "ff", ### fragments, base
     "ric", ### ff, base
-    "acab", ### base
     "spg", ### base
     "ptg", ### base
     "bb",
