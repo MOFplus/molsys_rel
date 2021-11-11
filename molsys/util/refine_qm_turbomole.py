@@ -10,7 +10,7 @@ import tempfile
 import time
 import shutil
 import molsys
-from   molsys.util.units import angstrom
+from   molsys.util.constants import angstrom
 import matplotlib.pyplot as plt
 from molsys.addon import zmat
 import graph_tool
