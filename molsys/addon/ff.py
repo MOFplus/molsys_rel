@@ -143,7 +143,7 @@ class ric:
     """
 
     def __init__(self, mol):
-        self.timer = Timer()        
+        self.timer = Timer("RIC")        
         self._mol      = mol
         #self.conn      = mol.conn
         #self.natoms    = mol.natoms
@@ -578,7 +578,7 @@ class ff(base):
     def __init__(self, mol, par = None):
         super(ff,self).__init__(mol)
 #        self._mol = mol
-        self.timer = Timer()
+        self.timer = Timer("FF")
         self.ric = ric(mol)
         # defaults
         self.settings =  {
