@@ -188,7 +188,7 @@ class ric:
         self.dih    = self.find_dihedrals(**specials)
         if smallring: self.check_smallrings()
         self.report()
-        self.timer.report()
+        # self.timer.report()
         return
 
 
