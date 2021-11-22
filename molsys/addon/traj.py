@@ -10,7 +10,7 @@ supports also the writing to a trajectory file (just a concatenation ... use pdb
 
 """
 
-from molsys.util import pdlpio2
+from molsys.util import mfp5io2
 from molsys.fileIO import formats
 import numpy as np
 
@@ -24,11 +24,11 @@ class fake_ffe:
 
 class traj:
 
-    def __init__(self, mol, source="pdlp", **kwargs):
+    def __init__(self, mol, source="mfp5", **kwargs):
         self._mol = mol
         self.ffe = fake_ffe(mol) 
         # set defaults
-        self.open_pdlp = None
+        self.open_mfp5 = None
         self.fid = 0
         self.fmax = 0
         self.variable_cell = False
@@ -37,18 +37,18 @@ class traj:
         return
 
     def set_source(self, source, **kwargs):
-        assert source in ["pdlp", "array", "xyz"]
-        if source == "pdlp":
-            # define pdlp file by fname and stage and set arrays from there
-            if self.open_pdlp is not None:
-                # there was a pdlp as a source before  (maybe another stage?) close it!
-                self.open_pdlp.close()
+        assert source in ["mfp5", "array", "xyz"]
+        if source == "mfp5":
+            # define mfp5 file by fname and stage and set arrays from there
+            if self.open_mfp5 is not None:
+                # there was a mfp5 as a source before  (maybe another stage?) close it!
+                self.open_mfp5.close()
                 self.variabale_cell = False
                 self.fmax = 0
             # we compare with the mol object attached to the fake ffe to make sure that natoms etc matches
-            self.open_pdlp = pdlpio2.pdlpio2(kwargs["fname"], ffe=self.ffe, restart=kwargs["stage"])
+            self.open_mfp5 = mfp5io2.mfp5io2(kwargs["fname"], ffe=self.ffe, restart=kwargs["stage"])
             # get data from traj group
-            traj = self.open_pdlp.get_traj_from_stage(kwargs["stage"])
+            traj = self.open_mfp5.get_traj_from_stage(kwargs["stage"])
             assert traj is not False, "Stage %s does not extist" % kwargs["stage"]
             assert len(traj) > 0 , "No trajectory info in that stage"
             assert "xyz" in traj, "Trajectory does not contain xyz coordinate info"
