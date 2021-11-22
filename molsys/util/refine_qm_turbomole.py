@@ -12,7 +12,6 @@ import shutil
 import molsys
 from   molsys.util.units import angstrom
 import matplotlib.pyplot as plt
-from molsys.addon import zmat
 import graph_tool
 from graph_tool import Graph, GraphView
 import json
@@ -43,6 +42,19 @@ class GeneralTools:
         self.nbeta = 0
         return
         
+    def get_TM_version(self):
+        ''' Returns the Turbomole version'''
+        TURBODIR = os.popen('echo $TURBODIR').read().strip()
+        README = os.path.join(TURBODIR,'README')
+        if not os.path.isfile(README):
+            raise FileNotFoundError("The file %s does not exist." %README)
+        else:
+            with open(README) as f:
+                for line in f:
+                    if "INSTALLATION OF TURBOMOLE" in line:
+                        version = float(line.strip().split()[-1])
+        return version
+
     def invoke_define(self, define_in_name='define.in', define_out_name = 'define.out', coord_name='coord'):
         os.chdir(self.path)
         coord_path = os.path.join(self.path,coord_name)
@@ -158,6 +170,7 @@ class GeneralTools:
  
 
     def define_rohf(self, basis_set, M, scfiterlimit = 300, charge = 0, title = ""):
+        TMversion = self.get_TM_version()
         mol  = self.coord_to_mol()
         n_el = mol.get_n_el(charge)
         define_in_path = os.path.join(self.path,'define.in')
@@ -177,22 +190,33 @@ class GeneralTools:
         # the number of closed shell orbitals = (number of electrons - number of singly occupied orbitals)/2
         n_somo = (M-1)
         n_c  = (n_el-n_somo)/2
-        print(n_c,n_somo)
+        print('number of closed shell orbitals:',n_c,'; number of singly occupied molecular orbitals:',n_somo)
         f.write("c 1-%d\n" %n_c)
-        for i in range(int(n_somo)):
-            mo = n_c+1+i
-            f.write("o %d\n" %(mo))
-            f.write('1\n') # THE OPEN-SHELL OCCUPATION NUMBER PER MO
-            f.write('y\n') 
-        f.write('*\n')
-        f.write('y\n')
+        if TMversion <= 7.6:
+            for i in range(int(n_somo)):
+                mo = n_c+1+i
+                f.write("o %d\n" %(mo))
+                f.write('1\n') # THE OPEN-SHELL OCCUPATION NUMBER PER MO
+                f.write('y\n') 
+            f.write('*\n')
+            if n_somo < 3:
+                f.write('y\n')
+            else:
+                f.write('1 2\n') # The Roothaan parameters could not be provided. Assign them as a=1, b=2 (high spin case)
+        else:
+            if n_somo == 1:
+                f.write('oh %d\n' %(n_c+1))
+            elif n_somo > 1:
+                f.write('oh %d-%d\n' %(n_c+1,n_c+n_somo))
+            f.write('*\n')
         f.write('scf\n')
         f.write('iter\n')
         f.write('%d\n' %scfiterlimit)
         f.write('\n\n')
         f.write('q\n')
         f.close()
-        self.invoke_define()
+        os.system("~haettig/bin/define_highspin < define.in > define.out")
+#        self.invoke_define()
         return
 
     def define_canonical_ccsd(self, model, max_mem=500, F12=True, title=''):
@@ -1746,6 +1770,10 @@ class OptimizationTools:
             mol_complex      : Mol object of the created reaction complex
 
         """
+        try:
+           from molsys.addon import zmat
+        except:
+           print("The module zmat from molsys.addon could not be imported. Be sure chemcoord is available.")
         if n_eq > 3:
             print('Cannot handle more than two species. Exiting...')
             sys.exit()
@@ -2747,6 +2775,7 @@ class OptimizationTools:
         """
         n_ed = len(M_ed)
         n_prod = len(M_prod)
+        print('n_ed = ', n_ed, 'n_prod = ', n_prod)
         spin_not_conserved = False
         M_list = []
         if n_ed == 1 and n_prod == 1:
@@ -2800,6 +2829,8 @@ class OptimizationTools:
         info['reaction']['source'] = source # e.g. woelfling/ReaxFF/?...
         info['reaction']['origin'] = origin # reactionID of the reference reaction
         info['reaction']['barrierless'] = barrierless
+
+        print(QM_paths_dict)
 
         M_ed = []
         M_prod = []
@@ -3208,7 +3239,7 @@ class OptimizationTools:
             os.remove(mo_file)
             # / get the corresponding spin orbitals
             OT_tmp.get_csos()
-            print(GT_ref.nalpha, GT_ref.nbeta)
+            print('number of alpha electrons:', GT_ref.nalpha,'; number of beta electrons:', GT_ref.nbeta)
             # / copy the blown up alpha or beta mo file to mos
             if GT_ref.nalpha >= GT_ref.nbeta:
                 ref_mo_file = os.path.join(tmp_path,"cso_alpha")

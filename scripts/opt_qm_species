@@ -222,17 +222,19 @@ def get_ncurjobs(jobids):
 #
 # Start of main program 
 #
-if len(sys.argv) < 6:
-    print ("usage:  opt_qm_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
+#if len(sys.argv) < 6:
+#    print ("usage:  opt_qm_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
+if len(sys.argv) < 4:
+    print ("usage:  opt_qm_species <db_path> <start_lot> <cmd_file>")
     exit()
     
 
 db_path   = os.path.abspath(sys.argv[1])
-pdlp_path = sys.argv[2]
-pdlp_path = os.path.abspath(pdlp_path)
-stage     = sys.argv[3]
-start_lot = sys.argv[4]
-cmd_file  = sys.argv[5]
+#pdlp_path = sys.argv[2]
+#pdlp_path = os.path.abspath(pdlp_path)
+#stage     = sys.argv[3]
+start_lot = sys.argv[2]
+cmd_file  = sys.argv[3]
 
 assert os.path.isfile(cmd_file), "command file exists!"
 # read param set. Examples are:
@@ -275,11 +277,11 @@ if "skip_uni_no_mg_change" not in params:
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
-print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
+#print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 
 # get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
 db = rdb.db
-md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+#md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
 
 reactions = db(db.reactions).select() 
 print(reactions)
@@ -328,6 +330,12 @@ for r in reactions:
             #   LEVEL 1: DFT calculations from ReaxFF/xTB strutures  #
             ##########################################################
             if "level1" in params["level"].lower():
+
+                # Quick check: at this level, for a reaction there must be a species with label = 0; as the TS is not refined at this stage, 
+                # whether it is barrierless or not is not known yet.
+                if reac2ts_spec == None:
+                    print('No species with label = 0. Skipping the reaction %d...' %r.id)
+                    continue
 
                 # 1) Get the reference structures from the startLOT for the further optimizations
                 # and store the indices as of from MD simulation to extract the atoms which belong to educts or products from the TS structure

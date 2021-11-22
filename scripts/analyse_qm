@@ -181,11 +181,11 @@ for r in reactions:
                     skip = True
                     break
             CC_energy = 0.0
+            ZPE = 0.0
             for info in oed.info.split(";"):
-                if "ZPE" in info and not only_SPE:
-                    ZPE = float(info.split("=")[-1])
-                else:
-                    ZPE = 0.0
+                if "ZPE" in info:
+                    if not only_SPE:
+                        ZPE = float(info.split("=")[-1])
                 if "M" in info:
                     M = float(info.split("=")[-1])
                     m_s = (M-1)/2
@@ -229,12 +229,11 @@ for r in reactions:
                     print("Skipping the reaction %d ..." %r.id)
                     skip = True
                     break
- 
+            ZPE = 0.0
             for info in oprod.info.split(";"):
-                if "ZPE" in info and not only_SPE:
-                    ZPE = float(info.split("=")[-1])
-                else:
-                    ZPE = 0.0
+                if "ZPE" in info:
+                    if not only_SPE:
+                        ZPE = float(info.split("=")[-1])
                 if "M" in info:                
                     M = float(info.split("=")[-1])
                     m_s = (M-1)/2
@@ -279,11 +278,11 @@ for r in reactions:
                     print("Skipping the reaction %d ..." %r.id)
                     continue
  
+            ZPE = 0.0
             for info in ots.info.split(";"):
-                if "ZPE" in info and not only_SPE:
-                    ZPE = float(info.split("=")[-1])
-                else:
-                    ZPE = 0.0
+                if "ZPE" in info:
+                    if not only_SPE:
+                        ZPE = float(info.split("=")[-1])
                 if "M" in info:
                     M = float(info.split("=")[-1])
                     m_s = (M-1)/2
@@ -321,6 +320,8 @@ for r in reactions:
             else:
                 E_el_act_f += ots.energy
                 E_el_act_r += ots.energy
+
+            print(only_SPE, 'ZPE',ZPE, 'f_cor', params["f_cor"])
 
             print("--------------------------------------------")
             print("E_act_f = %.1f kJ/mol, E_rxn = %.1f kJ/mol" %((E_el_act_f+ZPE_act_f)/kjmol, (E_el_rxn+ZPE_rxn)/kjmol))
