@@ -27,7 +27,7 @@ to the CCFLAGS (not conda related)
 
 h5md/hdf5
 #########
-For the pdlp dump (dump_pdlp.cpp/h) you need to have the proper settings for compiling and linking to libhdf5.
+For the mfp5 dump (dump_mfp5.cpp/h) you need to have the proper settings for compiling and linking to libhdf5.
 As explained in the installation instructions (pylmps/README.md) you need to edit the Makefile.lammps in the 
 lib/h5md folder to contain the include and lib path for hdf5. Since conda brings its own libdf5 edti this file
 (it seems to work with the systems libhdf5 as well ... needs more testing but this is consistent)
