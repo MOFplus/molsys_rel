@@ -223,13 +223,13 @@ def get_ncurjobs(jobids):
 # Start of main program 
 #
 if len(sys.argv) < 6:
-    print ("usage:  opt_qm_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
+    print ("usage:  opt_qm_species <db_path> <mfp5_file> <stage> <start_lot> <cmd_file>")
     exit()
     
 
 db_path   = os.path.abspath(sys.argv[1])
-pdlp_path = sys.argv[2]
-pdlp_path = os.path.abspath(pdlp_path)
+mfp5_path = sys.argv[2]
+mfp5_path = os.path.abspath(mfp5_path)
 stage     = sys.argv[3]
 start_lot = sys.argv[4]
 cmd_file  = sys.argv[5]
@@ -270,11 +270,11 @@ if params["calculator"] == "turbomole":
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
-print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
+print ("dealing with MD from file %s and stage %s"  % (mfp5_path, stage))
 
 # get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
 db = rdb.db
-md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+md = db((db.md.path == mfp5_path) & (db.md.stage == stage)).select().first()
 
 
 reactions = db(db.reactions).select() 

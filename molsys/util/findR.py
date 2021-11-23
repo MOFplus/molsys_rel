@@ -17,7 +17,7 @@ import pickle
 import os
 
 import molsys
-from molsys.util import pdlpio2
+from molsys.util import mfp5io 
 
 from molsys.util.timer import timer, Timer
 from molsys.util.print_progress import print_progress
@@ -30,14 +30,14 @@ import sys
 
 class findR(mpiobject):
 
-    def __init__(self, pdlpfilename,  stage, rdb_path, mpi_comm = None, out = None):
+    def __init__(self, mfp5filename,  stage, rdb_path, mpi_comm = None, out = None):
         super(findR,self).__init__(mpi_comm, out)
         # To be tested: open read only on all nodes in parallel .. does it work?
-        self.pdlp = pdlpio2.pdlpio2(pdlpfilename, filemode="r")
-        self.mol = self.pdlp.get_mol_from_system()
-        assert stage in self.pdlp.get_stages(), "Stage %s not in stages in file"
-        self.traj = self.pdlp.h5file["/%s/traj" % stage]
-        self.rest = self.pdlp.h5file["/%s/restart" % stage]
+        self.mfp5 = mfp5io.mfp5io(mfp5filename, filemode="r")
+        self.mol = self.mfp5.get_mol_from_system()
+        assert stage in self.mfp5.get_stages(), "Stage %s not in stages in file"
+        self.traj = self.mfp5.h5file["/%s/traj" % stage]
+        self.rest = self.mfp5.h5file["/%s/restart" % stage]
         data = list(self.traj.keys())
         # make sure that xyz and bondord/bondterm is available
         assert "xyz" in data
@@ -71,8 +71,8 @@ class findR(mpiobject):
         self.skip_recross = 2 # number of frames to check if a reaction event was reverted
         # now open the RDB    TBI: how to deal with a parallel run?
         self.rdb = RDB.RDB(rdb_path, do_commit=False) # we open in no-commit mode -> have to call commit ourselves
-        # TBI  get temp and timestep from pdlp file
-        self.rdb.set_md_run(pdlpfilename, stage, nframes=self.nframes, temp=2000.0, timestep=10.0)
+        # TBI  get temp and timestep from mfp5 file
+        self.rdb.set_md_run(mfp5filename, stage, nframes=self.nframes, temp=2000.0, timestep=10.0)
         return
 
     @timer("process_frame")
@@ -87,7 +87,7 @@ class findR(mpiobject):
         """
         if self.frames[fid] is not None:
             return self.frames[fid]
-        # get the essential data from the open pdlp file for the current frame
+        # get the essential data from the open mfp5 file for the current frame
         bondord = np.array(self.f_bondord[fid])
         bondtab = np.array(self.f_bondtab[fid])
         xyz = np.array(self.f_xyz[fid])
