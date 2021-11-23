@@ -188,7 +188,7 @@ VMDPLUGIN_API int VMDPLUGIN_init() {
 	plugin.abiversion = vmdplugin_ABIVERSION;
 	plugin.type = MOLFILE_PLUGIN_TYPE;
 	plugin.name = "mfp5";
-	plugin.prettyname = "MOFplus Trajectory File Format - former pdlp";
+	plugin.prettyname = "MOFplus Trajectory File Format - former mfp5";
 	plugin.author = "Julian Keupp";
 	plugin.majorv = 1;
 	plugin.minorv = 1;

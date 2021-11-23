@@ -13,7 +13,7 @@ import numpy as np
 from molsys.util import RDB
 
 if len(sys.argv) < 3:
-    print ("usage:  find_species_in_revent <db_path> <pdlp_file> <stage> <species (mfpx)>")
+    print ("usage:  find_species_in_revent <db_path> <mfp5_file> <stage> <species (mfpx)>")
     exit()
 
 
@@ -28,17 +28,17 @@ def make_molecular_graph(mol):
 # Read command line arguments
 #
 db_path   = sys.argv[1]
-pdlp_path = sys.argv[2]
-pdlp_path = os.path.abspath(pdlp_path)
+mfp5_path = sys.argv[2]
+mfp5_path = os.path.abspath(mfp5_path)
 stage     = sys.argv[3]
 fspecies  = sys.argv[4]
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
-print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
+print ("dealing with MD from file %s and stage %s"  % (mfp5_path, stage))
 
 db = rdb.db
-md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+md = db((db.md.path == mfp5_path) & (db.md.stage == stage)).select().first()
 revents = db((db.revent.mdID == md)).select()
 
 mol_to_find = molsys.mol.from_file(fspecies)
