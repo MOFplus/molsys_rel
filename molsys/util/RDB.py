@@ -101,7 +101,7 @@ class RDB:
         #
  
         dbstruc["md"] = [       
-            "s:path",         # filename of the pdlp file
+            "s:path",         # filename of the mfp5 file
             "s:stage",        # name of the stage
             "i:nframes",      # number of frames
             "d:timestep",     # time in fs between two frames (MD timestep times frame rate)
@@ -199,20 +199,20 @@ class RDB:
         self.db.commit()
         return
 
-    def set_md_run(self, pdlp_fname, stage, **kwargs):
+    def set_md_run(self, mfp5_fname, stage, **kwargs):
         # get the absolute pathname to have a reliable identifier
-        pdlp_fname = os.path.abspath(pdlp_fname)
-        # find out if pdlp_fname is in database
-        rows = self.db((self.db.md.path == pdlp_fname) & (self.db.md.stage == stage)).select()
-        assert len(rows) < 2, "The pdlp file %s is twice in the database" % pdlp_fname
+        mfp5_fname = os.path.abspath(mfp5_fname)
+        # find out if mfp5_fname is in database
+        rows = self.db((self.db.md.path == mfp5_fname) & (self.db.md.stage == stage)).select()
+        assert len(rows) < 2, "The mfp5 file %s is twice in the database" % mfp5_fname
         if len(rows) == 0:
             # this is a new entry
             for k in ["nframes", "timestep", "temp"]:
                 assert k in kwargs, "for a new md entry %s must be specified" % k
-            # make sure that the pdlp file really exists
-            assert os.path.exists(pdlp_fname)
+            # make sure that the mfp5 file really exists
+            assert os.path.exists(mfp5_fname)
             mdID = self.db.md.insert(
-                path     = pdlp_fname,
+                path     = mfp5_fname,
                 stage    = stage,
                 nframes  = kwargs["nframes"],
                 timestep = kwargs["timestep"],

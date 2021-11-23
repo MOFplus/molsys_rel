@@ -156,7 +156,7 @@ generation of the connectivity of the supercell. You can use the method :py:clas
 This enhances the system in *x* and *y* direction to span 2 unitcells. The number of atoms gets 4 times as big. To visualize your system you can either use
 *moldenx* (You need to have molden installed and in your path. moldenx is a wrapper script in *molsys* that converts the mfpx on the fly into a tinker *txyz* file
 and shows it. The better option is to use the vmd plugin that comes with molsys. You need to have vmd installed and compile and install the plugin (there is a plugin
-for *mfpx* and another for *mfp5* aka *pdlp*, which is trajectory info written in a *hdf5* file format.
+for *mfpx* and another for *mfp5* aka *mfp5*, which is trajectory info written in a *hdf5* file format.
 
 
 

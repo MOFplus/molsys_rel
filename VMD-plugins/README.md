@@ -1,10 +1,10 @@
 # molsys & mofplus file reader plugins for VMD
 
-This folder contains file reader plugins for the famous [VMD](https://www.ks.uiuc.edu/Research/vmd/) visualiation software. Currently, only the former pdlp type files are supported to be red. The .mfpx file plugin will be avilable soon
+This folder contains file reader plugins for the famous [VMD](https://www.ks.uiuc.edu/Research/vmd/) visualiation software. Currently, only the former mfp5 type files are supported to be red. The .mfpx file plugin will be avilable soon
 
 ## Installation 
 
-### mfp5 file reader (former pdlp!)
+### mfp5 file reader (former mfp5!)
 
 This works only when vmd is installed in its default path /usr/local/lib/vmd. If that's not the case, modifiy the Makefile as needed.
 
