@@ -215,8 +215,7 @@ class GeneralTools:
         f.write('\n\n')
         f.write('q\n')
         f.close()
-        os.system("~haettig/bin/define_highspin < define.in > define.out")
-#        self.invoke_define()
+        self.invoke_define()
         return
 
     def define_canonical_ccsd(self, model, max_mem=500, F12=True, title=''):
@@ -1366,7 +1365,7 @@ class OptimizationTools:
 
             # 3. If SCF did not converge, increase the SCF start damping to 2.0 instead of 1.0.
             if not converged:
-                print('WARNING! The SCF calculation for Fermi smearing with start damping 1.0 did not converge. Increasing it to 2.0.' )
+                print('The SCF calculation for Fermi smearing with start damping 1.0 did not converge. Increasing it to 2.0.' )
                 for f in os.listdir(self.path):
                     os.remove(os.path.join(self.path,f))
                 GT.make_tmole_dft_input(
@@ -1882,11 +1881,11 @@ class OptimizationTools:
                for i in mol_ts.conn[ratom_on_mol1]:
                     # check if the connected one is a terminal atom, because if so, assigning the atom which will define the dihedral is difficult...
                     terminal_atom = False
-                    print('i',i)
-                    print('mol_ts.conn', mol_ts.conn)
-                    print('mol_ts.conn[i]',mol_ts.conn[i])
+#                    print('i',i)
+#                    print('mol_ts.conn', mol_ts.conn)
+#                    print('mol_ts.conn[i]',mol_ts.conn[i])
                     if len(mol_ts.conn[i]) == 1: terminal_atom = True 
-                    print(terminal_atom)
+#                    print('terminal_atom',terminal_atom)
                     if i != ratom_on_mol1  and i != ratom and not terminal_atom: 
                         a = i
                try:
@@ -3252,7 +3251,7 @@ class OptimizationTools:
                 #ref_mo_file = os.path.join(tmp_path,"beta")
                 #self.replace_uhfmo_xxx_with_scfmo("beta", ref_mo_file, mo_file)            
             # / remove the tmp directory
-            #shutil.rmtree(tmp_path)
+            shutil.rmtree(tmp_path)
         else:
             # Start with the DFT orbitals
             os.system("cpc %s" %dir_name)
