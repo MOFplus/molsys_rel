@@ -18,7 +18,7 @@ import os
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-db',    type=str, nargs=1,   default="analyze"  , help='Path to database')
-parser.add_argument('-fpdlp', type=str, nargs=1,   default="reax.pdlp", help='Path to trajectory')
+parser.add_argument('-fmfp5', type=str, nargs=1,   default="reax.mfp5", help='Path to trajectory')
 parser.add_argument('-stage', type=str, nargs=1,   default="sample"   , help='Name of stage')  
 parser.add_argument('-fids',  type=int, nargs='*', default=[]         , help='list of frame IDs to process')
 
@@ -26,8 +26,8 @@ args = parser.parse_args()
 fids = args.fids
 
 db_path   = args.db[0] 
-pdlp_path = args.fpdlp[0]
-pdlp_path = os.path.abspath(pdlp_path)
+mfp5_path = args.fmfp5[0]
+mfp5_path = os.path.abspath(mfp5_path)
 stage     = args.stage[0]
 
 #
@@ -38,7 +38,7 @@ assert len(fids) > 0, "No frame IDs given"
 #
 # Create findR and process frames
 #
-fr = findR.findR(pdlp_path, stage, db_path)
+fr = findR.findR(mfp5_path, stage, db_path)
 
 for fid in fids:
    frame = fr.process_frame(fid)

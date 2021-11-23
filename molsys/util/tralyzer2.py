@@ -1,12 +1,12 @@
 """ 
                tralyzer 2
                
-       A trajectory analyzer working on and processing pdlp files
+       A trajectory analyzer working on and processing mfp5 files
        This is the second incarnation of tralyzer using a different design 
        principle:
-       instead of itslef opening the pdlp file and handling everything it 
-       expects an already opened pdlp file on instantiation.
-       This is in order to work with the pdlp interactive script.
+       instead of itslef opening the mfp5 file and handling everything it 
+       expects an already opened mfp5 file on instantiation.
+       This is in order to work with the mfp5 interactive script.
        The downside: currently parallelization is not included
        
        to be done: 
@@ -69,7 +69,7 @@ class progressrep:
 class tralyzer2:
 
     def __init__(self, pdpf, stage, tstep=None):
-        """ pdlpf is already open
+        """ mfp5f  is already open
             keep MPI stuff from tralyzer .. in case we ever need it """
         self.comm = MPI.COMM_WORLD
         self.node_id = self.comm.Get_rank()
@@ -94,7 +94,7 @@ class tralyzer2:
         for t in self.types:
             if t not in self.typedata: self.typedata[t] = None
         self.ntypes = len(list(self.typedata.keys()))
-        # molecule info - note that only a nonredundant set of info is in pdlp and the
+        # molecule info - note that only a nonredundant set of info is in mfp5 and the
         # rest needs to be recovered
         self.pdpf.setup_molecules(self.mol)
         self.whichmol = self.mol.molecules.whichmol
@@ -1124,7 +1124,7 @@ class tralyzer2:
         return grid
 
         
-    def remove_from_pdlp(self, dataset):
+    def remove_from_mfp5(self, dataset):
         self.pprint("\nRemoving dataset %s from group /%s/traj" % (dataset, self.stagename))
         del(self.traj[dataset])
         return

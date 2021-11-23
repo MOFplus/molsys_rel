@@ -17,7 +17,7 @@ except ImportError:
     from io import StringIO
 
 from .util import unit_cell
-from .util.units import *
+from .util.constants import *
 from .util import elems as elements
 from .util import rotations
 from .util import images
@@ -463,25 +463,25 @@ class mol(mpiobject):
         return m
 
     @classmethod
-    def from_pdlp(cls, fname, stage, traj=True):
-        """generate mol object from pdlp file
+    def from_mfp5(cls, fname, stage, traj=True):
+        """generate mol object from mfp5 file
         
         Args:
-            fname (string): name of pdlp file
+            fname (string): name of mfp5 file
             stage (string): stage name
             traj (bool, optional): if a trajectory info is present load addon and set source. Defaults to True.
         
         Returns:
             molobejct: generated mol object
         """
-        from molsys.util import pdlpio2
-        # instantiate the pdlpio2 reader
-        pio = pdlpio2.pdlpio2(fname, restart=stage, filemode="r")
-        # get the mol obejct from the pdlp file
+        from molsys.util import mfp5io
+        # instantiate the imfp5io reader
+        pio = imfp5io.mfp5io(fname, restart=stage, filemode="r")
+        # get the mol obejct from the mfp5 file
         m = pio.get_mol_from_system()
         pio.close()
         if traj:
-            m.addon("traj", source="pdlp", fname=fname, stage=stage)
+            m.addon("traj", source="mfp5", fname=fname, stage=stage)
         return m
 
 

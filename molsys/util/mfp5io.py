@@ -1,19 +1,16 @@
 """
 
-                            pdlpio2
+                            mfp5io
 
-    implements a hdf5/h5py based class to handle storage of pydlpoly
+    implements a hdf5/h5py based class to handle storage of 
     molecular systems (used for restart and trajectory data)
-
-    the class object is a frontend to a hdf5/h5py file, and it can be used
-    outside of pydlpoly to read and postprocess trajectory data
 
     This is a rewrite of the V1.0 that ships with molsys and is based on a 
     molsys type mol object. It is meant to work with any MM engine that provides
     a molsys mol object and provides a certain API. It can be used with pydlpoly
     (using the new startup mode with molsys) or pylmps currently. Note that in pylmps 
-    trajectory info is written in C++ in lammps using dump_pdlp.cpp (which needs to be
-    compiled in)
+    trajectory info is written in C++ in lammps using dump_mfp5.cpp (which needs to be
+    compiled in from the package PYLMPS)
 
     one part of the data is "fixed"
     - number of atoms
@@ -37,11 +34,11 @@
     Versions (in file attribute "version"
     - no version info == 1.0 : original
     - version 1.1            : nstep of trajectories is stored per dataset and not for the stage
-    - version 1.2            : pdlpio2 version to work with new mol objects (can write par info)
-    
+    - version 1.2            : mfp5io version to work with new mol objects (can write par info)
+
+This has been renamed in 2021 from pdlpio2 to mfp5io (according with the name change in lammps)
 """
 
-import h5py
 from h5py import File, special_dtype
 import numpy as np
 
@@ -53,13 +50,13 @@ from molsys import mpiobject
 import molsys
 
 
-class pdlpio2(mpiobject):
+class mfp5io(mpiobject):
 
     def __init__(self, fname, ffe=None, restart=None, filemode="a", mpi_comm=None, out=None):
-        """generates a pdlp file object
+        """generates a mfp5 file object
 
         This object knows three states: conencted to a ffe (force field engine) (with a mol object),
-        connected to a ffe but without mol object, which implies a restart (will generate mol from pdlp file)
+        connected to a ffe but without mol object, which implies a restart (will generate mol from mfp5 file)
         or the analysis mode. In the analysis mode writing to trajectory data is forbidden.
         In the connected mode one can request appending to a stage. 
         Otherwise a new stage is required.
@@ -69,11 +66,11 @@ class pdlpio2(mpiobject):
               closed before passing to lammps. To make sure the file is connected call open().
         
         Args:
-            fname (string): filename (including .pdlp extension)
+            fname (string): filename (including .mfp5 extension)
             ffe (object, optional): Defaults to None. Force Field engine (must contain a ffe.mol instance of type molsys)
             restart (string, optional): Defaults to None. Name of the stage from which a restart should be read
         """ 
-        super(pdlpio2, self).__init__(mpi_comm,out)
+        super(mfp5io, self).__init__(mpi_comm,out)
         self.verbose = 0
         self.filemode = filemode
         # helper object for hdf5 variable length strings
@@ -98,12 +95,12 @@ class pdlpio2(mpiobject):
                 try:
                     is_topo = self.mol.is_topo
                 except AttributeError:
-                    self.pprint("PDLP ERROR: mol object seems not be a molsys object! This is required for pdlpio2")
+                    self.pprint("PDLP ERROR: mol object seems not be a molsys object! This is required for mfp5io")
                     raise
                 # last but not least check that mol is not a topo ... we do not want that
                 if is_topo is True:
                     self.pprint("PDLP ERROR: mol object is a topo object .. that should not happen!")
-                    raise Exception("pdlp error")
+                    raise Exception("mfp5 error")
                 self.mode = "ffe"
                 # now all is fine .. set defaults for this runmode
                 self.stage = "default" # default stage which can be overwritten (contains no trajectory data, only restarts)
@@ -173,11 +170,11 @@ class pdlpio2(mpiobject):
     #
     # The system group contains all the time independent information of the system (connectivity, atomtypes, parameter)
     # Note: in the old pdlpio system this data was prepared by the mol (assign_FF) class and just written here
-    #       Now in pdlpio2 we expect a certain interface, namely the mol object from molsys and collect all the 
+    #       Now in mfpfio we expect a certain interface, namely the mol object from molsys and collect all the 
     #       data in an active way
 
     def write_system(self):
-        """ Writes all the info from a mol object to the system group in the pdlp file
+        """ Writes all the info from a mol object to the system group in the mfp5 file
         
         The following info is written:
             - elems       (strings)
@@ -197,27 +194,27 @@ class pdlpio2(mpiobject):
             # elems
             na = self.ffe.mol.get_natoms()
             elems = self.ffe.mol.get_elems()
-            pdlp_elems = system.require_dataset("elems", shape=(na,), dtype=self.str_dt)
-            pdlp_elems[...] = elems
+            mfp5_elems = system.require_dataset("elems", shape=(na,), dtype=self.str_dt)
+            mfp5_elems[...] = elems
             # atypes
             atypes = self.ffe.mol.get_atypes()
-            pdlp_atypes = system.require_dataset("atypes", shape=(na,), dtype=self.str_dt)
-            pdlp_atypes[...] = atypes
+            mfp5_atypes = system.require_dataset("atypes", shape=(na,), dtype=self.str_dt)
+            mfp5_atypes[...] = atypes
             # fragtypes
             fragtypes = self.ffe.mol.get_fragtypes()
-            pdlp_fragtypes = system.require_dataset("fragtypes", shape=(na,), dtype=self.str_dt)
-            pdlp_fragtypes[...] = fragtypes
+            mfp5_fragtypes = system.require_dataset("fragtypes", shape=(na,), dtype=self.str_dt)
+            mfp5_fragtypes[...] = fragtypes
             # fragnumbers
             fragnumbers = self.ffe.mol.get_fragnumbers()
-            pdlp_fragnumbers = system.require_dataset("fragnumbers", shape=(na,), dtype="i")
-            pdlp_fragnumbers[...] = fragnumbers
+            mfp5_fragnumbers = system.require_dataset("fragnumbers", shape=(na,), dtype="i")
+            mfp5_fragnumbers[...] = fragnumbers
             # get connectivity table
             cnc_table = self.ffe.mol.get_ctab()
             if len(cnc_table) > 0:
                 # catch if there are no bonds at all: h5py does not like zero size selections
                 cnc_table = np.array(cnc_table, dtype="i")
-                pdlp_cnc_table = system.require_dataset("cnc_table", shape=cnc_table.shape, dtype=cnc_table.dtype)
-                pdlp_cnc_table[...] = cnc_table
+                mfp5_cnc_table = system.require_dataset("cnc_table", shape=cnc_table.shape, dtype=cnc_table.dtype)
+                mfp5_cnc_table[...] = cnc_table
             system.attrs["bcd"] = self.ffe.mol.get_bcond()
             if "ff" in self.ffe.mol.loaded_addons:
                 # a force field is loaded: we assume it is also initialized. TBI: a switch in the ff addon to verify this
@@ -230,12 +227,12 @@ class pdlpio2(mpiobject):
                 else:
                     par.attrs["FF"] = ""
                 for r in ["bnd", "ang", "dih", "oop", "cha", "vdw"]:
-                    # write ric arrays to pdlp file
+                    # write ric arrays to mfp5 file
                     if r in data:
                         d = data[r]
                         fd = ric.require_dataset(r, shape=d.shape, dtype="i")
                         fd[...] = d
-                    # write par data to pdlp file
+                    # write par data to mfp5 file
                     #  order is ptype, names, npars, pars
                     if r+"_par" in data:
                         p = data[r+"_par"]
@@ -258,17 +255,17 @@ class pdlpio2(mpiobject):
         OK = None
         if self.is_master:
             system = self.h5file["system"]
-            pdlp_atypes = system["atypes"]
+            mfp5_atypes = system["atypes"]
             atypes = self.ffe.mol.get_atypes()
             OK = True
-            if len(pdlp_atypes)==len(atypes):
-                for a1,a2 in zip(pdlp_atypes, atypes):
+            if len(mfp5_atypes)==len(atypes):
+                for a1,a2 in zip(mfp5_atypes, atypes):
                     if a1 != a2:
                         OK = False
             else:
                 OK = False
         OK = self.mpi_comm.bcast(OK)
-        assert OK, "PDLP ERROR: The system in the pdlp file is not equivalent to your actual system. Aborting!"
+        assert OK, "PDLP ERROR: The system in the mfp5 file is not equivalent to your actual system. Aborting!"
         return
 
     def get_mol_from_system(self, vel=False, restart_ff=True):
@@ -500,25 +497,25 @@ class pdlpio2(mpiobject):
             data = self.ffe.data_funcs[dname]()
             dshape = list(data.shape)
             if self.is_master:
-                pdlp_data = traj.require_dataset(dname, 
+                mfp5_data = traj.require_dataset(dname, 
                                 shape=tuple([1]+dshape),
                                 maxshape=tuple([None]+dshape),
                                 chunks=tuple([1]+dshape),
                                 dtype=prec)
-                pdlp_data[...] = data
-                pdlp_data.attrs["nstep"] = dnstep
+                mfp5_data[...] = data
+                mfp5_data.attrs["nstep"] = dnstep
         if len(thermo_values)>0:
             # write thermodynamic data .. size of array is length of list
             nthermo = len(thermo_values)
             if self.is_master:
-                pdlp_data = traj.require_dataset("thermo",
+                mfp5_data = traj.require_dataset("thermo",
                                 shape=(1, nthermo),
                                 maxshape=(None, nthermo),
                                 chunks=(1, nthermo),
                                 dtype=prec)
                 # TBI .. get thermo data in ffe on python level
-                pdlp_data[...] = 0.0
-                pdlp_data.attrs["labels"] = " ".join(thermo_values)
+                mfp5_data[...] = 0.0
+                mfp5_data.attrs["labels"] = " ".join(thermo_values)
         self.mpi_comm.barrier()
         return
 
@@ -558,7 +555,7 @@ class pdlpio2(mpiobject):
             # restart is written .. fetch all data 
             for d in self.rest_data:
                 if self.verbose:
-                    self.pprint("Writing restart data %s to pdlp file" % d)
+                    self.pprint("Writing restart data %s to mfp5 file" % d)
                 data = self.data_funcs[d]()
                 self.rest_datasets[d][...] = data
             data_written = True

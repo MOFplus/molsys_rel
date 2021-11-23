@@ -48,7 +48,7 @@ np.seterr(invalid='raise')
 
 import uuid
 import molsys
-from molsys.util.timing import timer, Timer
+from molsys.util.timer import timer, Timer
 from molsys.util import elems
 from molsys.util.ff_descriptors import desc as ff_desc
 from molsys.util.aftypes import aftype, aftype_sort
@@ -143,7 +143,7 @@ class ric:
     """
 
     def __init__(self, mol):
-        self.timer = Timer()        
+        self.timer = Timer("RIC")        
         self._mol      = mol
         #self.conn      = mol.conn
         #self.natoms    = mol.natoms
@@ -188,7 +188,7 @@ class ric:
         self.dih    = self.find_dihedrals(**specials)
         if smallring: self.check_smallrings()
         self.report()
-        self.timer.write_logger(logger.info)
+        self.timer.report()
         return
 
 
@@ -578,7 +578,7 @@ class ff(base):
     def __init__(self, mol, par = None):
         super(ff,self).__init__(mol)
 #        self._mol = mol
-        self.timer = Timer()
+        self.timer = Timer("FF")
         self.ric = ric(mol)
         # defaults
         self.settings =  {
@@ -881,28 +881,25 @@ class ff(base):
                 self._init_data()
                 self._init_pardata(FF)
             # as a first step we need to generate the fragment graph
-            self.timer.start("fragment graph")
-            self._mol.addon("fragments")
-            self.fragments = self._mol.fragments
-            self.fragments.make_frag_graph() 
-            if plot:
-                self.fragments.plot_frag_graph(plot, ptype="png", vsize=20, fsize=20, size=1200)
-            # create full atomistic graph
-            self._mol.graph.make_graph()
-            self.timer.stop()
+            with self.timer("fragment graph"):
+                self._mol.addon("fragments")
+                self.fragments = self._mol.fragments
+                self.fragments.make_frag_graph() 
+                if plot:
+                    self.fragments.plot_frag_graph(plot, ptype="png", vsize=20, fsize=20, size=1200)
+                # create full atomistic graph
+                self._mol.graph.make_graph()
             # now make a private list of atom types including the fragment name
-            self.timer.start("make atypes")
-            self.aftypes = []
-            for i, a in enumerate(self._mol.get_atypes()):
-                self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
-            self.timer.stop()
+            with self.timer("make atypes"):
+                self.aftypes = []
+                for i, a in enumerate(self._mol.get_atypes()):
+                    self.aftypes.append(aftype(a, self._mol.fragtypes[i]))
             # add molid info to ic["vdw"]
-            self.timer.start("make atypes")
-            self._mol.graph.get_components()
-            for i, at in enumerate(self.ric_type["vdw"]):
-                at.molid = self._mol.graph.molg.vp.molid[i]
-            self._mol.molid = self._mol.graph.molg.vp.molid.get_array()
-            self.timer.stop()
+            with self.timer("make atypes"):
+                self._mol.graph.get_components()
+                for i, at in enumerate(self.ric_type["vdw"]):
+                    at.molid = self._mol.graph.molg.vp.molid[i]
+                self._mol.molid = self._mol.graph.molg.vp.molid.get_array()
         # detect refsystems
         self.find_refsystems_new(plot=plot)
         with self.timer("parameter assignement loop"):
@@ -972,7 +969,7 @@ class ff(base):
                 self.fixup_refsysparams(cross_terms=cross_terms)
             else:
                 self.check_consistency(generic = generic)
-        self.timer.write_logger(logger.info)
+        self.timer.report()
         return
 
     def check_consistency(self, generic = None):
@@ -1456,135 +1453,131 @@ class ff(base):
             - self.ref_fraglist  : list of fragment indices belonging to this refsystem
             - self.ref_params    : paramtere dictionaries per refsystem (n-body/type)
         """
-        self.timer.start("get reference systems")
-        scan_ref  = []
-        scan_prio = []
-        if self._mol.mpi_rank == 0:
-            ref_dic = self.cache.list_FFrefs(self.par.FF)
-        else:
-            ref_dic = []
-        if self._mol.mpi_size > 1:
-            ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
-        for refname in ref_dic.keys():
-            prio, reffrags, active, upgrades, atfix = ref_dic[refname]
-            if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
-                scan_ref.append(refname)
-                scan_prio.append(prio)
-            # check for upgrades
-            elif upgrades and len(reffrags) > 0:
-                oreffrags = copy.deepcopy(reffrags)
-                for d,u in upgrades.items():
-                    reffrags = [i.replace(d,u) for i in reffrags]
-                    if all(f in self.fragments.get_fragnames() for f in reffrags):
-                        scan_ref.append(refname)
-                        scan_prio.append(prio)
-        # sort to be scanned referecnce systems by their prio
-        self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
-        self.scan_ref.reverse()
-        self.timer.stop()
-        # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
-        self.timer.start("make ref frag graphs")
-        self.ref_systems = {}
-        if self._mol.mpi_rank == 0:
-            ref_mol_strs  = self.cache.get_FFrefs_graph(self.scan_ref, )
-        else:
-            ref_mol_strs = {}
-        if self._mol.mpi_size > 1:
-            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_strs, root = 0)
-        for ref in self.scan_ref:
-#            if self._mol.mpi_rank == 0:
-#                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
-#            else:
-#                ref_mol_str = None
-#            if self._mol.mpi_size > 1:
-#                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
-            ref_mol = molsys.mol.from_string(ref_mol_strs[ref])
-            ref_mol.addon("fragments")
-            ref_mol.fragments.make_frag_graph()
-            if plot:
-                ref_mol.fragments.plot_frag_graph(ref, ptype="png", size=600, vsize=20, fsize=20)
-            # if active space is defined create atomistic graph of active zone
-            active = ref_dic[ref][2]
-            if active: ref_mol.graph.make_graph(active)
-            self.ref_systems[ref] = ref_mol
-        self.timer.stop()
-        # now search in the fraggraph for the reference systems
-        self.timer.start("scan for ref systems")
-        logger.info("Searching for reference systems:")
-        self.ref_fraglists = {}
-        self.ref_atomlists = {}
-        for ref in copy.copy(self.scan_ref):
-            # TODO: if a ref system has only one fragment we do not need to do a substructure search but
-            #       could pick it from self.fragemnts.fraglist
-            subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
-            # in the case that an upgrade for a reference system is available, it has also to be searched
-            # for the upgraded reference systems
-            upgrades = ref_dic[ref][3]
-            if upgrades:
-                if len(upgrades) != 1:
-                    raise ValueError('Currently, only one upgrade is supported')
-                # if upgrades should be applied, also an active zone has to be present
-                assert ref_dic[ref][2] != None
-                for s,r in upgrades.items():
-                    subs_upgrade = []
-                    n_upgrade_frags = self.ref_systems[ref].fragments.get_occurence_of_frag(s)
-                    for i in range(n_upgrade_frags):
-                        self.ref_systems[ref].fragments.upgrade(s, r, rep_n=1)
-                        subs_upgrade += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
-                    subs += subs_upgrade
-            logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
-            if len(subs) == 0:
-                # this ref system does not appear => discard
-                self.scan_ref.remove(ref)
-                del(self.ref_systems[ref])
+        with self.timer("get reference systems"):
+            scan_ref  = []
+            scan_prio = []
+            if self._mol.mpi_rank == 0:
+                ref_dic = self.cache.list_FFrefs(self.par.FF)
             else:
-                # join all fragments
-                subs_flat = list(set(itertools.chain.from_iterable(subs)))
-                self.ref_fraglists[ref] = subs_flat
-                # now we have to search for the active space
-                # first construct the atomistic graph for the sub in the real system if 
-                # an active zone is defined
-                if ref_dic[ref][2] != None and type(ref_dic[ref][2]) != str:
-                    idx = self.fragments.frags2atoms(subs_flat)
-                    self._mol.graph.filter_graph(idx)
-                    asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
-                    ### check for atfixes and change atype accordingly, the atfix number has to be referred to its index in the azone
-                    if ref_dic[ref][4] != None and type(ref_dic[ref][4]) != str:
-                        atfix = ref_dic[ref][4]
-                        for s in asubs:
-                            for idx, at in atfix.items():
-                                azone = ref_dic[ref][2]
-                                self.aftypes[s[azone.index(int(idx))]].atype = at
-                    self._mol.graph.molg.clear_filters()
-                    asubs_flat = itertools.chain.from_iterable(asubs)
-                    self.ref_atomlists[ref] = list(set(asubs_flat))
+                ref_dic = []
+            if self._mol.mpi_size > 1:
+                ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
+            for refname in ref_dic.keys():
+                prio, reffrags, active, upgrades, atfix = ref_dic[refname]
+                if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
+                    scan_ref.append(refname)
+                    scan_prio.append(prio)
+                # check for upgrades
+                elif upgrades and len(reffrags) > 0:
+                    oreffrags = copy.deepcopy(reffrags)
+                    for d,u in upgrades.items():
+                        reffrags = [i.replace(d,u) for i in reffrags]
+                        if all(f in self.fragments.get_fragnames() for f in reffrags):
+                            scan_ref.append(refname)
+                            scan_prio.append(prio)
+            # sort to be scanned referecnce systems by their prio
+            self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
+            self.scan_ref.reverse()
+        # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
+        with self.timer("make ref frag graphs"):
+            self.ref_systems = {}
+            if self._mol.mpi_rank == 0:
+                ref_mol_strs  = self.cache.get_FFrefs_graph(self.scan_ref, )
+            else:
+                ref_mol_strs = {}
+            if self._mol.mpi_size > 1:
+                ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_strs, root = 0)
+            for ref in self.scan_ref:
+    #            if self._mol.mpi_rank == 0:
+    #                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
+    #            else:
+    #                ref_mol_str = None
+    #            if self._mol.mpi_size > 1:
+    #                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
+                ref_mol = molsys.mol.from_string(ref_mol_strs[ref])
+                ref_mol.addon("fragments")
+                ref_mol.fragments.make_frag_graph()
+                if plot:
+                    ref_mol.fragments.plot_frag_graph(ref, ptype="png", size=600, vsize=20, fsize=20)
+                # if active space is defined create atomistic graph of active zone
+                active = ref_dic[ref][2]
+                if active: ref_mol.graph.make_graph(active)
+                self.ref_systems[ref] = ref_mol
+        # now search in the fraggraph for the reference systems
+        with self.timer("scan for ref systems"):
+            logger.info("Searching for reference systems:")
+            self.ref_fraglists = {}
+            self.ref_atomlists = {}
+            for ref in copy.copy(self.scan_ref):
+                # TODO: if a ref system has only one fragment we do not need to do a substructure search but
+                #       could pick it from self.fragemnts.fraglist
+                subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                # in the case that an upgrade for a reference system is available, it has also to be searched
+                # for the upgraded reference systems
+                upgrades = ref_dic[ref][3]
+                if upgrades:
+                    if len(upgrades) != 1:
+                        raise ValueError('Currently, only one upgrade is supported')
+                    # if upgrades should be applied, also an active zone has to be present
+                    assert ref_dic[ref][2] != None
+                    for s,r in upgrades.items():
+                        subs_upgrade = []
+                        n_upgrade_frags = self.ref_systems[ref].fragments.get_occurence_of_frag(s)
+                        for i in range(n_upgrade_frags):
+                            self.ref_systems[ref].fragments.upgrade(s, r, rep_n=1)
+                            subs_upgrade += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                        subs += subs_upgrade
+                logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
+                if len(subs) == 0:
+                    # this ref system does not appear => discard
+                    self.scan_ref.remove(ref)
+                    del(self.ref_systems[ref])
                 else:
-                    self.ref_atomlists[ref] = None
-        self.timer.stop()
+                    # join all fragments
+                    subs_flat = list(set(itertools.chain.from_iterable(subs)))
+                    self.ref_fraglists[ref] = subs_flat
+                    # now we have to search for the active space
+                    # first construct the atomistic graph for the sub in the real system if 
+                    # an active zone is defined
+                    if ref_dic[ref][2] != None and type(ref_dic[ref][2]) != str:
+                        idx = self.fragments.frags2atoms(subs_flat)
+                        self._mol.graph.filter_graph(idx)
+                        asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
+                        ### check for atfixes and change atype accordingly, the atfix number has to be referred to its index in the azone
+                        if ref_dic[ref][4] != None and type(ref_dic[ref][4]) != str:
+                            atfix = ref_dic[ref][4]
+                            for s in asubs:
+                                for idx, at in atfix.items():
+                                    azone = ref_dic[ref][2]
+                                    self.aftypes[s[azone.index(int(idx))]].atype = at
+                        self._mol.graph.molg.clear_filters()
+                        asubs_flat = itertools.chain.from_iterable(asubs)
+                        self.ref_atomlists[ref] = list(set(asubs_flat))
+                    else:
+                        self.ref_atomlists[ref] = None
         # get the parameters
-        self.timer.start("get ref parmeter sets")
-        if self._mol.mpi_rank == 0:
-            self.ref_params = self.cache.get_ref_params(self.scan_ref, self.par.FF)
-        else:
-            self.ref_params = None
-        if self._mol.mpi_size > 1:
-            self.ref_params = self._mol.mpi_comm.bcast(self.ref_params, root=0)
+        with self.timer("get ref parmeter sets"):
+            if self._mol.mpi_rank == 0:
+                self.ref_params = self.cache.get_ref_params(self.scan_ref, self.par.FF)
+            else:
+                self.ref_params = None
+            if self._mol.mpi_size > 1:
+                self.ref_params = self._mol.mpi_comm.bcast(self.ref_params, root=0)
 
-        #self.ref_params = {}
-        #for ref in self.scan_ref:
-            #logger.info("Getting params for %s" % ref)
-            #if self._mol.mpi_rank == 0:
-            #    ref_par = self.api.get_params_from_ref(self.par.FF, ref)
-            #else:
-            #    ref_par = None
-            #if self._mol.mpi_size > 1:
-            #    ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
-            #self.ref_params[ref] = ref_par
+            #self.ref_params = {}
+            #for ref in self.scan_ref:
+                #logger.info("Getting params for %s" % ref)
+                #if self._mol.mpi_rank == 0:
+                #    ref_par = self.api.get_params_from_ref(self.par.FF, ref)
+                #else:
+                #    ref_par = None
+                #if self._mol.mpi_size > 1:
+                #    ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
+                #self.ref_params[ref] = ref_par
 
 
-            #print(("DEBUG DEBUG Ref system %s" % ref))
-            #print((self.ref_params[ref]))
-        self.timer.stop()
+                #print(("DEBUG DEBUG Ref system %s" % ref))
+                #print((self.ref_params[ref]))
         return
 
 
@@ -1597,128 +1590,124 @@ class ff(base):
             - self.ref_fraglist  : list of fragment indices belonging to this refsystem
             - self.ref_params    : paramtere dictionaries per refsystem (n-body/type)
         """
-        self.timer.start("get reference systems")
-        scan_ref  = []
-        scan_prio = []
-        if self._mol.mpi_rank == 0:
-            ref_dic = self.api.list_FFrefs(self.par.FF)
-        else:
-            ref_dic = []
-        if self._mol.mpi_size > 1:
-            ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
-        for refname in ref_dic.keys():
-            prio, reffrags, active, upgrades, atfix = ref_dic[refname]
-            if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
-                scan_ref.append(refname)
-                scan_prio.append(prio)
-            # check for upgrade   
-        #    elif upgrades and len(reffrags) > 0:        
-        #        print (refname)
-        #        oreffrags = copy.deepcopy(reffrags)
-        #        for d,u in upgrades.items():
-        #            reffrags = [i.replace(d,u) for i in reffrags]
-        #            if all(f in self.fragments.get_fragnames() for f in reffrags):
-        #                scan_ref.append(refname)
-        #                scan_prio.append(prio)
-        # sort to be scanned referecnce systems by their prio
-        self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
-        self.scan_ref.reverse()
-        self.timer.stop()
-        # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
-        self.timer.start("make ref frag graphs")
-        self.ref_systems = {}
-        if self._mol.mpi_rank == 0:
-            ref_mol_strs  = self.api.get_FFrefs_graph(self.scan_ref, out ="str")
-        else:
-            ref_mol_strs = {}
-        if self._mol.mpi_size > 1:
-            ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_strs, root = 0)
-        for ref in self.scan_ref:
-#            if self._mol.mpi_rank == 0:
-#                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
-#            else:
-#                ref_mol_str = None
-#            if self._mol.mpi_size > 1:
-#                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
-            ref_mol = molsys.mol.from_string(ref_mol_strs[ref])
-            ref_mol.addon("fragments")
-            ref_mol.fragments.make_frag_graph()
-            if plot:
-                ref_mol.fragments.plot_frag_graph(ref, ptype="png", size=600, vsize=20, fsize=20)
-            # if active space is defined create atomistic graph of active zone
-            active = ref_dic[ref][2]
-            if active: ref_mol.graph.make_graph(active)
-            self.ref_systems[ref] = ref_mol
-        self.timer.stop()
-        # now search in the fraggraph for the reference systems
-        self.timer.start("scan for ref systems")
-        logger.info("Searching for reference systems:")
-        self.ref_fraglists = {}
-        self.ref_atomlists = {}
-        allowed_downgrades = ["Zn4O_benz"]
-        for ref in copy.copy(self.scan_ref):
-            # TODO: if a ref system has only one fragment we do not need to do a substructure search but
-            #       could pick it from self.fragemnts.fraglist
-            subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
-            # in the case that an upgrade for a reference system is available, it has also to be searched
-            # for the upgraded reference systems
-            #upgrades = ref_dic[ref][3]
-            #if upgrades:
-            #    # if upgrades should be applied, also an active zone has to be present
-            #    assert ref_dic[ref][2] != None
-            #    for s,r in upgrades.items():
-            #        self.ref_systems[ref].fragments.upgrade(s, r)
-            #        subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
-            # check again for vtypes2 fragments (substituted phenyl like fragments)
-            if (len(subs) == 0) and (ref in allowed_downgrades):
-                self._mol.graph.plot_graph("ref", g = self.ref_systems[ref].fragments.frag_graph)
-                self._mol.graph.plot_graph("host", g = self.fragments.frag_graph, vertex_text=self.fragments.frag_graph.vp.types2)
-                subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph, 
-                    graph_property = self.fragments.frag_graph.vp.types2)
-            logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
-            if len(subs) == 0:
-                # this ref system does not appear => discard
-                self.scan_ref.remove(ref)
-                del(self.ref_systems[ref])
-            else:
-                # join all fragments
-                subs_flat = list(set(itertools.chain.from_iterable(subs)))
-                self.ref_fraglists[ref] = subs_flat
-                # now we have to search for the active space
-                # first construct the atomistic graph for the sub in the real system if 
-                # an active zone is defined
-                if ref_dic[ref][2] != None and type(ref_dic[ref][2]) != str:
-                    idx = self.fragments.frags2atoms(subs_flat)
-                    self._mol.graph.filter_graph(idx)
-                    asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
-                    ### check for atfixes and change atype accordingly, the atfix number has to be referred to its index in the azone
-                    if ref_dic[ref][4] != None and type(ref_dic[ref][4]) != str:
-                        atfix = ref_dic[ref][4]
-                        for s in asubs:
-                            for idx, at in atfix.items():
-                                azone = ref_dic[ref][2]
-                                self.aftypes[s[azone.index(int(idx))]].atype = at
-                    self._mol.graph.molg.clear_filters()
-                    asubs_flat = itertools.chain.from_iterable(asubs)
-                    self.ref_atomlists[ref] = list(set(asubs_flat))
-                else:
-                    self.ref_atomlists[ref] = None
-        self.timer.stop()
-        # get the parameters
-        self.timer.start("get ref parmeter sets")
-        self.ref_params = {}
-        for ref in self.scan_ref:
-            logger.info("Getting params for %s" % ref)
+        with self.timer("get reference systems"):
+            scan_ref  = []
+            scan_prio = []
             if self._mol.mpi_rank == 0:
-                ref_par = self.api.get_params_from_ref(self.par.FF, ref)
+                ref_dic = self.api.list_FFrefs(self.par.FF)
             else:
-                ref_par = None
+                ref_dic = []
             if self._mol.mpi_size > 1:
-                ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
-            self.ref_params[ref] = ref_par
-            #print(("DEBUG DEBUG Ref system %s" % ref))
-            #print((self.ref_params[ref]))
-        self.timer.stop()
+                ref_dic = self._mol.mpi_comm.bcast(ref_dic, root=0)
+            for refname in ref_dic.keys():
+                prio, reffrags, active, upgrades, atfix = ref_dic[refname]
+                if len(reffrags) > 0 and all(f in self.fragments.get_fragnames() for f in reffrags):
+                    scan_ref.append(refname)
+                    scan_prio.append(prio)
+                # check for upgrade   
+            #    elif upgrades and len(reffrags) > 0:        
+            #        print (refname)
+            #        oreffrags = copy.deepcopy(reffrags)
+            #        for d,u in upgrades.items():
+            #            reffrags = [i.replace(d,u) for i in reffrags]
+            #            if all(f in self.fragments.get_fragnames() for f in reffrags):
+            #                scan_ref.append(refname)
+            #                scan_prio.append(prio)
+            # sort to be scanned referecnce systems by their prio
+            self.scan_ref = [scan_ref[i] for i in np.argsort(scan_prio)]
+            self.scan_ref.reverse()
+        # now get the refsystems and make their fraggraphs and atomistic graphs of their active space
+        with self.timer("make ref frag graphs"):
+            self.ref_systems = {}
+            if self._mol.mpi_rank == 0:
+                ref_mol_strs  = self.api.get_FFrefs_graph(self.scan_ref, out ="str")
+            else:
+                ref_mol_strs = {}
+            if self._mol.mpi_size > 1:
+                ref_mol_strs = self._mol.mpi_comm.bcast(ref_mol_strs, root = 0)
+            for ref in self.scan_ref:
+    #            if self._mol.mpi_rank == 0:
+    #                ref_mol_str = self.api.get_FFref_graph(ref, out="str")
+    #            else:
+    #                ref_mol_str = None
+    #            if self._mol.mpi_size > 1:
+    #                ref_mol_str = self._mol.mpi_comm.bcast(ref_mol_str, root=0)
+                ref_mol = molsys.mol.from_string(ref_mol_strs[ref])
+                ref_mol.addon("fragments")
+                ref_mol.fragments.make_frag_graph()
+                if plot:
+                    ref_mol.fragments.plot_frag_graph(ref, ptype="png", size=600, vsize=20, fsize=20)
+                # if active space is defined create atomistic graph of active zone
+                active = ref_dic[ref][2]
+                if active: ref_mol.graph.make_graph(active)
+                self.ref_systems[ref] = ref_mol
+        # now search in the fraggraph for the reference systems
+        with self.timer("scan for ref systems"):
+            logger.info("Searching for reference systems:")
+            self.ref_fraglists = {}
+            self.ref_atomlists = {}
+            allowed_downgrades = ["Zn4O_benz"]
+            for ref in copy.copy(self.scan_ref):
+                # TODO: if a ref system has only one fragment we do not need to do a substructure search but
+                #       could pick it from self.fragemnts.fraglist
+                subs = self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                # in the case that an upgrade for a reference system is available, it has also to be searched
+                # for the upgraded reference systems
+                #upgrades = ref_dic[ref][3]
+                #if upgrades:
+                #    # if upgrades should be applied, also an active zone has to be present
+                #    assert ref_dic[ref][2] != None
+                #    for s,r in upgrades.items():
+                #        self.ref_systems[ref].fragments.upgrade(s, r)
+                #        subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph)
+                # check again for vtypes2 fragments (substituted phenyl like fragments)
+                if (len(subs) == 0) and (ref in allowed_downgrades):
+                    self._mol.graph.plot_graph("ref", g = self.ref_systems[ref].fragments.frag_graph)
+                    self._mol.graph.plot_graph("host", g = self.fragments.frag_graph, vertex_text=self.fragments.frag_graph.vp.types2)
+                    subs += self._mol.graph.find_subgraph(self.fragments.frag_graph, self.ref_systems[ref].fragments.frag_graph, 
+                        graph_property = self.fragments.frag_graph.vp.types2)
+                logger.info("   -> found %5d occurences of reference system %s" % (len(subs), ref))
+                if len(subs) == 0:
+                    # this ref system does not appear => discard
+                    self.scan_ref.remove(ref)
+                    del(self.ref_systems[ref])
+                else:
+                    # join all fragments
+                    subs_flat = list(set(itertools.chain.from_iterable(subs)))
+                    self.ref_fraglists[ref] = subs_flat
+                    # now we have to search for the active space
+                    # first construct the atomistic graph for the sub in the real system if 
+                    # an active zone is defined
+                    if ref_dic[ref][2] != None and type(ref_dic[ref][2]) != str:
+                        idx = self.fragments.frags2atoms(subs_flat)
+                        self._mol.graph.filter_graph(idx)
+                        asubs = self._mol.graph.find_subgraph(self._mol.graph.molg, self.ref_systems[ref].graph.molg)
+                        ### check for atfixes and change atype accordingly, the atfix number has to be referred to its index in the azone
+                        if ref_dic[ref][4] != None and type(ref_dic[ref][4]) != str:
+                            atfix = ref_dic[ref][4]
+                            for s in asubs:
+                                for idx, at in atfix.items():
+                                    azone = ref_dic[ref][2]
+                                    self.aftypes[s[azone.index(int(idx))]].atype = at
+                        self._mol.graph.molg.clear_filters()
+                        asubs_flat = itertools.chain.from_iterable(asubs)
+                        self.ref_atomlists[ref] = list(set(asubs_flat))
+                    else:
+                        self.ref_atomlists[ref] = None
+        # get the parameters
+        with self.timer("get ref parmeter sets"):
+            self.ref_params = {}
+            for ref in self.scan_ref:
+                logger.info("Getting params for %s" % ref)
+                if self._mol.mpi_rank == 0:
+                    ref_par = self.api.get_params_from_ref(self.par.FF, ref)
+                else:
+                    ref_par = None
+                if self._mol.mpi_size > 1:
+                    ref_par = self._mol.mpi_comm.bcast(ref_par, root=0)                
+                self.ref_params[ref] = ref_par
+                #print(("DEBUG DEBUG Ref system %s" % ref))
+                #print((self.ref_params[ref]))
         return
 
 
@@ -2301,8 +2290,8 @@ class ff(base):
                 ntypes = len(ptypes)
                 for i in range(ntypes):
                     itype = npars[i,1]
-                    ptype = ptypes[i]
-                    ident = names[i]
+                    ptype = ptypes[i].decode("utf-8")
+                    ident = names[i].decode("utf-8")
                     param = list(pars[i,0:npars[i,0]]) # npars[i,0] is the number of params
                     if ident in par:
                         logger.warning('Identifier %s already in par dictionary --> will be overwritten' % ident)

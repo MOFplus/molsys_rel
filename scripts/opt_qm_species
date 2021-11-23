@@ -222,17 +222,12 @@ def get_ncurjobs(jobids):
 #
 # Start of main program 
 #
-#if len(sys.argv) < 6:
-#    print ("usage:  opt_qm_species <db_path> <pdlp_file> <stage> <start_lot> <cmd_file>")
+<<<<<<< HEAD
 if len(sys.argv) < 4:
     print ("usage:  opt_qm_species <db_path> <start_lot> <cmd_file>")
     exit()
     
-
 db_path   = os.path.abspath(sys.argv[1])
-#pdlp_path = sys.argv[2]
-#pdlp_path = os.path.abspath(pdlp_path)
-#stage     = sys.argv[3]
 start_lot = sys.argv[2]
 cmd_file  = sys.argv[3]
 
@@ -277,11 +272,20 @@ if "skip_uni_no_mg_change" not in params:
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
+<<<<<<< HEAD
 #print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
 
 # get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
 db = rdb.db
 #md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
+=======
+print ("dealing with MD from file %s and stage %s"  % (mfp5_path, stage))
+
+# get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
+db = rdb.db
+md = db((db.md.path == mfp5_path) & (db.md.stage == stage)).select().first()
+
+>>>>>>> e4978f2beadf7cd1cdaedebbfa1953da5057e8b0
 
 reactions = db(db.reactions).select() 
 print(reactions)

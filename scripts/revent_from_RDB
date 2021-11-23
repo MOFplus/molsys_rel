@@ -6,18 +6,18 @@ import os
 from molsys.util import RDB
 
 if len(sys.argv)<5:
-    print ("revent_from_RDB <dbname> <pdlpfile> <stage> <TSfid>")
+    print ("revent_from_RDB <dbname> <mfp5file> <stage> <TSfid>")
     exit
 
 dbpath = sys.argv[1]
-pdlpf  = sys.argv[2]
+mfp5f  = sys.argv[2]
 stage  = sys.argv[3]
 TSfid  = int(sys.argv[4])
 
 # make a new database
 db = RDB.RDB(dbpath)
 
-db.set_md_run(pdlpf, stage)
+db.set_md_run(mfp5f, stage)
 
 storedir = "%s_revent_%d" % (stage, TSfid)
 os.mkdir(storedir)
