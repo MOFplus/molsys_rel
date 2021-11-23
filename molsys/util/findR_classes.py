@@ -68,7 +68,7 @@ class frame:
             if o < 0.0:
                 break
             e = bondtab[j]-1
-            # TO BE REMOVED ... this is a legacy check for the old incorrect pdlp files 
+            # TO BE REMOVED ... this is a legacy check for the old incorrect mfp5 files 
             if (e[0] < 0 or e[0] >= self.natoms or e[1] < 0 or e[1] >= self.natoms):
                 break
             # END TO BE REMOVED
@@ -279,11 +279,11 @@ class species:
     def make_mol(self, xyz, pmol):
         """generate a mol object for the species from a frame
 
-        we get the current coordinates as xyz and the parent mol object pmol from the pdlp file
+        we get the current coordinates as xyz and the parent mol object pmol from the mfp5 file
         
         Args:
             xyz (numpy): coordinates of the atoms
-            pmol (molsys object): parent mol object from pdlp file 
+            pmol (molsys object): parent mol object from mfp5 file 
         """
         aids = list(self.aids) # in order to map backwards
         self.mol = molsys.mol.from_array(xyz)

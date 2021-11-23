@@ -109,15 +109,15 @@ def compare_species(species,sumforms,moldata):
 
 
 if len(sys.argv) < 5:
-    print ("usage:  find_unique_reactions <db_path> <pdlp_file> <stage> <add redundant species?(y/n)>")
+    print ("usage:  find_unique_reactions <db_path> <mfp5_file> <stage> <add redundant species?(y/n)>")
     exit()
     
 #
 # Read command line arguments
 #
 db_path   = sys.argv[1]
-pdlp_path = sys.argv[2]
-pdlp_path = os.path.abspath(pdlp_path)
+mfp5_path = sys.argv[2]
+mfp5_path = os.path.abspath(mfp5_path)
 stage     = sys.argv[3]
 try:
     check_if_included = True
@@ -129,11 +129,11 @@ except:
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
-print ("dealing with MD from file %s and stage %s"  % (pdlp_path, stage))
+print ("dealing with MD from file %s and stage %s"  % (mfp5_path, stage))
 
 db = rdb.db
-md = db((db.md.path == pdlp_path) & (db.md.stage == stage)).select().first()
-#rdb.set_md_run(pdlp_path,stage)
+md = db((db.md.path == mfp5_path) & (db.md.stage == stage)).select().first()
+#rdb.set_md_run(mfp5_path,stage)
 #md = db((db.md.stage == stage)).select().first()
 revents = db((db.revent.mdID == md)).select()
 num_all = (len(revents))
