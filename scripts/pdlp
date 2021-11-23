@@ -1,12 +1,13 @@
 #! /usr/bin/env python3
 
 #
-#          PDLP 
+#          MFP5 
 #
-#   interactive pdlp file analysis
+#   interactive mfp5 file analysis
 #   written out of a need by RS (2014)
-#
-#   2019: converted to python3 and extended for the analysis of ReaxFF pdlp files
+
+#   2019: converted to python3 and extended for the analysis of ReaxFF mfp5 files
+#   2021: renamed from pdlp to mfp5
 #
 
 import numpy as np
@@ -14,7 +15,7 @@ import string
 import os
 import shutil
 import subprocess
-from molsys.util import pdlpio2
+from molsys.util import mfp5io
 import types
 import time
 import copy
@@ -107,26 +108,26 @@ def launch_vmd(filename):
 
 print("******************************************************************")
 print("")
-print("          PDLP file viewer and analyser") 
+print("          MFP5 file viewer and analyser") 
 print("            R. Schmid, J. Keupp, RUB, 2014-2020")
 print("")
 print("******************************************************************")
 
-pdlpf = args["pdlp-file"]
-if os.path.isfile(pdlpf):
-    print(("\nOpening pdlp file %s" % pdlpf))
-    pdiof = pdlpio2.pdlpio2(pdlpf)
+mfp5f = args["mfp5-file"]
+if os.path.isfile(mfp5f):
+    print(("\nOpening mfp5 file %s" % mfp5f))
+    pdiof = mfp5io.mfp5io(mfp5f)
 else:
-    raise IOError("pdlp file does not exist")
+    raise IOError("mfp5 file does not exist")
 
-scrdir = "pdlp_" + str(os.getpid())
+scrdir = "mfp5_" + str(os.getpid())
 try:
     os.mkdir(scrdir)
     print(("using %s as scratchdir (will be removed on exit by default)" % scrdir))
 except IOError:
     print("to be implemented")
     
-########### report content of pdlp file ###################################
+########### report content of mfp5 file ###################################
 
 print("\nReading and processing system info from file!")
 mol = pdiof.get_mol_from_system()
@@ -135,7 +136,7 @@ atypes = mol.get_atypes()
 bcd = mol.get_bcond()
 natoms = mol.get_natoms()
 cnct = mol.get_conn()
-# TBI: currently we do not have this info in pdlpio2 files ... need to fix this
+# TBI: currently we do not have this info in mfp5io files ... need to fix this
 # whichmol, moltypes, molnames  = pdiof.get_molecules()
 # nmols = len(moltypes)
 # mols = []
@@ -143,7 +144,7 @@ cnct = mol.get_conn()
 # for i, m in enumerate(whichmol): mols[m].append(i)
 stages                        = pdiof.get_stages()
 
-print ("\nReporting pdlp file content:")
+print ("\nReporting mfp5 file content:")
 print(("Number of Atoms:     %d" % natoms))
 # print(("Number of Molecules: %d" % len(moltypes)))
 print(("Boundary condition:  %d" % bcd))
@@ -173,7 +174,7 @@ while not stop:
     
     print ("Further options:")
     print (" m - inspect and modify molecules")
-    print (" c - copy data to a new or existing pdlp file")
+    print (" c - copy data to a new or existing mfp5 file")
     print (" v - visualize restart geometry")
     print (" t - visualize the trajectory (or parts)")
     print (" p - plot thermodynamic data")
@@ -181,7 +182,7 @@ while not stop:
     print (" x - analysis by using the external TRAVIS code (must be installed)")
     print (" q - quit")
 
-    print ("\nWARNING: this script is under development for the conversion to molsys/pdlpio2 and python3")
+    print ("\nWARNING: this script is under development for the conversion to molsys/mfp5io and python3")
     print   ("         a lot of these methods might not work, yet!!!")
 
     opts = ["m", "q", "v", "c", "p", "t", "a", "x"] + list(map(str, list(range(1,len(stages)+1))))
@@ -410,7 +411,7 @@ while not stop:
             opts = {"com"   : "compute center of mass of a molecular species",\
                     "cav"   : "compute average cell params",\
                     "ela"   : "compute elastic constants from strain fluctuation" , \
-                    "cld"   : "load a com of a molecular species from the pdlp file",\
+                    "cld"   : "load a com of a molecular species from the mfp5 file",\
                     "m3d"   : "Generate a 3D map from a COM like object and write as CUBE file",\
                     "map"   : "Map a COM like object in arbitrary dimensions",\
                     "msd"   : "Compute Mean Square Displacement from COM [COM has to be computed before running 'msd']",\
@@ -431,7 +432,7 @@ while not stop:
                 if inp == "com":
                     mol = grab_input(molnames, "Choose the molecule type")
                     mol = molnames[int(mol)-1]
-                    inpstore = input("Do you want to store the com array in the pdlp file? [N/y]\n>> ")
+                    inpstore = input("Do you want to store the com array in the mfp5 file? [N/y]\n>> ")
                     if inpstore == "y":
                         store = True
                     else:
@@ -599,7 +600,7 @@ while not stop:
                     for i in range(len(molnames)):
                         print("%d %s" % (i+1,molnames[i]))
                     dip_molname = input("\nMolname of the target molecule? [as string] \n>>").lower()
-                    store_input = input("Do you want to store the molecular diple information in the *.pdlp file? [y/N]:\n>>>").lower()
+                    store_input = input("Do you want to store the molecular diple information in the *.mfp5 file? [y/N]:\n>>>").lower()
                     store = False
                     if store_input == 'y':
                         store = True
@@ -650,7 +651,7 @@ while not stop:
             
                 elif inp == "pol":
                     temperature = float(input("Please enter the temperature of your simulation run in K:\n>>>"))
-                    store_input = input("Do you want to store the system diple vector for each frame in the *.pdlp file? [y/N]:\n>>>").lower()
+                    store_input = input("Do you want to store the system diple vector for each frame in the *.mfp5 file? [y/N]:\n>>>").lower()
                     store = False
                     if store_input == 'y':
                         store = True
@@ -789,7 +790,7 @@ while not stop:
     
 ########### clean up ######################################################
 
-print("\nWrite out pdlp file")
+print("\nWrite out mfp5 file")
 pdiof.close()
 inp = None
 while not (inp=="y" or inp=="n"):

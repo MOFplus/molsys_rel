@@ -476,7 +476,7 @@ class mol(mpiobject):
         """
         from molsys.util import mfp5io
         # instantiate the imfp5io reader
-        pio = imfp5io.mfp5io(fname, restart=stage, filemode="r")
+        pio = mfp5io.mfp5io(fname, restart=stage, filemode="r")
         # get the mol obejct from the mfp5 file
         m = pio.get_mol_from_system()
         pio.close()
