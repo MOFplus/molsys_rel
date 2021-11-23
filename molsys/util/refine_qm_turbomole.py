@@ -67,9 +67,8 @@ class GeneralTools:
         err_path = os.path.join(self.path, "errormessage")
 
         # 1. invoke define
-        # TODO
-        os.system('/home/oyoender/bin/define-V7-6 < %s > %s 2> %s' %(define_in_path, out_path, err_path))
-        #os.system('define < %s > %s 2> %s' %(define_in_path, out_path, err_path))
+        # NOTE Before TM7.6 there might be a bug for linear molecules during ired: "Attention! Not enough linearly independent coordinates" 
+        os.system('define < %s > %s 2> %s' %(define_in_path, out_path, err_path))
 
         # 2. check if define was succesful
         with open(err_path) as err:
@@ -2256,8 +2255,9 @@ class OptimizationTools:
         if not os.path.isdir(woelfling_path):
             os.mkdir(woelfling_path)
         os.chdir(woelfling_path)
-        # TODO Change back to the global woelfling-job script later
-        os.system('/home/oyoender/woelfling-job -ri > woelfling.out')
+        # NOTE Before TM7.6 the energy of the initial and final point is calculated in each iteration. 
+        # Starting with already converged orbitals might cause convergence problems in the SCF cycle with ARH solver.
+        os.system('woelfling-job -ri > woelfling.out')
         with open('woelfling.out') as out:
             for line in out:
                 if 'dscf_problem' in line or 'scf energy ended abnormally' in line:
@@ -2440,7 +2440,7 @@ class OptimizationTools:
 
 
     # TODO The path to the proper should be changed to link that set from the TURBODIR
-    def proper_frag(self, path_proper='/home/haettig/bin/proper_frag'):
+    def proper_frag(self, proper_path="proper"):
         """ produces for each fragment 5 files: frag1.xyz, control1, coord1, alpha1, beta1
         """
         proper_in = os.path.join(self.path,'proper.in')
@@ -2448,7 +2448,7 @@ class OptimizationTools:
         f.write('mos\nfrag\nq')
         f.close()
         os.chdir(self.path)
-        os.system('%s < proper.in' %path_proper)
+        os.system('%s < proper.in > proper_frag.out' %proper_path)
         os.chdir(self.maindir) 
         return
 
@@ -3148,18 +3148,18 @@ class OptimizationTools:
         f2.close()
         return
 
-    def get_csos(self, proper_path="/home/haettig/bin/proper_csos"):
+    def get_csos(self, proper_path="proper"):
         os.chdir(self.path)
         f = open("proper.in", "w")
         f.write("mos\ncsos symao\nq")
         f.close()
-        os.system("%s < proper.in" %proper_path)
+        os.system("%s < proper.in > proper_csos.out" %proper_path)
         os.remove("proper.in")
         os.chdir(self.maindir)
         return
         
 
-    def refine_ccsd(self, ospecID, pnoccsd="", proper_path="/home/haettig/bin/proper_csos"):
+    def refine_ccsd(self, ospecID, pnoccsd="", proper_path="proper"):
         # 1. Get the model and basis set from level of theory (self.lot)
         # example formats for lot:
         # "PNO-ROHF-CCSD(T)(F12*)/cc-pVTZ" -> Uses pnoccsd code
