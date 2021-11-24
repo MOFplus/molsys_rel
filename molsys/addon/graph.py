@@ -967,7 +967,7 @@ class graph(object):
 
     @staticmethod
     def is_equal(molg1, molg2, use_fast_check=False):
-        """helper function to identify if two molecular graphs are equal 
+        """helper function to identify if two molecular graphs are equal or not
         
         Args:
             molg1 (molecular graph): molecular graph to be compared to molg2 
