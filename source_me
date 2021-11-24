@@ -14,7 +14,7 @@ function __print()
 
 function __usage()
 {
-   echo "His will set enviorment variables to make molsys accessible"
+   echo "His will set all enviorment variables to make molsys accessible"
    echo "Usage: source source_me"
 }
 
