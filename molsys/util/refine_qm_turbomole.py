@@ -679,16 +679,26 @@ class GeneralTools:
 
 
     def ridft(self):
+        SPE = None
         os.chdir(self.path)
         os.system("ridft > ridft.out")
-        SPE = self.get_energy_from_scf_out("ridft.out")
+        converged = self.check_scf_converged("ridft")
+        if converged:
+            SPE =  self.get_energy_from_scf_out("ridft.out")
+        else:
+            print("ridft did not converge")
         os.chdir(self.maindir)
         return SPE
 
     def dscf(self):
+        SPE = None
         os.chdir(self.path)
         os.system("dscf > dscf.out")
-        SPE =  self.get_energy_from_scf_out("dscf.out")
+        converged = self.check_scf_converged("dscf")
+        if converged:
+            SPE =  self.get_energy_from_scf_out("dscf.out")
+        else:
+            print("dscf did not converge")
         os.chdir(self.maindir)
         return SPE
 
@@ -2443,11 +2453,35 @@ class OptimizationTools:
     def proper_frag(self, proper_path="proper"):
         """ produces for each fragment 5 files: frag1.xyz, control1, coord1, alpha1, beta1
         """
+        # TODO Delete
+        # from here
+        # This part is not necessary but added as a temporary solution due to a minor bug in the release version of Turbomole 7.6.
+        control_path = os.path.join(self.path,"control")
+        atomsdg = False
+        newatomsdg = 'atoms\n'
+        basisadded = False
+        jbasadded  = False
+        for line in open(control_path,'r'):
+            if '$atoms' in line:
+                atomsdg = True
+            elif '$' in line:
+                atomsdg =  False
+            elif atomsdg:
+                if 'basis' in line and not basisadded:
+                    newatomsdg += '    basis = %s    ' %line.split()[2]
+                    basisadded = True
+                elif 'jbas' in line and not jbasadded:
+                    newatomsdg += '\ \n    jbas  = %s    ' %line.split()[2]
+                    jbasadded = True
+        GT = GeneralTools(self.path)
+        GT.kdg('atoms')
+        self.add_dg_to_control(newatomsdg)
+        # until here ---
+        os.chdir(self.path)
         proper_in = os.path.join(self.path,'proper.in')
         f=open(proper_in,'w')
         f.write('mos\nfrag\nq')
         f.close()
-        os.chdir(self.path)
         os.system('%s < proper.in > proper_frag.out' %proper_path)
         os.chdir(self.maindir) 
         return
@@ -3250,8 +3284,6 @@ class OptimizationTools:
                 self.replace_cso_xxx_with_scfmo("beta", ref_mo_file, mo_file)
                 #ref_mo_file = os.path.join(tmp_path,"beta")
                 #self.replace_uhfmo_xxx_with_scfmo("beta", ref_mo_file, mo_file)            
-            # / remove the tmp directory
-            shutil.rmtree(tmp_path)
         else:
             # Start with the DFT orbitals
             os.system("cpc %s" %dir_name)
@@ -3305,7 +3337,10 @@ class OptimizationTools:
                 shutil.move(os.path.join(bck_path, f), os.path.join(ccsd_path, f))
         shutil.rmtree(bck_path)
 
-        
+        # / remove the tmp directory
+        shutil.rmtree(tmp_path)
+ 
+       
         # 3. Add the pnoccsd options
         if pno:
             GT.define_pnoccsd(pnoccsd=pnoccsd, max_mem=self.max_mem, F12=F12)
