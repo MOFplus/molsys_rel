@@ -413,7 +413,7 @@ class mfp5io(mpiobject):
                             sgroup.attrs[key] = value
                     else:
                         print("simulation_parameters is empty")
-                else: print("simulation_parameters is empty")
+                else: print("simulation_parameters is None")
                 #-----------------------------
                 rgroup = sgroup.create_group("restart")
                 # generate restart arrays for xyz, cell and vel
