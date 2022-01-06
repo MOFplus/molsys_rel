@@ -521,7 +521,7 @@ class mol(mpiobject):
             phonon.set_force_constants(h2)
         return phonon
 
-    def write(self, fname, ftype=None, rank=None, **kwargs):
+    def write(self, fname, ftype=None, rank=None, append=False, **kwargs):
         ''' generic writer for the mol class
         Parameters:
             fname        : the filename to be written
@@ -545,7 +545,12 @@ class mol(mpiobject):
                 ftype = 'mfpx' #default
         logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
         if ftype in formats.write:
-            with open(fname,"w") as f:
+            if append:
+                assert ftype == "xyz", "append only for xyz files"
+                mode = "a"
+            else:
+                mode = "w"                
+            with open(fname, mode) as f:
                 formats.write[ftype](self,f,**kwargs)
         else:
             logger.error("unsupported format: %s" % ftype)

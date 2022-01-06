@@ -821,16 +821,16 @@ class graph(object):
         self.decomp_net.make_topo(check_flag=False)
         return self.decomp_net
 
-    def get_bbs(self, get_all=False, write_mfpx=True):
+    def get_bbs(self, get_all=True, write_mfpx=True):
         """this method generates the unique bbs from moldg and bbg
 
         TBI: currently we map connections only for the vertices but not the edges 
 
         """
         assert self.bbg is not None
-        if get_all == True:
-            print ("PLEASE IMPLEMENT get_all option!!")
-            raise
+        #if get_all == True:
+        #    print ("PLEASE IMPLEMENT get_all option!!")
+        #     raise
         self.decomp_vbb = [] # vertex BB mol objects (only unique)
         self.decomp_ebb = [] # edge/linker BB mol objects (only unique)
         self.decomp_vbb_map = [] # mapping of BBs to the vertices
@@ -905,17 +905,23 @@ class graph(object):
         # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
         # TBI: with flag get_all==True convert them all
         for i in range(nvbbs):
-            bb   = vbb_map[i][0] # take the first
-            vbbg = vbb_graphs[i]
-            # now we need to convert bb into a mol object and store it in self.decomp_vbb
-            mol_bb = self._convert_bb2mol(bb, vbbg)
-            # now add to the final list
-            self.decomp_vbb.append(mol_bb)
-            # store the map from the dicitonary into the nested list
-            self.decomp_vbb_map.append(vbb_remap[i])
-            # DEBUG
-            if write_mfpx:
-                mol_bb.write("bb_%d.mfpx" % i)
+            for j in range(len(vbb_map[i])):
+                bb   = vbb_map[i][j]
+                vbbg = vbb_graphs[i] # not sure if that works ... do we need a list of vbb_graphs?
+                # now we need to convert bb into a mol object and store it in self.decomp_vbb
+                mol_bb = self._convert_bb2mol(bb, vbbg)
+                if j == 0:
+                    # now add to the final list
+                    self.decomp_vbb.append(mol_bb)
+                    # store the map from the dicitonary into the nested list
+                    self.decomp_vbb_map.append(vbb_remap[i])
+                # DEBUG
+                if write_mfpx:
+                    if get_all:
+                        mol_bb.write("bb_%d_%d.mfpx" % (i, j))
+                    else:
+                        if j==0:
+                            mol_bb.write("bb_%d.mfpx" % i)                            
         # EDGES
         # now analyze the edges .. check all edges if their edge property bb is larger than -1 (-1 means no edge bb) 
         ebb_graphs = []
