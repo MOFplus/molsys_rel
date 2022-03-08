@@ -6,12 +6,11 @@ In addition, a weight matrix is held to evaluate various kinds of weighted mean
 square deviations to be used as ingredients to fittness values
 """
 
-import string
 import numpy as np
 import copy
 
 from base import base
-from ff_gen.ric_new import RedIntCoords
+from .ric_src import RedIntCoords
 
 
 ricmapping = {"bnd": "str",
