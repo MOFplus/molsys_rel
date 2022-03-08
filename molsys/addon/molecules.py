@@ -137,6 +137,31 @@ class mgroup:
         assert len(self.whichmol) == self.parent_mol.natoms
         return
 
+    def name_molecules(self, name, atypes):
+        """name already detected molecules
+
+        Args:
+            name (string): name of the molecule
+            atypes (list of strings): atomtypes (atype:frag) in the molecules (all atoms must be in the list)
+
+        """
+        success = False
+        self.molnames.append(name)
+        mtype = len(self.molnames) - 1
+        for m in range(self.nmols):
+            hit = True
+            midx = self.mols[m]
+            for i in midx:
+                if (self.parent_mol.atypes[i] + "@" + self.parent_mol.fragtypes[i]) not in atypes:
+                    hit = False
+            if hit:
+                self.moltypes[m] = mtype
+                success = True
+        if not success:
+            # no such molecule was found .. remove name again
+            self.molnames = self.molname[:-1]
+        return
+
 class molecules(base):
 
     def __init__(self, mol):
@@ -173,7 +198,7 @@ class molecules(base):
         except:
             return getattr(self.mgroups[self.default_mgroup],name)
 
-    def add_molecule(self, newmol, nmols=1, pack=False, packbound=0.5,ff=None,custom_pack=False):
+    def add_molecule(self, newmol, nmols=1, pack=False, packbound=0.5, ff=None, custom_pack=False, sphere=None):
         """Adds a molecule to the parent mol object
 
         A molecules is a sub mol object that can be added to the parent system many times
@@ -184,6 +209,7 @@ class molecules(base):
             - packbound (float): defaults to 0.5: distance in Angstrom to reduce the box for packmol filling
             - ff (None):  dummy variable added for legacy reasons
             - custom_pack (string, optional): if given, use this string to define the box of interest
+            - sphere (list of 4 float, optional): if not None pack in a spere defined as [x, y, z, r]
         """
         
         # temporary hook to get legacy scripts running (JK)
@@ -196,16 +222,24 @@ class molecules(base):
         # if pack is True we first try to use packmol to generate proper xyz coords and keep them.        
         if pack:
             assert self._mol.get_bcond() < 3
-            # assume pydlpoly boundary conditions (orig in the center of box) -- this is what we get from MOF+ 
-            cell = self._mol.get_cell().diagonal()
-            cellh = (cell*0.5)-packbound
-            xyz = self._mol.get_xyz()
-            if xyz.min() > 0:
-                box = [packbound, packbound, packbound]
-                box += (cell-packbound).tolist()
+            if sphere == None:
+                # assume pydlpoly boundary conditions (orig in the center of box) -- this is what we get from MOF+ 
+                cell = self._mol.get_cell().diagonal()
+                cellh = (cell*0.5)-packbound
+                xyz = self._mol.get_xyz()
+                if xyz.min() > 0:
+                    box = [packbound, packbound, packbound]
+                    box += (cell-packbound).tolist()
+                else:
+                    box = (-cellh).tolist()
+                    box += cellh.tolist()
+                if custom_pack == False:
+                    custom_pack = ''
+                else:
+                    custom_pack = '\n                    '+custom_pack+'\n'
+                    constraint = "inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f %s" % (tuple(box) + (custom_pack,))
             else:
-                box = (-cellh).tolist()
-                box += cellh.tolist()
+                constraint = "inside sphere %5.3f %5.3f %5.3f %5.3f" % tuple(sphere)
             # make a temp file and go there
             tmpd = tempfile.mkdtemp()
             cwd  = os.getcwd()
@@ -214,10 +248,6 @@ class molecules(base):
             self._mol.write("self.xyz")
             # write to be added mol
             newmol.write("newmol.xyz")
-            if custom_pack == False:
-                custom_pack = ''
-            else:
-                custom_pack = '\n                    '+custom_pack+'\n'
             packmolf = """
                 tolerance 2.0
                 output final.xyz
@@ -233,9 +263,10 @@ class molecules(base):
                 structure newmol.xyz
                     filetype xyz
                     number %d
-                    inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f %s
+                    %s 
                 end structure
-            """ % (tuple([nmols]+box)+(custom_pack,))
+            """ % (nmols, constraint)
+            print (packmolf)
             with open("pack.inp", "w") as packf:
                 packf.write(packmolf)
             # now try to execute packmol
