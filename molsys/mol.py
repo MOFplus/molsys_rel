@@ -2473,7 +2473,7 @@ class mol(mpiobject):
         Parameters:
             idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
-        if hasattr(self,'masstype') == False:
+        if self.masstype == None:
             self.set_real_mass()
         if self.amass is None:
             amass = np.zeros(self.natoms)
