@@ -251,7 +251,7 @@ class molecules(base):
                     custom_pack = ''
                 else:
                     custom_pack = '\n                    '+custom_pack+'\n'
-                    constraint = "inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f %s" % (tuple(box) + (custom_pack,))
+                constraint = "inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f %s" % (tuple(box) + (custom_pack,))
             else:
                 constraint = "inside sphere %5.3f %5.3f %5.3f %5.3f" % tuple(sphere)
             # make a temp file and go there
@@ -280,7 +280,6 @@ class molecules(base):
                     %s 
                 end structure
             """ % (nmols, constraint)
-            print (packmolf)
             with open("pack.inp", "w") as packf:
                 packf.write(packmolf)
             # now try to execute packmol
