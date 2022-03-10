@@ -162,6 +162,20 @@ class mgroup:
             self.molnames = self.molname[:-1]
         return
 
+    def make_group(self, mname, gname=None):
+        if "groups" not in self.parent_mol.loaded_addons:
+            self.parent_mol.addon("groups")
+        if gname == None:
+            gname = mname
+        assert mname in self.molnames
+        mtype = self.molnames.index(mname)
+        idx = []
+        for i, m in enumerate(self.mols):
+            if self.moltypes[i] == mtype:
+                idx.append(m)
+        self.parent_mol.groups.add_group(gname, "molecules", idx)
+        return
+
 class molecules(base):
 
     def __init__(self, mol):
@@ -237,7 +251,7 @@ class molecules(base):
                     custom_pack = ''
                 else:
                     custom_pack = '\n                    '+custom_pack+'\n'
-                    constraint = "inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f %s" % (tuple(box) + (custom_pack,))
+                constraint = "inside box %5.3f %5.3f %5.3f %5.3f %5.3f %5.3f %s" % (tuple(box) + (custom_pack,))
             else:
                 constraint = "inside sphere %5.3f %5.3f %5.3f %5.3f" % tuple(sphere)
             # make a temp file and go there
@@ -266,7 +280,6 @@ class molecules(base):
                     %s 
                 end structure
             """ % (nmols, constraint)
-            print (packmolf)
             with open("pack.inp", "w") as packf:
                 packf.write(packmolf)
             # now try to execute packmol
