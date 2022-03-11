@@ -417,7 +417,7 @@ class mfp5io(mpiobject):
                 #-----------------------------
                 rgroup = sgroup.create_group("restart")
                 # generate restart arrays for xyz, cell and vel
-                na = self.ffe.get_natoms()
+                na = self.ffe.mol.get_natoms()
                 rgroup.require_dataset("xyz",shape=(na,3), dtype="float64")
                 rgroup.require_dataset("vel",shape=(na,3), dtype="float64")
                 rgroup.require_dataset("cell",shape=(3,3), dtype="float64")
