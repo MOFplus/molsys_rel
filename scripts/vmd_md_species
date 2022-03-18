@@ -15,6 +15,10 @@ from molsys.util import RDB
 from molsys.util import thumbnail
 from molsys.util import print_progress
 
+if len(sys.argv) < 2:
+    print("usage:\n\n  opt_vmd_species <db_path>\n")
+    exit()
+
 db_path = sys.argv[1]
 
 rdb = RDB.RDB(db_path)
