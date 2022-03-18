@@ -1,160 +1,161 @@
 # -*- coding: utf-8 -*-
+"""
+           zmat
+
+    addon to manipulate a molecular (!) zmat for a single molecule
+    based on the chemcoord module
+
+    this is a replacement of the original zmat.py (now zmat_old.py) which is kept
+    for historic and sentimental reasons. 
+    the main reason for the rewrite is that the api of chemcoord has substantially changed.
+
+    Nov. 2021 RS RUB
 
 """
 
-       module to implement an addon feature: chemcoord zmatrix manipulation 
-
-       NOTE: this is only imported by __init__.py if chemcoords is present
-
-       based on Marco Dygas routines in the old IOmod
-
-"""
 import chemcoord
-
-import logging
-import copy
 import pandas
-import numpy
-import molsys.util.rotations as rotations
-import scipy.optimize as opt
-logger = logging.getLogger("molsys.zmat")
+import numpy as np
 
 class zmat:
 
     def __init__(self, mol):
-        """
-        instantiate a graph object which will be attached to the parent mol
+        """zmat class
 
-        :Parameter:
+        This is a simple frontend for the chemcoord library (which needs to be
+        installed including pandas for this to work)
+        Usage: On instantiation or when you call the init() method, a chemcoord
+        cartesian and zmat object will be generated from the mol objects xyz coords.
+        Currently we have to rely that the z-mat is useful for your manipulations. 
+        If this is not the case more specific things need to be implementend 
+        (e.g. reorder z-matrix)
 
-             - mol : a mol type object (can be a derived type like bb or topo as well)
+        You can then "label" an internal coordinate with a name (provided it is part of
+        the z-matrix) by get_ic() and modify its value with set_ic().
+        With the method update() the changed structure will be updated in the parent
+        mol object
+        
+        Args:
+            mol (molobject): parent mol object
         """
         self._mol = mol
-        logger.debug("generated the zmat object")
+        self.elems = [e.strip().capitalize() for e in self._mol.elems]
+        self.elems = pandas.DataFrame(self.elems, columns=["atom"], dtype='str')
+        self.init()
+        self.ics = {}
         return
 
-    def to_Cartesian(self):
+    def init(self, check_bonds=True):
+        """(re)init the chemcoord classes
+
+        this method copies the coordinates from the parent mol object
+        to a cartesian object and its corresponding zmat
+
+        this needs to be called any time the mol structure has been changed
         """
-        transforms the mol object into a chemcoord.Cartesian object
-        """
-        natoms = self._mol.natoms
-        elems = copy.deepcopy(self._mol.elems)
-        for i, j in enumerate(elems): 
-            elems[i] = j.strip().capitalize()
-        xyz = pandas.DataFrame(self._mol.xyz, columns=["x","y","z"], dtype='float64')
-        elems = pandas.DataFrame(elems, columns=["atom"], dtype='str')
-        output = chemcoord.Cartesian(pandas.concat([elems, xyz], axis=1))
-        output.index = range(1, natoms+1)
-        return output
-        
-    def from_Cartesian(self, cartesian):
-        """
-        loads mol xyz data from a chemcoord.Cartesian object
-        """
-        xyz = cartesian[:, ['x', 'y', 'z']].as_matrix()
-        idx = list(cartesian.index-1)
-        ordered_xyz = []
-        for i in range(self._mol.natoms):
-            ordered_xyz.append(xyz[idx.index(i),:])
-        self._mol.xyz = numpy.array(ordered_xyz)
-        return
-    
-    def rotate_dihedral(self, idx, deg):
-        """ 
-        Rotates a dihedral angle
-        Parameters:
-          - idx : List of atom indices of the atoms spanning the dihedral
-          - deg : target angle in degrees
-        """
-        if self._mol.xyz.shape[0] < 4:
-            raise IOError('The amount of atoms in the molecule is smaller than 4!')
-        if len(idx) != 4:
-            raise IOError('The amount of indices is not 4!')
-        xyz = self.to_Cartesian()
-        idx = (numpy.array(idx)+1).tolist()
-        idx_array = [[idx[0],      0,      0,      0], \
-                     [idx[1], idx[0],      0,      0], \
-                     [idx[2], idx[1], idx[0],      0], \
-                     [idx[3], idx[2], idx[1], idx[0]]]
-        idx_array = numpy.array(idx_array)
-        buildlist = xyz._get_buildlist(fixed_buildlist = idx_array)
-        zmat = xyz.to_zmat(buildlist)
-        zmat[idx[3], 'dihedral'] = deg
-        xyz = zmat.to_xyz()
-        self.from_Cartesian(xyz)
+        mxyz= self._mol.get_xyz()
+        xyz = pandas.DataFrame(self._mol.xyz, columns=['x','y','z'], dtype='float64')
+        self.cart = chemcoord.Cartesian(pandas.concat([self.elems, xyz], axis=1))
+        self.cart.index = range(1, self._mol.natoms+1)
+        self.zmat = self.cart.get_zmat()
+        if check_bonds:
+            ccbonds = self.cart.get_bonds()
+            for i in ccbonds:
+                for j in ccbonds[i]:
+                    assert (j-1) in self._mol.conn[i-1] 
         return
 
-    def change_angle(self, idx, deg):
-        """ 
-        Changes the value of an angle
-        Parameters:
-          - idx : List of atom indices of the atoms spanning the angle
-          - deg : target angle in degrees
-        """
-        if self._mol.xyz.shape[0] < 3:
-            raise IOError('The amount of atoms in the molecule is smaller than 3!')
-        if len(idx) != 3:
-            raise IOError('The amount of indices is not 3!')
-        xyz = self.to_Cartesian()
-        idx = (numpy.array(idx)+1).tolist()
-        idx_array = [[idx[0],      0,      0,      0], \
-                     [idx[1], idx[0],      0,      0], \
-                     [idx[2], idx[1], idx[0],      0]]
-        idx_array = numpy.array(idx_array)
-        buildlist = xyz._get_buildlist(fixed_buildlist = idx_array)
-        zmat = xyz.to_zmat(buildlist)
-        zmat[idx[2], 'angle'] = deg
-        xyz = zmat.to_xyz()
-        self.from_Cartesian(xyz)
-        return
+    def get_ic(self, name, atoms, ictype):
+        """label an internal coordinate in the z-matrix with a name
 
-    def add_fragment(self, amol, pc, dist):
-        def bound(triple):
-            triple=numpy.array(triple,dtype='float64')
-            floor = float(numpy.floor(triple[0])) % 2.0
-            triple[0:3] %= 1.0
-            if floor >= 0.5: triple[0] = 1.0 - triple[0]
-            return triple
-        def penalty(t, args):
-            t = bound(t)
-            n1,n2,c1,c2 = args[0],args[1],args[2],args[3]
-            c2n = rotations.rotate_by_triple(c2,t)
-            n2n = rotations.rotate_by_triple(n2,t)
-            return 1-abs(numpy.dot(n1,n2n))+(1+numpy.dot(c1,c2n))
-        natoms = self._mol.natoms
-        ### mol vecs
-        a1vec = self._mol.xyz[pc[1],:] - self._mol.xyz[pc[0],:]
-        b1vec = self._mol.xyz[pc[2],:] - self._mol.xyz[pc[0],:]
-        a1vec /= numpy.linalg.norm(a1vec)
-        b1vec /= numpy.linalg.norm(b1vec)
-        n1vec = numpy.cross(a1vec,b1vec)
-        n1vec /= numpy.linalg.norm(n1vec)
-        c1vec = -1.0 * (a1vec+b1vec)
-        c1vec = c1vec/numpy.linalg.norm(c1vec)
-        ### amol vecs
-        a2vec = amol.xyz[amol.conn[0][0]] - amol.xyz[0]
-        b2vec = amol.xyz[amol.conn[0][1]] - amol.xyz[0]
-        a2vec /= numpy.linalg.norm(a2vec)
-        b2vec /= numpy.linalg.norm(b2vec)
-        c2vec = -1.0 * (a2vec+b2vec)
-        c2vec = c2vec/numpy.linalg.norm(c2vec)
-        n2vec = numpy.cross(a2vec,b2vec)
-        n2vec /= numpy.linalg.norm(n2vec)
-        ### rots
-        count = 0
-        while count < 1000:
-            a = opt.minimize(penalty, numpy.random.uniform(0,1,(3,)),
-            args = [n1vec, n2vec, c1vec, c2vec], method="SLSQP")
-            if a.fun < 0.1:
-                count = 100000000000
+        b, a and d are just single entries in the z-matrix.
+        r is a rotation around a bond (all dihedrals around this central
+        bond are altered with repect to the original structure)
+
+        Args:
+            name (string): name of the internal coordinate to ref it in set_ic()
+            atoms (list of integers): atoms defining the IC
+            ictype (string): type of the ic b, a, d, or r
+
+        Returns:
+            bool: False if the IC is not available in the z-mat.
+        """
+        assert ictype in ('b', 'a', 'd', 'r')
+        if ictype == "b":
+            i,j = atoms
+            if self.zmat.loc[i, "b"] == j:
+                self.ics[name] = (i, "bond")
+                return True
+            elif self.zmat.loc[j, "b"] == i:
+                self.ics[name] = (j, "bond")
+                return True
             else:
-                print(a)
-        ### trans
-        c1vec = c1vec*dist
-        trans = self._mol.xyz[pc[0],:]+c1vec
-        self._mol.add_mol(amol,translate=trans, rotate = bound(a.x))
-        self._mol.conn[pc[0]].append(natoms)
-        self._mol.conn[natoms].append(pc[0])
+                pass
+        elif ictype == "a":
+            i,k,j = atoms
+            if self.zmat.loc[i, "a"] == j:
+                if self.zmat.loc[i, "b"] == k:
+                    self.ics[name] = (i, "angle")
+                    return True
+            elif self.zmat.loc[j, "a"] == i:
+                if self.zmat.loc[i, "b"] == k:
+                    self.ics[name] = (i, "angle")
+                    return True
+            else:
+                pass
+        elif ictype == "d":
+            i,k,l,j = atoms
+            il = self.zmat.loc[i]
+            jl = self.zmat.loc[j]
+            if il["d"] == j:
+                if il["b"] == k and il["a"] == l:
+                    self.ics[name] = (i, "dihedral")
+                    return True
+            elif jl["d"] == i:
+                if jl["b"] == l and jl["a"] == k:
+                    self.ics[name] = (j, "dihedral")
+                    return True
+            else:
+                pass
+        else:
+            # this is for a rotation around a central bond
+            k, l = atoms
+            zmlines = [] # collect all lines that contribute
+            for i, bi in self.zmat.loc[:, ('b', 'a')].iterrows():
+                if (bi["b"] == k and bi["a"] == l) or (bi["b"] == l and bi["a"] == k):
+                    zmlines.append(i)
+            if len(zmlines) > 0:
+                # ok we found something .. go ahead
+                refvals = []
+                for i in zmlines:
+                    refvals.append(self.zmat.loc[i, "dihedral"])               
+                self.ics[name] = tuple([len(zmlines), "rot"] + zmlines +refvals)
+                return True
+        return False
+
+    def set_ic(self, name, value):
+        if self.ics[name][1] == "rot":
+            # this is a rotation around a bond .. need to update all dihedrals
+            par = self.ics[name]
+            for ii in range(par[0]):
+                i = par[2+ii]      # get the line index
+                v = par[2+par[0]+ii]    # get the ref value
+                self.zmat.safe_loc[i, "dihedral"] = v+value
+        else:
+            i,s = self.ics[name]
+            self.zmat.safe_loc[i, s] = value
+        return
+
+    def update(self):
+        """update the xyz coords in the parent mol
+        """
+        self.cart = self.zmat.get_cartesian()
+        pxyz = self.cart.loc[:,['x', 'y', 'z']]
+        xyz = pxyz.sort_index().to_numpy()
+        self._mol.set_xyz(np.ascontiguousarray(xyz))
         return
 
 
+
+
+    

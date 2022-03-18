@@ -476,7 +476,7 @@ class mol(mpiobject):
         """
         from molsys.util import mfp5io
         # instantiate the imfp5io reader
-        pio = imfp5io.mfp5io(fname, restart=stage, filemode="r")
+        pio = mfp5io.mfp5io(fname, restart=stage, filemode="r")
         # get the mol obejct from the mfp5 file
         m = pio.get_mol_from_system()
         pio.close()
@@ -521,7 +521,7 @@ class mol(mpiobject):
             phonon.set_force_constants(h2)
         return phonon
 
-    def write(self, fname, ftype=None, rank=None, **kwargs):
+    def write(self, fname, ftype=None, rank=None, append=False, **kwargs):
         ''' generic writer for the mol class
         Parameters:
             fname        : the filename to be written
@@ -545,7 +545,12 @@ class mol(mpiobject):
                 ftype = 'mfpx' #default
         logger.info("writing file "+str(fname)+' in '+str(ftype)+' format')
         if ftype in formats.write:
-            with open(fname,"w") as f:
+            if append:
+                assert ftype == "xyz", "append only for xyz files"
+                mode = "a"
+            else:
+                mode = "w"                
+            with open(fname, mode) as f:
                 formats.write[ftype](self,f,**kwargs)
         else:
             logger.error("unsupported format: %s" % ftype)
@@ -2468,7 +2473,7 @@ class mol(mpiobject):
         Parameters:
             idx  (list): list of atomindices to calculate the center of mass of a subset of atoms
         """
-        if hasattr(self,'masstype') == False:
+        if self.masstype == None:
             self.set_real_mass()
         if self.amass is None:
             amass = np.zeros(self.natoms)

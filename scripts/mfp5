@@ -77,13 +77,26 @@ def toggle_input(opts):
         if o[-1] == "*" : finalopts.append(o[:-2])
     return finalopts
     
+class fake_ffe:
+
+    def __init__(self, mol):
+        self.mol = mol
+
+    def get_xyz(self):
+        return self.mol.get_xyz()
+
+    def get_cell(self):
+        return self.mol.get_cell()
+    
+
+
 
 ############### parse input options #######################################
 # to be done ...
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("pdlp-file")
+parser.add_argument("mfp5-file")
 args = vars(parser.parse_args())
 
 ############### helper functions ##########################################
@@ -260,20 +273,24 @@ while not stop:
         print("\n******************************************************************")
         print("COPY Data ")
         finp = input("\nEnter the filename to which data should be copied (if it does not exist it will be generated)\n>> ")
-        pdiof2 = pdlpio.pdlpio(finp)
-        if pdiof2.natoms == 0:
-            # this is a new and empty pdlp file .. we need to populate the default stage
-            print("\nA new pdlp file has been created")
+        fffe = fake_ffe(mol) 
+        pdiof2 = mfp5io.mfp5io(finp, ffe=fffe)
+        if pdiof2.fexists == False:
+            # this is a new and empty mfp5 file .. we need to populate the default stage
+            print("\nA new mfp5 file has been created")
             print("Please choose from which stage the default restart data should be taken from")
-            print("Available stages: %s" % string.join(pdiof.stagelist, ", "))
+            print("Available stages: %s" % ", ".join(pdiof.get_stages()))
             from_stage = None
-            while not ((from_stage in pdiof.stagelist) or (from_stage == "")): from_stage = input("stage [default]>> ")
-            if from_stage == "": from_stage = "default"
+            while not ((from_stage in pdiof.get_stages()) or (from_stage == "")):
+                from_stage = input("stage [default]>> ")
+            if from_stage == "": 
+                from_stage = "default"
             print ("Writing system data to new file")
-            pdiof2.set_system(elems, atypes, ctab, bcd)
-            print ("Writing molecules to new file")
-            pdiof2.set_molecules(whichmol, moltypes, molnames)
-            pdiof2.add_stage("default", 10)
+            pdiof2.write_system()
+            # TBI .. molecules in mfp5 file .. still needed
+            # print ("Writing molecules to new file")
+            # pdiof2.set_molecules(whichmol, moltypes, molnames)
+            pdiof2.add_stage("default")
             from_stage = pdiof.h5file[from_stage]["restart"]
             to_stage   = pdiof2.h5file["default"]["restart"]
             for d in list(from_stage.keys()):
@@ -286,17 +303,17 @@ while not stop:
             #print pdiof.h5file["system/elems"]
             #if pdiof2.h5file["system/elems"] != pdiof.h5file["system/elems"]:
             #    raise IOError, "The systems of the pdlp files do not correspond!"
-            print("WARNING: We currently do not test if the systems of the two pdlp files match! You should know ;-)")
+            print("WARNING: We currently do not test if the systems of the two mfp5 files match! You should know ;-)")
             print("Please choose which stage should be copied to the new file")
-            print("Available stages: %s" % string.join(pdiof.stagelist, ", "))
+            print("Available stages: %s" % ", ".join(pdiof.get_stages()))
             from_stage = None
-            while not (from_stage in pdiof.stagelist): from_stage = input("stage name? >> ")
+            while not (from_stage in pdiof.get_stages()): from_stage = input("stage name? >> ")
             print("Please enter the name of the new stage in the target pdlp file")
-            print("Existing stages: %s" % string.join(pdiof2.stagelist, ", "))
+            print("Existing stages: %s" % ", ".join(pdiof2.get_stages()))
             to_stage = input("stage name? [%s] >> " % from_stage)
             if to_stage == "": to_stage = from_stage
             doit = True
-            if to_stage in pdiof2.stagelist:
+            if to_stage in pdiof2.get_stages():
                 print("You have chosen an existing stage in the target file")
                 inp = None
                 while not (inp=="y" or inp=="n"):
@@ -366,7 +383,7 @@ while not stop:
         ############### end of copy data here                ###################################
 
     ############### start plotting  here                     ###################################
-    if (inp == "p"):
+    elif (inp == "p"):
         if "thermo" in cur_tdata:
             print("\n******************************************************************")
             print("Plotting Thermodynmic Data of stage %s" % cur_stage)

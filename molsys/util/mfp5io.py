@@ -255,12 +255,13 @@ class mfp5io(mpiobject):
         OK = None
         if self.is_master:
             system = self.h5file["system"]
-            mfp5_atypes = system["atypes"]
+            mfp5_atypes = list(np.array(system["atypes"]).astype("str"))
             atypes = self.ffe.mol.get_atypes()
             OK = True
             if len(mfp5_atypes)==len(atypes):
                 for a1,a2 in zip(mfp5_atypes, atypes):
                     if a1 != a2:
+                        print ("not matching atomtypes %s %s" % (a1, a2))
                         OK = False
             else:
                 OK = False
@@ -381,11 +382,15 @@ class mfp5io(mpiobject):
         mm.moltypes = [0] + [i+1 for i in mm.moltypes[1:]]
         return mol
 
-    def add_stage(self, stage):
+    def add_stage(self, stage, simulation_parameters: dict = None):
         """add a new stage 
         
         Args:
             stage (string): stage name to add
+            simulation_parameters(dict):A dictionary containing simulation parameters as key -> value pairs
+                                        that will be added as attributes to the stage.
+                                        An attribute is a key -> value pair, too.
+                                        (see attributes in hdf5 documentation on the internet)
 
         Returns:
             (bool) True if it worked and False if the stage already existed
@@ -400,9 +405,20 @@ class mfp5io(mpiobject):
                 OK = False
             else:
                 sgroup = self.h5file.create_group(stage)
+                #-----------------------------
+                # add simulation parameters as attributes to the stage
+                # check that the dictionary is not None and not empty
+                if simulation_parameters is not None:
+                    if simulation_parameters:
+                        for key, value in simulation_parameters.items():
+                            sgroup.attrs[key] = value
+                    else:
+                        print("simulation_parameters is empty")
+                else: print("simulation_parameters is None")
+                #-----------------------------
                 rgroup = sgroup.create_group("restart")
                 # generate restart arrays for xyz, cell and vel
-                na = self.ffe.get_natoms()
+                na = self.ffe.mol.get_natoms()
                 rgroup.require_dataset("xyz",shape=(na,3), dtype="float64")
                 rgroup.require_dataset("vel",shape=(na,3), dtype="float64")
                 rgroup.require_dataset("cell",shape=(3,3), dtype="float64")
