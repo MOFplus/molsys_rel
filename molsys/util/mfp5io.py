@@ -255,12 +255,13 @@ class mfp5io(mpiobject):
         OK = None
         if self.is_master:
             system = self.h5file["system"]
-            mfp5_atypes = system["atypes"]
+            mfp5_atypes = list(np.array(system["atypes"]).astype("str"))
             atypes = self.ffe.mol.get_atypes()
             OK = True
             if len(mfp5_atypes)==len(atypes):
                 for a1,a2 in zip(mfp5_atypes, atypes):
                     if a1 != a2:
+                        print ("not matching atomtypes %s %s" % (a1, a2))
                         OK = False
             else:
                 OK = False
@@ -417,7 +418,7 @@ class mfp5io(mpiobject):
                 #-----------------------------
                 rgroup = sgroup.create_group("restart")
                 # generate restart arrays for xyz, cell and vel
-                na = self.ffe.get_natoms()
+                na = self.ffe.mol.get_natoms()
                 rgroup.require_dataset("xyz",shape=(na,3), dtype="float64")
                 rgroup.require_dataset("vel",shape=(na,3), dtype="float64")
                 rgroup.require_dataset("cell",shape=(3,3), dtype="float64")
