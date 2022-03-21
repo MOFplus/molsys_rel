@@ -69,8 +69,8 @@ class Timer(object):
         return self.time_accum + (self.t2-self.t1)
 
     def start(self):
-        if self.status == RUNNING:
-            raise RuntimeError("Timer is already running.")
+        #if self.status == RUNNING:
+        #    raise RuntimeError("Timer is already running.")
         self.status = RUNNING
         self.t1 = time.time()
         self.count += 1
@@ -96,10 +96,10 @@ class Timer(object):
             with tim('Monitor block of code'):
                 x = 2 + 2
         """
-        if not self.status == NOT_STARTED:
-            self.start()
-            # HACK: If the timer is started implicitly, it is not stopped on its own.
-            #       This leads to overly long timings.
+        #if not self.status == NOT_STARTED:
+        #    self.start()
+        #    # HACK: If the timer is started implicitly, it is not stopped on its own.
+        #    #       This leads to overly long timings.
         new_timer = self.fork(name)
         # new_timer.start()
         return new_timer
@@ -158,8 +158,8 @@ class Timer(object):
         return {"status":self.status,"elapsed":self.elapsed,"desc":self.desc,"children":reps}
 
     def fork(self, desc : str, start=True):
-        if self.status != RUNNING:
-            raise RuntimeError("Unable to fork timer that is not running.")
+        #if self.status != RUNNING:
+        #    raise RuntimeError("Unable to fork timer that is not running.")
         if not desc in self.children.keys():
             new_timer = Timer(desc)
             self.children[desc] = new_timer
