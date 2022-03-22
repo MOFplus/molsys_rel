@@ -1,4 +1,4 @@
-
+# Example for C/H/O parameters
 # The parameters were taken from the ReaxFF module in lammps:
 
 #! at1; at2;  De(sigma);   De(pi);   De(pipi);   p(be1);    p(bo5);  13corr;   p(bo6),  p(ovun1);           p(be2);  p(bo3);  p(bo4);   n.u.;  p(bo1);  p(bo2)
@@ -16,85 +16,91 @@
 # H        0.7853   1.0000    1.0080    1.5904   0.0419   1.0206  -0.1000   1.0000   9.3557   5.0518    1.0000         0.0000  121.1250   5.3200   7.4366   1.0000   -0.1000   0.0000   62.4879         1.9771    3.3517    0.7571   1.0698   0.0000  -15.7683   2.1488   1.0338   1.0000   2.8793   0.0000   0.0000   0.0000
 # O        1.2477   2.0000   15.9990    1.9236   0.0904   1.0503   1.0863   6.0000   10.2127   7.7719   4.0000        36.9573  116.0768   8.5000   8.9989   2.0000   0.9088    1.0003   60.8726         20.4140   3.3754    0.2702   0.9745   0.0000  -3.6141   2.7025   1.0493   4.0000   2.9225   0.0000   0.0000   0.0000
 
+import numpy as np
+import os
 
-num_to_atom_type = { 0 : "c"
-                   , 1 : "h"
-                   , 2 : "o"
-                   } 
+class reaxparam:
 
-atom_type_to_num = {  "c" : 0 
-                   ,  "h" : 1 
-                   ,  "o" : 2 
-                   } 
+    def __init__(self, reaxff='cho'):
 
-#
-# Equilibrium distances for the atom types
-#
-r_s   = [1.3825,0.7853,1.2477]
+       if "REAXFF_FILES" in os.environ:
+           reaxff_filepath = os.environ["REAXFF_FILES"]
+       else:
+           print("The variable REAXFF_FILES is not in the operating system environment. Make sure lammps is avaiable.")
+           exit()
 
-r_pi  = [1.1359,-0.1000,1.0863]
-
-r_pi2 = [1.2104,-0.1000,0.9088]
-
-
-#
-# Exponents etc. for calculating uncorrected bond order
-#
-pbo1 = [ [-0.0750,-0.0500,-0.1463]
-       , [-0.0500,-0.0593,-0.0657]
-       , [-0.1463,-0.0657,-0.1302]
-       ]
-
-pbo2 = [ [6.8316,6.8315,5.2913]
-       , [6.8315,4.8358,5.0451]
-       , [5.2913,5.0451,6.2919]
-       ]
-
-pbo3 = [ [-0.1000,1.0000,-0.3174]
-       , [1.0000,1.0000,1.0000]
-       , [-0.3174,1.0000,-0.1239]
-       ]
-
-pbo4 = [ [9.2605,0.0000,7.0303]
-       , [0.0000,0.0000,0.0000]
-       , [7.0303,0.0000,7.6487] 
-       ]
-
-pbo5 = [ [-0.4591,0.0000,-0.1613]
-       , [ 0.0000,0.0000, 0.0000]
-       , [-0.1613,0.0000,-0.1244]
-       ]
-
-pbo6 = [ [37.7369, 6.0000,10.8851]
-       , [6.0000,  6.0000, 6.0000]
-       , [10.8851, 6.0000,29.6439]
-       ]
-
-#
-# Valency of the atoms (needed to correct for over coordination)
-#  
-valency = [ 4.0, 1.0, 2.0 ]
-valency_val = [ 4.0, 1.0, 4.0 ]
- 
-#
-# parameters to for over coordinaten correction
-#
-pboc4 = [8.6991, 1.9771, 20.4140]
-pboc3 = [34.7289, 3.3517, 3.3754]
-pboc5 = [13.3894, 0.7571, 0.2702]
-
-#
-# between which atoms the 1-3 over coordination should be corrected
-#
-v13cor = [ [1.0, 1.0, 1.0]
-         , [1.0, 1.0, 1.0]
-         , [1.0, 1.0, 1.0]
-         ]
-
-#
-# between which atoms over coordination should be corrected
-#
-ovc   = [ [1.0, 0.0, 0.0]
-        , [0.0, 0.0, 0.0]
-        , [0.0, 0.0, 1.0]
-        ]
+       f_reaxff = os.path.join(reaxff_filepath,'ffield.reax.'+reaxff)
+       assert os.path.isfile(f_reaxff), "The file %s exists." %f_reaxff
+      
+       f = open(f_reaxff,'r')
+       lines = f.readlines()
+       
+       self.num_to_atom_type = {}
+       self.atom_type_to_num = {}
+       # parameters for overcoordination correction
+       self.pboc4 = []
+       self.pboc3 = []
+       self.pboc5 = []
+       # equilibrium distances for atom types
+       self.r_s   = []
+       self.r_pi  = []
+       self.r_pi2 = []
+       # valency of the atoms (needed to correct for over coordination)
+       self.valency = []
+       self.valency_val = []
+       
+       for i,line in enumerate(lines):
+       
+           if "Nr of atoms" in line:
+              natoms = int(line.split("!")[0])
+              nrows = 4
+              for n in range(natoms):
+                 values = []
+                 for nrow in range(nrows):
+                     values += lines[i+nrows*(n+1)+nrow].split()
+                 atom_type = values[0].lower()
+                 self.num_to_atom_type[n] = atom_type
+                 self.atom_type_to_num[atom_type] = n
+                 self.pboc4.append(float(values[20]))
+                 self.pboc3.append(float(values[21]))
+                 self.pboc5.append(float(values[22]))
+                 self.r_s.append(float(values[1]))
+                 self.r_pi.append(float(values[7]))
+                 self.r_pi2.append(float(values[17]))
+                 self.valency.append(float(values[2]))
+                 self.valency_val.append(float(values[28]))
+           if "Nr of bonds" in line:
+              # exponents for calculating uncorrected bond order
+              self.pbo1 = np.full([natoms, natoms], None)
+              self.pbo2 = np.full([natoms, natoms], None)
+              self.pbo3 = np.full([natoms, natoms], None)
+              self.pbo4 = np.full([natoms, natoms], None)
+              self.pbo5 = np.full([natoms, natoms], None)
+              self.pbo6 = np.full([natoms, natoms], None)
+              self.v13cor = np.full([natoms, natoms], None)
+              self.ovc = np.full([natoms, natoms], None)
+       
+              nbonds = int(line.split("!")[0])
+              nrows = 2
+              for n in range(nbonds):
+                 values = []
+                 for nrow in range(nrows):
+                     values += lines[i+nrows*(n+1)+nrow].split()
+                 at1 = int(values[0]) - 1
+                 at2 = int(values[1]) - 1
+                 self.pbo1[at1,at2] = float(values[14])
+                 self.pbo1[at2,at1] = float(values[14])
+                 self.pbo2[at1,at2] = float(values[15])
+                 self.pbo2[at2,at1] = float(values[15])
+                 self.pbo3[at1,at2] = float(values[11])
+                 self.pbo3[at2,at1] = float(values[11])
+                 self.pbo4[at1,at2] = float(values[12])
+                 self.pbo4[at2,at1] = float(values[12])
+                 self.pbo5[at1,at2] = float(values[6])
+                 self.pbo5[at2,at1] = float(values[6])
+                 self.pbo6[at1,at2] = float(values[8])
+                 self.pbo6[at2,at1] = float(values[8])
+                 self.v13cor[at1,at2] = float(values[7])
+                 self.v13cor[at2,at1] = float(values[7])
+                 self.ovc[at1,at2] = float(values[16])
+                 self.ovc[at2,at1] = float(values[16])
