@@ -635,9 +635,9 @@ class RDB:
         with tempfile.TemporaryDirectory() as tmpdir:
             cwd = os.curdir
             #os.chdir(tmpdir)
-            rgraph.write_svg("rgraph.svg")
-            rgraph.write_png("rgraph.png")
-            webbrowser.get(browser).open_new("rgraph.svg")
+            rgraph.write_svg("rgraph_md%d.svg" %self.current_md)
+            rgraph.write_png("rgraph_md%d.png" %self.current_md)
+            webbrowser.get(browser).open_new("rgraph_md%d.svg" %self.current_md)
             #os.chdir(cwd)
  
 

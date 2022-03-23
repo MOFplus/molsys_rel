@@ -54,7 +54,7 @@ class reaxff_calculator(base_calculator):
     def __init__(self, mol, params : dict):
         super(base_calculator, self).__init__()
         self.pl = pylmps.pylmps("opt")
-        self.pl.setup(mol = mol, local=True, ff="ReaxFF")
+        self.pl.setup(mol = mol, local=True, ff="ReaxFF", reaxff=params["reaxff"])
         return
 
     def calc_energy(self):
@@ -145,29 +145,27 @@ def get_mol_from_opt_spec(ospec):
 #
 # Start of main program 
 #
-if len(sys.argv) < 5:
-    print ("usage:  opt_md_species <db_path> <mfp5_file> <stage> <start_lot> <cmd_file>")
+if len(sys.argv) < 4:
+    print ("usage:  opt_md_species <db_path> <stage> <start_lot> <cmd_file>")
+#    print ("usage:  opt_md_species <db_path> <mfp5_file> <stage> <start_lot> <cmd_file>")
     exit()
     
 
 db_path   = sys.argv[1]
-mfp5_path = sys.argv[2]
-mfp5_path = os.path.abspath(mfp5_path)
-stage     = sys.argv[3]
-start_lot = sys.argv[4]
-cmd_file  = sys.argv[5]
+stage     = sys.argv[2]
+start_lot = sys.argv[3]
+cmd_file  = sys.argv[4]
 
 assert os.path.isfile(cmd_file), "command file exists!"
 
 print ("open database %s" % db_path)
 rdb = RDB.RDB(db_path)
-print ("dealing with MD from file %s and stage %s"  % (mfp5_path, stage))
+print("dealing with MD from stage %s" %stage)
 
 # get all entries in md_species not TS (access pydal  directly TBI: some clever routines in rdb to handle this)
 db = rdb.db
-md = db((db.md.path == mfp5_path) & (db.md.stage == stage)).select().first()
 
-reactions = db(db.reactions).select() 
+reactions = db(db.reactions).select()
 
 start_lotID = rdb.get_lot(start_lot)
 
@@ -249,6 +247,9 @@ for r in reactions:
         #
         if params["calculator"] == "reaxff":
            calculator = reaxff_calculator(mol,params)
+           if "reaxff" not in params:
+               print("It will use the default reaxFF cho")
+               params["reaxff"] = "cho"
         elif params["calculator"] == "xtb":
            calculator = xtb_calculator(mol,params)
         else:

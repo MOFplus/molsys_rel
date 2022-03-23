@@ -3243,32 +3243,35 @@ class mol(mpiobject):
         self.list_bond_properties()
         return
 
-    def calc_uncorrected_bond_order( self, iat : int, jat : int, bo_cut = 0.1):
+    def calc_uncorrected_bond_order( self, iat : int, jat : int, bo_cut = 0.1, reaxff = "cho"):
         # Which elements do we have?
         element_list = self.get_elems()
+        params = reaxparam.reaxparam(reaxff=reaxff)
         # sanity check(s)
-        eset = set(["c","h","o"])
-        assert set(element_list).issubset(eset), "Only C/H/O parameters"
+        eset = set(params.atom_type_to_num)
+        #print("eset=", eset)
+        #print("element_list =", element_list)
+        assert set(element_list).issubset(eset), "The elements is a subset of the elements available in %s force field." %reaxff
         # calculate distance of atoms i and j 
         rij, rvec, closest =  self.get_distvec(iat, jat)
         # receive atom type
-        itype = reaxparam.atom_type_to_num[element_list[iat]]
-        jtype = reaxparam.atom_type_to_num[element_list[jat]]
+        itype = params.atom_type_to_num[element_list[iat]]
+        jtype = params.atom_type_to_num[element_list[jat]]
         # Get equilibrium bond distances
-        ro_s   = 0.5 * ( reaxparam.r_s[itype]   + reaxparam.r_s[jtype] )   
-        ro_pi  = 0.5 * ( reaxparam.r_pi[itype]  + reaxparam.r_pi[jtype] )  
-        ro_pi2 = 0.5 * ( reaxparam.r_pi2[itype] + reaxparam.r_pi2[jtype] ) 
+        ro_s   = 0.5 * ( params.r_s[itype]   + params.r_s[jtype] )   
+        ro_pi  = 0.5 * ( params.r_pi[itype]  + params.r_pi[jtype] )  
+        ro_pi2 = 0.5 * ( params.r_pi2[itype] + params.r_pi2[jtype] ) 
         # Calculate bond order
-        if reaxparam.r_s[itype] > 0.0 and reaxparam.r_s[jtype] > 0.0:
-          BO_s    = (1.0 + bo_cut) * math.exp( reaxparam.pbo1[itype][jtype] * math.pow(rij/ro_s,   reaxparam.pbo2[itype][jtype]) )
+        if params.r_s[itype] > 0.0 and params.r_s[jtype] > 0.0:
+          BO_s    = (1.0 + bo_cut) * math.exp( params.pbo1[itype][jtype] * math.pow(rij/ro_s,   params.pbo2[itype][jtype]) )
         else:
           BO_s = 0.0
-        if reaxparam.r_pi[itype] > 0.0 and reaxparam.r_pi[jtype] > 0.0:
-          BO_pi   = math.exp( reaxparam.pbo3[itype][jtype] * math.pow(rij/ro_pi,  reaxparam.pbo4[itype][jtype]) )
+        if params.r_pi[itype] > 0.0 and params.r_pi[jtype] > 0.0:
+          BO_pi   = math.exp( params.pbo3[itype][jtype] * math.pow(rij/ro_pi,  params.pbo4[itype][jtype]) )
         else:
           BO_pi = 0.0
-        if reaxparam.r_pi2[itype] > 0.0 and reaxparam.r_pi2[jtype] > 0.0:
-          BO_pi2  = math.exp( reaxparam.pbo5[itype][jtype] * math.pow(rij/ro_pi2, reaxparam.pbo6[itype][jtype]) )
+        if params.r_pi2[itype] > 0.0 and params.r_pi2[jtype] > 0.0:
+          BO_pi2  = math.exp( params.pbo5[itype][jtype] * math.pow(rij/ro_pi2, params.pbo6[itype][jtype]) )
         else:
           BO_pi2 = 0.0
         BO = BO_s + BO_pi + BO_pi2
@@ -3278,7 +3281,7 @@ class mol(mpiobject):
             BO = 0.0
         return BO
 
-    def detect_conn_by_bo(self, bo_cut=0.1, bo_thresh=0.5, dist_thresh=5.0, correct=True):
+    def detect_conn_by_bo(self, bo_cut=0.1, bo_thresh=0.5, dist_thresh=5.0, correct=True, reaxff = "cho"):
 
         def f2(di,dj):
             lambda1 = 50.0
@@ -3310,13 +3313,14 @@ class mol(mpiobject):
            dist = np.sqrt((a*a).sum(axis=1)) # distances from i to all other atoms
            for jat in range(0,iat+1):
               if iat != jat and dist[jat] <= dist_thresh:
-                  bo = self.calc_uncorrected_bond_order(iat,jat,bo_cut) 
+                  bo = self.calc_uncorrected_bond_order(iat=iat,jat=jat,bo_cut=bo_cut, reaxff=reaxff) 
                   botab[iat][jat] = bo
                   botab[jat][iat] = bo   
         ## 
         # correct bond order 
         ## 
         if correct:
+            params = reaxparam.reaxparam(reaxff=reaxff)
             delta = np.zeros(natoms)
             delta_boc = np.zeros(natoms)
             for iat in range(natoms):
@@ -3327,28 +3331,28 @@ class mol(mpiobject):
                     #if iat != jat and dist[jat] <= dist_thresh and botab[iat][jat] > bo_thresh:
                     if iat != jat and dist[jat] <= dist_thresh :
                         total_bo += botab[iat][jat] 
-                itype = reaxparam.atom_type_to_num[element_list[iat]]
-                delta[iat] = total_bo - reaxparam.valency[itype]
-                delta_boc[iat] = total_bo - reaxparam.valency_val[itype]
+                itype = params.atom_type_to_num[element_list[iat]]
+                delta[iat] = total_bo - params.valency[itype]
+                delta_boc[iat] = total_bo - params.valency_val[itype]
             for iat in range(natoms):
-                itype = reaxparam.atom_type_to_num[element_list[iat]]
-                vali = reaxparam.valency[itype]
+                itype = params.atom_type_to_num[element_list[iat]]
+                vali = params.valency[itype]
                 di = delta[iat]
                 a = self.xyz - self.xyz[iat]
                 dist = np.sqrt((a*a).sum(axis=1)) 
                 for jat in range(0,iat+1):
                     boij = botab[iat][jat]
-                    jtype = reaxparam.atom_type_to_num[element_list[jat]]
-                    valj = reaxparam.valency[jtype]
+                    jtype = params.atom_type_to_num[element_list[jat]]
+                    valj = params.valency[jtype]
                     dj = delta[jat]
-                    pboc3 = math.sqrt(reaxparam.pboc3[itype] * reaxparam.pboc3[jtype]) 
-                    pboc4 = math.sqrt(reaxparam.pboc4[itype] * reaxparam.pboc4[jtype]) 
-                    pboc5 = math.sqrt(reaxparam.pboc5[itype] * reaxparam.pboc5[jtype])
-                    if reaxparam.v13cor[itype][jtype] >= 0.001:
+                    pboc3 = math.sqrt(params.pboc3[itype] * params.pboc3[jtype]) 
+                    pboc4 = math.sqrt(params.pboc4[itype] * params.pboc4[jtype]) 
+                    pboc5 = math.sqrt(params.pboc5[itype] * params.pboc5[jtype])
+                    if params.v13cor[itype][jtype] >= 0.001:
                         f4f5 = f4(delta_boc[iat],boij,pboc3,pboc4,pboc5) * f4(delta_boc[jat],boij,pboc3,pboc4,pboc5)
                     else: 
                         f4f5 = 1.0
-                    if reaxparam.ovc[itype][jtype] >= 0.001:
+                    if params.ovc[itype][jtype] >= 0.001:
                         f1val = f1(di,dj,vali,valj)
                     else:
                         f1val = 1.0
