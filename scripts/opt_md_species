@@ -191,7 +191,11 @@ start_lotID = rdb.get_lot(start_lot)
 
 file = open(cmd_file, "r")
 content = file.read()
-params = ast.literal_eval(content)
+#params = ast.literal_eval(content)
+
+params = { "calculator" : "reaxff" 
+         , "lot"        : "ReaxFF"
+         }
 
 # sanity check(s)
 assert "calculator" in params, "Calculator defined"
@@ -235,7 +239,7 @@ for r in reactions:
            rbonds = rbonds_list[0]
            remove_constraint = True
         bondlength = []
-        if TS or is_unimolecular:
+        if TS: # or is_unimolecular:
            # all molecules are non-perioidc  .. just compute current bond distance
            for i in range(nrbonds):
                r = mol.xyz[rbonds[i,0]]-mol.xyz[rbonds[i,1]]
