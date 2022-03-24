@@ -543,7 +543,7 @@ class mfp5io(mpiobject):
         self.mpi_comm.barrier()
         return
 
-    def add_bondtab(self, stage, nbondsmax, bond_tab = 0, bond_order = 0.0):
+    def add_bondtab(self, stage, nbondsmax, bond_tab = None, bond_order = None):
         """generates a bondtab/bondorder entry in the trajectory group of the current stage for ReaxFF
         
         Args:
@@ -565,8 +565,9 @@ class mfp5io(mpiobject):
                             maxshape=(None, nbondsmax),
                             chunks=(1,nbondsmax),
                             dtype = "float32")
-            bondtab[...] = bond_tab
-            bondord[...] = bond_order
+            if bond_tab is not None and bond_order is not None:
+                bondtab[...] = bond_tab
+                bondord[...] = bond_order
         return
 
         

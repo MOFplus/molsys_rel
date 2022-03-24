@@ -979,7 +979,7 @@ class OptimizationTools:
         max_mem : Maximum memory to be used on each processor in MB
         gcart            : converge maximum norm of cartesian gradient up to 10^-<gcart> atomic units
     """
-    def __init__(self, path=os.getcwd(), lot = 'ri-utpss/SVP', max_mem = 500, gcart = 3):
+    def __init__(self, path=os.getcwd(), lot = 'ri-utpss/SVP', max_mem = 500, gcart = 3, reaxff = 'cho'):
         if not os.path.isdir(path):
             raise FileNotFoundError("The directory %s does not exist." % path)
         else:
@@ -988,6 +988,7 @@ class OptimizationTools:
             self.lot = lot # e.g. ri-utpss/SVP, ri-utpssh/TZVP
             self.max_mem = max_mem
             self.gcart = gcart
+            self.reaxff = reaxff
         return
 
     ### CHANGES WITH DEFINE #########################################################
@@ -1244,7 +1245,7 @@ class OptimizationTools:
     def make_molecular_graph(self, mol, by_bo = True):
         # 1) Detect the connectivity information by bond order
         if by_bo:
-            mol.detect_conn_by_bo()
+            mol.detect_conn_by_bo(reaxff = self.reaxff)
         else:
             mol.detect_conn()
         # 2) Make the molecular graph
@@ -1284,7 +1285,7 @@ class OptimizationTools:
                    if counter != n_atoms:
                        mol_str += '\n'
            mol_tmp = molsys.mol.from_string(mol_str, 'xyz')
-           mol_tmp.detect_conn_by_bo()
+           mol_tmp.detect_conn_by_bo(reaxff = self.reaxff)
            mols.append(mol_tmp)
        return mols, labels
 
@@ -1640,7 +1641,7 @@ class OptimizationTools:
 
         # 3. Create a mol object for the extracted equilibrium structure from the TS structure.
         mol_match = molsys.mol.from_string(mol_str, 'xyz')
-        mol_match.detect_conn_by_bo()
+        mol_match.detect_conn_by_bo(reaxff = self.reaxff)
 
         # 4. Check if a reactive bond is within the extracted species
         # As the "equilibrium" species is extracted from the TS, the bond might not be connected.
@@ -1732,11 +1733,11 @@ class OptimizationTools:
         # 1. Make a mol object for the species
         path_spec = os.path.join(QM_path,"%s_%d" %(label,n))
         mol_spec = GeneralTools(path_spec).coord_to_mol()
-        mol_spec.detect_conn_by_bo()
+        mol_spec.detect_conn_by_bo(reaxff = self.reaxff)
 
         # 2. Make a mol object for the TS
         mol_ts = molsys.mol.from_file(ts_path)
-        mol_ts.detect_conn_by_bo()
+        mol_ts.detect_conn_by_bo(reaxff = self.reaxff)
 
         # 3. Get the matching indices
         ratom, rbond_btw, vts2vspec = self._match_wrt_ts(mol_spec, mol_ts, label, n, rbonds, atom_ids_dict)
@@ -1791,7 +1792,7 @@ class OptimizationTools:
 
         # 1. Make a mol object for the TS
         mol_ts = molsys.mol.from_file(ts_path)
-        mol_ts.detect_conn_by_bo()
+        mol_ts.detect_conn_by_bo(reaxff = self.reaxff)
 
         # 2. Loop over the equilibrium species
         mols_opt = []
@@ -1799,7 +1800,7 @@ class OptimizationTools:
            # a) Create a mol object of the DFT optimized species
            path_opt = os.path.join(QM_path,"%s_%d" %(label,n))
            mol_opt = GeneralTools(path_opt).coord_to_mol()
-           mol_opt.detect_conn_by_bo()
+           mol_opt.detect_conn_by_bo(reaxff = self.reaxff)
            mols_opt.append(mol_opt)
 
         ns = [1,2]
@@ -2940,11 +2941,11 @@ class OptimizationTools:
         mols_ini_prod = []
         for path_ref in path_ref_educts:
             mol_ini = molsys.mol.from_file(path_ref) 
-            mol_ini.detect_conn_by_bo()
+            mol_ini.detect_conn_by_bo(reaxff = self.reaxff)
             mols_ini_ed.append(mol_ini)
         for path_ref in path_ref_products:
             mol_ini = molsys.mol.from_file(path_ref)
-            mol_ini.detect_conn_by_bo()
+            mol_ini.detect_conn_by_bo(reaxff = self.reaxff)
             mols_ini_prod.append(mol_ini)
         M_ed,   QM_paths_ed  , mols_opt_ed    = self.educts_and_products_workflow(mols = mols_ini_ed,   label = 'educt', add_noise = True)
         M_prod, QM_paths_prod, mols_opt_prod  = self.educts_and_products_workflow(mols = mols_ini_prod, label = 'product',  add_noise = True)
@@ -2960,7 +2961,7 @@ class OptimizationTools:
         print("=========== TS BY ONLY EIGENVECTOR FOLLOWING ============")
         # 3. Pre-optimize the TS contraining the atoms of the reactive bonds
         mol_ini_ts = molsys.mol.from_file(path_ref_ts)
-        mol_ini_ts.detect_conn_by_bo()
+        mol_ini_ts.detect_conn_by_bo(reaxff = self.reaxff)
         for M in M_list:
             converged, QM_path_ts = self.ts_pre_optimization(mol = mol_ini_ts, M = M, rbonds = rbonds, gcart = 3, add_noise = True)
 
@@ -3362,7 +3363,7 @@ class OptimizationTools:
 
 
 
-    def write_submit_py_level1(self, path_ref_educts = [], path_ref_products = [], path_ref_ts = '', start_lot = '', reactionID = 0, rbonds = [], atom_ids_dict = {}):
+    def write_submit_py_level1(self, path_ref_educts = [], path_ref_products = [], path_ref_ts = '', start_lot = '', reactionID = 0, rbonds = [], atom_ids_dict = {}, reaxff = "cho"):
         """ 
             This method writes a script which can later be used to submit jobs to a queuing system by writing a job submission script. 
             See in the Slurm class the write_submission_script.
@@ -3389,13 +3390,14 @@ class OptimizationTools:
         f.write("atom_ids_dict     = %s\n"   %str(atom_ids_dict))
         f.write("start_lot         = '%s'\n" %start_lot)
         f.write("reactionID        = %d\n"   %reactionID)
+        f.write("reaxff            = '%s'\n"   %reaxff)
 
-        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart)\n")
+        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart, reaxff = reaxff)\n")
         f.write("OT.reaction_workflow(rbonds, path_ref_educts, path_ref_products, path_ref_ts, atom_ids_dict, start_lot, reactionID)\n")
         f.close()
         return
 
-    def write_submit_py_level2(self, specID, path_ref, ts):
+    def write_submit_py_level2(self, specID, path_ref, ts, reaxff = "cho"):
         """ writes a script to submit the jobs for the DFT calculations starting from another DFT calculation        
         """
         f_path = os.path.join(self.path,"submit.py")
@@ -3408,7 +3410,9 @@ class OptimizationTools:
         f.write("gcart             = %d\n"   %self.gcart)
         f.write("path_ref          = '%s'\n" %path_ref)
         f.write("specID            = %d\n"   %specID)
-        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart)\n")
+        f.write("reaxff            = '%s'\n"   %reaxff)
+
+        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem, gcart = gcart, reaxff = reaxff)\n")
         if ts:
             f.write("OT.dft_re_optimization(specID=specID, path_ref=path_ref, ts=True)\n")
         else:
@@ -3417,7 +3421,7 @@ class OptimizationTools:
         return
 
 
-    def write_submit_py_level3(self, ospecID, pnoccsd, submit_py='submit_pnoccsd.out'):
+    def write_submit_py_level3(self, ospecID, pnoccsd, submit_py='submit_pnoccsd.out', reaxff = "cho"):
         f_path = os.path.join(self.path,submit_py)
         f = open(f_path,"w")
         f.write("import os\n")
@@ -3427,7 +3431,8 @@ class OptimizationTools:
         f.write("max_mem           = %d\n"   %self.max_mem)
         f.write("ospecID            = %d\n"   %ospecID)
         f.write("pnocssd = %s\n" %repr(pnoccsd))
-        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem)\n")
+        f.write("reaxff            = '%s'\n"   %reaxff)
+        f.write("OT = refine_qm_turbomole.OptimizationTools(lot = lot, max_mem = max_mem, reaxff = reaxff)\n")
         f.write("OT.refine_ccsd(ospecID=ospecID, pnoccsd=pnocssd)")
         f.close()
         return

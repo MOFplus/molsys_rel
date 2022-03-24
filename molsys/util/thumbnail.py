@@ -13,10 +13,12 @@ import tempfile
 import subprocess
 import os
 
-def thumbnail(mol, size=200, scale=1.3, transparent=True, fname=None, debug=False,own_bonds=False):
+def thumbnail(mol, size=200, scale=1.3, transparent=True, fname=None, debug=False, own_bonds=False, with_sd=False, sdf="sd.plt"):
     """
     generate a thumbnail from a mol object
     by default a png is returned.
+
+    sdf : the path to the spin density plt file
 
     we generate the tcl commands on the fly in order to change stuff there
     """
@@ -47,6 +49,14 @@ def thumbnail(mol, size=200, scale=1.3, transparent=True, fname=None, debug=Fals
             for i,c in enumerate(mol.ctab):
                 vmd_settings += 'mol selection index %i %i\nmol material Opaque\nmol addrep 0\n' % (c[0],c[1])
 
+        # to plot the spin density
+        if with_sd:
+            assert os.path.isfile(sdf), "The spin density plot file %s exists." %sdf
+            vmd_settings += """mol addfile %s
+        mol addrep 0
+        mol modstyle 1 0 isosurface 0.005 0 0 0 1 1
+        mol modmaterial 1 0 Transparent
+        """ %(sdf)
 
         # add additional stuff here ... optional
         f.write(vmd_settings)
@@ -67,3 +77,4 @@ def thumbnail(mol, size=200, scale=1.3, transparent=True, fname=None, debug=Fals
             print ("go with another shell to tempdir %s to see intermediate files")
             input ("press ENTER to end an delete everything")
     return
+
