@@ -417,11 +417,12 @@ class mfp5io(mpiobject):
                 else: print("simulation_parameters is None")
                 #-----------------------------
                 rgroup = sgroup.create_group("restart")
-                # generate restart arrays for xyz, cell and vel
+                # generate restart arrays for xyz, cell, vel and img
                 na = self.ffe.mol.get_natoms()
-                rgroup.require_dataset("xyz",shape=(na,3), dtype="float64")
-                rgroup.require_dataset("vel",shape=(na,3), dtype="float64")
-                rgroup.require_dataset("cell",shape=(3,3), dtype="float64")
+                rgroup.require_dataset("xyz", shape=(na,3), dtype="float64")
+                rgroup.require_dataset("vel", shape=(na,3), dtype="float64")
+                rgroup.require_dataset("cell", shape=(3,3), dtype="float64")
+                rgroup.require_dataset("img", shape=(na,3), dtype="int32")
         OK = self.mpi_comm.bcast(OK)
         return OK
 
@@ -458,6 +459,7 @@ class mfp5io(mpiobject):
         OK = True
         # we need to do this in parallel on nodes (lammps gather is a parallel step)
         xyz = self.ffe.get_xyz()
+        img = self.ffe.get_image()
         if velocities:
             vel = self.ffe.get_vel()
         if self.is_master:
@@ -468,6 +470,8 @@ class mfp5io(mpiobject):
                 cell = self.ffe.get_cell()
                 rest_xyz = restart.require_dataset("xyz",shape=xyz.shape, dtype=xyz.dtype)
                 rest_xyz[...] = xyz
+                rest_img = restart.require_dataset("img",shape=img.shape, dtype=img.dtype)
+                rest_img[...] = img
                 rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
                 rest_cell[...] = cell
                 if velocities:
@@ -491,7 +495,7 @@ class mfp5io(mpiobject):
             prec (str, optional): Defaults to "float64". precision to use in writing traj data
             tstep (float, optional): Defaults to 0.001. Timestep in ps
         """ 
-        # RS function rewritten for parallel runs (in lammps soem of the data_funcs need to be exectued by all nodes)
+        # RS function rewritten for parallel runs (in lammps some of the data_funcs need to be exectued by all nodes)
         self.open()       
         if type(data_nstep)== type([]):
             assert len(data_nstep)==len(traj_data)
@@ -503,7 +507,7 @@ class mfp5io(mpiobject):
                 OK = False
         OK = self.mpi_comm.bcast(OK)
         if not OK:
-            raise IOError("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
+            raise IOError("MFP5 ERROR: preparing stge %s failed. Stage does not exist!" % stage)
         if self.is_master:
             traj = self.h5file.require_group(stage+"/traj")
             traj.attrs["nstep"] = traj_nstep
@@ -512,12 +516,16 @@ class mfp5io(mpiobject):
             assert dname in list(self.ffe.data_funcs.keys())
             data = self.ffe.data_funcs[dname]()
             dshape = list(data.shape)
+            dtype = data.dtype.name
+            # reduce accuracy of float trajectory data on request.
+            if dtype[:5] == "float":
+                dtype = prec
             if self.is_master:
                 mfp5_data = traj.require_dataset(dname, 
                                 shape=tuple([1]+dshape),
                                 maxshape=tuple([None]+dshape),
                                 chunks=tuple([1]+dshape),
-                                dtype=prec)
+                                dtype=dtype)
                 mfp5_data[...] = data
                 mfp5_data.attrs["nstep"] = dnstep
         if len(thermo_values)>0:
