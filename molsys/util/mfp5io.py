@@ -472,8 +472,9 @@ class mfp5io(mpiobject):
                 rest_xyz[...] = xyz
                 rest_img = restart.require_dataset("img",shape=img.shape, dtype=img.dtype)
                 rest_img[...] = img
-                rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
-                rest_cell[...] = cell
+                if cell != None:
+                    rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
+                    rest_cell[...] = cell
                 if velocities:
                     rest_vel = restart.require_dataset("vel", shape=vel.shape, dtype=vel.dtype)
                     rest_vel[...] = vel
