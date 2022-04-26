@@ -356,5 +356,5 @@ class bb:
         final_seq = [self.connector[0]]+list(all_conn_seqs[seq[0]])
         for i in range(nconn):
             final_smi = final_smi.replace("[%s]" % elements.pse[self._first_conn_anumber+i].title(), "[X%s]" % (i+1))
-        return final_smi, final_seq
+        return final_smi, [self.connector.index(a) for a in final_seq]
 

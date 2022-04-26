@@ -380,7 +380,7 @@ class graph(object):
     and uses only lower case element symbols as vertex symbols. 
     """
 
-    def decompose(self, mode="ringsize", join_organic=True):
+    def decompose(self, mode="ringsize", join_organic=True, get_all=False, write_mfpx=False):
         """decompose the molecular graph into BBs and the underlying net
 
         There are different strategies to split the graph into parts and also the returned information
@@ -427,7 +427,7 @@ class graph(object):
         print ("net constructed")
         # generate the BBs as mol objects and theri distribution to the vertices and edges
         #   NOTE: return values are also available as self.decomp_<name>
-        vbb, vbb_map, ebb, ebb_map = self.get_bbs()
+        vbb, vbb_map, ebb, ebb_map = self.get_bbs(get_all=get_all, write_mfpx=write_mfpx)
         print ("bbs extracted")
         # return complete info as a tuple
         return (net, vbb, vbb_map, ebb, ebb_map)
@@ -821,22 +821,25 @@ class graph(object):
         self.decomp_net.make_topo(check_flag=False)
         return self.decomp_net
 
-    def get_bbs(self, get_all=True, write_mfpx=True):
+    def get_bbs(self, get_all=False, write_mfpx=False):
         """this method generates the unique bbs from moldg and bbg
 
         TBI: currently we map connections only for the vertices but not the edges 
+
+        BUG: the connector info seems to be wrong (or scambled) => needs to be fixed 
 
         """
         assert self.bbg is not None
         #if get_all == True:
         #    print ("PLEASE IMPLEMENT get_all option!!")
         #     raise
-        self.decomp_vbb = [] # vertex BB mol objects (only unique)
-        self.decomp_ebb = [] # edge/linker BB mol objects (only unique)
+        self.decomp_vbb = [] # vertex BB mol objects (only unique if get_all = False)
+        self.decomp_ebb = [] # edge/linker BB mol objects (only unique if get_all = False)
         self.decomp_vbb_map = [] # mapping of BBs to the vertices
         self.decomp_ebb_map = [] # mapping of the BBS to the edges
         self.decomp_vbb_cons = [] # contains a list of indices of neigbor vertices for each vertex in the order of connectors
                                   #     but mapped with respect to the first detected bb which is converted to a mol object
+        self.decomp_vbb_cons2 = [] # contains a list of indices of neigbor vertices for each vertex in the order of connectors        
         # VERTICES
         # start with the vertices ... check all
         vbb_graphs = []
@@ -850,6 +853,11 @@ class graph(object):
             # find connections from all connector atoms (in their order in self.decomp_map_bb2cons) to the corresponding
             # vertices (not bbs)
             conn_vertices = []
+            print ("DEBUG DEBUG generating BB %d on vertex %d" % (int(bb), int(v)))
+            print ("DEBUG    bb2atoms %s" % self.decomp_map_bb2atoms[bb])
+            print ("DEBUG    bb2cons  %s" % self.decomp_map_bb2cons[bb])
+            aty_bb2cons = [self._mol.atypes[i] for i in self.decomp_map_bb2cons[bb]]
+            print ("DEBUG    %s " % aty_bb2cons)
             for c in self.decomp_map_bb2cons[bb]:
                 # c is the index of an connector atom in the current bb
                 con_string = self.moldg.vp.con[c] # string of atom indices connecting to
@@ -890,6 +898,7 @@ class graph(object):
                 nvbbs += 1
                 # we can add connecting vertices in the original order because this is the first unknown
                 self.decomp_vbb_cons.append(conn_vertices)
+                self.decomp_vbb_cons2.append(conn_vertices) # for debug reasons we add a second list of nonmapped connectors
                 # add the gloabl to local map for this new bb (needed for a mapping of the connectors)
                 glob2loc = [vbbg.vp.aid[v] for v in vbbg.vertices()]
                 local_con = [glob2loc.index(v) for v in self.decomp_map_bb2cons[bb]]
@@ -902,6 +911,7 @@ class graph(object):
                 local_con = vbb_local_con[i]
                 mapped_conn_vertices = [conn_vertices[local_con.index(a)] for a in iso_map]
                 self.decomp_vbb_cons.append(mapped_conn_vertices)
+                self.decomp_vbb_cons2.append(conn_vertices) # for debug reasons we add a second list of nonmapped connectors
         # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
         # TBI: with flag get_all==True convert them all
         for i in range(nvbbs):
@@ -909,10 +919,16 @@ class graph(object):
                 bb   = vbb_map[i][j]
                 vbbg = vbb_graphs[i] # not sure if that works ... do we need a list of vbb_graphs?
                 # now we need to convert bb into a mol object and store it in self.decomp_vbb
+
+                print ("DEBUG DEBUG %d %d" % (i, j))
+                print (self.decomp_vbb_cons[i][j])
+                print (self.decomp_vbb_cons2[i][j])
+
                 mol_bb = self._convert_bb2mol(bb, vbbg)
-                if j == 0:
+                if j == 0 or get_all == True:
                     # now add to the final list
                     self.decomp_vbb.append(mol_bb)
+                if j == 0:
                     # store the map from the dicitonary into the nested list
                     self.decomp_vbb_map.append(vbb_remap[i])
                 # DEBUG
