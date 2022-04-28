@@ -48,6 +48,9 @@ while True:
 ftrj.close() 
 print(" I read %d frames" % len(frames) )
 
+if not os.path.exists("species"):
+  os.makedirs("species")
+
 
 fid = 1
 num_species_old = 0
@@ -81,7 +84,10 @@ for frm in frames:
       for s in specs:
          sp = specs[s]
          m = sp.make_mol(xyz[list(sp.aids)], mol)
-         m.write("species/spec_" + str(counter) + "_in_frame" + str(fid) + ".xyz")
+         framedir = "species/frame" + str(fid)
+         if not os.path.exists(framedir):
+            os.makedirs(framedir)
+         m.write(framedir + "/spec_" + str(counter) + "_in_frame" + str(fid) + ".xyz")
          counter += 1
 
       fid += 1
