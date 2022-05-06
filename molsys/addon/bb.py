@@ -3,9 +3,8 @@ from __future__ import absolute_import
 
 import molsys.util.elems as elements
 import molsys.util.rotations as rotations
-import string
+import itertools
 import copy
-from collections import Counter
 import numpy as np
 from molsys.util.elems import vdw_radii as vdw
 
@@ -358,3 +357,70 @@ class bb:
             final_smi = final_smi.replace("[%s]" % elements.pse[self._first_conn_anumber+i].title(), "[X%s]" % (i+1))
         return final_smi, [self.connector.index(a) for a in final_seq]
 
+    ## RS May 2022 ##############################################
+    #
+    #   the follwoing methods are used to permute/rotate BBs in order to generate MOF+IDs
+
+    
+    def get_conpermute(self, w, thresh=0.01, threshd=0.05):
+        """
+        this method checks if the requested permutation of the connectors w
+        with v2 <- v1[w] is possible, and if so returns the rotation matrix
+
+        Note: apply rotation matrix like this xyz@R.T 
+
+        We then apply the rotation to the actual atomic coordiantes and 
+        check if this maintans the atomistic structure
+
+        TBI this works currently only without specific connectors
+        (could be added by additional logic to prevent mapping conns of unequal type)
+        """
+        # v1 should be unit vectors
+        v1 = self.connector_xyz/self.connector_dist[:,None]
+        n = len(w)
+        assert len(v1) == n
+        assert len(v1) > 3
+        v2 = v1[w]
+        # first check if this permutation conserves all angles (maintains shape)
+        for i,j in itertools.combinations(range(n), 2):
+            dp1 = np.dot(v1[i], v1[j])
+            dp2 = np.dot(v2[i], v2[j])
+            if np.abs(dp1 - dp2) > thresh:
+                return None, False
+        # compute rotation matrix for first two vectors that are not aligned
+        for i,j in itertools.combinations(range(n), 2):
+            dp1 = np.dot(v1[i], v1[j])
+            if np.abs(dp1) < 0.95: # maybe even larger value is ok here, but connectors should have a sufficient angle in most cases
+                break
+        # take i and j as the pair to do the rotmat from .. we generate a vector perpendicular
+        v1c = np.cross(v1[i], v1[j])
+        v2c = np.cross(v2[i], v2[j])
+        abc1 = np.column_stack((v1[i], v1[j], v1c))
+        abc2 = np.column_stack((v2[i], v2[j], v2c))
+        R = abc2 @ np.linalg.inv(abc1)
+        # sanity test: is the determinant +1? (if -1 this is a mirror ... not shape conserving)
+        rdet = np.linalg.det(R)
+        assert np.allclose(rdet, 1.0)
+        # now apply the rotation matrix R to v2 -> does it rotate on v1?
+        # if not it is not a valid permutation
+        rot_v1 = (R @ v1.T).T
+        if not np.allclose(rot_v1, v2, atol=thresh):
+            return None, False
+        # at this point the rotation is allowed by the connectors and the rotation matrix is known
+        rot_xyz = self.mol.xyz @ R.T
+        # now check if this is the same structure
+        match = True
+        for i in range(self.mol.natoms):
+            r = self.mol.xyz[i] - rot_xyz
+            d = np.sqrt((r*r).sum(axis=1))
+            short_i = np.argmin(d)
+            short_d = d[short_i]
+            if short_d > threshd:
+                match = False
+                break
+            else:
+                # verify of elements match
+                if self.mol.elems[i] != self.mol.elems[short_i]:
+                    match = False
+                    break
+        return R, match
