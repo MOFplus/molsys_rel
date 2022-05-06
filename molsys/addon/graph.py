@@ -422,15 +422,15 @@ class graph(object):
             print("unknown decomosition mode")
             return
         # now get the BBs and the net and collect the output
-
         net = self.get_net()
+        net.write("topo.mfpx")
         print ("net constructed")
         # generate the BBs as mol objects and theri distribution to the vertices and edges
-        #   NOTE: return values are also available as self.decomp_<name>
-        vbb, vbb_map, ebb, ebb_map = self.get_bbs(get_all=get_all, write_mfpx=write_mfpx)
+        # NEW no return values .. all info in class attributes
+        self.get_bbs(write_mfpx=write_mfpx)
         print ("bbs extracted")
-        # return complete info as a tuple
-        return (net, vbb, vbb_map, ebb, ebb_map)
+        # return net (all other decomp info available as attributes to the class)
+        return net
 
     def make_decomp_graph(self):
         """make a mol graph for decomposition
@@ -584,7 +584,7 @@ class graph(object):
         # self.plot_graph("topo", g=self.moldg, label="elem", method="sfdb")
         return
 
-    def make_bb_graph(self, plot=False):
+    def make_bb_graph(self, plot=True):
         assert self.decomp_split is True
         # label the BBs -> this generates the BBid valid for both vertices and edges
         self.moldg.set_edge_filter(self.moldg.ep.filt)
@@ -595,10 +595,11 @@ class graph(object):
         #    the number of vertices nv is not equal to the number of BBs (nbb) since some BBs sit on edges
         #    we thus need a mapping from BBs to atom indices and another mapping of vertices to BBs
         self.decomp_nbb = self.moldg.vp.bb.a.max()+1
-        # now we make a temporary graph bbg for the BBs
+        # now we make raph bbg for the BBs
         self.bbg = Graph(directed=False)
         self.bbg.ep.satom = self.bbg.new_edge_property("int") #  these two edge properties store the connecting atom indices 
-        self.bbg.ep.tatom = self.bbg.new_edge_property("int") #  from the original molg 
+        self.bbg.ep.tatom = self.bbg.new_edge_property("int") #  from the original molg
+        self.bbg.ep.label = self.bbg.new_edge_property("vector<int>") # label of the edge (aka pconn) for this edge 
         for b in range(self.decomp_nbb):
             self.bbg.add_vertex()  # vertices of this graph can be indexed by bbid (it contains also the 2c edges)
         # now check all split edges, register the connected atoms and add edges to the bbg graph
@@ -710,7 +711,7 @@ class graph(object):
         return merge
 
 
-    def get_net(self, mode="coc", plot=False):
+    def get_net(self, mode="coc", plot=True):
         """this method takes a sliced moldg and creates a graph of the underlying net
 
         TBI: currently no pconn is detected .. we rely on being able to construct it from the embedding
@@ -767,7 +768,7 @@ class graph(object):
         self.wrap_mol = self._mol.clone()
         self.wrap_mol.set_xyz(wrap_xyz)
         #DEBUG
-        #self.wrap_mol.write("DEBUG_wrap_mol.mfpx")
+        self.wrap_mol.write("DEBUG_wrap_mol.mfpx")
         # now compute the vertex positions of the BBs as the scaled embedding depending on the mode
         vpos = np.zeros([self.decomp_nv, 3], dtype="float64")
         for v in self.bbg.vertices():
@@ -796,20 +797,23 @@ class graph(object):
         for e in self.bbg.edges():
             i = int(e.source())
             j = int(e.target())
+            # the following does not tdepend on the order of i and j since the ia/ja matter and
+            #     they are defined in satom and tatom wrt to the vertex number increasing
+            # => sort i<j
+            if j < i:
+                i, j = j, i
             self.decomp_net_conn[i].append(j)
             self.decomp_net_conn[j].append(i)
             ia = self.bbg.ep.satom[e] # atom indices of the original molg
             ja = self.bbg.ep.tatom[e] # that form this BB connection
-            # print ("bond between BBs atom: %3d %3d   BBs: %2d %2d" % (ia, ja, i, j))
-            dist_ij = wrap_xyz[ja] - wrap_xyz[ia]
+            dist_ij = wrap_xyz[ia] - wrap_xyz[ja]
             fracdist_ij = np.dot(dist_ij, self._mol.inv_cell)
-            pconn = np.around(fracdist_ij)
-            if i<j:
-                self.decomp_net_pconn[i].append(-pconn)
-                self.decomp_net_pconn[j].append(pconn)
-            else:
-                self.decomp_net_pconn[i].append(pconn)
-                self.decomp_net_pconn[j].append(-pconn)
+            pconn = np.around(fracdist_ij).astype("int32")
+            print ("bond between BBs atom: %3d %3d   BBs: %2d %2d  with pconn %s" % (ia, ja, i, j, pconn))
+            # for convenience add the pconn (or label of the lqg) as an edge property
+            self.bbg.ep.label[e] = pconn 
+            self.decomp_net_pconn[i].append(pconn)
+            self.decomp_net_pconn[j].append(-pconn)
         vert_elems = []
         for i in range(self.decomp_nv):
             vert_elems.append(elems.topotypes[len(self.decomp_net_conn[i])])
@@ -821,31 +825,33 @@ class graph(object):
         self.decomp_net.make_topo(check_flag=False)
         return self.decomp_net
 
-    def get_bbs(self, get_all=False, write_mfpx=False):
-        """this method generates the unique bbs from moldg and bbg
+    def get_bbs(self, write_mfpx=False):
+        """
+        26.04.2022 -- RS 
 
+        rewriting this part in order to get all bbs by default -- let us do the mapping on the first BB occurance later
+        this means get_all is the default and will go away
+
+        TBI: maybe we should store all as flat arrays and just an additional list containing the type of BB
+        
         TBI: currently we map connections only for the vertices but not the edges 
 
         BUG: the connector info seems to be wrong (or scambled) => needs to be fixed 
 
         """
         assert self.bbg is not None
-        #if get_all == True:
-        #    print ("PLEASE IMPLEMENT get_all option!!")
-        #     raise
-        self.decomp_vbb = [] # vertex BB mol objects (only unique if get_all = False)
-        self.decomp_ebb = [] # edge/linker BB mol objects (only unique if get_all = False)
+        self.decomp_vbb = [] # vertex BB mol objects
+        self.decomp_vbb_types = []
+        self.decomp_ebb = [] # edge/linker BB mol objects 
+        self.decomp_ebb_types = []
         self.decomp_vbb_map = [] # mapping of BBs to the vertices
         self.decomp_ebb_map = [] # mapping of the BBS to the edges
         self.decomp_vbb_cons = [] # contains a list of indices of neigbor vertices for each vertex in the order of connectors
-                                  #     but mapped with respect to the first detected bb which is converted to a mol object
-        self.decomp_vbb_cons2 = [] # contains a list of indices of neigbor vertices for each vertex in the order of connectors        
+        self.decomp_vbb_labels = []
+        self.decomp_ebb_cons = []
         # VERTICES
         # start with the vertices ... check all
         vbb_graphs = []
-        vbb_local_con = [] # a list with the vertex bbs connectors in local (vbb's) atom indices (mapped from the global decomp_map_bb2con)
-        vbb_map   = {}
-        vbb_remap = {}
         nvbbs = 0
         for v in self.bbg.vertices():
             bb = self.bbg.vp.bb[v]
@@ -853,139 +859,120 @@ class graph(object):
             # find connections from all connector atoms (in their order in self.decomp_map_bb2cons) to the corresponding
             # vertices (not bbs)
             conn_vertices = []
-            print ("DEBUG DEBUG generating BB %d on vertex %d" % (int(bb), int(v)))
-            print ("DEBUG    bb2atoms %s" % self.decomp_map_bb2atoms[bb])
-            print ("DEBUG    bb2cons  %s" % self.decomp_map_bb2cons[bb])
-            aty_bb2cons = [self._mol.atypes[i] for i in self.decomp_map_bb2cons[bb]]
-            print ("DEBUG    %s " % aty_bb2cons)
+            conn_label = []
             for c in self.decomp_map_bb2cons[bb]:
                 # c is the index of an connector atom in the current bb
-                con_string = self.moldg.vp.con[c] # string of atom indices connecting to
-                assert len(con_string) > 0        # should be something if it is a conn (only sanity test)
-                con = con_string.split()
-                assert len(con) == 1              # currently only singel connector allowed
-                con = int(con[0]) # now con is the atom connecting to .. what is its bb? what is its vertex?
-                con_bb = self.moldg.vp.bb[con]
+                # since we need the vertex number of the next vertex with the edge BBs removed we need to use the bbg 
+                #       edge properties satom and tatom here
+                con_bb = -1
+                for e in v.out_edges():
+                    if self.bbg.ep.satom[e] == c:
+                        con_bb = self.moldg.vp.bb[self.bbg.ep.tatom[e]]
+                        label = np.array(self.bbg.ep.label[e])
+                        break
+                    elif self.bbg.ep.tatom[e] == c:
+                        con_bb = self.moldg.vp.bb[self.bbg.ep.satom[e]]
+                        label = np.array(self.bbg.ep.label[e])*-1
+                        break
+                    else:
+                        pass
+                assert con_bb >= 0
                 con_v = self.decomp_map_bb2v[con_bb]
                 conn_vertices.append(con_v)
+                conn_label.append(label)
             # now check if we have this bb already
             known = False
-            for i in range(len(vbb_graphs)):
-                old_bbsg = vbb_graphs[i]
+            for i, old_bbsg in enumerate(vbb_graphs):
                 if old_bbsg.num_vertices() != cur_bbsg.num_vertices():
                     continue
                 #JK: there is an error thrown for single atom graphs (1 vertex 0 edges)
                 # in this case we simply check if the elements are the same
                 if old_bbsg.num_vertices() == 1:
-                    iso_map = [0]
                     if self._mol.elems[cur_bbsg.get_vertices()[0]] == self._mol.elems[old_bbsg.get_vertices()[0]]:
                         known = True
                         break
-                # check if isomorphic
-                # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
                 else:
-                    is_iso, iso_map = isomorphism(cur_bbsg, old_bbsg, isomap=True)
-                    iso_map = [iso_map[ii] for ii in self.decomp_map_bb2cons[bb]]
-                    if is_iso:
-                        known = True
+                    known = isomorphism(cur_bbsg, old_bbsg)
+                    # TBI: add here a test on the elements!! 
+                    if known:
                         break
+            # Now store the collected info 
+            # if known = True then i contains the vertex type, otherwise this is a new BB and we need to add it
+            vbbg = Graph(cur_bbsg, prune=True) # make a new graph object with only the nonfiiltered atoms
+            self.decomp_vbb_map.append(bb)
+            self.decomp_vbb_cons.append(conn_vertices)
+            self.decomp_vbb_labels.append(conn_label)
             if not known:
-                # add graph
-                vbbg = Graph(cur_bbsg, prune=True) # make a new graph object with only the nonfiiltered atoms
-                vbb_graphs.append(vbbg) 
-                vbb_map[nvbbs]   = [bb]
-                vbb_remap[nvbbs] = [int(v)]
-                nvbbs += 1
-                # we can add connecting vertices in the original order because this is the first unknown
-                self.decomp_vbb_cons.append(conn_vertices)
-                self.decomp_vbb_cons2.append(conn_vertices) # for debug reasons we add a second list of nonmapped connectors
-                # add the gloabl to local map for this new bb (needed for a mapping of the connectors)
-                glob2loc = [vbbg.vp.aid[v] for v in vbbg.vertices()]
-                local_con = [glob2loc.index(v) for v in self.decomp_map_bb2cons[bb]]
-                vbb_local_con.append(local_con)
+                vbb_graphs.append(vbbg)
+                vt = nvbbs
+                self.decomp_vbb_types.append(vt)
+                nvbbs = len(vbb_graphs)
             else:
-                # known already .. i equals nvbb
-                vbb_map[i].append(bb)
-                vbb_remap[i].append(int(v))
-                # we need to rearange the vertices in the order they appear in this building block according to the isomap
-                local_con = vbb_local_con[i]
-                mapped_conn_vertices = [conn_vertices[local_con.index(a)] for a in iso_map]
-                self.decomp_vbb_cons.append(mapped_conn_vertices)
-                self.decomp_vbb_cons2.append(conn_vertices) # for debug reasons we add a second list of nonmapped connectors
-        # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
-        # TBI: with flag get_all==True convert them all
-        for i in range(nvbbs):
-            for j in range(len(vbb_map[i])):
-                bb   = vbb_map[i][j]
-                vbbg = vbb_graphs[i] # not sure if that works ... do we need a list of vbb_graphs?
-                # now we need to convert bb into a mol object and store it in self.decomp_vbb
-
-                print ("DEBUG DEBUG %d %d" % (i, j))
-                print (self.decomp_vbb_cons[i][j])
-                print (self.decomp_vbb_cons2[i][j])
-
-                mol_bb = self._convert_bb2mol(bb, vbbg)
-                if j == 0 or get_all == True:
-                    # now add to the final list
-                    self.decomp_vbb.append(mol_bb)
-                if j == 0:
-                    # store the map from the dicitonary into the nested list
-                    self.decomp_vbb_map.append(vbb_remap[i])
-                # DEBUG
-                if write_mfpx:
-                    if get_all:
-                        mol_bb.write("bb_%d_%d.mfpx" % (i, j))
-                    else:
-                        if j==0:
-                            mol_bb.write("bb_%d.mfpx" % i)                            
+                vt = i
+                self.decomp_vbb_types.append(vt)
+            # now convert to mol objects and write out
+            mol_bb = self._convert_bb2mol(bb, vbbg)
+            # now add to the final list
+            self.decomp_vbb.append(mol_bb)
+            if write_mfpx:
+                mol_bb.write("bb_%d_%d.mfpx" % (bb, vt))
+        ###
+        ### to be done
         # EDGES
         # now analyze the edges .. check all edges if their edge property bb is larger than -1 (-1 means no edge bb) 
         ebb_graphs = []
-        ebb_map = {}
-        ebb_remap = {}
         nebbs = 0
         for e in self.bbg.edges():
             if self.bbg.ep.bb[e] > -1:
                 bb = self.bbg.ep.bb[e]
                 cur_bbsg = GraphView(self.moldg, directed=False, vfilt = self.moldg.vp.bb.a == bb)
+                # find connections from all connector atoms (in their order in self.decomp_map_bb2cons) to the corresponding
+                # vertices (not bbs)
+                conn_vertices = []
+                for c in self.decomp_map_bb2cons[bb]:
+                    # c is the index of an connector atom in the current edge bb
+                    # for edges we can directly look up the connecting bb and map to vertex
+                    con_atom = int((self.moldg.vp.con[c].split())[0])
+                    con_bb = self.moldg.vp.bb[con_atom]
+                    con_v = self.decomp_map_bb2v[con_bb]
+                    conn_vertices.append(con_v)    
                 # now check if we have this bb already
                 known = False
-                for i in range(len(ebb_graphs)):
-                    old_bbsg = ebb_graphs[i]
+                for i, old_bbsg in enumerate(ebb_graphs):
                     if old_bbsg.num_vertices() != cur_bbsg.num_vertices():
                         continue
-                    # check if isomorphic
-                    # if isomorphism(cur_bbsg, old_bbsg, vertex_inv1 = cur_bbsg.vp.elem, vertex_inv2 = old_bbsg.vp.elem):
-                    is_iso, iso_map = isomorphism(cur_bbsg, old_bbsg, isomap=True)
-                    if is_iso:
-                        known = True
-                        break
+                    #JK: there is an error thrown for single atom graphs (1 vertex 0 edges)
+                    # in this case we simply check if the elements are the same
+                    if old_bbsg.num_vertices() == 1:
+                        if self._mol.elems[cur_bbsg.get_vertices()[0]] == self._mol.elems[old_bbsg.get_vertices()[0]]:
+                            known = True
+                            break
+                    else:
+                        known = isomorphism(cur_bbsg, old_bbsg)
+                        # TBI: add here a test on the elements!! 
+                        if known:
+                            break
+                ebbg = Graph(cur_bbsg, prune=True)
+                self.decomp_ebb_map.append(bb)
+                self.decomp_ebb_cons.append(conn_vertices)
                 if not known:
-                    # add graph
-                    ebb_graphs.append(Graph(cur_bbsg, prune=True))
-                    ebb_map[nebbs] = [bb]
-                    ebb_remap[nebbs] = [e]
-                    nebbs += 1
+                    ebb_graphs.append(ebbg)
+                    et = nebbs
+                    self.decomp_ebb_types.append(et)
+                    nebbs = len(ebb_graphs)                    
                 else:
-                    # known already .. i equals nvbb
-                    ebb_map[i].append(bb)
-                    ebb_remap[i].append(e)
-        # we assume that all the BBs have a similar structure and we pick the first from the list to generate the BB object
-        # TBI: with flag get_all==True convert them all
-        for i in range(nebbs):
-            bb   = ebb_map[i][0] # take the first
-            ebbg = ebb_graphs[i]
-            # now we need to convert bb into a mol object and store it in self.decomp_ebb
-            mol_bb = self._convert_bb2mol(bb, ebbg)
-            # now add to the final list
-            self.decomp_ebb.append(mol_bb)
-            # store the map from the dicitonary into the nested list
-            self.decomp_ebb_map.append(ebb_remap[i])
-            # DEBUG
-            if write_mfpx:
-                mol_bb.write("ebb_%d.mfpx" % i)
+                    et = i
+                    self.decomp_ebb_types.append(et)
+                # now we need to convert bb into a mol object and store it in self.decomp_ebb
+                mol_bb = self._convert_bb2mol(bb, ebbg)
+                # now add to the final list
+                self.decomp_ebb.append(mol_bb)
+                if write_mfpx:
+                    mol_bb.write("ebb_%d_%d.mfpx" % (bb, et))
+        ###to be done end
+        ###  
         self.decomp_bb_exist = True
-        return (self.decomp_vbb, self.decomp_vbb_map, self.decomp_ebb, self.decomp_ebb_map)
+        return
 
     @staticmethod
     def is_equal(molg1, molg2, use_fast_check=False):
@@ -996,72 +983,53 @@ class graph(object):
             molg2 (molecular graph): molecular graph to be compared to molg1 
             use_fast_check (bool): will enforce a fast check based on the similarity rather than a graph isomorphisim
 
+        TBI: (feature request by RS) return a mapping if equal (one mapping .. not all)
+
         Return:
             bool
         """
-
         error_code = 0
-
         if use_fast_check:
-
             similarity = graph_tool.topology.similarity(molg1,molg2)
-
             is_equal = (similarity > 0.99)
-
         else:
-
             try:
-
                 e1 = molg1.get_edges()
-                e2 = molg2.get_edges()
-                
+                e2 = molg2.get_edges()                
                 if e1.shape[0] > 0 and e2.shape[0] > 0:
-
                     # quick exist?
                     vert1 = molg1.get_vertices()
                     vert2 = molg2.get_vertices()
-
                     if len(vert1) != len(vert2) or len(e1) != len(e2):
                        is_equal = False
                        return is_equal, error_code
-                     
                     masterg = Graph(molg2)
                     masterg.add_vertex() 
-
-                    vertex_maps = graph_tool.topology.subgraph_isomorphism(molg1, masterg, max_n=0, vertex_label=(molg1.vp.type,masterg.vp.type), edge_label=None, induced=False, subgraph=True, generator=False)
-
+                    vertex_maps = graph_tool.topology.subgraph_isomorphism(molg1, masterg, max_n=0, vertex_label=(molg1.vp.type,masterg.vp.type),
+                                                                            edge_label=None, induced=False, subgraph=True, generator=False)
                     is_equal = len(vertex_maps) > 0
-
                     if is_equal:
                        for vi,vj in zip(molg1.vertices(),vertex_maps[0]):
                            if molg1.vp.type[vi] != molg2.vp.type[vj]:
                                is_equal = False
                                break
-                       
                 else:
                     # We don't have any edges... 
-
                     # compare vertices
                     vert1 = molg1.get_vertices()
                     vert2 = molg2.get_vertices()
-
                     if len(vert1) != len(vert2):
                        is_equal = False
                        return is_equal, error_code
-
                     is_equal = True
-
                     for v1, v2 in zip(vert1,vert2):
                         if molg1.vp.type[v1] != molg2.vp.type[v2]:
                             is_equal = False
                             break
-
             except:
                 print("An error occured during the graph comparison")
                 is_equal = False
                 error_code = 1 
-
-
         return is_equal, error_code
 
     def _convert_bb2mol(self, bb, bbg):
