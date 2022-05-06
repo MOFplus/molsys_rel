@@ -147,6 +147,13 @@ class lqg:
             out += "%d %d %d %d %d " % (e[0]+1, e[1]+1, l[0], l[1], l[2])
         return out[:-1]     # remove the last space 
 
+    def pretty_print(self):
+        for i in range(self.ne):
+            e = self.edges[i]
+            l = self.labels[i]
+            print ("edge %2d: %3d-%3d %s" % (i+1, e[0], e[1], l))
+        return
+
     def get_edge_index(self, e, l, incr=0):
         """get index of edge
 
@@ -157,18 +164,31 @@ class lqg:
         Returns:
             int: index of the edge (WARNING .. we need to count from 1 in order to discriminate reverse edges as -1)
         """
-        er = e.copy()
-        er.reverse()
-        for i in range(self.ne):
-            if e == self.edges[i]:
-                if l.tolist() == self.labels[i]:
-                    return i+incr
-            elif er == self.edges[i]:
-                if (l*-1).tolist() == self.labels[i]:
-                    return -(i+incr)
-            else:
-                pass
+        if e[0] != e[1]:
+            er = e.copy()
+            er.reverse()
+            for i in range(self.ne):
+                if e == self.edges[i]:
+                    if l.tolist() == self.labels[i]:
+                        return i+incr
+                elif er == self.edges[i]:
+                    if (l*-1).tolist() == self.labels[i]:
+                        return -(i+incr)
+                else:
+                    pass
+        else:
+            # case for equal vertices .. edge defined by label only
+            for i in range(self.ne):
+                if e == self.edges[i]:
+                    if l.tolist() == self.labels[i]:
+                        return i+incr
+                    elif (l*-1).tolist() == self.labels[i]:
+                        return -(i+incr)
+                else:
+                    pass
         print ("ERROR: edge %s %s not found" % (str(e), str(l)))
+        print (self.edges)
+        print (self.labels)
         return None
 
     def get_edge_index_nolab(self, e, incr=0):
