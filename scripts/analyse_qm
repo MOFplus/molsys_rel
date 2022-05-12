@@ -51,7 +51,7 @@ def proper_dens(path):
     os.chdir(path)
     sdf = os.path.join(path, "sd.plt")
     RHF = False
-    print(os.path.isfile("sd.plt"))
+#    print(os.path.isfile("sd.plt"))
     if not os.path.isfile("sd.plt"):
         control = open('control').read()
         if '$closed shells' in control and '$open shells' not in control:
@@ -198,7 +198,7 @@ db = rdb.db
 reactions = db(db.reactions).select()
 if "reaction_origin" in params:
     reactions = reactions.find(lambda row: row.origin in params["reaction_origin"])
-print(reactions)
+#print(reactions)
 
 print("Level of theory = ", params["lot"])
 lotID = rdb.get_lot(params["lot"])
@@ -258,6 +258,9 @@ for r in reactions:
         print("  EDUCTS  ")
         print("----------")
         for i,ed in enumerate(reac2educt_spec):
+            if reac2ts_spec != None and reac2ts_spec.speciesID == ed.speciesID:
+                print("Educt and TS species are the same. This cannot be true. Skipping the reaction %d." %r.id)
+                skip = True
             oed = db((db.opt_species.speciesID == ed.speciesID) & (db.opt_species.lotID == lotID)).select().first()
             if oed == None:
                 print("The educt species %d is not optimized with %s according to the database entries!" %(ed.speciesID,params["lot"]))
@@ -327,6 +330,9 @@ for r in reactions:
         print(" PRODUCTS ")
         print("----------")
         for i,prod in enumerate(reac2prod_spec):
+            if reac2ts_spec != None and reac2ts_spec.speciesID == prod.speciesID:
+                print("Product and TS species are the same. This cannot be true. Skipping the reaction %d." %r.id)
+                skip = True
             oprod = db((db.opt_species.speciesID == prod.speciesID) & (db.opt_species.lotID == lotID)).select().first()
             if oprod == None:
                 print("The product species %d is not optimized with %s according to the database entries!" %(prod.speciesID,params["lot"]))
@@ -450,7 +456,7 @@ for r in reactions:
                 E_el_act_f += ots.energy
                 E_el_act_r += ots.energy
 
-            print(only_SPE, 'ZPE',ZPE, 'f_cor', params["f_cor"])
+            #print(only_SPE, 'ZPE',ZPE, 'f_cor', params["f_cor"])
 
             print("--------------------------------------------")
             print("E_act_f = %.1f kJ/mol, E_rxn = %.1f kJ/mol" %((E_el_act_f+ZPE_act_f)/kjmol, (E_el_rxn+ZPE_rxn)/kjmol))

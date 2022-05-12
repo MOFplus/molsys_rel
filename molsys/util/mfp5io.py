@@ -89,29 +89,29 @@ class mfp5io(mpiobject):
                 try:
                     self.mol = ffe.mol
                 except AttributeError:
-                    self.pprint("PDLP ERROR: Force Field Engine has no mol object!")
+                    self.pprint("MFP5 ERROR: Force Field Engine has no mol object!")
                     raise
                 # ok, now let us check if mol is actually a molsys object (require it to have a is_topo attribute)
                 try:
                     is_topo = self.mol.is_topo
                 except AttributeError:
-                    self.pprint("PDLP ERROR: mol object seems not be a molsys object! This is required for mfp5io")
+                    self.pprint("MFP5 ERROR: mol object seems not be a molsys object! This is required for mfp5io")
                     raise
                 # last but not least check that mol is not a topo ... we do not want that
                 if is_topo is True:
-                    self.pprint("PDLP ERROR: mol object is a topo object .. that should not happen!")
+                    self.pprint("MFP5 ERROR: mol object is a topo object .. that should not happen!")
                     raise Exception("mfp5 error")
                 self.mode = "ffe"
                 # now all is fine .. set defaults for this runmode
                 self.stage = "default" # default stage which can be overwritten (contains no trajectory data, only restarts)
             else:
                 # this is a restart, which means the file must exist and also the stage name
-                assert self.fexists, "PDLP ERROR: For restart the file must exist. Check filename and path!"
+                assert self.fexists, "MFP5 ERROR: For restart the file must exist. Check filename and path!"
                 self.restart_stage = restart
                 self.mode = "restart"
         else:
             # if ffe is None we are in analysis mode (means the file must exist)
-            assert self.fexists, "PDLP ERROR: For analysis the file must exist!"
+            assert self.fexists, "MFP5 ERROR: For analysis the file must exist!"
             self.mode = "analysis"
             self.restart_stage = "default" # use default stage to start up (should be always there, right?)
         # now open the file
@@ -126,7 +126,7 @@ class mfp5io(mpiobject):
                 else:
                     file_version = None
                 file_version = self.mpi_comm.bcast(file_version)  
-                assert self.file_version == file_version, "PDLP ERROR: Exisiting file has a different version! Can not add data"
+                assert self.file_version == file_version, "MFP5 ERROR: Exisiting file has a different version! Can not add data"
                 if self.mode == "ffe":
                     # check the system if it contains the same molecule (we could be more clever here, but if the list of atomtypes is identical we should be safe)
                     # TBI mor consistent tests like paramters etc .. we could read the complete mol out and compare
@@ -266,7 +266,7 @@ class mfp5io(mpiobject):
             else:
                 OK = False
         OK = self.mpi_comm.bcast(OK)
-        assert OK, "PDLP ERROR: The system in the mfp5 file is not equivalent to your actual system. Aborting!"
+        assert OK, "MFP5 ERROR: The system in the mfp5 file is not equivalent to your actual system. Aborting!"
         return
 
     def get_mol_from_system(self, vel=False, restart_ff=True):
@@ -313,7 +313,7 @@ class mfp5io(mpiobject):
             try:
                 rstage = self.h5file[self.restart_stage]
             except KeyError:
-                self.pprint("PDLP ERROR: The requested restart stage %s does not exist in the file!" % self.restart_stage)
+                self.pprint("MFP5 ERROR: The requested restart stage %s does not exist in the file!" % self.restart_stage)
                 raise
             restart = rstage["restart"]
             xyz = np.array(restart["xyz"], dtype="float64")
@@ -396,7 +396,7 @@ class mfp5io(mpiobject):
             (bool) True if it worked and False if the stage already existed
         """
         if stage == "system":
-            self.pprint("PDLP ERROR: Stage name system is not allowed!")
+            self.pprint("MFP5 ERROR: Stage name system is not allowed!")
             raise IOError
         self.open()
         OK = True
@@ -472,14 +472,15 @@ class mfp5io(mpiobject):
                 rest_xyz[...] = xyz
                 rest_img = restart.require_dataset("img",shape=img.shape, dtype=img.dtype)
                 rest_img[...] = img
-                rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
-                rest_cell[...] = cell
+                if cell is not None:
+                    rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
+                    rest_cell[...] = cell
                 if velocities:
                     rest_vel = restart.require_dataset("vel", shape=vel.shape, dtype=vel.dtype)
                     rest_vel[...] = vel
         OK = self.mpi_comm.bcast(OK)
         if not OK:
-            self.pprint("PDLP ERROR: writing restart to stage %s failed. Stage does not exist" % stage)
+            self.pprint("MFP5 ERROR: writing restart to stage %s failed. Stage does not exist" % stage)
             raise IOError
         return
 

@@ -35,4 +35,4 @@ steps:
     source source_me 
     cd tests/lqg/
     python3 lqg_test.py
-  displayName: 'testing util to add hydrogen'
+  displayName: 'testing lqg'

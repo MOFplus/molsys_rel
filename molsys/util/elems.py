@@ -584,6 +584,8 @@ maxbond = {
         "h" : 1,
         "o" : 2,
         "n" : 3,
+       "na" : 3,
+        "k" : 3,
 }
 
 def get_covdistance(elements):

@@ -1834,7 +1834,7 @@ class OptimizationTools:
            # 1st species
            if i_mol == 1:
                # 5.a) Build construction table for the 1st species
-               xyz_1 = zmat(mol_opt).to_Cartesian()
+               xyz_1 = zmat(mol_opt).cart
                # b) Form the Z-matrix of the 1st species (to replace the internal coordinates later)
                zmat_opt_1 = xyz_1.get_zmat()
                # c) Change indices to that of the TS using iopt2its dictionary
@@ -1847,7 +1847,7 @@ class OptimizationTools:
            #  2nd species
            elif i_mol == 2:
                # 5.a) Build the construction table for the 2nd species
-               xyz_2 = zmat(mol_opt).to_Cartesian()
+               xyz_2 = zmat(mol_opt).cart
                const_table_2 = xyz_2.get_construction_table()
                # b) Make sure that the Z-matrix of the 2nd species starts with the reacting atom on the 2nd species
                first_atom_idx = const_table_2.index[0]
@@ -1928,7 +1928,7 @@ class OptimizationTools:
                    const_table.loc[idx,'d'] = d + 1
 
                # 7. Construct the Z-matrix of the TS using the construction table created
-               xyz_ts = zmat(mol_ts).to_Cartesian()
+               xyz_ts = zmat(mol_ts).cart
                zmat_complex = xyz_ts.get_zmat(const_table)
                print('zmat_ts',zmat_complex)
 

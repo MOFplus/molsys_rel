@@ -318,7 +318,7 @@ for r in reactions:
  
         if params["submit"]:
             # submit the jobs to the specifies number of total cores.
-            print(ncurjobs, calculator.max_njobs)
+            #print(ncurjobs, calculator.max_njobs)
             while ncurjobs == calculator.max_njobs:
                 print("Maximum number of jobs running at the same time is reached. Waiting for the jobs %s to finish." %str(list(curjobids)))
                 time.sleep(30)
@@ -391,6 +391,7 @@ for r in reactions:
                 for r2s in reac2spec:
                     specID = r2s["speciesID"]
                     ospec = db((db.opt_species.speciesID == specID) & (db.opt_species.lotID == start_lotID)).select().first()
+                    #print("specID = ", specID, "ospec.id = ", ospec.id)
 
                     if ospec == None:
                         print("The species %d is not optimized with lot=%s" %(specID,start_lot))
