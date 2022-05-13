@@ -94,8 +94,10 @@ class traj:
         return
 
     def set_frame(self, fid):
+        assert fid >= 0
+        assert fid < self.fmax
         self.fid = fid
-        self._mol.set_xyz(np.array(self.xyz[fid]))
+        self._mol.set_xyz(np.array(self.xyz[fid]).astype("float64")) # in case of a mfp5 file -> make sure we get the right dtype
         if self.variable_cell:
             self._mol.set_cell(self.cell[fid], cell_only=True)
         return
