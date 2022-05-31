@@ -271,7 +271,7 @@ class RDB:
         return reventID
 
     def get_revent(self, frame):
-        event = self.db(self.db.revent.frame == frame).select().first()
+        event = self.db( (self.db.revent.mdID == self.current_md) & (self.db.revent.frame == frame) ).select().first()
         return event
 
     def add_md_species(self, reventID, mol, spec, foff, aids : list, tracked=True, react_compl=False):
