@@ -1120,7 +1120,7 @@ class OptimizationTools:
         # 1. Copy necessary files to a file new directory called disturb
         os.system("cpc disturb")
         path_tmp = os.path.join(self.path,"disturb")
-        OT = OptimizationTools(path_tmp)
+        OT = OptimizationTools(path_tmp, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
         GT = GeneralTools(path_tmp)
         if natoms == None:
             mol = GT.coord_to_mol() 
@@ -2001,7 +2001,7 @@ class OptimizationTools:
         os.system('cpc %s' %displaced)
         QM_path = os.path.join(path, displaced)
 
-        OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
+        OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
         GT = GeneralTools(QM_path)
 
         # 2. Remove the gradient to not to use the TS
@@ -2109,7 +2109,7 @@ class OptimizationTools:
         return mols_similar, index_dict
 
 
-    def check_end_points(self, mols_minus, mols_plus, mols_ed, mols_prod, mode = 'mg'):
+    def check_end_points(self, mols_minus, mols_plus, mols_ed, mols_prod, mode = 'mg', verbose = False):
         """
         Compares the molecular graphs of the output of the IRC calculation to those of reference structures.
         Basically this is used to check if the molecular graph of the reaction has changed or not.
@@ -2148,6 +2148,12 @@ class OptimizationTools:
             # 2. Compare the products with minus and plus from IRC
             minus_prod_is_similar, index_dict_minus_prod = self.compare_mols(mols_minus, mols_prod, mode = mode)
             plus_prod_is_similar , index_dict_plus_prod  = self.compare_mols(mols_plus,  mols_prod, mode = mode)
+
+            if verbose:
+                print("minus_ed_is_similar,minus_prod_is_similar,plus_ed_is_similar,plus_prod_is_similar", minus_ed_is_similar,minus_prod_is_similar,plus_ed_is_similar,plus_prod_is_similar)
+                case1 = minus_ed_is_similar and plus_prod_is_similar
+                case2 = plus_ed_is_similar and minus_prod_is_similar
+                print(case1,case2)
 
             if (minus_ed_is_similar and plus_prod_is_similar):
                 is_similar = True
@@ -2345,7 +2351,7 @@ class OptimizationTools:
         # create a QM path for the pre-optimization
         QM_path = os.path.join(self.path, 'ts_M%d' %M)
         os.mkdir(QM_path)
-        OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
+        OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
         GT = GeneralTools(QM_path)
 
         # Add noise to the structure and perform the single point energy calculation
@@ -2413,7 +2419,7 @@ class OptimizationTools:
         mols      = irc_mols[displaced]  # the separated educt mol objects from the irc end points, those we want to optimize now
         path      = irc_path[displaced] # the pathway to the .../displaced_minus/minus or .../displaced_plus/plus directories 
 
-        OT = OptimizationTools(path, lot = self.lot, max_mem = self.max_mem)
+        OT = OptimizationTools(path, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
         GT = GeneralTools(path)
 
         # If there is only one molecule just calculate just the Hessian 
@@ -2438,7 +2444,7 @@ class OptimizationTools:
                 QM_path = os.path.join(path,key)
                 os.mkdir(QM_path)
                 OT.prepare_frag_input(i+1,QM_path)
-                OT_opt = OptimizationTools(QM_path)
+                OT_opt = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
                 OT_opt.jobex()
                 OT_opt.aoforce()
                 inum, imfreq = OT_opt.check_imaginary_frequency()
@@ -2489,7 +2495,7 @@ class OptimizationTools:
 
     def prepare_frag_input(self, i, QM_path):
         os.chdir(self.path)
-        OT_QM = OptimizationTools(QM_path)
+        OT_QM = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
         # step 1: Move the input files created by proper for that fragment
         for f in ['control','coord','alpha','beta']:
             shutil.move('%s%d' %(f,i), os.path.join(QM_path,f))
@@ -2561,7 +2567,7 @@ class OptimizationTools:
         converged = False
         is_similar = False
         reason = ''
-        OT = OptimizationTools(QM_path_ts, lot = self.lot, max_mem = self.max_mem)
+        OT = OptimizationTools(QM_path_ts, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
 
         # 1. Calculate the Hessian
         OT.aoforce()
@@ -2658,7 +2664,7 @@ class OptimizationTools:
         for i, mol_ini in enumerate(mols):
             QM_path = os.path.join(self.path, '%s_%d' %(label,i+1))
             os.mkdir(QM_path)
-            OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem)
+            OT = OptimizationTools(QM_path, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
             GT = GeneralTools(QM_path)
             atom = False
             if mol_ini.natoms == 1: atom = True
@@ -2705,7 +2711,7 @@ class OptimizationTools:
                     print('The graph changes. The program will try multiplicity %d.' %(M+2))
                     path_tmp = os.path.join(QM_path, 'M_%d' %(M+2))
                     if os.path.isdir(path_tmp):
-                        OT_tmp = OptimizationTools(path_tmp, lot = self.lot, max_mem = self.max_mem)
+                        OT_tmp = OptimizationTools(path_tmp, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
                         GT_tmp = GeneralTools(path_tmp)
                         converged = GT_tmp.check_scf_converged()
                         if not converged:
@@ -3034,14 +3040,14 @@ class OptimizationTools:
                     print('The reaction is barrierless.')
                     for i,QM_path_ed in enumerate(QM_paths_ed):
                         QM_paths_dict['educt_%d' %i] = QM_path_ed
-                        OT = OptimizationTools(QM_path_ed)
+                        OT = OptimizationTools(QM_path_ed, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
                         OT.aoforce()
                         inum, imfreq = OT.check_imaginary_frequency()
                         if inum != 0:
                             OT.disturb_and_reoptimize()
                     for i,QM_path_prod in enumerate(QM_paths_prod):
                         QM_paths_dict['product_%d' %i] = QM_path_prod
-                        OT = OptimizationTools(QM_path_prod)
+                        OT = OptimizationTools(QM_path_prod, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
                         OT.aoforce()
                         inum, imfreq = OT.check_imaginary_frequency()
                         if inum != 0:
@@ -3249,7 +3255,7 @@ class OptimizationTools:
         dir_name = "".join(".".join(".".join("".join(self.lot.split("*")).split("/")).split("(")).split(")"))
         ccsd_path = os.path.join(self.path,dir_name)
         os.mkdir(ccsd_path)
-        OT = OptimizationTools(ccsd_path)
+        OT = OptimizationTools(ccsd_path, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
         GT = GeneralTools(ccsd_path)
         GT_ref = GeneralTools(self.path)
         # 1. Set up the HF calculation input
@@ -3261,7 +3267,7 @@ class OptimizationTools:
             tmp_path = os.path.join(self.path,"tmp")
             os.system("cpc tmp")
             GT_tmp =  GeneralTools(tmp_path)
-            OT_tmp =  OptimizationTools(tmp_path)
+            OT_tmp =  OptimizationTools(tmp_path, lot = self.lot, max_mem = self.max_mem, gcart = self.gcart, reaxff = self.reaxff)
             # / blow up the basis set so that the number of atomic orbitals are correct
             GT_tmp.change_basis_set(basis_set=basis_set, ref_control_file = "../control",  title = self.lot, ri=False)
             GT_tmp.kdg("rij")
