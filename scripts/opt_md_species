@@ -54,7 +54,7 @@ class reaxff_calculator(base_calculator):
     def __init__(self, mol, params : dict):
         super(base_calculator, self).__init__()
         self.pl = pylmps.pylmps("opt")
-        self.pl.setup(mol = mol, local=True, ff="ReaxFF", reaxff=params["reaxff"])
+        self.pl.setup(mol = mol, use_mfp5=False, local=True, ff="ReaxFF", reaxff=params["reaxff"])
         return
 
     def calc_energy(self):
@@ -99,7 +99,7 @@ class xtb_calculator(base_calculator):
         # now add the expot object together with the name of the global callback
         self.pl.add_external_potential(ep, "callback")
         # setup xTB
-        self.pl.setup(local=True, mol = mol, ff="xTB")
+        self.pl.setup(local=True, use_mfp5=False, mol = mol, ff="xTB")
         return
 
     def calc_energy(self):
@@ -189,11 +189,11 @@ start_lotID = rdb.get_lot(start_lot)
 
 file = open(cmd_file, "r")
 content = file.read()
-#params = ast.literal_eval(content)
+params = ast.literal_eval(content)
 
-params = { "calculator" : "reaxff" 
-         , "lot"        : "ReaxFF"
-         }
+#params = { "calculator" : "reaxff" 
+#         , "lot"        : "ReaxFF"
+#         }
 
 # sanity check(s)
 assert "calculator" in params, "Calculator defined"
@@ -237,7 +237,7 @@ for r in reactions:
            rbonds = rbonds_list[0]
            remove_constraint = True
         bondlength = []
-        if TS: # or is_unimolecular:
+        if TS or is_unimolecular:
            # all molecules are non-perioidc  .. just compute current bond distance
            for i in range(nrbonds):
                r = mol.xyz[rbonds[i,0]]-mol.xyz[rbonds[i,1]]
