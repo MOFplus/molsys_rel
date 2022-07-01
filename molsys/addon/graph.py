@@ -380,7 +380,7 @@ class graph(object):
     and uses only lower case element symbols as vertex symbols. 
     """
 
-    def decompose(self, mode="ringsize", join_organic=True, get_all=False, write_mfpx=False):
+    def decompose(self, mode="ringsize", join_organic=True, write_mfpx=False):
         """decompose the molecular graph into BBs and the underlying net
 
         There are different strategies to split the graph into parts and also the returned information

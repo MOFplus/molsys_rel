@@ -379,7 +379,7 @@ class bb:
         v1 = self.connector_xyz/self.connector_dist[:,None]
         n = len(w)
         assert len(v1) == n
-        assert len(v1) > 3
+        # assert len(v1) > 3
         v2 = v1[w]
         # first check if this permutation conserves all angles (maintains shape)
         for i,j in itertools.combinations(range(n), 2):
