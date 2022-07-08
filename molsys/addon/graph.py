@@ -370,7 +370,6 @@ class graph(object):
         comp = list(self.molg.vp.molid.a)
         return ncomp, comp
 
-
     @staticmethod
     def is_equal(molg1, molg2, use_fast_check=False):
         """helper function to identify if two molecular graphs are equal or not
@@ -380,71 +379,52 @@ class graph(object):
             molg2 (molecular graph): molecular graph to be compared to molg1 
             use_fast_check (bool): will enforce a fast check based on the similarity rather than a graph isomorphisim
 
+        TBI: (feature request by RS) return a mapping if equal (one mapping .. not all)
+
         Return:
             bool
         """
-
         error_code = 0
-
         if use_fast_check:
-
             similarity = graph_tool.topology.similarity(molg1,molg2)
-
             is_equal = (similarity > 0.99)
-
         else:
-
             try:
-
                 e1 = molg1.get_edges()
-                e2 = molg2.get_edges()
-                
+                e2 = molg2.get_edges()                
                 if e1.shape[0] > 0 and e2.shape[0] > 0:
-
                     # quick exist?
                     vert1 = molg1.get_vertices()
                     vert2 = molg2.get_vertices()
-
                     if len(vert1) != len(vert2) or len(e1) != len(e2):
                        is_equal = False
                        return is_equal, error_code
-                     
                     masterg = Graph(molg2)
                     masterg.add_vertex() 
-
-                    vertex_maps = graph_tool.topology.subgraph_isomorphism(molg1, masterg, max_n=0, vertex_label=(molg1.vp.type,masterg.vp.type), edge_label=None, induced=False, subgraph=True, generator=False)
-
+                    vertex_maps = graph_tool.topology.subgraph_isomorphism(molg1, masterg, max_n=0, vertex_label=(molg1.vp.type,masterg.vp.type),
+                                                                            edge_label=None, induced=False, subgraph=True, generator=False)
                     is_equal = len(vertex_maps) > 0
-
                     if is_equal:
                        for vi,vj in zip(molg1.vertices(),vertex_maps[0]):
                            if molg1.vp.type[vi] != molg2.vp.type[vj]:
                                is_equal = False
                                break
-                       
                 else:
                     # We don't have any edges... 
-
                     # compare vertices
                     vert1 = molg1.get_vertices()
                     vert2 = molg2.get_vertices()
-
                     if len(vert1) != len(vert2):
                        is_equal = False
                        return is_equal, error_code
-
                     is_equal = True
-
                     for v1, v2 in zip(vert1,vert2):
                         if molg1.vp.type[v1] != molg2.vp.type[v2]:
                             is_equal = False
                             break
-
             except:
                 print("An error occured during the graph comparison")
                 is_equal = False
                 error_code = 1 
-
-
         return is_equal, error_code
 

@@ -271,7 +271,7 @@ class RDB:
         return reventID
 
     def get_revent(self, frame):
-        event = self.db(self.db.revent.frame == frame).select().first()
+        event = self.db( (self.db.revent.mdID == self.current_md) & (self.db.revent.frame == frame) ).select().first()
         return event
 
     def add_md_species(self, reventID, mol, spec, foff, aids : list, tracked=True, react_compl=False):
@@ -635,9 +635,9 @@ class RDB:
         with tempfile.TemporaryDirectory() as tmpdir:
             cwd = os.curdir
             #os.chdir(tmpdir)
-            rgraph.write_svg("rgraph.svg")
-            rgraph.write_png("rgraph.png")
-            webbrowser.get(browser).open_new("rgraph.svg")
+            rgraph.write_svg("rgraph_md%d.svg" %self.current_md)
+            rgraph.write_png("rgraph_md%d.png" %self.current_md)
+            webbrowser.get(browser).open_new("rgraph_md%d.svg" %self.current_md)
             #os.chdir(cwd)
  
 

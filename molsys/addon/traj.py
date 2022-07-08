@@ -10,7 +10,7 @@ supports also the writing to a trajectory file (just a concatenation ... use pdb
 
 """
 
-from molsys.util import mfp5io2
+from molsys.util import mfp5io
 from molsys.fileIO import formats
 import numpy as np
 
@@ -46,7 +46,7 @@ class traj:
                 self.variabale_cell = False
                 self.fmax = 0
             # we compare with the mol object attached to the fake ffe to make sure that natoms etc matches
-            self.open_mfp5 = mfp5io2.mfp5io2(kwargs["fname"], ffe=self.ffe, restart=kwargs["stage"])
+            self.open_mfp5 = mfp5io.mfp5io(kwargs["fname"], ffe=self.ffe, restart=kwargs["stage"])
             # get data from traj group
             traj = self.open_mfp5.get_traj_from_stage(kwargs["stage"])
             assert traj is not False, "Stage %s does not extist" % kwargs["stage"]
@@ -94,8 +94,10 @@ class traj:
         return
 
     def set_frame(self, fid):
+        assert fid >= 0
+        assert fid < self.fmax
         self.fid = fid
-        self._mol.set_xyz(np.array(self.xyz[fid]))
+        self._mol.set_xyz(np.array(self.xyz[fid]).astype("float64")) # in case of a mfp5 file -> make sure we get the right dtype
         if self.variable_cell:
             self._mol.set_cell(self.cell[fid], cell_only=True)
         return

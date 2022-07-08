@@ -89,29 +89,29 @@ class mfp5io(mpiobject):
                 try:
                     self.mol = ffe.mol
                 except AttributeError:
-                    self.pprint("PDLP ERROR: Force Field Engine has no mol object!")
+                    self.pprint("MFP5 ERROR: Force Field Engine has no mol object!")
                     raise
                 # ok, now let us check if mol is actually a molsys object (require it to have a is_topo attribute)
                 try:
                     is_topo = self.mol.is_topo
                 except AttributeError:
-                    self.pprint("PDLP ERROR: mol object seems not be a molsys object! This is required for mfp5io")
+                    self.pprint("MFP5 ERROR: mol object seems not be a molsys object! This is required for mfp5io")
                     raise
                 # last but not least check that mol is not a topo ... we do not want that
                 if is_topo is True:
-                    self.pprint("PDLP ERROR: mol object is a topo object .. that should not happen!")
+                    self.pprint("MFP5 ERROR: mol object is a topo object .. that should not happen!")
                     raise Exception("mfp5 error")
                 self.mode = "ffe"
                 # now all is fine .. set defaults for this runmode
                 self.stage = "default" # default stage which can be overwritten (contains no trajectory data, only restarts)
             else:
                 # this is a restart, which means the file must exist and also the stage name
-                assert self.fexists, "PDLP ERROR: For restart the file must exist. Check filename and path!"
+                assert self.fexists, "MFP5 ERROR: For restart the file must exist. Check filename and path!"
                 self.restart_stage = restart
                 self.mode = "restart"
         else:
             # if ffe is None we are in analysis mode (means the file must exist)
-            assert self.fexists, "PDLP ERROR: For analysis the file must exist!"
+            assert self.fexists, "MFP5 ERROR: For analysis the file must exist!"
             self.mode = "analysis"
             self.restart_stage = "default" # use default stage to start up (should be always there, right?)
         # now open the file
@@ -126,7 +126,7 @@ class mfp5io(mpiobject):
                 else:
                     file_version = None
                 file_version = self.mpi_comm.bcast(file_version)  
-                assert self.file_version == file_version, "PDLP ERROR: Exisiting file has a different version! Can not add data"
+                assert self.file_version == file_version, "MFP5 ERROR: Exisiting file has a different version! Can not add data"
                 if self.mode == "ffe":
                     # check the system if it contains the same molecule (we could be more clever here, but if the list of atomtypes is identical we should be safe)
                     # TBI mor consistent tests like paramters etc .. we could read the complete mol out and compare
@@ -255,17 +255,18 @@ class mfp5io(mpiobject):
         OK = None
         if self.is_master:
             system = self.h5file["system"]
-            mfp5_atypes = system["atypes"]
+            mfp5_atypes = list(np.array(system["atypes"]).astype("str"))
             atypes = self.ffe.mol.get_atypes()
             OK = True
             if len(mfp5_atypes)==len(atypes):
                 for a1,a2 in zip(mfp5_atypes, atypes):
                     if a1 != a2:
+                        print ("not matching atomtypes %s %s" % (a1, a2))
                         OK = False
             else:
                 OK = False
         OK = self.mpi_comm.bcast(OK)
-        assert OK, "PDLP ERROR: The system in the mfp5 file is not equivalent to your actual system. Aborting!"
+        assert OK, "MFP5 ERROR: The system in the mfp5 file is not equivalent to your actual system. Aborting!"
         return
 
     def get_mol_from_system(self, vel=False, restart_ff=True):
@@ -312,7 +313,7 @@ class mfp5io(mpiobject):
             try:
                 rstage = self.h5file[self.restart_stage]
             except KeyError:
-                self.pprint("PDLP ERROR: The requested restart stage %s does not exist in the file!" % self.restart_stage)
+                self.pprint("MFP5 ERROR: The requested restart stage %s does not exist in the file!" % self.restart_stage)
                 raise
             restart = rstage["restart"]
             xyz = np.array(restart["xyz"], dtype="float64")
@@ -381,17 +382,21 @@ class mfp5io(mpiobject):
         mm.moltypes = [0] + [i+1 for i in mm.moltypes[1:]]
         return mol
 
-    def add_stage(self, stage):
+    def add_stage(self, stage, simulation_parameters: dict = None):
         """add a new stage 
         
         Args:
             stage (string): stage name to add
+            simulation_parameters(dict):A dictionary containing simulation parameters as key -> value pairs
+                                        that will be added as attributes to the stage.
+                                        An attribute is a key -> value pair, too.
+                                        (see attributes in hdf5 documentation on the internet)
 
         Returns:
             (bool) True if it worked and False if the stage already existed
         """
         if stage == "system":
-            self.pprint("PDLP ERROR: Stage name system is not allowed!")
+            self.pprint("MFP5 ERROR: Stage name system is not allowed!")
             raise IOError
         self.open()
         OK = True
@@ -400,12 +405,24 @@ class mfp5io(mpiobject):
                 OK = False
             else:
                 sgroup = self.h5file.create_group(stage)
+                #-----------------------------
+                # add simulation parameters as attributes to the stage
+                # check that the dictionary is not None and not empty
+                if simulation_parameters is not None:
+                    if simulation_parameters:
+                        for key, value in simulation_parameters.items():
+                            sgroup.attrs[key] = value
+                    else:
+                        print("simulation_parameters is empty")
+                else: print("simulation_parameters is None")
+                #-----------------------------
                 rgroup = sgroup.create_group("restart")
-                # generate restart arrays for xyz, cell and vel
-                na = self.ffe.get_natoms()
-                rgroup.require_dataset("xyz",shape=(na,3), dtype="float64")
-                rgroup.require_dataset("vel",shape=(na,3), dtype="float64")
-                rgroup.require_dataset("cell",shape=(3,3), dtype="float64")
+                # generate restart arrays for xyz, cell, vel and img
+                na = self.ffe.mol.get_natoms()
+                rgroup.require_dataset("xyz", shape=(na,3), dtype="float64")
+                rgroup.require_dataset("vel", shape=(na,3), dtype="float64")
+                rgroup.require_dataset("cell", shape=(3,3), dtype="float64")
+                rgroup.require_dataset("img", shape=(na,3), dtype="int32")
         OK = self.mpi_comm.bcast(OK)
         return OK
 
@@ -442,6 +459,7 @@ class mfp5io(mpiobject):
         OK = True
         # we need to do this in parallel on nodes (lammps gather is a parallel step)
         xyz = self.ffe.get_xyz()
+        img = self.ffe.get_image()
         if velocities:
             vel = self.ffe.get_vel()
         if self.is_master:
@@ -452,14 +470,17 @@ class mfp5io(mpiobject):
                 cell = self.ffe.get_cell()
                 rest_xyz = restart.require_dataset("xyz",shape=xyz.shape, dtype=xyz.dtype)
                 rest_xyz[...] = xyz
-                rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
-                rest_cell[...] = cell
+                rest_img = restart.require_dataset("img",shape=img.shape, dtype=img.dtype)
+                rest_img[...] = img
+                if cell is not None:
+                    rest_cell = restart.require_dataset("cell", shape=cell.shape, dtype=cell.dtype)
+                    rest_cell[...] = cell
                 if velocities:
                     rest_vel = restart.require_dataset("vel", shape=vel.shape, dtype=vel.dtype)
                     rest_vel[...] = vel
         OK = self.mpi_comm.bcast(OK)
         if not OK:
-            self.pprint("PDLP ERROR: writing restart to stage %s failed. Stage does not exist" % stage)
+            self.pprint("MFP5 ERROR: writing restart to stage %s failed. Stage does not exist" % stage)
             raise IOError
         return
 
@@ -475,7 +496,7 @@ class mfp5io(mpiobject):
             prec (str, optional): Defaults to "float64". precision to use in writing traj data
             tstep (float, optional): Defaults to 0.001. Timestep in ps
         """ 
-        # RS function rewritten for parallel runs (in lammps soem of the data_funcs need to be exectued by all nodes)
+        # RS function rewritten for parallel runs (in lammps some of the data_funcs need to be exectued by all nodes)
         self.open()       
         if type(data_nstep)== type([]):
             assert len(data_nstep)==len(traj_data)
@@ -487,7 +508,7 @@ class mfp5io(mpiobject):
                 OK = False
         OK = self.mpi_comm.bcast(OK)
         if not OK:
-            raise IOError("PDLP ERROR: preparing stge %s failed. Stage does not exist!" % stage)
+            raise IOError("MFP5 ERROR: preparing stge %s failed. Stage does not exist!" % stage)
         if self.is_master:
             traj = self.h5file.require_group(stage+"/traj")
             traj.attrs["nstep"] = traj_nstep
@@ -496,12 +517,16 @@ class mfp5io(mpiobject):
             assert dname in list(self.ffe.data_funcs.keys())
             data = self.ffe.data_funcs[dname]()
             dshape = list(data.shape)
+            dtype = data.dtype.name
+            # reduce accuracy of float trajectory data on request.
+            if dtype[:5] == "float":
+                dtype = prec
             if self.is_master:
                 mfp5_data = traj.require_dataset(dname, 
                                 shape=tuple([1]+dshape),
                                 maxshape=tuple([None]+dshape),
                                 chunks=tuple([1]+dshape),
-                                dtype=prec)
+                                dtype=dtype)
                 mfp5_data[...] = data
                 mfp5_data.attrs["nstep"] = dnstep
         if len(thermo_values)>0:
@@ -519,7 +544,7 @@ class mfp5io(mpiobject):
         self.mpi_comm.barrier()
         return
 
-    def add_bondtab(self, stage, nbondsmax, bond_tab = 0, bond_order = 0.0):
+    def add_bondtab(self, stage, nbondsmax, bond_tab = None, bond_order = None):
         """generates a bondtab/bondorder entry in the trajectory group of the current stage for ReaxFF
         
         Args:
@@ -541,8 +566,9 @@ class mfp5io(mpiobject):
                             maxshape=(None, nbondsmax),
                             chunks=(1,nbondsmax),
                             dtype = "float32")
-            bondtab[...] = bond_tab
-            bondord[...] = bond_order
+            if bond_tab is not None and bond_order is not None:
+                bondtab[...] = bond_tab
+                bondord[...] = bond_order
         return
 
         
